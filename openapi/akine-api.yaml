@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.159.0
+  version: 0.160.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -20253,6 +20253,76 @@ paths:
       summary: Baja logica de un espacio
       tags:
       - Espacios
+  /api/v1/organizations/{orgId}/direcciones/busqueda:
+    get:
+      description: |-
+        Devuelve hasta cinco direcciones candidatas con sus coordenadas para el texto escrito, acotadas opcionalmente a un pais. Sirve para completar la direccion estructurada y la ubicacion de una sede al darla de alta o editarla.
+
+        Requiere ser miembro de la organizacion. La respuesta trae el proveedor y el texto de atribucion que la pantalla tiene que mostrar junto a los resultados: la licencia del proveedor lo exige.
+
+        NO es autocompletado: se llama cuando la persona pide buscar, no tecla a tecla. El proveedor admite una consulta por segundo para todo el despliegue, y el backend serializa los pedidos para respetarlo. Si el proveedor no responde o esta apagado en este despliegue, 503 geocodificador-no-disponible con Retry-After: la sede se puede guardar igual con la direccion escrita y sin coordenadas, o fijando la ubicacion a mano.
+      operationId: buscarDirecciones
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Direccion escrita, tal como la tipeo la persona. Hasta 200 caracteres"
+        example: "Av. Colon 1234, Cordoba"
+        in: query
+        name: q
+        required: true
+        schema:
+          type: string
+      - description: "Pais al que acotar la busqueda, ISO 3166-1 alpha-2"
+        example: AR
+        in: query
+        name: pais
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BusquedaDeDireccionesResponse"
+          description: "Los candidatos, los mejores primero. Lista vacia si no hay\
+            \ ninguno"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Texto vacio o de mas de 200 caracteres, o pais que no es un\
+            \ codigo ISO de dos letras"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No es miembro de la organizacion, o no hay contexto de trabajo"
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El geocodificador no respondio o esta apagado (geocodificador-no-disponible).
+            Retry-After dice en cuantos segundos reintentar
+          headers:
+            Retry-After:
+              description: Segundos sugeridos para reintentar
+              schema:
+                type: integer
+                example: 30
+              style: simple
+      summary: Busca una direccion para ubicar la sede
+      tags:
+      - Consultorios
   /api/v1/organizations/{orgId}/memberships:
     get:
       description: |-
@@ -27731,6 +27801,25 @@ components:
           exclusiveMinimum: 0
       required:
       - ofertaId
+    BusquedaDeDireccionesResponse:
+      type: object
+      description: "Candidatos de la busqueda de direcciones, con el proveedor y su\
+        \ atribucion"
+      properties:
+        atribucion:
+          type: string
+          description: Texto de atribucion que hay que mostrar junto a los resultados
+          example: (c) OpenStreetMap contributors
+        proveedor:
+          type: string
+          description: Proveedor que respondio
+          example: NOMINATIM
+        resultados:
+          type: array
+          description: "Hasta cinco candidatos, los mejores primero. Vacio si no hay\
+            \ ninguno"
+          items:
+            $ref: "#/components/schemas/DireccionEncontradaResponse"
     CalendarioSedeResponse:
       type: object
       description: Politica de calendario de la sede y feriados de la ventana consultada
@@ -29777,12 +29866,43 @@ components:
           example: true
         addressLine:
           type: string
-          description: "Direccion, si se cargo"
+          description: "Direccion FISCAL propia de la sede, si se cargo. La direccion\
+            \ fisica esta en pais, provincia, ciudad, calle, numero, codigoPostal\
+            \ y piso, y en una linea en direccionFormateada"
           example: "Av. Colon 1234, Cordoba"
+        agendaHabilitada:
+          type: boolean
+          description: "false mientras la sede no reciba turnos: reservar, crear series\
+            \ o trasladar turnos hacia ella es 409 consultorio-sin-agenda"
+          example: true
+        alias:
+          type: string
+          description: "Nombre corto para la agenda y los listados, si se cargo"
+          example: Norte
+        calle:
+          type: string
+          description: Calle
+          example: Av. Colon
+        ciudad:
+          type: string
+          description: Ciudad o localidad
+          example: Cordoba
+        codigoPostal:
+          type: string
+          description: Codigo postal
+          example: X5000
         contactEmail:
           type: string
           description: "Email de contacto, si se cargo"
           example: sede@ejemplo.test
+        datosFiscalesEfectivos:
+          $ref: "#/components/schemas/DatosFiscalesEfectivosResponse"
+          description: "Los datos fiscales que RIGEN para la sede, ya resueltos"
+        datosFiscalesPropios:
+          type: boolean
+          description: "true: factura con legalName, taxId y addressLine propios;\
+            \ false: con los de la organizacion"
+          example: false
         deactivationReason:
           type: string
           description: Motivo declarado de la baja. null si la sede esta activa
@@ -29791,6 +29911,16 @@ components:
           type: string
           format: date-time
           description: Instante UTC de la baja logica. null si la sede esta activa
+        direccionFormateada:
+          type: string
+          description: "La direccion fisica en una linea, armada con las partes cargadas:\
+            \ \"Calle Numero, Piso, Ciudad, Provincia, CP, Pais\". null si no hay\
+            \ ninguna"
+          example: "Av. Colon 1234, Piso 2, Cordoba, Cordoba, X5000, AR"
+        direccionPublica:
+          type: boolean
+          description: Si la direccion fisica viaja en los avisos de turno al paciente
+          example: true
         estado:
           type: string
           description: "Estado derivado de la sede: ACTIVO o INACTIVO"
@@ -29802,21 +29932,42 @@ components:
           example: 1
         legalName:
           type: string
-          description: "Razon social, si se cargo"
+          description: "Razon social PROPIA de la sede, si se cargo. Cuenta solo con\
+            \ datosFiscalesPropios; los datos que rigen estan en datosFiscalesEfectivos"
           example: Centro Kinesico SRL
         name:
           type: string
           description: Nombre de la sede. Unico entre las sedes vigentes del tenant
           example: Sede Central
+        numero:
+          type: string
+          description: Altura
+          example: "1234"
         organizationId:
           type: integer
           format: int64
           description: Organizacion a la que pertenece
           example: 1
+        pais:
+          type: string
+          description: "Pais de la direccion fisica, ISO 3166-1 alpha-2"
+          example: AR
         phone:
           type: string
           description: "Telefono de contacto, si se cargo"
           example: +54 351 555-0000
+        piso:
+          type: string
+          description: "Piso, oficina o departamento"
+          example: "Piso 2, Of. B"
+        provincia:
+          type: string
+          description: Provincia o estado
+          example: Cordoba
+        referencias:
+          type: string
+          description: Indicaciones para llegar
+          example: Frente a la plaza
         slotMinutes:
           type: integer
           format: int32
@@ -29824,13 +29975,21 @@ components:
           example: 30
         taxId:
           type: string
-          description: "Identificacion fiscal, si se cargo"
-          example: 30-12345678-9
+          description: "Identificacion fiscal PROPIA de la sede, si se cargo"
+          example: 30-71234567-1
         timezone:
           type: string
           description: "Zona horaria IANA efectiva de la sede. Es la que rige el dia\
             \ operativo y la agenda, no la de la organizacion"
           example: America/Argentina/Cordoba
+        ubicacion:
+          $ref: "#/components/schemas/UbicacionResponse"
+          description: Coordenadas de la sede. null si todavia no se ubico
+        ubicacionPendiente:
+          type: boolean
+          description: "true cuando hay direccion escrita pero ninguna coordenada:\
+            \ la sede todavia no esta en el mapa"
+          example: false
         version:
           type: integer
           format: int64
@@ -30714,8 +30873,40 @@ components:
       properties:
         addressLine:
           type: string
-          description: Direccion
+          description: "Direccion fiscal propia de la sede, en una linea. Cuenta solo\
+            \ con datosFiscalesPropios. La direccion FISICA va en pais, provincia,\
+            \ ciudad, calle, numero, codigoPostal y piso"
           maxLength: 240
+          minLength: 0
+        agendaHabilitada:
+          type: boolean
+          description: "Si la sede ya recibe turnos. Si se omite, true. En false la\
+            \ sede existe y se configura pero reservar, crear series o trasladar turnos\
+            \ hacia ella es 409 consultorio-sin-agenda"
+          example: true
+        alias:
+          type: string
+          description: Nombre corto para la agenda y los listados
+          example: Norte
+          maxLength: 80
+          minLength: 0
+        calle:
+          type: string
+          description: Calle
+          example: Av. Colon
+          maxLength: 160
+          minLength: 0
+        ciudad:
+          type: string
+          description: Ciudad o localidad
+          example: Cordoba
+          maxLength: 120
+          minLength: 0
+        codigoPostal:
+          type: string
+          description: Codigo postal
+          example: X5000
+          maxLength: 16
           minLength: 0
         contactEmail:
           type: string
@@ -30723,6 +30914,16 @@ components:
           description: Email de contacto
           maxLength: 160
           minLength: 0
+        datosFiscalesPropios:
+          type: boolean
+          description: "true: la sede factura con legalName, taxId y addressLine propios.\
+            \ false (default): con los datos fiscales de la organizacion"
+          example: false
+        direccionPublica:
+          type: boolean
+          description: "Si la direccion fisica viaja en los avisos de turno al paciente.\
+            \ Si se omite, true"
+          example: true
         horarioGeneral:
           type: array
           description: "Horario general de la sede (RF-M03-002): franjas semanales\
@@ -30738,7 +30939,7 @@ components:
           minItems: 0
         legalName:
           type: string
-          description: Razon social
+          description: Razon social propia de la sede. Cuenta solo con datosFiscalesPropios
           maxLength: 200
           minLength: 0
         name:
@@ -30748,16 +30949,46 @@ components:
           example: Sede Norte
           maxLength: 160
           minLength: 0
+        numero:
+          type: string
+          description: "Altura. Texto: admite S/N o 1234 bis"
+          example: "1234"
+          maxLength: 20
+          minLength: 0
+        pais:
+          type: string
+          description: "Pais de la direccion fisica, ISO 3166-1 alpha-2. Se guarda\
+            \ en mayusculas"
+          example: AR
+          pattern: "[A-Za-z]{2}"
         phone:
           type: string
           description: Telefono de contacto
           maxLength: 40
+          minLength: 0
+        piso:
+          type: string
+          description: "Piso, oficina o departamento"
+          example: "Piso 2, Of. B"
+          maxLength: 60
           minLength: 0
         primerBox:
           $ref: "#/components/schemas/AltaSedePrimerBoxRequest"
           description: "Primer box de la sede (RF-M03-002). Si viene, se crea en la\
             \ misma transaccion que la sede: si algo falla no queda ni la sede ni\
             \ el box. Omitirlo da de alta la sede sola, como antes"
+        provincia:
+          type: string
+          description: Provincia o estado
+          example: Cordoba
+          maxLength: 80
+          minLength: 0
+        referencias:
+          type: string
+          description: Indicaciones para llegar
+          example: Frente a la plaza
+          maxLength: 255
+          minLength: 0
         slotMinutes:
           type: integer
           format: int32
@@ -30768,7 +30999,11 @@ components:
           minimum: 5
         taxId:
           type: string
-          description: Identificacion fiscal
+          description: "Identificacion fiscal propia de la sede. Si tiene forma de\
+            \ CUIT (11 digitos, guiones opcionales) el digito verificador tiene que\
+            \ ser correcto: si no, 400 con errors.taxId. Cualquier otro formato se\
+            \ acepta como texto"
+          example: 30-71234567-1
           maxLength: 32
           minLength: 0
         timezone:
@@ -30779,6 +31014,11 @@ components:
           example: America/Argentina/Cordoba
           maxLength: 64
           minLength: 0
+        ubicacion:
+          $ref: "#/components/schemas/UbicacionRequest"
+          description: "Coordenadas de la sede. Las dos juntas: una sola es 400 con\
+            \ errors.ubicacion. Si se omite, la sede queda con la direccion escrita\
+            \ y sin ubicar (ubicacionPendiente)"
       required:
       - name
     CreateConvenioRequest:
@@ -31829,6 +32069,30 @@ components:
           type: boolean
           description: Falso si la persona todavia no tiene historia clinica
           example: true
+    DatosFiscalesEfectivosResponse:
+      type: object
+      description: "Datos fiscales efectivos de la sede: propios o heredados de la\
+        \ organizacion"
+      properties:
+        addressLine:
+          type: string
+          description: Domicilio fiscal efectivo
+          example: "Av. Colon 1234, Cordoba"
+        legalName:
+          type: string
+          description: Razon social efectiva
+          example: Centro Kinesico SRL
+        origen:
+          type: string
+          description: "De donde salen: SEDE u ORGANIZACION"
+          enum:
+          - SEDE
+          - ORGANIZACION
+          example: ORGANIZACION
+        taxId:
+          type: string
+          description: Identificacion fiscal efectiva
+          example: 30-71234567-1
     DeactivateBloqueRequest:
       type: object
       description: Motivo de la baja logica del bloque de disponibilidad
@@ -32403,6 +32667,47 @@ components:
             \ linkearla. null cuando la regla no tiene id que ofrecer: un feriado\
             \ se resuelve por fecha, no por id de excepcion"
           example: 7
+    DireccionEncontradaResponse:
+      type: object
+      description: Direccion candidata devuelta por el geocodificador
+      properties:
+        calle:
+          type: string
+          description: Calle
+          example: Avenida Colon
+        ciudad:
+          type: string
+          description: Ciudad o localidad
+          example: Cordoba
+        codigoPostal:
+          type: string
+          description: Codigo postal
+          example: X5000
+        etiqueta:
+          type: string
+          description: "La direccion completa tal como la describe el proveedor, para\
+            \ mostrar en la lista"
+          example: "Avenida Colon 1234, Centro, Cordoba, Argentina"
+        latitud:
+          type: number
+          description: Latitud
+          example: -31.4135
+        longitud:
+          type: number
+          description: Longitud
+          example: -64.1923
+        numero:
+          type: string
+          description: Altura
+          example: "1234"
+        pais:
+          type: string
+          description: "Pais, ISO 3166-1 alpha-2 en mayusculas"
+          example: AR
+        provincia:
+          type: string
+          description: Provincia o estado
+          example: Cordoba
     DisponibilidadDeTurnos:
       type: object
       description: "Horarios libres de una prestacion, del mas cercano al mas lejano."
@@ -37323,11 +37628,20 @@ components:
           type: boolean
           description: false cuando la organizacion fue dada de baja logica
           example: true
+        fiscalAddressLine:
+          type: string
+          description: Domicilio fiscal del tenant. null si no se cargo
+          example: "Av. Colon 1234, Cordoba"
         id:
           type: integer
           format: int64
           description: Identificador de la organizacion
           example: 1
+        legalName:
+          type: string
+          description: Razon social del tenant (V140). La heredan las sedes sin datos
+            fiscales propios. null si no se cargo
+          example: Centro Kinesico Belgrano SRL
         name:
           type: string
           description: Nombre del centro
@@ -37347,6 +37661,10 @@ components:
           description: "Identificador legible y estable. No cambia al renombrar el\
             \ centro: se usa en URLs y en soporte"
           example: centro-kinesico-belgrano
+        taxId:
+          type: string
+          description: Identificacion fiscal del tenant. null si no se cargo
+          example: 30-71234567-1
         timezone:
           type: string
           description: "Zona horaria IANA del centro. Decide el dia de hoy en lo que\
@@ -39173,6 +39491,8 @@ components:
       - https://akine.app/problems/consultorio-already-inactive
       - https://akine.app/problems/last-consultorio-required
       - https://akine.app/problems/consultorio-has-active-references
+      - https://akine.app/problems/consultorio-sin-agenda
+      - https://akine.app/problems/geocodificador-no-disponible
       - https://akine.app/problems/espacio-name-taken
       - https://akine.app/problems/espacio-inactive
       - https://akine.app/problems/espacio-already-inactive
@@ -43507,6 +43827,51 @@ components:
             \ por id"
           items:
             $ref: "#/components/schemas/TurnoDeCalendario"
+    UbicacionRequest:
+      type: object
+      description: "Coordenadas WGS84 de la sede. Las dos juntas: con ambas en null\
+        \ se borra la ubicacion; omitir el objeto entero la deja como esta"
+      properties:
+        latitud:
+          type: number
+          description: "Latitud, entre -90 y 90"
+          example: -31.420083
+          maximum: 90
+          minimum: -90
+        longitud:
+          type: number
+          description: "Longitud, entre -180 y 180"
+          example: -64.188776
+          maximum: 180
+          minimum: -180
+        origen:
+          type: string
+          description: "Quien puso las coordenadas: GEOCODIFICADA si vienen de la\
+            \ busqueda de direcciones, MANUAL si la persona movio el marcador. Si\
+            \ se omite, MANUAL"
+          enum:
+          - GEOCODIFICADA
+          - MANUAL
+    UbicacionResponse:
+      type: object
+      description: Coordenadas WGS84 de la sede y su origen
+      properties:
+        latitud:
+          type: number
+          description: Latitud
+          example: -31.420083
+        longitud:
+          type: number
+          description: Longitud
+          example: -64.188776
+        origen:
+          type: string
+          description: GEOCODIFICADA (la devolvio la busqueda de direcciones) o MANUAL
+            (la fijo una persona)
+          enum:
+          - GEOCODIFICADA
+          - MANUAL
+          example: GEOCODIFICADA
     UpdateArancelRequest:
       type: object
       description: Cambios a aplicar sobre un arancel. Los campos nulos no se tocan
@@ -43759,8 +44124,36 @@ components:
       properties:
         addressLine:
           type: string
-          description: Direccion. Cadena vacia la borra
+          description: "Direccion fiscal propia de la sede, en una linea. Cadena vacia\
+            \ la borra. La direccion FISICA va en pais, provincia, ciudad, calle,\
+            \ numero, codigoPostal y piso"
           maxLength: 240
+          minLength: 0
+        agendaHabilitada:
+          type: boolean
+          description: "Si la sede recibe turnos. Omitido: no se toca. En false reservar,\
+            \ crear series o trasladar turnos hacia ella es 409 consultorio-sin-agenda;\
+            \ los turnos ya dados no se tocan"
+        alias:
+          type: string
+          description: Nombre corto. Cadena vacia lo borra
+          example: Norte
+          maxLength: 80
+          minLength: 0
+        calle:
+          type: string
+          description: Calle. Cadena vacia la borra
+          maxLength: 160
+          minLength: 0
+        ciudad:
+          type: string
+          description: Ciudad o localidad. Cadena vacia la borra
+          maxLength: 120
+          minLength: 0
+        codigoPostal:
+          type: string
+          description: Codigo postal. Cadena vacia lo borra
+          maxLength: 16
           minLength: 0
         contactEmail:
           type: string
@@ -43768,9 +44161,18 @@ components:
           description: Email de contacto. Cadena vacia lo borra
           maxLength: 160
           minLength: 0
+        datosFiscalesPropios:
+          type: boolean
+          description: "true: factura con los datos fiscales propios; false: con los\
+            \ de la organizacion. Omitido: no se toca"
+        direccionPublica:
+          type: boolean
+          description: "Si la direccion fisica viaja en los avisos de turno. Omitido:\
+            \ no se toca"
         legalName:
           type: string
-          description: Razon social. Cadena vacia la borra
+          description: Razon social propia de la sede. Cadena vacia la borra. Cuenta
+            solo con datosFiscalesPropios
           maxLength: 200
           minLength: 0
         name:
@@ -43778,10 +44180,36 @@ components:
           description: Nuevo nombre. Unico entre las sedes vigentes del tenant
           maxLength: 160
           minLength: 0
+        numero:
+          type: string
+          description: Altura. Cadena vacia la borra
+          maxLength: 20
+          minLength: 0
+        pais:
+          type: string
+          description: "Pais de la direccion fisica, ISO 3166-1 alpha-2. Cadena vacia\
+            \ lo borra"
+          example: AR
+          pattern: "|[A-Za-z]{2}"
         phone:
           type: string
           description: Telefono. Cadena vacia lo borra
           maxLength: 40
+          minLength: 0
+        piso:
+          type: string
+          description: "Piso, oficina o departamento. Cadena vacia lo borra"
+          maxLength: 60
+          minLength: 0
+        provincia:
+          type: string
+          description: Provincia o estado. Cadena vacia la borra
+          maxLength: 80
+          minLength: 0
+        referencias:
+          type: string
+          description: Indicaciones para llegar. Cadena vacia las borra
+          maxLength: 255
           minLength: 0
         slotMinutes:
           type: integer
@@ -43791,7 +44219,11 @@ components:
           minimum: 5
         taxId:
           type: string
-          description: Identificacion fiscal. Cadena vacia la borra
+          description: "Identificacion fiscal propia de la sede. Cadena vacia la borra.\
+            \ Si tiene forma de CUIT (11 digitos, guiones opcionales) el digito verificador\
+            \ tiene que ser correcto: si no, 400 con errors.taxId. Cualquier otro\
+            \ formato se acepta como texto"
+          example: 30-71234567-1
           maxLength: 32
           minLength: 0
         timezone:
@@ -43800,6 +44232,11 @@ components:
           example: America/Argentina/Cordoba
           maxLength: 64
           minLength: 0
+        ubicacion:
+          $ref: "#/components/schemas/UbicacionRequest"
+          description: "Coordenadas. Omitido: no se toca. Con latitud y longitud:\
+            \ se fija. Con las dos en null ({\"latitud\":null,\"longitud\":null}):\
+            \ se borra. Una sola es 400 con errors.ubicacion"
         version:
           type: integer
           format: int64
@@ -44243,12 +44680,35 @@ components:
       description: "Campos editables de la organizacion, con la version para bloqueo\
         \ optimista"
       properties:
+        fiscalAddressLine:
+          type: string
+          description: "Domicilio fiscal del tenant, en una linea. Cadena vacia lo\
+            \ borra"
+          example: "Av. Colon 1234, Cordoba"
+          maxLength: 240
+          minLength: 0
+        legalName:
+          type: string
+          description: Razon social del tenant (V140). La heredan las sedes sin datos
+            fiscales propios. Omitirla la deja; cadena vacia la borra
+          example: Centro Kinesico Belgrano SRL
+          maxLength: 200
+          minLength: 0
         name:
           type: string
           description: Nuevo nombre del centro. Omitirlo o enviarlo vacio lo deja
             como esta
           example: Centro Kinesico Belgrano Norte
           maxLength: 160
+          minLength: 0
+        taxId:
+          type: string
+          description: "Identificacion fiscal del tenant. Si tiene forma de CUIT (11\
+            \ digitos, guiones opcionales) el digito verificador tiene que ser correcto:\
+            \ si no, 400 con errors.taxId. Cualquier otro formato se acepta como texto.\
+            \ Cadena vacia la borra"
+          example: 30-71234567-1
+          maxLength: 32
           minLength: 0
         timezone:
           type: string
