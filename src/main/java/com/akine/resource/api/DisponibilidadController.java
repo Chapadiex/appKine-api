@@ -1,13 +1,16 @@
 package com.akine.resource.api;
 
 import com.akine.resource.api.dto.BloqueResponse;
+import com.akine.resource.api.dto.BloquesCreadosResponse;
 import com.akine.resource.api.dto.CreateBloqueRequest;
+import com.akine.resource.api.dto.CreateBloquesRequest;
 import com.akine.resource.api.dto.DeactivateBloqueRequest;
 import com.akine.resource.api.dto.DisponibilidadEfectivaResponse;
 import com.akine.resource.api.dto.ImpactoDisponibilidadResponse;
 import com.akine.resource.api.dto.SimularEdicionBloqueRequest;
 import com.akine.resource.api.dto.UpdateBloqueRequest;
 import com.akine.resource.application.BloqueAltaCommand;
+import com.akine.resource.application.BloquesAltaCommand;
 import com.akine.resource.application.BloqueEdicionCommand;
 import com.akine.resource.application.BloqueView;
 import com.akine.resource.application.DisponibilidadEfectivaService;
@@ -24,6 +27,7 @@ import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -275,6 +279,94 @@ public class DisponibilidadController {
 		}
 		return ResponseEntity.created(URI.create(rutaDe(consultorioId, membershipId, resultado.id())))
 				.body(cuerpo);
+	}
+
+	@PostMapping(path = "/lote", consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "createBloquesDisponibilidad",
+			summary = "Alta en lote de bloques de disponibilidad: varios dias, un horario",
+			description = """
+					Carga el mismo tramo horario en VARIOS dias de la semana de una vez: "de lunes \
+					a viernes de 09 a 13, desde marzo" (RF-M05-003). Es la carga rapida del horario \
+					semanal. Exige agenda:horario sobre ESA sede.
+
+					ES ATOMICO. Los dias se procesan en UNA transaccion: si alguno no puede \
+					guardarse —se pisa con otro bloque activo, con el horario de la misma persona \
+					en otra sede o con una apertura—, NO se guarda ninguno y la respuesta es el \
+					409 del dia que fallo, con diaSemana en el cuerpo para que la pantalla lo \
+					senale. Antes, cargar la semana eran cinco pedidos y el cuarto podia fallar \
+					dejando tres.
+
+					Cada dia se valida exactamente como un alta suelta (ver el POST sin /lote): \
+					coincidir EXACTO con un bloque activo devuelve ese bloque sin crear nada ni \
+					volver a auditar, y solapar sin coincidir es 409 bloque-solapado. La respuesta \
+					dice cuantos se crearon y cuantos ya existian.
+
+					RESPONDE 201 SI CREO AL MENOS UNO Y 200 SI TODOS YA EXISTIAN. No trae Location: \
+					son varios recursos.""")
+	@ApiResponses({
+			@ApiResponse(
+					responseCode = "201",
+					description = "Al menos un bloque creado. bloques trae uno por dia, en orden",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = BloquesCreadosResponse.class))),
+			@ApiResponse(
+					responseCode = "200",
+					description = "Todos los dias ya tenian un bloque identico: no se creo ninguno",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = BloquesCreadosResponse.class))),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Sin dias, dia fuera de 1..7, horas ausentes u horario incoherente",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Falta agenda:horario sobre esa sede (con alcance propio: el horario es de otro "
+							+ "profesional), o no hay contexto de trabajo seleccionado",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sede o el profesional no existen, o pertenecen a otro tenant",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "Algun dia se solapa con otro bloque activo (bloque-solapado, con "
+							+ "diaSemana), sede dada de baja (consultorio-inactive), o profesional sin "
+							+ "vinculo vigente en esa sede (profesional-no-vinculado). NO se guardo ninguno",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<BloquesCreadosResponse> createVarios(
+			@Parameter(description = "Identificador de la sede", example = "1")
+			@PathVariable long consultorioId,
+
+			@Parameter(description = "Vinculo del profesional", example = "1")
+			@PathVariable long membershipId,
+
+			@Valid @RequestBody CreateBloquesRequest request) {
+
+		log.info("Alta en lote de bloques de disponibilidad solicitada: consultorioId={} membershipId={} dias={}",
+				consultorioId, membershipId, request.diasSemana().size());
+
+		List<BloqueView> resultado = disponibilidadService.crearVarios(
+				apiActor.current(), consultorioId, membershipId,
+				new BloquesAltaCommand(
+						new java.util.LinkedHashSet<>(request.diasSemana()),
+						request.horaDesde(),
+						request.horaHasta(),
+						request.vigenciaDesde(),
+						request.vigenciaHasta()));
+
+		BloquesCreadosResponse cuerpo = BloquesCreadosResponse.from(resultado);
+		return ResponseEntity.status(cuerpo.creados() > 0 ? HttpStatus.CREATED : HttpStatus.OK).body(cuerpo);
 	}
 
 	@PutMapping(path = "/{bloqueId}", consumes = MediaType.APPLICATION_JSON_VALUE)

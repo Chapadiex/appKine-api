@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.158.0
+  version: 0.159.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -11876,6 +11876,84 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "La sede o el profesional no existen, o pertenecen a otro tenant"
       summary: "Disponibilidad efectiva del profesional, dia por dia"
+      tags:
+      - Disponibilidad profesional
+  /api/v1/consultorios/{consultorioId}/profesionales/{membershipId}/disponibilidad/lote:
+    post:
+      description: |-
+        Carga el mismo tramo horario en VARIOS dias de la semana de una vez: "de lunes a viernes de 09 a 13, desde marzo" (RF-M05-003). Es la carga rapida del horario semanal. Exige agenda:horario sobre ESA sede.
+
+        ES ATOMICO. Los dias se procesan en UNA transaccion: si alguno no puede guardarse —se pisa con otro bloque activo, con el horario de la misma persona en otra sede o con una apertura—, NO se guarda ninguno y la respuesta es el 409 del dia que fallo, con diaSemana en el cuerpo para que la pantalla lo senale. Antes, cargar la semana eran cinco pedidos y el cuarto podia fallar dejando tres.
+
+        Cada dia se valida exactamente como un alta suelta (ver el POST sin /lote): coincidir EXACTO con un bloque activo devuelve ese bloque sin crear nada ni volver a auditar, y solapar sin coincidir es 409 bloque-solapado. La respuesta dice cuantos se crearon y cuantos ya existian.
+
+        RESPONDE 201 SI CREO AL MENOS UNO Y 200 SI TODOS YA EXISTIAN. No trae Location: son varios recursos.
+      operationId: createBloquesDisponibilidad
+      parameters:
+      - description: Identificador de la sede
+        example: 1
+        in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Vinculo del profesional
+        example: 1
+        in: path
+        name: membershipId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBloquesRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BloquesCreadosResponse"
+          description: "Todos los dias ya tenian un bloque identico: no se creo ninguno"
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BloquesCreadosResponse"
+          description: "Al menos un bloque creado. bloques trae uno por dia, en orden"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin dias, dia fuera de 1..7, horas ausentes u horario incoherente"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Falta agenda:horario sobre esa sede (con alcance propio: el\
+            \ horario es de otro profesional), o no hay contexto de trabajo seleccionado"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o el profesional no existen, o pertenecen a otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Algun dia se solapa con otro bloque activo (bloque-solapado,\
+            \ con diaSemana), sede dada de baja (consultorio-inactive), o profesional\
+            \ sin vinculo vigente en esa sede (profesional-no-vinculado). NO se guardo\
+            \ ninguno"
+      summary: "Alta en lote de bloques de disponibilidad: varios dias, un horario"
       tags:
       - Disponibilidad profesional
   /api/v1/consultorios/{consultorioId}/profesionales/{membershipId}/disponibilidad/{bloqueId}:
@@ -27537,6 +27615,26 @@ components:
           example: CAPACITACION
         notas:
           type: string
+    BloquesCreadosResponse:
+      type: object
+      description: Bloques de disponibilidad resultantes de un alta en lote
+      properties:
+        bloques:
+          type: array
+          description: "Un bloque por dia pedido, en orden de dia de la semana"
+          items:
+            $ref: "#/components/schemas/BloqueResponse"
+        creados:
+          type: integer
+          format: int32
+          description: Cuantos bloques CREO este pedido
+          example: 5
+        existentes:
+          type: integer
+          format: int32
+          description: Cuantos bloques ya existian identicos y se devolvieron sin
+            crear nada ni volver a auditar
+          example: 0
     BorradorDeHonorarios:
       type: object
       description: El borrador de honorarios por clase de un colaborador en un periodo.
@@ -30415,6 +30513,50 @@ components:
           example: 2027-01-01
       required:
       - diaSemana
+      - horaDesde
+      - horaHasta
+    CreateBloquesRequest:
+      type: object
+      description: "Datos para dar de alta varios bloques recurrentes de disponibilidad,\
+        \ uno por dia, con el mismo horario y la misma vigencia, en una sola transaccion"
+      properties:
+        diasSemana:
+          type: array
+          description: Dias de la semana a cargar. Al menos uno; los repetidos se
+            cargan una vez
+          items:
+            type: integer
+            format: int32
+            description: "Dia de la semana en formato ISO-8601: lunes = 1 .. domingo\
+              \ = 7"
+            maximum: 7
+            minimum: 1
+          maxItems: 7
+          minItems: 0
+        horaDesde:
+          type: string
+          description: "Hora local de inicio, en la zona de la sede, compartida por\
+            \ todos los dias"
+          example: 09:00
+        horaHasta:
+          type: string
+          description: "Hora local de fin, EXCLUSIVA, compartida por todos los dias.\
+            \ La medianoche se manda como 24:00"
+          example: 13:00
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Primer dia en que los bloques rigen. Omitirlo significa HOY
+            en la zona de la sede
+          example: 2026-09-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Primer dia en que los bloques ya NO rigen, EXCLUSIVO. Omitirlo\
+            \ significa sin fin previsto"
+          example: 2027-01-01
+      required:
+      - diasSemana
       - horaDesde
       - horaHasta
     CreateCatalogoConceptoRequest:

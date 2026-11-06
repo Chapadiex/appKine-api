@@ -451,6 +451,67 @@ class DisponibilidadControllerTest {
 	// Fixtures sinteticas
 	// =====================================================================================
 
+	// =====================================================================================
+	// POST /lote — varios dias, un horario, una transaccion
+	// =====================================================================================
+
+	@Test
+	@DisplayName("El alta en lote devuelve 201 con un bloque por dia y las dos cuentas")
+	void el_alta_en_lote_devuelve_201_con_las_cuentas() throws Exception {
+		given(disponibilidadService.crearVarios(any(), anyLong(), anyLong(), any()))
+				.willReturn(java.util.List.of(
+						bloque(50L, LocalTime.of(9, 0), LocalTime.of(13, 0), true),
+						bloque(51L, LocalTime.of(9, 0), LocalTime.of(13, 0), false)));
+
+		mockMvc.perform(post(RUTA + "/lote")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"diasSemana":[1,2],"horaDesde":"09:00","horaHasta":"13:00"}""")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isCreated())
+				.andExpect(header().doesNotExist("Location"))
+				.andExpect(jsonPath("$.bloques.length()").value(2))
+				.andExpect(jsonPath("$.bloques[0].id").value(50))
+				.andExpect(jsonPath("$.creados").value(1))
+				.andExpect(jsonPath("$.existentes").value(1));
+	}
+
+	@Test
+	@DisplayName("Un lote en el que todos los dias ya existian responde 200, no 201")
+	void un_lote_sin_nada_nuevo_devuelve_200() throws Exception {
+		given(disponibilidadService.crearVarios(any(), anyLong(), anyLong(), any()))
+				.willReturn(java.util.List.of(bloque(50L, LocalTime.of(9, 0), LocalTime.of(13, 0), false)));
+
+		mockMvc.perform(post(RUTA + "/lote")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"diasSemana":[2],"horaDesde":"09:00","horaHasta":"13:00"}""")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.creados").value(0))
+				.andExpect(jsonPath("$.existentes").value(1));
+	}
+
+	@Test
+	@DisplayName("Un lote sin dias, o con un dia fuera de 1..7, es 400 y no llega al servicio")
+	void un_lote_sin_dias_o_con_un_dia_invalido_es_400() throws Exception {
+		mockMvc.perform(post(RUTA + "/lote")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"diasSemana":[],"horaDesde":"09:00","horaHasta":"13:00"}""")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isBadRequest());
+
+		mockMvc.perform(post(RUTA + "/lote")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"diasSemana":[1,8],"horaDesde":"09:00","horaHasta":"13:00"}""")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isBadRequest());
+
+		org.mockito.Mockito.verifyNoInteractions(disponibilidadService);
+	}
+
 	private static BloqueView bloque(long id, LocalTime desde, LocalTime hasta, boolean nuevo) {
 		return new BloqueView(id, 10L, 20L, 30L, 2, desde, hasta,
 				LocalDate.of(2026, 3, 1), null, "ACTIVO", null, null, 0L, 0L, null, nuevo);
