@@ -1,6 +1,6 @@
 # AKINE — Alta y edición de sede con ubicación
 
-**05/11/2026** · ramas `akine-sede-ubicacion` (api) y `akine-web-sede-nueva-simple` (web, PR #160) ·
+**05–06/11/2026** · ramas `akine-sede-ubicacion` (api #193) y `akine-web-sede-nueva-simple` (web #160) ·
 migración `V140` · contrato `0.160.0` · módulos M01/M03 (RF-M03-002, RF-M03-003) · pantalla
 `/organizacion/sedes/nueva` y panel de edición de `/organizacion/sedes`.
 
@@ -75,14 +75,15 @@ en el bundle inicial, que está a 0,4 kB del tope.
 
 ## 4. Pantallas
 
-- **Paso 1** en dos columnas (60/40): información general y dirección a la izquierda; mapa,
-  coordenadas, enlaces y visibilidad a la derecha (`app-editor-de-ubicacion`, que proyecta lo de
-  arriba y lo de abajo). Se apila bajo 60 rem.
-- **Paso 2**: horario de atención (modelos "Lunes a viernes", "Lunes a sábado", "Toda la semana",
+- **Cuatro pasos** (el usuario pidió que la ubicación fuera un paso propio, 06/11). **Paso 1**:
+  información general en dos columnas y visibilidad al costado. **Paso 2**: `app-editor-de-ubicacion`,
+  dirección a la izquierda (60 %) y mapa, coordenadas y enlaces a la derecha (40 %); se apila bajo
+  44 rem.
+- **Paso 3**: horario de atención (modelos "Lunes a viernes", "Lunes a sábado", "Toda la semana",
   "Con corte al mediodía", interruptor por día, hasta tres franjas por día, selector de cuartos de
   hora con entrada manual), primer box, y datos fiscales con el interruptor "Usar los datos fiscales
   de la organización" encendido por defecto.
-- **Paso 3**: resumen con mapa compacto, visibilidad, horario dibujado, box y datos fiscales
+- **Paso 4**: resumen con mapa compacto, visibilidad, horario dibujado, box y datos fiscales
   efectivos. Botón "Crear sede".
 - **Edición**: el mismo editor de ubicación en la pestaña "Ubicación" del panel; visibilidad en
   "General"; herencia fiscal en "Datos fiscales". La organización edita sus datos fiscales en
