@@ -1,6 +1,8 @@
 package com.akine.identity.api.dto;
 
+import com.akine.identity.application.PerfilDeInvitacion;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -66,10 +68,16 @@ public record AcceptInvitacionRequest(
 						+ "GET /api/v1/terms. Mismas condiciones que aceptaTerminos",
 				example = "2026-10")
 		@Size(max = 40, message = "La version de los terminos no puede superar los 40 caracteres")
-		String versionTerminos) {
+		String versionTerminos,
+		@Schema(description = "Correcciones al perfil precargado en un alta manual")
+		@Valid PerfilDeInvitacion perfil) {
+	public AcceptInvitacionRequest(String token, String nombre, String apellido, String password,
+			Boolean aceptaTerminos, String versionTerminos) {
+		this(token, nombre, apellido, password, aceptaTerminos, versionTerminos, null);
+	}
 
 	/** Aceptacion sin datos de terminos, la de antes de DP-45. */
 	public AcceptInvitacionRequest(String token, String nombre, String apellido, String password) {
-		this(token, nombre, apellido, password, null, null);
+		this(token, nombre, apellido, password, null, null, null);
 	}
 }

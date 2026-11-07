@@ -182,7 +182,7 @@ public class InvitacionPublicaController {
 		return ResponseEntity.ok(AcceptedInvitacionResponse.de(
 				invitacionService.aceptar(new InvitacionAceptacionCommand(
 						request.token(), request.nombre(), request.apellido(), request.password(),
-						request.aceptaTerminos(), request.versionTerminos()))));
+						request.aceptaTerminos(), request.versionTerminos(), request.perfil()))));
 	}
 
 	// Produces explicito por lo mismo que en AccountRegistrationController.activate: sin cuerpo

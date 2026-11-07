@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.160.0
+  version: 0.161.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -19299,6 +19299,47 @@ paths:
       summary: Invitar a alguien a colaborar
       tags:
       - Invitaciones
+  /api/v1/organizations/{orgId}/colaborador-invitaciones/manual:
+    post:
+      description: Guarda los datos de incorporacion junto a la invitacion. El acceso
+        se crea cuando la persona acepta el enlace. Requiere colaborador:manage en
+        cada sede elegida.
+      operationId: createAltaManualColaborador
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAltaManualRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitacionResponse"
+          description: Alta preparada e invitacion encolada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Datos invalidos
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin permiso para una sede elegida
+      summary: Preparar colaborador e invitarlo a completar su cuenta
+      tags:
+      - Invitaciones
   /api/v1/organizations/{orgId}/colaborador-invitaciones/{invitacionId}/cancel:
     post:
       description: |-
@@ -25520,6 +25561,9 @@ components:
             cuenta todavia. Misma politica que el registro
           maxLength: 128
           minLength: 0
+        perfil:
+          $ref: "#/components/schemas/PerfilDeInvitacion"
+          description: Correcciones al perfil precargado en un alta manual
         token:
           type: string
           description: Token recibido por correo
@@ -30505,6 +30549,66 @@ components:
       - hora
       - ofertaId
       - personaId
+    CreateAltaManualRequest:
+      type: object
+      description: Datos del colaborador y la invitacion para completar su cuenta
+      properties:
+        activo:
+          type: boolean
+        apellido:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+          minLength: 1
+        especialidadPrincipal:
+          type: string
+        especialidadesAdicionales:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        fechaIncorporacion:
+          type: string
+          format: date
+        instructorDeActividades:
+          type: boolean
+        jurisdiccion:
+          type: string
+        matricula:
+          type: string
+        nombre:
+          type: string
+          minLength: 1
+        numeroDocumento:
+          type: string
+        profesion:
+          type: string
+        recibeTurnos:
+          type: boolean
+        roleCode:
+          type: string
+          minLength: 1
+        sedeIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        servicios:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServicioElegidoRequest"
+        telefono:
+          type: string
+        tipoDocumento:
+          type: string
+      required:
+      - apellido
+      - email
+      - nombre
+      - roleCode
+      - sedeIds
     CreateArancelRequest:
       type: object
       description: Datos para definir el arancel de una practica bajo un convenio
@@ -35646,6 +35750,9 @@ components:
           type: string
           description: Organizacion que invita
           example: Centro Belgrano
+        perfil:
+          $ref: "#/components/schemas/PerfilDeInvitacion"
+          description: Datos precargados por quien invita; la persona puede corregirlos
         requiereRegistro:
           type: boolean
           description: Si al aceptar hay que crear la cuenta
@@ -38144,6 +38251,53 @@ components:
           minLength: 0
       required:
       - email
+    PerfilDeInvitacion:
+      type: object
+      properties:
+        apellido:
+          type: string
+          maxLength: 120
+          minLength: 0
+        especialidadPrincipal:
+          type: string
+          maxLength: 160
+          minLength: 0
+        especialidadesAdicionales:
+          type: array
+          items:
+            type: string
+            maxLength: 160
+            minLength: 0
+          maxItems: 20
+          minItems: 0
+        jurisdiccion:
+          type: string
+          maxLength: 120
+          minLength: 0
+        matricula:
+          type: string
+          maxLength: 80
+          minLength: 0
+        nombre:
+          type: string
+          maxLength: 120
+          minLength: 0
+        numeroDocumento:
+          type: string
+          maxLength: 50
+          minLength: 0
+        profesion:
+          type: string
+          maxLength: 160
+          minLength: 0
+        telefono:
+          type: string
+          maxLength: 50
+          minLength: 0
+        tipoDocumento:
+          type: string
+          maxLength: 32
+          minLength: 0
     PermisosOtorgablesResponse:
       type: object
       description: Permisos que la matriz admite otorgar como permiso adicional a
@@ -42346,6 +42500,18 @@ components:
           format: int32
           description: Turnos RESERVADO o CONFIRMADO que todavia no empezaron
           example: 6
+    ServicioElegidoRequest:
+      type: object
+      properties:
+        ofertaId:
+          type: integer
+          format: int64
+        sedeId:
+          type: integer
+          format: int64
+      required:
+      - ofertaId
+      - sedeId
     ServicioResponse:
       type: object
       description: Servicio del catalogo global de la plataforma

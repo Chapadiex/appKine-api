@@ -345,7 +345,7 @@ public class MembershipService implements MembershipProvisioning {
 				command.roleCode(),
 				actorAccountId,
 				command.reason(),
-				Map.of("accountId", String.valueOf(command.accountId())));
+				Map.of("accountId", String.valueOf(command.accountId())), true);
 	}
 
 	/**
@@ -394,7 +394,7 @@ public class MembershipService implements MembershipProvisioning {
 				// otra sin inventar un actor que no ejecuto nada.
 				command.accountId(),
 				"Aceptacion de la invitacion " + command.invitacionId(),
-				detalles);
+				detalles, command.activo());
 	}
 
 	/**
@@ -439,7 +439,8 @@ public class MembershipService implements MembershipProvisioning {
 			String roleCode,
 			long actorAccountId,
 			String motivo,
-			Map<String, String> detalles) {
+			Map<String, String> detalles,
+			boolean iniciarActivo) {
 
 		RoleCode rol = rolValido(roleCode);
 		validarSede(organizationId, consultorioId);
@@ -447,6 +448,9 @@ public class MembershipService implements MembershipProvisioning {
 		Instant ahora = Instant.now();
 		Membership membership = new Membership(
 				organizationId, consultorioId, accountId, rol, false, ahora);
+		if (!iniciarActivo) {
+			membership.suspender();
+		}
 
 		Membership persistida;
 		try {
