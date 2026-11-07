@@ -19,6 +19,7 @@ import com.akine.identity.domain.port.TokenGenerator;
 import com.akine.identity.domain.port.VerificationLinkBuilder;
 import com.akine.organization.spi.AccountContextDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.InvitationMembershipCommand;
 import com.akine.organization.spi.MembershipProvisioning;
 import com.akine.organization.spi.OrganizationDirectory;
@@ -36,6 +37,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -136,7 +138,68 @@ class ColaboradorInvitacionServiceTest {
 				organizationDirectory, consultorioDirectory, permissionGuard, tokenGenerator,
 				linkBuilder, notificationOutbox, passwordHasher, new PasswordPolicy(), auditTrail,
 				clock, new TerminosService(
-						com.akine.identity.domain.TerminosSettings.sinTerminos(), aceptacion -> aceptacion));
+						com.akine.identity.domain.TerminosSettings.sinTerminos(), aceptacion -> aceptacion),
+				mock(com.akine.offering.spi.OfertaDirectory.class));
+	}
+
+	@Test
+	@DisplayName("el alta manual guarda los datos y crea un vinculo por cada sede al aceptar")
+	void alta_manual_multisede() {
+		long otraSede = 4L;
+		given(consultorioDirectory.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
+				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Centro", "America/Argentina/Buenos_Aires", true)));
+		given(consultorioDirectory.find(ORG_ID, otraSede)).willReturn(Optional.of(
+				new ConsultorioSnapshot(otraSede, ORG_ID, "Norte", "America/Argentina/Buenos_Aires", true)));
+		DatosAltaManual datos = new DatosAltaManual("Juan", "Perez", "DNI", "12345678", null,
+				"Kinesiologia", "MP 4521", "Cordoba", "Traumatologia", List.of("Deportiva"),
+				List.of(CONSULTORIO_ID, otraSede), List.of(), null, true, false, false);
+		servicio.invitarManual(actor, new InvitacionAltaCommand(EMAIL_TIPEADO, ROL, CONSULTORIO_ID), datos);
+
+		ArgumentCaptor<ColaboradorInvitacion> guardada = ArgumentCaptor.forClass(ColaboradorInvitacion.class);
+		verify(invitacionRepository).saveAndFlush(guardada.capture());
+		assertThat(guardada.getValue().getDatosAltaManual()).contains("Kinesiologia", "\"sedeIds\":[3,4]").doesNotContain(PASSWORD);
+		given(invitacionRepository.findByTokenHash(TokenDigest.of(TOKEN_PLANO)))
+				.willReturn(Optional.of(guardada.getValue()));
+		given(cuentaRepository.findByEmailNormalizado(EMAIL_NORMALIZADO)).willReturn(Optional.empty());
+		given(membershipProvisioning.createFromInvitation(eq(ORG_ID), any()))
+				.willReturn(MEMBERSHIP_ID, MEMBERSHIP_ID + 1);
+
+		assertThat(servicio.consultar(TOKEN_PLANO).perfil().profesion()).isEqualTo("Kinesiologia");
+		PerfilDeInvitacion corregido = new PerfilDeInvitacion("Juan Carlos", "Perez", "DNI",
+				"12345678", "3511234567", "Kinesiologia", "MP 4521", "Cordoba",
+				"Deportologia", List.of("Deportiva"));
+		servicio.aceptar(new InvitacionAceptacionCommand(
+				TOKEN_PLANO, "Otro", "Perez", PASSWORD, null, null, corregido));
+		assertThat(guardada.getValue().getDatosAltaManual()).contains("Deportologia", "3511234567");
+		ArgumentCaptor<Cuenta> cuenta = ArgumentCaptor.forClass(Cuenta.class);
+		verify(cuentaRepository).save(cuenta.capture());
+		assertThat(cuenta.getValue().getNombre()).isEqualTo("Juan Carlos");
+		ArgumentCaptor<InvitationMembershipCommand> vinculos = ArgumentCaptor.forClass(InvitationMembershipCommand.class);
+		verify(membershipProvisioning, org.mockito.Mockito.times(2))
+				.createFromInvitation(eq(ORG_ID), vinculos.capture());
+		assertThat(vinculos.getAllValues()).extracting(InvitationMembershipCommand::consultorioId)
+				.containsExactly(CONSULTORIO_ID, otraSede);
+		assertThat(vinculos.getAllValues()).allMatch(vinculo -> !vinculo.activo());
+	}
+
+	@Test
+	@DisplayName("un administrador de organizacion recibe un unico vinculo de alcance total")
+	void alta_manual_de_admin_de_organizacion() {
+		DatosAltaManual datos = new DatosAltaManual("Ana", "Perez", "DNI", "12345678", null,
+				null, null, null, null, List.of(), List.of(), List.of(), null, false, false, true);
+		servicio.invitarManual(actor,
+				new InvitacionAltaCommand(EMAIL_TIPEADO, "ORG_ADMIN", null), datos);
+		ArgumentCaptor<ColaboradorInvitacion> guardada = ArgumentCaptor.forClass(ColaboradorInvitacion.class);
+		verify(invitacionRepository).saveAndFlush(guardada.capture());
+		given(invitacionRepository.findByTokenHash(TokenDigest.of(TOKEN_PLANO)))
+				.willReturn(Optional.of(guardada.getValue()));
+		given(cuentaRepository.findByEmailNormalizado(EMAIL_NORMALIZADO)).willReturn(Optional.empty());
+		given(membershipProvisioning.createFromInvitation(eq(ORG_ID), any())).willReturn(MEMBERSHIP_ID);
+		servicio.aceptar(new InvitacionAceptacionCommand(TOKEN_PLANO, "Ana", "Perez", PASSWORD));
+		ArgumentCaptor<InvitationMembershipCommand> vinculo = ArgumentCaptor.forClass(InvitationMembershipCommand.class);
+		verify(membershipProvisioning).createFromInvitation(eq(ORG_ID), vinculo.capture());
+		assertThat(vinculo.getValue().consultorioId()).isNull();
+		assertThat(vinculo.getValue().roleCode()).isEqualTo("ORG_ADMIN");
 	}
 
 	@Test

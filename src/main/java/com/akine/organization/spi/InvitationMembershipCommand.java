@@ -19,11 +19,18 @@ package com.akine.organization.spi;
  * @param roleCode              rol propuesto en la invitacion, validado de nuevo aca
  * @param invitacionId          invitacion que lo origina, para la auditoria
  * @param invitadaPorAccountId  administrador que la emitio, para la auditoria
+ * @param activo                si el vinculo nace activo; false lo deja suspendido
  */
 public record InvitationMembershipCommand(
 		long accountId,
 		Long consultorioId,
 		String roleCode,
 		long invitacionId,
-		long invitadaPorAccountId) {
+		long invitadaPorAccountId,
+		boolean activo) {
+	public InvitationMembershipCommand(
+			long accountId, Long consultorioId, String roleCode,
+			long invitacionId, long invitadaPorAccountId) {
+		this(accountId, consultorioId, roleCode, invitacionId, invitadaPorAccountId, true);
+	}
 }

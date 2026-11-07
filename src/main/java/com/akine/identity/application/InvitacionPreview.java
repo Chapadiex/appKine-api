@@ -29,5 +29,10 @@ public record InvitacionPreview(
 		String roleCode,
 		String email,
 		Instant expiraEn,
-		boolean requiereRegistro) {
+		boolean requiereRegistro,
+		PerfilDeInvitacion perfil) {
+	public InvitacionPreview(String organizacionNombre, String consultorioNombre, String roleCode,
+			String email, Instant expiraEn, boolean requiereRegistro) {
+		this(organizacionNombre, consultorioNombre, roleCode, email, expiraEn, requiereRegistro, null);
+	}
 }

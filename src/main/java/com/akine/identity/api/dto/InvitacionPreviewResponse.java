@@ -1,6 +1,7 @@
 package com.akine.identity.api.dto;
 
 import com.akine.identity.application.InvitacionPreview;
+import com.akine.identity.application.PerfilDeInvitacion;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
@@ -30,7 +31,9 @@ public record InvitacionPreviewResponse(
 		@Schema(description = "Direccion a la que se emitio", example = "kine@centro.test")
 		String email,
 		@Schema(description = "Hasta cuando sirve el enlace") Instant expiraEn,
-		@Schema(description = "Si al aceptar hay que crear la cuenta") boolean requiereRegistro) {
+		@Schema(description = "Si al aceptar hay que crear la cuenta") boolean requiereRegistro,
+		@Schema(description = "Datos precargados por quien invita; la persona puede corregirlos")
+		PerfilDeInvitacion perfil) {
 
 	public static InvitacionPreviewResponse de(InvitacionPreview preview) {
 		return new InvitacionPreviewResponse(
@@ -39,6 +42,7 @@ public record InvitacionPreviewResponse(
 				preview.roleCode(),
 				preview.email(),
 				preview.expiraEn(),
-				preview.requiereRegistro());
+				preview.requiereRegistro(),
+				preview.perfil());
 	}
 }
