@@ -101,6 +101,8 @@ class ColaboradorInvitacionServiceTest {
 	private NotificationOutboxPort notificationOutbox;
 	private AuditTrail auditTrail;
 	private ColaboradorInvitacionService servicio;
+	private final com.akine.offering.spi.OfertaDirectory ofertaDirectory =
+			mock(com.akine.offering.spi.OfertaDirectory.class);
 
 	private final DirectMembershipService.Actor actor =
 			new DirectMembershipService.Actor(ADMIN_ID, ORG_ID, false);
@@ -139,7 +141,7 @@ class ColaboradorInvitacionServiceTest {
 				linkBuilder, notificationOutbox, passwordHasher, new PasswordPolicy(), auditTrail,
 				clock, new TerminosService(
 						com.akine.identity.domain.TerminosSettings.sinTerminos(), aceptacion -> aceptacion),
-				mock(com.akine.offering.spi.OfertaDirectory.class));
+				ofertaDirectory);
 	}
 
 	@Test
@@ -180,6 +182,47 @@ class ColaboradorInvitacionServiceTest {
 		assertThat(vinculos.getAllValues()).extracting(InvitationMembershipCommand::consultorioId)
 				.containsExactly(CONSULTORIO_ID, otraSede);
 		assertThat(vinculos.getAllValues()).allMatch(vinculo -> !vinculo.activo());
+	}
+
+	@Test
+	@DisplayName("el alta manual rechaza un alcance incoherente antes de emitir nada")
+	void alta_manual_rechaza_alcances_invalidos() {
+		long otraSede = 4L;
+		given(consultorioDirectory.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
+				new ConsultorioSnapshot(CONSULTORIO_ID, ORG_ID, "Centro", "America/Argentina/Buenos_Aires", true)));
+		given(consultorioDirectory.find(ORG_ID, otraSede)).willReturn(Optional.of(
+				new ConsultorioSnapshot(otraSede, ORG_ID, "Norte", "America/Argentina/Buenos_Aires", false)));
+		InvitacionAltaCommand profesional = new InvitacionAltaCommand(EMAIL_TIPEADO, ROL, CONSULTORIO_ID);
+
+		assertThatThrownBy(() -> servicio.invitarManual(actor, profesional, null))
+				.hasMessageContaining("alcance");
+		assertThatThrownBy(() -> servicio.invitarManual(actor, profesional, manual(List.of(), List.of())))
+				.hasMessageContaining("al menos una sede");
+		assertThatThrownBy(() -> servicio.invitarManual(actor,
+				new InvitacionAltaCommand(EMAIL_TIPEADO, "ORG_ADMIN", null), manual(List.of(CONSULTORIO_ID), List.of())))
+				.hasMessageContaining("toda la organizacion");
+		assertThatThrownBy(() -> servicio.invitarManual(actor, profesional,
+				manual(List.of(CONSULTORIO_ID, CONSULTORIO_ID), List.of())))
+				.hasMessageContaining("no son validas");
+		assertThatThrownBy(() -> servicio.invitarManual(actor, profesional, manual(List.of(otraSede), List.of())))
+				.hasMessageContaining("no son validas");
+		assertThatThrownBy(() -> servicio.invitarManual(actor,
+				new InvitacionAltaCommand(EMAIL_TIPEADO, "ADMINISTRATIVO", CONSULTORIO_ID),
+				manual(List.of(CONSULTORIO_ID), List.of(new DatosAltaManual.ServicioElegido(CONSULTORIO_ID, 8L)))))
+				.hasMessageContaining("Solo un profesional");
+		assertThatThrownBy(() -> servicio.invitarManual(actor, profesional,
+				manual(List.of(CONSULTORIO_ID, otraSede), List.of())))
+				.hasMessageContaining("no esta activa");
+		assertThatThrownBy(() -> servicio.invitarManual(actor, profesional,
+				manual(List.of(CONSULTORIO_ID), List.of(new DatosAltaManual.ServicioElegido(CONSULTORIO_ID, 8L)))))
+				.hasMessageContaining("servicio elegido");
+
+		verify(invitacionRepository, never()).saveAndFlush(any());
+	}
+
+	private static DatosAltaManual manual(List<Long> sedes, List<DatosAltaManual.ServicioElegido> servicios) {
+		return new DatosAltaManual("Juan", "Perez", null, null, null, null, null, null, null, List.of(),
+				sedes, servicios, null, true, false, true);
 	}
 
 	@Test

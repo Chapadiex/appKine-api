@@ -138,7 +138,9 @@ class HorarioDeSedeLimitaLaAgendaIT {
 				new com.akine.resource.application.OperatingActor(
 						fixture.actor().accountId(), false,
 						fixture.organizationId(), fixture.consultorioId());
-		return calendarioService.actualizar(actor, fixture.consultorioId(), null, null, horario);
+		// CONSERVAR: este IT mira el recorte AL LEER, la red de seguridad para lo cargado antes de la regla.
+		return calendarioService.actualizar(actor, fixture.consultorioId(), null, null, horario,
+				CalendarioService.FranjasFuera.CONSERVAR);
 	}
 
 	private DiaDeAgenda elLunes(Fixture fixture) {

@@ -9,6 +9,11 @@ import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.resource.domain.BloqueDisponibilidad;
 import com.akine.resource.domain.DisponibilidadExcepcion;
+import com.akine.resource.domain.FranjaHorarioGeneral;
+import com.akine.resource.domain.HorarioDeSede;
+import com.akine.resource.domain.exception.FranjaFueraDelHorarioDeSedeException;
+import com.akine.resource.domain.exception.FranjaFueraDelHorarioDeSedeException.FranjaFuera;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.HorarioGeneralRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import com.akine.resource.domain.IntervaloLocal;
 import com.akine.resource.domain.PermissionCodes;
@@ -132,6 +137,7 @@ public class DisponibilidadService {
 	private final SimuladorDeImpacto simulador;
 	private final BloqueoDeAgendaDeProfesional agendasDeProfesional;
 	private final DisponibilidadExcepcionRepositoryPort excepciones;
+	private final HorarioGeneralRepositoryPort horarios;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	public DisponibilidadService(
@@ -149,7 +155,6 @@ public class DisponibilidadService {
 				auditTrail, simulador, transactionManager, agendasDeProfesional, null);
 	}
 
-	@org.springframework.beans.factory.annotation.Autowired
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public DisponibilidadService(
 			BloqueDisponibilidadRepositoryPort bloques,
@@ -163,8 +168,28 @@ public class DisponibilidadService {
 			PlatformTransactionManager transactionManager,
 			BloqueoDeAgendaDeProfesional agendasDeProfesional,
 			DisponibilidadExcepcionRepositoryPort excepciones) {
+		this(bloques, calendarios, calendarioIniciador, consultorioDirectory, membershipDirectory, permissionGuard,
+				auditTrail, simulador, transactionManager, agendasDeProfesional, excepciones, null);
+	}
+
+	@org.springframework.beans.factory.annotation.Autowired
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public DisponibilidadService(
+			BloqueDisponibilidadRepositoryPort bloques,
+			CalendarioSedeRepositoryPort calendarios,
+			CalendarioSedeIniciador calendarioIniciador,
+			ConsultorioDirectory consultorioDirectory,
+			ConsultorioMembershipDirectory membershipDirectory,
+			PermissionGuard permissionGuard,
+			AuditTrail auditTrail,
+			SimuladorDeImpacto simulador,
+			PlatformTransactionManager transactionManager,
+			BloqueoDeAgendaDeProfesional agendasDeProfesional,
+			DisponibilidadExcepcionRepositoryPort excepciones,
+			HorarioGeneralRepositoryPort horarios) {
 
 		this.excepciones = excepciones;
+		this.horarios = horarios;
 		this.bloques = bloques;
 		this.calendarios = calendarios;
 		this.calendarioIniciador = calendarioIniciador;
@@ -229,6 +254,8 @@ public class DisponibilidadService {
 
 		return transaccionReadCommitted.execute(estado -> {
 			AltaAbierta alta = abrirAlta(organizationId, consultorioId, membershipId, sede);
+			exigirDentroDelHorarioDeSede(organizationId, consultorioId,
+					List.of(new FranjaPedida(command.diaSemana(), command.horaDesde(), command.horaHasta())));
 			return altaDeUnDia(actor, alta, command, null);
 		});
 	}
@@ -275,6 +302,11 @@ public class DisponibilidadService {
 
 		return transaccionReadCommitted.execute(estado -> {
 			AltaAbierta alta = abrirAlta(organizationId, consultorioId, membershipId, sede);
+			// Todos los dias antes de guardar ninguno: si uno no entra en el horario de la sede no se
+			// guarda el lote, y el 409 nombra todos los que no entran.
+			exigirDentroDelHorarioDeSede(organizationId, consultorioId, dias.stream()
+					.map(dia -> new FranjaPedida(dia, lote.horaDesde(), lote.horaHasta()))
+					.toList());
 			List<BloqueView> resultado = new ArrayList<>(dias.size());
 			for (int dia : dias) {
 				resultado.add(altaDeUnDia(actor, alta, lote.paraElDia(dia), diasDelLote));
@@ -455,6 +487,13 @@ public class DisponibilidadService {
 			throw new OptimisticLockingFailureException(
 					"El bloque de disponibilidad fue modificado por otra operacion");
 		}
+
+		// Antes del impacto: pedir que se confirmen los turnos afectados de una edicion que igual se
+		// rechaza seria pedir una decision que no sirve para nada.
+		exigirDentroDelHorarioDeSede(organizationId, consultorioId, List.of(new FranjaPedida(
+				command.diaSemana() == null ? bloque.getDiaSemana() : command.diaSemana(),
+				command.horaDesde() == null ? bloque.getHoraDesde() : command.horaDesde(),
+				command.horaHasta() == null ? bloque.getHoraHasta() : command.horaHasta())));
 
 		Map<String, String> detalles = cambios(bloque, command);
 		String resumenAntes = ResumenDeAgendaParaAuditoria.de(bloque);
@@ -982,6 +1021,49 @@ public class DisponibilidadService {
 			throw new BloqueNotAccessibleException(bloqueId);
 		}
 		return bloque;
+	}
+
+	/** Dia y horas de una franja pedida, en el orden del pedido. */
+	private record FranjaPedida(int diaSemana, LocalTime horaDesde, LocalTime horaHasta) {
+	}
+
+	/**
+	 * Regla del 08/11/2026: el horario del profesional queda DENTRO del horario general de la sede.
+	 * Se lee bajo el lock de la sede, el mismo que toma el {@code PUT} del calendario para reemplazar
+	 * el horario: achicar la sede y cargar una franja no se cruzan.
+	 *
+	 * <p>Una sede sin horario no limita nada ({@link HorarioDeSede#limita()}). Las horas incoherentes
+	 * no se miran aca: las rechaza el bloque con su propio 400.
+	 *
+	 * @throws FranjaFueraDelHorarioDeSedeException con todas las franjas que no entran (409)
+	 */
+	private void exigirDentroDelHorarioDeSede(
+			long organizationId, long consultorioId, List<FranjaPedida> pedidas) {
+
+		if (horarios == null) {
+			return;
+		}
+		HorarioDeSede horario = HorarioDeSede.de(horarios.findVigentes(organizationId, consultorioId).stream()
+				.map(FranjaHorarioGeneral::franja)
+				.toList());
+		if (!horario.limita()) {
+			return;
+		}
+		List<FranjaFuera> fuera = new ArrayList<>();
+		for (int indice = 0; indice < pedidas.size(); indice++) {
+			FranjaPedida pedida = pedidas.get(indice);
+			if (pedida.horaDesde() == null || pedida.horaHasta() == null
+					|| !pedida.horaHasta().isAfter(pedida.horaDesde())) {
+				continue;
+			}
+			if (!horario.admite(pedida.diaSemana(), new IntervaloLocal(pedida.horaDesde(), pedida.horaHasta()))) {
+				fuera.add(new FranjaFuera(indice, pedida.diaSemana(), pedida.horaDesde(), pedida.horaHasta(),
+						horario.delDia(pedida.diaSemana())));
+			}
+		}
+		if (!fuera.isEmpty()) {
+			throw new FranjaFueraDelHorarioDeSedeException(fuera);
+		}
 	}
 
 	private ConsultorioSnapshot exigirSedeDelTenant(long organizationId, long consultorioId) {

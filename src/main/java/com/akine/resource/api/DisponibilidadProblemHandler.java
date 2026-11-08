@@ -1,7 +1,11 @@
 package com.akine.resource.api;
 
 import com.akine.platform.spi.problem.ProblemType;
+import com.akine.resource.api.dto.FranjaFueraDeHorarioResponse;
 import com.akine.resource.api.dto.ImpactoDisponibilidadResponse;
+import com.akine.resource.api.dto.IntervaloHorarioResponse;
+import com.akine.resource.application.FranjasFueraDelHorarioException;
+import com.akine.resource.domain.exception.FranjaFueraDelHorarioDeSedeException;
 import com.akine.resource.domain.exception.ActividadReservadaEnConflictoException;
 import com.akine.resource.domain.exception.BloqueInactivoException;
 import com.akine.resource.domain.exception.DisponibilidadSuperpuestaException;
@@ -236,6 +240,46 @@ public class DisponibilidadProblemHandler {
 		exception.getSuperposiciones().getFirst().propiedades().forEach(problem::setProperty);
 		problem.setProperty("superposiciones", exception.getSuperposiciones().stream()
 				.map(conflicto -> conflicto.propiedades()).toList());
+		return problem;
+	}
+
+	/**
+	 * Una franja del profesional se sale del horario general de la sede (regla del 08/11/2026). Lleva
+	 * todas las que no entran, con su indice en el pedido, su dia y el horario de la sede ese dia
+	 * —vacio si ese dia no abre—, para que la pantalla lo muestre al lado de cada franja.
+	 */
+	@ExceptionHandler(FranjaFueraDelHorarioDeSedeException.class)
+	public ProblemDetail handleFranjaFueraDelHorarioDeSede(FranjaFueraDelHorarioDeSedeException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+		problem.setTitle("Franja fuera del horario de la sede");
+		problem.setType(ProblemType.FRANJA_FUERA_DEL_HORARIO_DE_SEDE.uri());
+		problem.setProperty("diaSemana", exception.getFranjas().getFirst().diaSemana());
+		problem.setProperty("franjasFueraDeHorario", exception.getFranjas().stream()
+				.map(franja -> {
+					java.util.Map<String, Object> fila = new java.util.LinkedHashMap<>();
+					fila.put("indice", franja.indice());
+					fila.put("diaSemana", franja.diaSemana());
+					fila.put("horaDesde", horaDeContrato(franja.horaDesde()));
+					fila.put("horaHasta", horaDeContrato(franja.horaHasta()));
+					fila.put("horarioDeSede", franja.horarioDeSede().stream()
+							.map(IntervaloHorarioResponse::from).toList());
+					return fila;
+				})
+				.toList());
+		return problem;
+	}
+
+	/**
+	 * El horario nuevo de la sede deja afuera franjas de profesionales y el {@code PUT} no dijo que
+	 * hacer con ellas: es el aviso, no se guardo nada (regla del 08/11/2026).
+	 */
+	@ExceptionHandler(FranjasFueraDelHorarioException.class)
+	public ProblemDetail handleFranjasFueraDelHorario(FranjasFueraDelHorarioException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+		problem.setTitle("Franjas de profesionales fuera del horario");
+		problem.setType(ProblemType.FRANJAS_DE_PROFESIONALES_FUERA_DEL_HORARIO.uri());
+		problem.setProperty("franjasDeProfesionales", exception.getFranjas().stream()
+				.map(FranjaFueraDeHorarioResponse::from).toList());
 		return problem;
 	}
 

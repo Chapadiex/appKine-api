@@ -123,7 +123,8 @@ class CalendarioServiceTest {
 		service = new CalendarioService(
 				calendarios, new CalendarioSedeIniciador(calendarios, mock(PlatformTransactionManager.class)), feriados,
 				consultorioDirectory, permissionGuard, auditTrail, horarios,
-				new SimuladorDeImpacto(bloques, excepciones, feriados, calendarios, sonda, horarios), mock(PlatformTransactionManager.class));
+				new SimuladorDeImpacto(bloques, excepciones, feriados, calendarios, sonda, horarios), mock(PlatformTransactionManager.class),
+				new RecorteAlHorarioDeSede(bloques, sonda, auditTrail));
 		efectiva = new DisponibilidadEfectivaService(
 				bloques, excepciones, feriados, calendarios,
 				consultorioDirectory, membershipDirectory, permissionGuard, horarios);

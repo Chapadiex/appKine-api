@@ -179,6 +179,17 @@ public enum ProblemType {
 	// --- Disponibilidad profesional, excepciones y calendario de sede (M05, AKINE-02.04) -----
 	/** El bloque pedido se pisa con otro bloque activo del mismo profesional en esa sede. */
 	BLOQUE_SOLAPADO("bloque-solapado"),
+	/**
+	 * Una franja del profesional se sale del horario general de la sede (409, regla del 08/11/2026).
+	 * Lleva {@code franjasFueraDeHorario}: indice, dia, horas pedidas y el horario de la sede ese dia.
+	 */
+	FRANJA_FUERA_DEL_HORARIO_DE_SEDE("franja-fuera-del-horario-de-sede"),
+	/**
+	 * El horario nuevo de la sede deja afuera franjas de profesionales y el pedido no dijo que hacer
+	 * con ellas (409). Lleva {@code franjasDeProfesionales}; se reenvia con
+	 * {@code franjasFueraDelHorario = RECORTAR} o {@code CONSERVAR}.
+	 */
+	FRANJAS_DE_PROFESIONALES_FUERA_DEL_HORARIO("franjas-de-profesionales-fuera-del-horario"),
 	/** El bloque esta dado de baja y la operacion exige uno vigente. */
 	BLOQUE_INACTIVO("bloque-inactivo"),
 	/** El bloque ya estaba dado de baja. */

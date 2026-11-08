@@ -205,7 +205,27 @@ public class OpenApiConfig {
 					.items(new io.swagger.v3.oas.models.media.ObjectSchema())
 					.description("bloque-solapado de una apertura: cada franja superpuesta con su horario en otra "
 							+ "sede, con las mismas claves conflicto*."));
-			problema.addProperty("clasesAfectadas", new io.swagger.v3.oas.models.media.IntegerSchema()
+			// Regla del 08/11/2026: el horario del profesional queda dentro del de la sede (0.162.0).
+			problema.addProperty("franjasFueraDeHorario", new io.swagger.v3.oas.models.media.ArraySchema()
+					.items(new io.swagger.v3.oas.models.media.ObjectSchema()
+							.addProperty("indice", new io.swagger.v3.oas.models.media.IntegerSchema()
+									.description("Posicion de la franja en el pedido; en un lote, en el orden "
+											+ "de los dias (lunes primero)"))
+							.addProperty("diaSemana", new io.swagger.v3.oas.models.media.IntegerSchema()
+									.description("Dia ISO-8601: 1 = lunes .. 7 = domingo"))
+							.addProperty("horaDesde", new StringSchema().description("Hora pedida (HH:mm)"))
+							.addProperty("horaHasta", new StringSchema().description("Hora pedida (HH:mm, 24:00)"))
+							.addProperty("horarioDeSede", new io.swagger.v3.oas.models.media.ArraySchema()
+									.items(new Schema<>().$ref("#/components/schemas/IntervaloHorarioResponse"))
+									.description("Horario de la sede ese dia. Vacio: la sede no abre ese dia")))
+					.description("franja-fuera-del-horario-de-sede: cada franja pedida que no entra en el "
+							+ "horario de la sede, con el horario de la sede para su dia."));
+			problema.addProperty("franjasDeProfesionales", new io.swagger.v3.oas.models.media.ArraySchema()
+					.items(new Schema<>().$ref("#/components/schemas/FranjaFueraDeHorarioResponse"))
+					.description("franjas-de-profesionales-fuera-del-horario: las franjas de profesionales "
+							+ "que el horario nuevo de la sede deja afuera. No se guardo nada: reenviar con "
+							+ "franjasFueraDelHorario RECORTAR o CONSERVAR."));
+			problema.addProperty("clasesAfectadas",new io.swagger.v3.oas.models.media.IntegerSchema()
 					.description("bloqueo-con-turnos-afectados: cuantas clases quedan sin instructor."));
 			problema.addProperty("clases", new io.swagger.v3.oas.models.media.ArraySchema()
 					.items(new io.swagger.v3.oas.models.media.ObjectSchema())

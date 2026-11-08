@@ -91,7 +91,7 @@ class ConsumoPorAutorizacionIT {
 
 		assertThat(consumida(kinesio)).isEqualTo(1);
 		assertThat(consumida(fono)).isEqualTo(1);
-		assertThat(consumosDeLaSesion(sesion)).isEqualTo(2);
+		assertThat(consumosDeLaSesion(f, sesion)).isEqualTo(2);
 		assertLedgerCoherente(kinesio, fono);
 	}
 
@@ -107,7 +107,7 @@ class ConsumoPorAutorizacionIT {
 		cerrar(f, sesion);
 
 		assertThat(consumida(kinesio)).isEqualTo(1);
-		assertThat(consumosDeLaSesion(sesion)).isEqualTo(1);
+		assertThat(consumosDeLaSesion(f, sesion)).isEqualTo(1);
 		assertLedgerCoherente(kinesio);
 	}
 
@@ -385,11 +385,13 @@ class ConsumoPorAutorizacionIT {
 				autorizacionId);
 	}
 
-	private int consumosDeLaSesion(long sesionId) {
+	// Por organizacion: referencia_origen es el id de la sesion, y otro IT de la misma base puede haber
+	// dejado un movimiento con el mismo numero en su propio tenant.
+	private int consumosDeLaSesion(Fixture f, long sesionId) {
 		return jdbc.queryForObject("""
 				SELECT COUNT(*) FROM autorizacion_movimiento
-				 WHERE tipo = 'CONSUMO' AND tipo_origen = 'SESION' AND referencia_origen = ?
-				""", Integer.class, sesionId);
+				 WHERE tipo = 'CONSUMO' AND tipo_origen = 'SESION' AND referencia_origen = ? AND organization_id = ?
+				""", Integer.class, sesionId, f.organizationId());
 	}
 
 	/** El ledger es la fuente de verdad y la columna el saldo materializado: tienen que coincidir. */
