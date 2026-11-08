@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.161.0
+  version: 0.162.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -3328,6 +3328,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: La sede no existe o pertenece a otro tenant
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El horario general enviado deja afuera franjas de profesionales\
+            \ y no vino franjasFueraDelHorario (franjas-de-profesionales-fuera-del-horario,\
+            \ con franjasDeProfesionales). No se guardo nada: reenviar con RECORTAR\
+            \ o CONSERVAR"
       summary: Edicion de la politica de calendario de la sede
       tags:
       - Calendario de sede
@@ -11793,8 +11802,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Solapamiento con otro bloque activo (bloque-solapado), sede\
-            \ dada de baja (consultorio-inactive), o profesional sin vinculo vigente\
-            \ en esa sede (profesional-no-vinculado)"
+            \ dada de baja (consultorio-inactive), franja fuera del horario de la\
+            \ sede (franja-fuera-del-horario-de-sede, con franjasFueraDeHorario),\
+            \ o profesional sin vinculo vigente en esa sede (profesional-no-vinculado)"
       summary: Alta de un bloque recurrente de disponibilidad
       tags:
       - Disponibilidad profesional
@@ -11950,9 +11960,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Algun dia se solapa con otro bloque activo (bloque-solapado,\
-            \ con diaSemana), sede dada de baja (consultorio-inactive), o profesional\
-            \ sin vinculo vigente en esa sede (profesional-no-vinculado). NO se guardo\
-            \ ninguno"
+            \ con diaSemana), algun dia fuera del horario de la sede (franja-fuera-del-horario-de-sede,\
+            \ con todos los dias que no entran en franjasFueraDeHorario), sede dada\
+            \ de baja (consultorio-inactive), o profesional sin vinculo vigente en\
+            \ esa sede (profesional-no-vinculado). NO se guardo ninguno"
       summary: "Alta en lote de bloques de disponibilidad: varios dias, un horario"
       tags:
       - Disponibilidad profesional
@@ -12127,8 +12138,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Bloque dado de baja (bloque-inactivo), solapamiento con otro\
-            \ activo (bloque-solapado), version desactualizada (concurrent-modification),\
-            \ o profesional sin vinculo vigente en esa sede (profesional-no-vinculado)"
+            \ activo (bloque-solapado), franja fuera del horario de la sede (franja-fuera-del-horario-de-sede),\
+            \ version desactualizada (concurrent-modification), o profesional sin\
+            \ vinculo vigente en esa sede (profesional-no-vinculado)"
       summary: Edicion de un bloque de disponibilidad
       tags:
       - Disponibilidad profesional
@@ -27893,6 +27905,14 @@ components:
             \ respuesta del PUT, que no tiene ventana: vacia significa \"no se pregunto\""
           items:
             $ref: "#/components/schemas/FeriadoResponse"
+        franjasFueraDelHorario:
+          type: array
+          description: "Solo en la respuesta del PUT (0.162.0): las franjas de profesionales\
+            \ que el horario guardado deja afuera y lo que se hizo con cada una segun\
+            \ franjasFueraDelHorario —RECORTADA, DADA_DE_BAJA o CONSERVADA—. Vacia\
+            \ en el GET y cuando ninguna queda afuera"
+          items:
+            $ref: "#/components/schemas/FranjaFueraDeHorarioResponse"
         horarioGeneral:
           type: array
           description: "Franjas VIGENTES del horario general de la sede (RF-M03-002),\
@@ -34722,6 +34742,63 @@ components:
         hasta:
           type: string
           format: date-time
+    FranjaFueraDeHorarioResponse:
+      type: object
+      description: "Franja de un profesional que el horario nuevo de la sede deja\
+        \ afuera, total o parcialmente"
+      properties:
+        accion:
+          type: string
+          description: "Que se hizo con la franja. Ausente en el aviso, antes de decidir"
+          enum:
+          - RECORTADA
+          - DADA_DE_BAJA
+          - CONSERVADA
+        bloqueId:
+          type: integer
+          format: int64
+          description: Bloque de disponibilidad del profesional
+          example: 12
+        diaSemana:
+          type: integer
+          format: int32
+          description: "Dia de la semana ISO-8601: 1 = lunes .. 7 = domingo"
+          example: 6
+        horaDesde:
+          type: string
+          description: Hora local de inicio actual de la franja
+          example: 08:00
+        horaHasta:
+          type: string
+          description: "Hora local de fin actual, EXCLUSIVA. La medianoche viaja como\
+            \ 24:00"
+          example: 14:00
+        membershipId:
+          type: integer
+          format: int64
+          description: Vinculo del profesional en la organizacion; abre su horario
+            semanal (/horarios?membershipId=...)
+          example: 7
+        profesionalNombre:
+          type: string
+          description: Nombre para mostrar del profesional. Ausente si no se pudo
+            resolver
+        resultantes:
+          type: array
+          description: "Lo que queda de la franja dentro del horario nuevo. Vacia:\
+            \ queda entera afuera y recortarla la da de baja. Mas de un tramo: la\
+            \ sede cierra en el medio de la franja y recortarla la parte en dos"
+          items:
+            $ref: "#/components/schemas/IntervaloHorarioResponse"
+        vigenciaDesde:
+          type: string
+          format: date
+          description: Inicio de vigencia de la franja
+          example: 2026-11-01
+        vigenciaHasta:
+          type: string
+          format: date
+          description: "Fin de vigencia, EXCLUSIVO. Ausente: sin fin previsto"
     FranjaResueltaResponse:
       type: object
       description: "Una franja de atencion resuelta, con la regla que la produjo"
@@ -35731,6 +35808,18 @@ components:
           example: TRATANTE
       required:
       - profesionalMembershipId
+    IntervaloHorarioResponse:
+      type: object
+      description: Tramo de horas locales de un dia
+      properties:
+        horaDesde:
+          type: string
+          description: Hora local de inicio
+          example: 09:00
+        horaHasta:
+          type: string
+          description: "Hora local de fin, EXCLUSIVA. La medianoche viaja como 24:00"
+          example: 13:00
     InvitacionPreviewResponse:
       type: object
       description: Lo que el invitado necesita saber para decidir
@@ -39576,6 +39665,41 @@ components:
           type: integer
           format: int64
           description: "BLOQUEO, AUSENCIA o CIERRE_DE_SEDE: el cierre."
+        franjasDeProfesionales:
+          type: array
+          description: "franjas-de-profesionales-fuera-del-horario: las franjas de\
+            \ profesionales que el horario nuevo de la sede deja afuera. No se guardo\
+            \ nada: reenviar con franjasFueraDelHorario RECORTAR o CONSERVAR."
+          items:
+            $ref: "#/components/schemas/FranjaFueraDeHorarioResponse"
+        franjasFueraDeHorario:
+          type: array
+          description: "franja-fuera-del-horario-de-sede: cada franja pedida que no\
+            \ entra en el horario de la sede, con el horario de la sede para su dia."
+          items:
+            type: object
+            properties:
+              diaSemana:
+                type: integer
+                format: int32
+                description: "Dia ISO-8601: 1 = lunes .. 7 = domingo"
+              horaDesde:
+                type: string
+                description: Hora pedida (HH:mm)
+              horaHasta:
+                type: string
+                description: "Hora pedida (HH:mm, 24:00)"
+              horarioDeSede:
+                type: array
+                description: "Horario de la sede ese dia. Vacio: la sede no abre ese\
+                  \ dia"
+                items:
+                  $ref: "#/components/schemas/IntervaloHorarioResponse"
+              indice:
+                type: integer
+                format: int32
+                description: "Posicion de la franja en el pedido; en un lote, en el\
+                  \ orden de los dias (lunes primero)"
         instance:
           type: string
           format: uri
@@ -39667,6 +39791,8 @@ components:
       - https://akine.app/problems/invitacion-ya-resuelta
       - https://akine.app/problems/colaborador-ya-vinculado
       - https://akine.app/problems/bloque-solapado
+      - https://akine.app/problems/franja-fuera-del-horario-de-sede
+      - https://akine.app/problems/franjas-de-profesionales-fuera-del-horario
       - https://akine.app/problems/bloque-inactivo
       - https://akine.app/problems/bloque-already-inactive
       - https://akine.app/problems/profesional-no-vinculado
@@ -44191,6 +44317,17 @@ components:
             \ del calendario para todos los profesionales de la sede, por eso el cambio\
             \ se audita aunque sea un solo flag"
           example: true
+        franjasFueraDelHorario:
+          type: string
+          description: "Que hacer con las franjas de profesionales que el horario\
+            \ general enviado deja afuera (0.162.0): RECORTAR deja cada una en su\
+            \ parte comun con el horario de la sede y da de baja las que quedan vacias;\
+            \ CONSERVAR guarda el horario sin tocarlas, para ajustarlas a mano. OMITIRLO\
+            \ con alguna franja afuera no guarda nada y responde 409 franjas-de-profesionales-fuera-del-horario\
+            \ con la lista. Sin horarioGeneral no se usa"
+          enum:
+          - RECORTAR
+          - CONSERVAR
         horarioGeneral:
           type: array
           description: "Horario general de la sede (RF-M03-003). OMITIRLO lo deja\

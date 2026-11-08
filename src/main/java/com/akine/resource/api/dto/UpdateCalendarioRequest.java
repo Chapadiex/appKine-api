@@ -1,5 +1,6 @@
 package com.akine.resource.api.dto;
 
+import com.akine.resource.application.CalendarioService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
@@ -55,5 +56,15 @@ public record UpdateCalendarioRequest(
 						+ "franjas del mismo dia que se pisan son 400",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		@Size(max = 28, message = "El horario general admite como maximo 28 franjas")
-		List<@Valid HorarioGeneralFranjaRequest> horarioGeneral) {
+		List<@Valid HorarioGeneralFranjaRequest> horarioGeneral,
+
+		@Schema(
+				description = "Que hacer con las franjas de profesionales que el horario general "
+						+ "enviado deja afuera (0.162.0): RECORTAR deja cada una en su parte comun con "
+						+ "el horario de la sede y da de baja las que quedan vacias; CONSERVAR guarda el "
+						+ "horario sin tocarlas, para ajustarlas a mano. OMITIRLO con alguna franja afuera "
+						+ "no guarda nada y responde 409 franjas-de-profesionales-fuera-del-horario con "
+						+ "la lista. Sin horarioGeneral no se usa",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		CalendarioService.FranjasFuera franjasFueraDelHorario) {
 }

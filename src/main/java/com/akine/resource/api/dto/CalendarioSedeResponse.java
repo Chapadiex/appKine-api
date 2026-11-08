@@ -63,7 +63,13 @@ public record CalendarioSedeResponse(
 				+ "un cambio de disponibilidad: cuenta un turno que el horario anterior cubria y el "
 				+ "nuevo no, de cualquier profesional, desde hoy hasta noventa dias. En el GET y en "
 				+ "un PUT que no cambia el horario viaja en cero con evaluadoHasta nulo")
-		ImpactoDisponibilidadResponse impactoDelHorario) {
+		ImpactoDisponibilidadResponse impactoDelHorario,
+
+		@Schema(description = "Solo en la respuesta del PUT (0.162.0): las franjas de profesionales que "
+				+ "el horario guardado deja afuera y lo que se hizo con cada una segun "
+				+ "franjasFueraDelHorario —RECORTADA, DADA_DE_BAJA o CONSERVADA—. Vacia en el GET y "
+				+ "cuando ninguna queda afuera")
+		List<FranjaFueraDeHorarioResponse> franjasFueraDelHorario) {
 
 	public static CalendarioSedeResponse from(CalendarioView view) {
 		return new CalendarioSedeResponse(
@@ -74,6 +80,7 @@ public record CalendarioSedeResponse(
 				view.existePersistida(),
 				view.feriados().stream().map(FeriadoResponse::from).toList(),
 				view.horarioGeneral().stream().map(HorarioGeneralFranjaResponse::from).toList(),
-				ImpactoDisponibilidadResponse.from(view.impactoDelHorario()));
+				ImpactoDisponibilidadResponse.from(view.impactoDelHorario()),
+				view.franjasFueraDelHorario().stream().map(FranjaFueraDeHorarioResponse::from).toList());
 	}
 }

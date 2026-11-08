@@ -195,6 +195,15 @@ public class CalendarioController {
 					description = "La sede no existe o pertenece a otro tenant",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "El horario general enviado deja afuera franjas de profesionales y "
+							+ "no vino franjasFueraDelHorario (franjas-de-profesionales-fuera-del-horario, "
+							+ "con franjasDeProfesionales). No se guardo nada: reenviar con RECORTAR o "
+							+ "CONSERVAR",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<CalendarioSedeResponse> update(
 			@Parameter(description = "Identificador de la sede", example = "1")
@@ -208,6 +217,6 @@ public class CalendarioController {
 
 		return ResponseEntity.ok(CalendarioSedeResponse.from(calendarioService.actualizar(
 				apiActor.current(), consultorioId, request.pais(), request.cierraPorFeriado(),
-				horario)));
+				horario, request.franjasFueraDelHorario())));
 	}
 }

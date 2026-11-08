@@ -242,7 +242,8 @@ public class DisponibilidadController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "Solapamiento con otro bloque activo (bloque-solapado), sede "
-							+ "dada de baja (consultorio-inactive), o profesional sin vinculo "
+							+ "dada de baja (consultorio-inactive), franja fuera del horario de la sede "
+							+ "(franja-fuera-del-horario-de-sede, con franjasFueraDeHorario), o profesional sin vinculo "
 							+ "vigente en esa sede (profesional-no-vinculado)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -339,7 +340,9 @@ public class DisponibilidadController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "Algun dia se solapa con otro bloque activo (bloque-solapado, con "
-							+ "diaSemana), sede dada de baja (consultorio-inactive), o profesional sin "
+							+ "diaSemana), algun dia fuera del horario de la sede "
+							+ "(franja-fuera-del-horario-de-sede, con todos los dias que no entran en "
+							+ "franjasFueraDeHorario), sede dada de baja (consultorio-inactive), o profesional sin "
 							+ "vinculo vigente en esa sede (profesional-no-vinculado). NO se guardo ninguno",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -434,7 +437,8 @@ public class DisponibilidadController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "Bloque dado de baja (bloque-inactivo), solapamiento con otro "
-							+ "activo (bloque-solapado), version desactualizada "
+							+ "activo (bloque-solapado), franja fuera del horario de la sede "
+							+ "(franja-fuera-del-horario-de-sede), version desactualizada "
 							+ "(concurrent-modification), o profesional sin vinculo vigente en "
 							+ "esa sede (profesional-no-vinculado)",
 					content = @Content(
