@@ -32,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -180,7 +181,7 @@ public class ClaseController {
 				new ProgramarSerieDeClasesCommand(
 						request.desde(),
 						request.hasta(),
-						request.diasSemana(),
+						new HashSet<>(request.diasSemana()),
 						request.horaInicio(),
 						request.horaFin(),
 						request.profesionalId(),

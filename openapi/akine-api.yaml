@@ -40299,7 +40299,8 @@ components:
           example: 2026-11-10
         diasSemana:
           type: array
-          description: Dias de la semana en que se dicta la clase. Al menos uno
+          description: Dias de la semana en que se dicta la clase. Al menos uno; los
+            repetidos cuentan una vez
           items:
             type: integer
             format: int32
@@ -40309,7 +40310,6 @@ components:
             minimum: 1
           maxItems: 7
           minItems: 0
-          uniqueItems: true
         espacioId:
           type: integer
           format: int64

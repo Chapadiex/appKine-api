@@ -11,7 +11,7 @@ import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.Set;
+import java.util.List;
 
 @Schema(
 		name = "ProgramarSerieDeClases",
@@ -34,15 +34,14 @@ public record ProgramarSerieDeClasesRequest(
 						minimum = "1",
 						maximum = "7"),
 				arraySchema = @Schema(
-						description = "Dias de la semana en que se dicta la clase. Al menos uno",
+						description = "Dias de la semana en que se dicta la clase. Al menos uno; los repetidos cuentan una vez",
 						example = "[2, 4]",
 						requiredMode = Schema.RequiredMode.REQUIRED),
 				minItems = 1,
-				maxItems = 7,
-				uniqueItems = true)
+				maxItems = 7)
 		@NotEmpty(message = "Hay que elegir al menos un dia de la semana")
 		@Size(max = 7, message = "Una semana tiene siete dias")
-		Set<@NotNull(message = "El dia de la semana es obligatorio")
+		List<@NotNull(message = "El dia de la semana es obligatorio")
 			@Min(value = 1, message = "El dia de la semana va de 1 (lunes) a 7 (domingo)")
 			@Max(value = 7, message = "El dia de la semana va de 1 (lunes) a 7 (domingo)") Integer> diasSemana,
 
