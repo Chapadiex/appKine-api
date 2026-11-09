@@ -2,7 +2,7 @@
 
 - **Estado:** Aceptado
 - **Fecha:** 2026-11-09
-- **Decisión del usuario:** 09/11/2026, en la sesión de clases grupales del "Centro QA A"
+- **Decisión del usuario:** 09/11/2026 (DP-46 del plan de implementación), en la sesión de clases grupales del "Centro QA A"
 - **Supersede:** la fila de `servicio` en [ADR-0023](0023-tablas-globales-sin-organization-id.md)
 - **Migración:** `V143__m27_servicio_propio_de_la_organizacion.sql` · **Contrato:** 0.163.0
 

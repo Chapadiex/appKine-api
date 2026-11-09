@@ -961,6 +961,41 @@ bloque por bloque, con la vista previa del impacto en turnos de cada cambio.
 **Implementada en:** pendiente. Cada punto es una etapa propia con su minor del contrato; el
 frontend agrega la pantalla cuando el cliente generado lo trae.
 
+## DP-46 — Servicios propios del centro y clases semanales
+
+**Estado:** DECIDIDA el 09/11/2026 por el usuario, al armar las clases de Yoga de "Centro QA A".
+Formalizada en [ADR-0025](../adr/0025-servicio-propio-de-la-organizacion.md).
+
+**Contexto.** Un centro no podía dar de alta un servicio: el catálogo de `servicio` era global y
+solo lo mutaba `PLATFORM_ADMIN` (02.06, ADR-0023). Las clases, además, se programaban de a una.
+
+**Decisión.**
+
+1. **Servicio propio de la organización, en la misma tabla.** `servicio.organization_id` pasa a
+   ser nullable con `owner_key = IFNULL(organization_id, 0)`, igual que el catálogo clínico
+   (ADR-0021). El alcance sale de quien llama: el rol de plataforma crea en el catálogo global y un
+   usuario de un centro con `catalogo:manage` crea uno propio, que ve solo su organización. El
+   catálogo global sigue siendo solo de la plataforma y las filas existentes no cambian.
+2. **Clases semanales sin todo o nada.** Se programa una clase en cada fecha del rango que cae en
+   los días elegidos. Cada fecha se valida como una clase suelta, en su propia transacción, y las
+   que no se pueden programar vuelven con su motivo. No hay tabla de serie.
+3. **El cronograma de clases comparte box y persona con los turnos.** "Independiente de kine"
+   significa boxes separados por habilitaciones de la oferta. No es una agenda aparte: la
+   exclusión contra turnos y el horario cargado del profesional siguen igual.
+
+**Desviación declarada de la especificación.**
+
+- **RN-M27-001** (*"un Servicio es catálogo global/conceptual"*): se cumple para el catálogo de
+  la plataforma, pero un Servicio ya puede ser propio de una organización.
+- **CA-M06-006-06** (*"Pilates Reformer puede existir una sola vez en catálogo"*): rige dentro del
+  catálogo global. Un centro puede tener su propio servicio con el mismo nombre o código, y la
+  pantalla los distingue por su origen (`alcance`).
+- **RF-M28-001** describe una ocurrencia por vez. La serie no lo reemplaza: lo repite fecha por
+  fecha. No hay RF de recurrencia de clases; la respalda esta decisión.
+
+**Implementada en:** `appKine-api` y `appKine-web`, rama `akine-clases-servicios`. Contrato
+0.163.0, migración `V143`.
+
 # 8. Modelo funcional consolidado
 
 ## 8.1 Núcleo organizacional
