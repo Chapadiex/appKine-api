@@ -130,10 +130,10 @@ class EsquemaMultiTenantIT {
 				"Hecho del calendario publico nacional. La decision de la sede —si cierra ese dia— vive "
 						+ "en consultorio_calendario, que si lleva organization_id NOT NULL"));
 
-		// --- ADR-0023 — la quinta excepcion, AKINE-02.06 --------------------------------------
-		EXCEPCIONES.put("servicio", new Excepcion(Forma.SIN_COLUMNA,
-				"Concepto del catalogo global (RN-M27-001). Como lo presta un centro concreto vive en "
-						+ "oferta_servicio_consultorio, que si lleva organization_id NOT NULL"));
+		// --- ADR-0025 (V143) — supersede la fila de servicio de ADR-0023 ----------------------
+		EXCEPCIONES.put("servicio", new Excepcion(Forma.NULLABLE,
+				"Dos poblaciones en la misma tabla, igual que especialidad: NULL = servicio del catalogo "
+						+ "global, valor = servicio propio del centro. Los unique van sobre owner_key"));
 
 		// --- ADR-0023 aplicado por DP-43 (V117) — catalogo global de financiadores ---------------
 		EXCEPCIONES.put("financiador_catalogo", new Excepcion(Forma.SIN_COLUMNA,

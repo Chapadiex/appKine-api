@@ -173,6 +173,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V140` | Agenda — historial (`akine-agenda-historial-2`) | **Vacía**: reservada por si los cierres de sede necesitaban un índice o una tabla; se resuelven al leer con las tablas e índices existentes. No se reusa |
 | `V141` | Agenda — disponibilidad central por persona (`akine-agenda-disponibilidad`) | **Vacía**: la lógica central no tiene tablas (lee turnos, clases y excepciones) y el lock es `agenda_profesional` (`V129`); la sustitución de una apertura escribe filas comunes de `disponibilidad_excepcion` con el motivo `BLOQUEO` existente. No se reusa |
 | `V142` | Agenda — disponibilidad central por persona | **Vacía**: reservada por si la consulta de aperturas por persona necesitaba índice; las aperturas de una persona son pocas filas y alcanza la FK de `membership_id`. No se reusa |
+| `V143` | Servicios propios y clases semanales (`akine-clases-servicios`) | **Usada**: `V143__m27_servicio_propio_de_la_organizacion.sql` — `servicio.organization_id` nullable + `owner_key` y uniques por duenio (ADR-0025). Las clases semanales no usan migracion: cada fecha es una `clase_programada` comun, sin tabla de serie |
 
 ## 7. Paquetes de trabajo
 

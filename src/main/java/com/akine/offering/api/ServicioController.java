@@ -54,10 +54,10 @@ import java.util.List;
  * <h2>Autorizacion</h2>
  *
  * <ul>
- *   <li><b>Leer</b>: cualquier usuario autenticado. No hace falta contexto de trabajo elegido,
- *       porque no hay ninguna fila que acotar: el catalogo global es el mismo para todos.</li>
- *   <li><b>Mutar</b>: rol de plataforma. Un administrador de tenant lo VE completo y no lo puede
- *       tocar.</li>
+ *   <li><b>Leer</b>: cualquier usuario autenticado; ve el catalogo global y, con contexto de
+ *       trabajo, los servicios propios de su organizacion (V143).</li>
+ *   <li><b>Mutar</b>: el global, rol de plataforma; un servicio propio, {@code catalogo:manage}
+ *       en su centro. Un servicio de otro centro es 404.</li>
  * </ul>
  *
  * <p><b>Esta etapa no crea permisos nuevos</b> (diseno §1). Las mutaciones se autorizan por rol
@@ -110,7 +110,7 @@ public class ServicioController {
 	@GetMapping
 	@Operation(
 			operationId = "listServicios",
-			summary = "Listar el catalogo global de servicios",
+			summary = "Listar el catalogo de servicios visible",
 			description = """
 					Devuelve los servicios de la plataforma ordenados por nombre.
 
@@ -123,8 +123,9 @@ public class ServicioController {
 					baja, que es lo que evita que el 409 servicio-inactivo tenga que aparecer en \
 					esa pantalla.
 
-					No exige contexto de trabajo elegido: el catalogo global es el mismo para \
-					todos los centros y no hay ninguna fila que acotar por tenant.""")
+					Devuelve el catalogo global y, si quien llama trabaja en un centro, los \
+					servicios propios de su organizacion (alcance ORGANIZACION). El rol de \
+					plataforma ve solo el global.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -150,7 +151,7 @@ public class ServicioController {
 			@RequestParam(required = false) ServicioEstadoFiltro estado) {
 
 		List<ServicioResponse> servicios =
-				servicioService.buscar(new ServicioBusqueda(q, estado)).stream()
+				servicioService.buscar(apiActor.current(), new ServicioBusqueda(q, estado)).stream()
 						.map(ServicioResponse::de)
 						.toList();
 
@@ -160,12 +161,14 @@ public class ServicioController {
 	@PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
 	@Operation(
 			operationId = "createServicio",
-			summary = "Dar de alta un servicio del catalogo global",
+			summary = "Dar de alta un servicio del catalogo",
 			description = """
-					Exige rol de plataforma: lo que se crea aca lo ven todos los centros del \
-					SaaS.
+					El alcance sale de quien llama, no del cuerpo. El rol de plataforma crea en \
+					el catalogo global, que ven todos los centros. Un usuario de un centro con \
+					catalogo:manage crea un servicio propio de su organizacion (alcance \
+					ORGANIZACION), que ve solo ella.
 
-					El codigo es unico entre los servicios VIGENTES y no se puede cambiar \
+					El codigo es unico entre los servicios VIGENTES del mismo duenio y no se puede cambiar \
 					despues: es lo que las ofertas guardan. El codigo de un servicio dado de \
 					baja SI se puede reusar. El nombre tambien es unico entre los vigentes, \
 					comparado sin distinguir mayusculas ni acentos.
@@ -194,7 +197,7 @@ public class ServicioController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin rol de plataforma",
+					description = "Sin rol de plataforma (servicio global) o sin catalogo:manage (servicio propio)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -232,9 +235,10 @@ public class ServicioController {
 	@PutMapping(path = "/{servicioId}", consumes = MediaType.APPLICATION_JSON_VALUE)
 	@Operation(
 			operationId = "updateServicio",
-			summary = "Editar un servicio del catalogo global",
+			summary = "Editar un servicio del catalogo",
 			description = """
-					Exige rol de plataforma.
+					Un servicio global exige rol de plataforma; uno propio, catalogo:manage en su \
+					centro.
 
 					El codigo NO se puede cambiar y por eso no esta en el cuerpo: es la clave \
 					con la que las ofertas de todos los centros lo referencian, y cambiarlo \
@@ -263,7 +267,7 @@ public class ServicioController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin rol de plataforma",
+					description = "Sin rol de plataforma (servicio global) o sin catalogo:manage (servicio propio)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -312,9 +316,9 @@ public class ServicioController {
 			produces = { MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_PROBLEM_JSON_VALUE })
 	@Operation(
 			operationId = "deactivateServicio",
-			summary = "Dar de baja un servicio del catalogo global",
+			summary = "Dar de baja un servicio del catalogo",
 			description = """
-					Baja LOGICA con motivo obligatorio. Exige rol de plataforma.
+					Baja LOGICA con motivo obligatorio. Global: rol de plataforma; propio: catalogo:manage.
 
 					LA BAJA NO CASCADEA, y esto es lo mas importante de la operacion. Las \
 					ofertas activas de los centros que ya referencian este servicio SIGUEN \
@@ -339,7 +343,7 @@ public class ServicioController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Sin rol de plataforma",
+					description = "Sin rol de plataforma (servicio global) o sin catalogo:manage (servicio propio)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),

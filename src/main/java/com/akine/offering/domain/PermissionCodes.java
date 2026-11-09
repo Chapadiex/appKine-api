@@ -51,6 +51,14 @@ public final class PermissionCodes {
 	 */
 	public static final String CONSULTORIO_MANAGE = "consultorio:manage";
 
+	/**
+	 * Gestionar el catalogo propio del centro (DP-36). Desde V143 (ADR-0025) tambien cubre los
+	 * servicios propios de la organizacion, con el mismo reparto que el catalogo clinico: ORG_ADMIN
+	 * con alcance de organizacion, ADMIN de sede con el de su sede. El catalogo GLOBAL de servicios
+	 * sigue siendo del rol de plataforma, sin codigo.
+	 */
+	public static final String CATALOGO_MANAGE = "catalogo:manage";
+
 	private PermissionCodes() {
 		// Catalogo de constantes.
 	}

@@ -45,7 +45,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
@@ -128,7 +130,7 @@ class OfertaServiceTest {
 		given(consultorioDirectory.find(OTRA_ORG, OTRA_SEDE))
 				.willReturn(Optional.of(sede(OTRA_ORG, OTRA_SEDE, true)));
 		given(accountContextDirectory.hasActiveMembership(ACCOUNT_ID, ORG)).willReturn(true);
-		given(servicios.findById(SERVICIO_ID)).willReturn(Optional.of(servicioVigente()));
+		given(servicios.findVisible(eq(SERVICIO_ID), anyList())).willReturn(Optional.of(servicioVigente()));
 		// La base asigna el id en el INSERT; aca lo pone la secuencia, y una distinta por fila para
 		// que dos ofertas del mismo servicio no sean "la misma" por accidente.
 		given(ofertas.saveAndFlush(any())).willAnswer(invocacion -> conId(invocacion.getArgument(0)));
@@ -146,7 +148,7 @@ class OfertaServiceTest {
 		// El escenario literal del criterio: "dos consultorios pueden ofrecer Pilates Reformer con
 		// duracion y capacidad diferentes". Es el objetivo entero de la etapa y la regla maestra 14.
 		Servicio pilatesReformer = servicioVigente();
-		given(servicios.findById(SERVICIO_ID)).willReturn(Optional.of(pilatesReformer));
+		given(servicios.findVisible(eq(SERVICIO_ID), anyList())).willReturn(Optional.of(pilatesReformer));
 
 		// Sede A: clases grupales de 60 minutos para 6 personas, con obra social.
 		OfertaView enLaSedeA = service.crear(admin, ORG, SEDE, new OfertaAltaCommand(
@@ -207,7 +209,7 @@ class OfertaServiceTest {
 	@DisplayName("Los *Default del servicio se COPIAN una vez al omitirlos, y no quedan vinculados")
 	void los_defaults_del_servicio_se_copian_al_crear_y_no_se_vuelven_a_leer() {
 		Servicio servicio = servicioVigente();
-		given(servicios.findById(SERVICIO_ID)).willReturn(Optional.of(servicio));
+		given(servicios.findVisible(eq(SERVICIO_ID), anyList())).willReturn(Optional.of(servicio));
 
 		// El comando omite modalidad, requiereCasoClinico y generaRegistroClinico: se copian del
 		// Servicio. requiereProfesional y requiereEspacio NO tienen default y quedan en false.
@@ -225,7 +227,7 @@ class OfertaServiceTest {
 		// Es una COPIA, no un vinculo (RF-M06-006): el servicio se leyo una sola vez, en el alta.
 		// Si esto fuera un puntero, cambiar el default del catalogo global reescribiria en silencio
 		// la configuracion de todos los centros que lo ofertan.
-		verify(servicios).findById(SERVICIO_ID);
+		verify(servicios).findVisible(eq(SERVICIO_ID), anyList());
 	}
 
 	// =================================================================================
@@ -359,7 +361,7 @@ class OfertaServiceTest {
 	void no_se_puede_crear_una_oferta_sobre_un_servicio_inactivo() {
 		Servicio dadoDeBaja = servicioVigente();
 		dadoDeBaja.deactivate(Instant.now(), "se discontinua el concepto");
-		given(servicios.findById(SERVICIO_ID)).willReturn(Optional.of(dadoDeBaja));
+		given(servicios.findVisible(eq(SERVICIO_ID), anyList())).willReturn(Optional.of(dadoDeBaja));
 
 		// 409 y no 404: el servicio existe y es visible —es global—, lo que no admite es la
 		// operacion. La base no puede expresar "solo al insertar": la FK fk_oferta_servicio es
@@ -375,7 +377,7 @@ class OfertaServiceTest {
 		// exige rol de plataforma— a un camino que no la pidio. Aca hace falta un dato, no una
 		// operacion. Se afirma sobre la FORMA de la clase para que el dia que alguien "simplifique"
 		// inyectandolo, este test lo detecte.
-		verify(servicios).findById(SERVICIO_ID);
+		verify(servicios).findVisible(eq(SERVICIO_ID), anyList());
 		assertThat(Arrays.stream(OfertaService.class.getDeclaredConstructors()[0].getParameterTypes()))
 				.as("OfertaService lee el estado del servicio por el puerto, no llamando a ServicioService")
 				.doesNotContain(ServicioService.class)
@@ -391,7 +393,7 @@ class OfertaServiceTest {
 		// El servicio global esta dado de baja...
 		Servicio dadoDeBaja = servicioVigente();
 		dadoDeBaja.deactivate(Instant.now(), "se discontinua");
-		given(servicios.findById(SERVICIO_ID)).willReturn(Optional.of(dadoDeBaja));
+		given(servicios.findVisible(eq(SERVICIO_ID), anyList())).willReturn(Optional.of(dadoDeBaja));
 
 		// ...y la edicion procede igual. RF-M27-002 impide ALTAS nuevas, no mantener las que ya
 		// existen, y RN-M03-006 prohibe afectar historicos: un centro con turnos vendidos sobre

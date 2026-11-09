@@ -139,15 +139,10 @@ public class TenantContextFilter extends OncePerRequestFilter {
 	 * problema: echarse a uno mismo de todos los dispositivos no puede depender de haber
 	 * elegido donde trabajar.
 	 *
-	 * <p><b>{@code /api/v1/servicios} (M27, AKINE-02.06).</b> El catalogo global de servicios no
-	 * pertenece a ningun tenant: {@code servicio} no lleva {@code organization_id} —excepcion
-	 * declarada en ADR-0023— y la respuesta es identica para todos los centros, asi que no hay
-	 * ninguna fila que acotar. Exigir contexto ademas romperia el caso que la etapa necesita:
-	 * quien ADMINISTRA ese catalogo es el rol de plataforma, que por definicion NO tiene un
-	 * centro elegido y quedaria afuera de su propia consola.
-	 *
-	 * <p>Las OFERTAS, en cambio, no estan aca y no pueden estarlo: cuelgan de una sede, llevan
-	 * {@code organization_id NOT NULL} y su tenant sale justamente de este filtro.
+	 * <p><b>{@code /api/v1/servicios} ya no esta aca (V143, ADR-0025).</b> Hasta el 09/11/2026 el
+	 * catalogo de servicios era global puro y se exceptuaba. Desde que un centro tiene servicios
+	 * propios, la respuesta depende de la organizacion del contexto y el contexto tiene que salir de
+	 * este filtro. El rol de plataforma no pierde nada: este filtro ya lo deja pasar sin contexto.
 	 *
 	 * <p>Exceptuar del CONTEXTO no es exceptuar de la AUTENTICACION: estos endpoints siguen
 	 * exigiendo un principal, porque no estan en la lista publica de {@code SecurityConfig}.
@@ -156,8 +151,7 @@ public class TenantContextFilter extends OncePerRequestFilter {
 			"/actuator",
 			"/v3/api-docs",
 			"/swagger-ui",
-			"/api/v1/auth",
-			"/api/v1/servicios");
+			"/api/v1/auth");
 
 	/** Metodos sin efecto de escritura: siempre permitidos con la suscripcion suspendida. */
 	private static final List<String> METODOS_DE_LECTURA = List.of("GET", "HEAD", "OPTIONS", "TRACE");
