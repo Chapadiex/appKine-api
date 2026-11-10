@@ -19205,9 +19205,9 @@ paths:
     post:
       description: "Devuelve los `k` pasajes mas parecidos (1 a 20, por defecto 5)\
         \ de libros activos y listos. `camino` dice si se busco por similitud (VECTOR)\
-        \ o por palabras (PALABRAS, si el modelo no esta disponible); `alcanza` es\
-        \ verdadero con al menos 2 pasajes sobre el `corte`. Consulta en blanco o\
-        \ de mas de 600 caracteres: 400."
+        \ o por palabras (PALABRAS, si el modelo no esta disponible o todavia no hay\
+        \ vectores del modelo vigente); `alcanza` es verdadero con al menos 2 pasajes\
+        \ sobre el `corte`. Consulta en blanco o de mas de 600 caracteres: 400."
       operationId: buscarEnBiblioteca
       parameters:
       - in: path
@@ -19231,7 +19231,46 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/BibliotecaBusquedaResponse"
-          description: OK
+          description: "Pasajes encontrados, posiblemente ninguno"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Consulta en blanco o de mas de 600 caracteres, o `k` fuera\
+            \ de 1 a 20"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: la organizacion de la ruta no es la\
+            \ del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`biblioteca-deshabilitada`'
       summary: Buscar pasajes en la biblioteca
       tags:
       - Biblioteca
@@ -19308,7 +19347,45 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/LibroPageResponse"
-          description: OK
+          description: Pagina de libros
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`sort` o `estado` fuera del enum'
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: la organizacion de la ruta no es la\
+            \ del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`biblioteca-deshabilitada`'
       summary: Listar los libros de la biblioteca
       tags:
       - Biblioteca
@@ -19361,7 +19438,7 @@ paths:
               required:
               - archivo
       responses:
-        "200":
+        "202":
           content:
             application/json:
               schema:
@@ -19369,7 +19446,47 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/LibroResponse"
-          description: OK
+          description: "Libro creado, PENDIENTE de procesar"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-archivo-no-aceptado` (vacio, no es PDF o supera el\
+            \ tamano maximo), datos invalidos o sin declaracion de derechos"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: la organizacion de la ruta no es la\
+            \ del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`biblioteca-deshabilitada` o `libro-duplicado` (con `libroId`
+            del que ya tiene ese contenido)'
       summary: Subir un libro PDF
       tags:
       - Biblioteca
@@ -19391,8 +19508,37 @@ paths:
           type: integer
           format: int64
       responses:
-        "200":
-          description: OK
+        "204":
+          description: Libro eliminado
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: el libro no existe, es de otra organizacion\
+            \ o la organizacion de la ruta no es la del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`biblioteca-deshabilitada`'
       summary: Eliminar un libro y su archivo
       tags:
       - Biblioteca
@@ -19420,12 +19566,42 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/LibroDetalleResponse"
-          description: OK
+          description: El libro con sus fragmentos y sospechosos
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: el libro no existe, es de otra organizacion\
+            \ o la organizacion de la ruta no es la del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`biblioteca-deshabilitada`'
       summary: Detalle de un libro
       tags:
       - Biblioteca
     put:
-      description: "Con `version`; si cambio, 409 concurrent-modification."
+      description: "Con `version`; si cambio, 409 concurrent-modification. La fila\
+        \ de un reemplazo en curso no se edita: 409 libro-en-proceso."
       operationId: editarLibro
       parameters:
       - in: path
@@ -19455,7 +19631,46 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/LibroResponse"
-          description: OK
+          description: Libro editado
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Titulo vacio o campos mas largos que el maximo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: el libro no existe, es de otra organizacion\
+            \ o la organizacion de la ruta no es la del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`biblioteca-deshabilitada`, `concurrent-modification` o `libro-en-proceso`\
+            \ (es un reemplazo en curso)"
       summary: "Editar titulo, autores, edicion y area"
       tags:
       - Biblioteca
@@ -19484,7 +19699,38 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/LibroResponse"
-          description: OK
+          description: Libro activo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: el libro no existe, es de otra organizacion\
+            \ o la organizacion de la ruta no es la del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`biblioteca-deshabilitada`, `libro-duplicado` (otro libro\
+            \ activo tiene ese contenido) o `libro-en-proceso` (es un reemplazo en\
+            \ curso)"
       summary: Activar un libro dado de baja
       tags:
       - Biblioteca
@@ -19513,7 +19759,37 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/LibroResponse"
-          description: OK
+          description: Libro dado de baja
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: el libro no existe, es de otra organizacion\
+            \ o la organizacion de la ruta no es la del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`biblioteca-deshabilitada` o `libro-en-proceso` (es un reemplazo
+            en curso o tiene uno)'
       summary: Dar de baja un libro sin borrarlo
       tags:
       - Biblioteca
@@ -19552,7 +19828,7 @@ paths:
               required:
               - archivo
       responses:
-        "200":
+        "202":
           content:
             application/json:
               schema:
@@ -19560,7 +19836,46 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/LibroResponse"
-          description: OK
+          description: "Reemplazo creado, PENDIENTE de procesar"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`libro-archivo-no-aceptado` o sin declaracion de derechos'
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: el libro no existe, es de otra organizacion\
+            \ o la organizacion de la ruta no es la del contexto, o esta dado de baja"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`biblioteca-deshabilitada`, `libro-duplicado` o `libro-en-proceso`\
+            \ (el original se esta procesando o ya tiene un reemplazo en curso)"
       summary: Subir un archivo que reemplaza al libro
       tags:
       - Biblioteca
@@ -19581,7 +19896,7 @@ paths:
           type: integer
           format: int64
       responses:
-        "200":
+        "202":
           content:
             application/json:
               schema:
@@ -19589,7 +19904,37 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/LibroResponse"
-          description: OK
+          description: "Libro de vuelta en la cola, PENDIENTE"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: el libro no existe, es de otra organizacion\
+            \ o la organizacion de la ruta no es la del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`biblioteca-deshabilitada` o `libro-en-proceso` (ya se esta
+            procesando o tiene un reemplazo en curso)'
       summary: Volver a procesar un libro
       tags:
       - Biblioteca
@@ -36517,6 +36862,7 @@ components:
           description: "Version leida, para el control optimista"
       required:
       - titulo
+      - version
     LibroDetalleResponse:
       type: object
       description: "Detalle de un libro: datos, fragmentos y los marcados como sospechosos"

@@ -9,5 +9,6 @@ public record LibroDatosRequest(
 		@Schema(maxLength = 500) String autores,
 		@Schema(maxLength = 100) String edicion,
 		@Schema(maxLength = 100) String area,
-		@Schema(description = "Version leida, para el control optimista") long version) {
+		@Schema(requiredMode = Schema.RequiredMode.REQUIRED,
+				description = "Version leida, para el control optimista") long version) {
 }
