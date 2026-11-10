@@ -5,6 +5,7 @@ import com.akine.knowledge.application.LibroService.ArchivoSubido;
 import com.akine.knowledge.application.LibroService.DatosDeLibro;
 
 import com.akine.knowledge.domain.exception.LibroDuplicadoException;
+import com.akine.knowledge.domain.exception.LibroEnProcesoException;
 import com.akine.knowledge.domain.port.BibliotecaVersionPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -36,8 +38,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 		"akine.archivos.base-dir=target/test-archivos",
 		"akine.biblioteca.worker.enabled=false"})
 class LibroConcurrenteIT {
-
-	private static final OperatingActor ACTOR = new OperatingActor(99L, false, null);
 
 	@Autowired LibroService service;
 	@Autowired JdbcTemplate jdbc;
@@ -103,7 +103,7 @@ class LibroConcurrenteIT {
 		assertThat(reemplazo.reemplazaLibroId()).isEqualTo(original.id());
 		// un segundo reemplazo mientras hay uno pendiente
 		assertThatThrownBy(() -> service.reemplazar(actor, orgId, original.id(), pdf("otro"), true))
-				.isInstanceOf(com.akine.knowledge.domain.exception.LibroEnProcesoException.class);
+				.isInstanceOf(LibroEnProcesoException.class);
 
 		// desactivar y volver a subir el mismo contenido: activar el viejo choca con el nuevo
 		LibroView uno = service.subir(actor, orgId, DATOS, pdf("repetido"), true);
@@ -118,5 +118,70 @@ class LibroConcurrenteIT {
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM libro WHERE id IN (?, ?)", Integer.class,
 				original.id(), reemplazo.id())).isZero();
 		assertThat(version.actual(orgId)).isGreaterThan(antes);
+	}
+
+	@Test
+	void dos_reemplazos_simultaneos_del_mismo_libro_dan_uno_202_y_un_libro_en_proceso() throws Exception {
+		LibroView original = service.subir(actor, orgId, DATOS, pdf("base"), true);
+		jdbc.update("UPDATE libro SET estado = 'LISTO' WHERE id = ?", original.id());
+		ExecutorService hilos = Executors.newFixedThreadPool(2);
+		try {
+			CyclicBarrier salida = new CyclicBarrier(2);
+			List<Future<Object>> futuros = new ArrayList<>();
+			for (String cuerpo : List.of("nuevo-a", "nuevo-b")) {
+				futuros.add(hilos.submit(() -> {
+					salida.await();
+					try {
+						return service.reemplazar(actor, orgId, original.id(), pdf(cuerpo), true);
+					} catch (Exception e) {
+						return e;
+					}
+				}));
+			}
+			List<Object> resultados = List.of(futuros.get(0).get(60, TimeUnit.SECONDS),
+					futuros.get(1).get(60, TimeUnit.SECONDS));
+			assertThat(resultados.stream().filter(LibroView.class::isInstance)).hasSize(1);
+			assertThat(resultados.stream().filter(LibroEnProcesoException.class::isInstance))
+					.as("%s", resultados).hasSize(1);
+		} finally {
+			hilos.shutdownNow();
+		}
+	}
+
+	@Test
+	void activar_un_libro_cuyo_hash_es_el_de_un_reemplazo_pendiente_es_409() {
+		LibroView a = service.subir(actor, orgId, DATOS, pdf("A"), true);
+		service.desactivar(actor, orgId, a.id());
+		LibroView x = service.subir(actor, orgId, DATOS, pdf("X"), true);
+		jdbc.update("UPDATE libro SET estado = 'LISTO' WHERE id = ?", x.id());
+		LibroView reemplazo = service.reemplazar(actor, orgId, x.id(), pdf("A"), true);
+
+		assertThatThrownBy(() -> service.activar(actor, orgId, a.id()))
+				.isInstanceOfSatisfying(LibroDuplicadoException.class,
+						e -> assertThat(e.getLibroId()).isEqualTo(reemplazo.id()));
+	}
+
+	@Test
+	void un_reemplazo_en_error_no_bloquea_y_se_elimina_con_auditoria_de_titulo_y_hash() {
+		LibroView original = service.subir(actor, orgId, DATOS, pdf("orig"), true);
+		jdbc.update("UPDATE libro SET estado = 'LISTO' WHERE id = ?", original.id());
+		LibroView fallido = service.reemplazar(actor, orgId, original.id(), pdf("r1"), true);
+		jdbc.update("UPDATE libro SET estado = 'ERROR' WHERE id = ?", fallido.id());
+
+		// el original se puede reprocesar y el reemplazo en ERROR queda como esta
+		long antes = version.actual(orgId);
+		assertThat(service.reprocesar(actor, orgId, original.id()).estado().name()).isEqualTo("PENDIENTE");
+		assertThat(version.actual(orgId)).isGreaterThan(antes);
+		jdbc.update("UPDATE libro SET estado = 'LISTO' WHERE id = ?", original.id());
+
+		LibroView nuevo = service.reemplazar(actor, orgId, original.id(), pdf("r2"), true);
+		assertThat(nuevo.reemplazaLibroId()).isEqualTo(original.id());
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM libro WHERE id = ?", Integer.class,
+				fallido.id())).isZero();
+		String detalles = jdbc.queryForObject("""
+				SELECT CAST(details AS CHAR) FROM audit_event
+				 WHERE event_type = 'LIBRO_ELIMINADO' AND entity_id = ?
+				""", String.class, fallido.id());
+		assertThat(detalles).contains("titulo").contains("hashSha256").contains("reemplazo-fallido");
 	}
 }

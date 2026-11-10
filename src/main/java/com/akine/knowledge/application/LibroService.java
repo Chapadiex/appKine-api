@@ -35,6 +35,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -210,7 +211,8 @@ public class LibroService {
 
 	/**
 	 * Sube un archivo nuevo que reemplazara a {@code libroId}. El original sigue vigente hasta
-	 * que el reemplazo quede LISTO (eso lo hace el worker).
+	 * que el reemplazo quede LISTO (eso lo hace el worker). Un reemplazo anterior en ERROR se
+	 * elimina antes de crear este.
 	 */
 	public LibroView reemplazar(
 			OperatingActor actor, long orgId, long libroId, ArchivoSubido archivo,
@@ -218,32 +220,47 @@ public class LibroService {
 		acceso.exigir(actor, orgId);
 		exigirDeclaracion(declaracionDerechos);
 		Contenido contenido = validar(archivo);
-		Libro original = transaccion.execute(status -> {
-			Libro libro = cargar(libroId, orgId);
-			if (!libro.isActivo()) {
-				throw new LibroNoEncontradoException();
-			}
-			exigirQuieto(libro);
-			if (libros.reemplazoPendienteDe(libroId).isPresent()) {
-				throw new LibroEnProcesoException();
-			}
-			return libro;
-		});
-		DatosDeLibro datos = new DatosDeLibro(
-				original.getTitulo(), original.getAutores(), original.getEdicion(), original.getArea());
-		return guardarNuevo(actor, orgId, datos, archivo, contenido, libroId,
+		return guardarNuevo(actor, orgId, null, archivo, contenido, libroId,
 				AuditEvents.LIBRO_REEMPLAZADO);
 	}
 
+	/**
+	 * Alta y reemplazo comparten el camino: bajo el lock de la organizacion se comprueba que el
+	 * hash no este en uso (un reemplazo en curso tiene hash_activo NULL y el unique no lo ve) y
+	 * se inserta. uk_libro_hash_activo y uk_libro_reemplaza quedan de respaldo.
+	 */
 	private LibroView guardarNuevo(
-			OperatingActor actor, long orgId, DatosDeLibro datos, ArchivoSubido archivo,
+			OperatingActor actor, long orgId, DatosDeLibro datosAlta, ArchivoSubido archivo,
 			Contenido contenido, Long reemplazaLibroId, String evento) {
 		// Primero el archivo, despues la fila; si la fila falla el archivo se borra.
 		String clave = UUID.randomUUID().toString().replace("-", "") + ".pdf";
 		almacen.guardar(ESPACIO, clave, archivo.contenido());
+		// La fila-lock se crea aparte: crearla dentro de la transaccion que la bloquea da deadlock.
+		transaccion.executeWithoutResult(status -> version.asegurarFila(orgId));
+		List<String> aBorrar = new ArrayList<>();
 		try {
-			return transaccionLecturaConfirmada.execute(status -> {
-				libros.activoPorHash(orgId, contenido.hash()).ifPresent(existente -> {
+			LibroView creado = transaccionLecturaConfirmada.execute(status -> {
+				aBorrar.clear();
+				version.bloquear(orgId);
+				DatosDeLibro datos = datosAlta;
+				if (reemplazaLibroId != null) {
+					Libro original = cargar(reemplazaLibroId, orgId);
+					if (!original.isActivo()) {
+						throw new LibroNoEncontradoException();
+					}
+					exigirQuieto(original);
+					if (libros.reemplazoPendienteDe(reemplazaLibroId).isPresent()) {
+						throw new LibroEnProcesoException();
+					}
+					libros.reemplazoDe(reemplazaLibroId).ifPresent(fallido -> {
+						eliminarFila(actor, fallido, "reemplazo-fallido");
+						aBorrar.add(fallido.getStorageKey());
+					});
+					libros.flush();
+					datos = new DatosDeLibro(original.getTitulo(), original.getAutores(),
+							original.getEdicion(), original.getArea());
+				}
+				libros.hashEnUso(orgId, contenido.hash(), -1L).ifPresent(existente -> {
 					throw new LibroDuplicadoException(existente.getId());
 				});
 				Libro nuevo = libros.guardarYSincronizar(new Libro(
@@ -256,13 +273,18 @@ public class LibroService {
 								: Map.of("reemplazaLibroId", String.valueOf(reemplazaLibroId)));
 				return LibroView.de(nuevo);
 			});
+			aBorrar.forEach(this::borrarArchivo);
+			return creado;
 		} catch (DataIntegrityViolationException choque) {
 			borrarArchivo(clave);
-			// Otra alta del mismo contenido gano la carrera: ya hay un libro activo con ese hash.
+			// Respaldo de la base: otro libro con ese hash, u otro reemplazo del mismo original.
 			Optional<Libro> ganador = transaccionLecturaConfirmada
-					.execute(status -> libros.activoPorHash(orgId, contenido.hash()));
+					.execute(status -> libros.hashEnUso(orgId, contenido.hash(), -1L));
 			if (ganador != null && ganador.isPresent()) {
 				throw new LibroDuplicadoException(ganador.get().getId());
+			}
+			if (reemplazaLibroId != null) {
+				throw new LibroEnProcesoException();
 			}
 			throw choque;
 		} catch (RuntimeException falla) {
@@ -289,7 +311,11 @@ public class LibroService {
 		});
 	}
 
-	/** Vuelve a procesar el libro: PENDIENTE, progreso 0. Los fragmentos quedan hasta el worker. */
+	/**
+	 * Vuelve a procesar el libro: PENDIENTE, progreso 0. Los fragmentos quedan hasta el worker.
+	 * Sale de la busqueda mientras tanto, asi que avanza la version. Un reemplazo en ERROR no lo
+	 * impide (se deja como esta).
+	 */
 	public LibroView reprocesar(OperatingActor actor, long orgId, long libroId) {
 		acceso.exigir(actor, orgId);
 		return transaccion.execute(status -> {
@@ -301,21 +327,27 @@ public class LibroService {
 			String antes = libro.getEstado().name();
 			libro.reencolar();
 			Libro guardado = libros.guardarYSincronizar(libro);
+			version.avanzar(orgId);
 			auditar(actor, AuditEvents.LIBRO_REPROCESADO, guardado, antes,
 					guardado.getEstado().name(), Map.of());
 			return LibroView.de(guardado);
 		});
 	}
 
-	/** Reactiva un libro. 409 {@code libro-duplicado} si otro activo tiene el mismo contenido. */
+	/** Reactiva un libro. 409 libro-duplicado si el contenido ya esta en uso. */
 	public LibroView activar(OperatingActor actor, long orgId, long libroId) {
 		acceso.exigir(actor, orgId);
+		transaccion.executeWithoutResult(status -> version.asegurarFila(orgId));
 		try {
-			return transaccion.execute(status -> {
+			return transaccionLecturaConfirmada.execute(status -> {
+				version.bloquear(orgId);
 				Libro libro = cargar(libroId, orgId);
 				if (libro.isActivo()) {
 					return LibroView.de(libro);
 				}
+				libros.hashEnUso(orgId, libro.getHashSha256(), libroId).ifPresent(otro -> {
+					throw new LibroDuplicadoException(otro.getId());
+				});
 				libro.activar();
 				Libro guardado = libros.guardarYSincronizar(libro);
 				version.avanzar(orgId);
@@ -325,7 +357,7 @@ public class LibroService {
 			});
 		} catch (DataIntegrityViolationException choque) {
 			Optional<Libro> otro = transaccionLecturaConfirmada.execute(status ->
-					libros.activoPorHash(orgId, cargar(libroId, orgId).getHashSha256()));
+					libros.hashEnUso(orgId, cargar(libroId, orgId).getHashSha256(), libroId));
 			if (otro != null && otro.isPresent()) {
 				throw new LibroDuplicadoException(otro.get().getId());
 			}
@@ -350,29 +382,37 @@ public class LibroService {
 	}
 
 	/**
-	 * Elimina el libro en cualquier estado, junto con su reemplazo pendiente (que apunta a el con
-	 * una FK sin accion de borrado) en la misma transaccion; despues borra los archivos.
+	 * Elimina el libro en cualquier estado, junto con su reemplazo (en el estado que sea: apunta
+	 * a el con una FK sin accion de borrado) en la misma transaccion; despues borra los archivos.
 	 */
 	public void eliminar(OperatingActor actor, long orgId, long libroId) {
 		acceso.exigir(actor, orgId);
 		List<String> claves = transaccion.execute(status -> {
 			Libro libro = cargar(libroId, orgId);
 			List<String> aBorrar = new ArrayList<>();
-			libros.reemplazoPendienteDe(libroId).ifPresent(reemplazo -> {
+			libros.reemplazoDe(libroId).ifPresent(reemplazo -> {
 				aBorrar.add(reemplazo.getStorageKey());
-				auditar(actor, AuditEvents.LIBRO_ELIMINADO, reemplazo,
-						reemplazo.estadoVisible().name(), null,
-						Map.of("motivo", "reemplazo-pendiente"));
-				libros.delete(reemplazo);
+				eliminarFila(actor, reemplazo, "reemplazo-pendiente");
 			});
 			aBorrar.add(libro.getStorageKey());
-			auditar(actor, AuditEvents.LIBRO_ELIMINADO, libro, libro.estadoVisible().name(), null,
-					Map.of());
-			libros.delete(libro);
+			eliminarFila(actor, libro, null);
 			version.avanzar(orgId);
 			return aBorrar;
 		});
 		claves.forEach(this::borrarArchivo);
+	}
+
+	/** Audita (titulo y hash, sin contenido) y borra la fila; los fragmentos cascadean. */
+	private void eliminarFila(OperatingActor actor, Libro libro, String motivo) {
+		Map<String, String> detalles = new LinkedHashMap<>();
+		detalles.put("titulo", libro.getTitulo());
+		detalles.put("hashSha256", libro.getHashSha256());
+		if (motivo != null) {
+			detalles.put("motivo", motivo);
+		}
+		auditar(actor, AuditEvents.LIBRO_ELIMINADO, libro, libro.estadoVisible().name(), null,
+				detalles);
+		libros.delete(libro);
 	}
 
 	// ---------------------------------------------------------------- privados

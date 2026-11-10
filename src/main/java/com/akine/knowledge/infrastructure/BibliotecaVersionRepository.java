@@ -22,6 +22,21 @@ class BibliotecaVersionRepository implements BibliotecaVersionPort {
 	}
 
 	@Override
+	public void asegurarFila(long orgId) {
+		jdbc.update("""
+				INSERT INTO biblioteca_version (organization_id, version) VALUES (?, 0)
+				ON DUPLICATE KEY UPDATE version = version
+				""", orgId);
+	}
+
+	@Override
+	public void bloquear(long orgId) {
+		jdbc.query("SELECT version FROM biblioteca_version WHERE organization_id = ? FOR UPDATE",
+				rs -> {
+				}, orgId);
+	}
+
+	@Override
 	public long actual(long orgId) {
 		Long v = jdbc.query("SELECT version FROM biblioteca_version WHERE organization_id = ?",
 				rs -> rs.next() ? rs.getLong(1) : 0L, orgId);

@@ -51,6 +51,7 @@ CREATE TABLE libro
 
     CONSTRAINT pk_libro PRIMARY KEY (id),
     CONSTRAINT uk_libro_hash_activo UNIQUE (organization_id, hash_activo),
+    CONSTRAINT uk_libro_reemplaza UNIQUE (reemplaza_libro_id),
     CONSTRAINT fk_libro_organization FOREIGN KEY (organization_id) REFERENCES organization (id),
     CONSTRAINT fk_libro_reemplaza FOREIGN KEY (reemplaza_libro_id) REFERENCES libro (id),
     CONSTRAINT ck_libro_estado CHECK (estado IN ('PENDIENTE', 'PROCESANDO', 'LISTO', 'ERROR')),

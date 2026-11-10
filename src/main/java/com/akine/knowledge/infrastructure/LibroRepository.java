@@ -45,14 +45,28 @@ public interface LibroRepository extends JpaRepository<Libro, Long>, LibroReposi
 	}
 
 	@Override
-	@Query("select l from Libro l where l.organizationId = :orgId and l.hashSha256 = :hash and l.activo = true")
-	Optional<Libro> activoPorHash(@Param("orgId") long orgId, @Param("hash") String hash);
+	@Query("""
+			select l from Libro l
+			 where l.organizationId = :orgId and l.hashSha256 = :hash and l.id <> :excluir
+			   and (l.activo = true
+			        or (l.reemplazaLibroId is not null
+			            and l.estado <> com.akine.knowledge.domain.EstadoLibro.ERROR))
+			""")
+	Optional<Libro> hashEnUso(@Param("orgId") long orgId, @Param("hash") String hash,
+			@Param("excluir") long excluirLibroId);
 
 	@Override
 	@Query("select l from Libro l where l.reemplazaLibroId = :libroId")
+	Optional<Libro> reemplazoDe(@Param("libroId") long libroId);
+
+	@Override
+	@Query("""
+			select l from Libro l
+			 where l.reemplazaLibroId = :libroId
+			   and l.estado <> com.akine.knowledge.domain.EstadoLibro.ERROR
+			""")
 	Optional<Libro> reemplazoPendienteDe(@Param("libroId") long libroId);
 
-	/** Query nativa por SKIP LOCKED, como NotificationOutboxRepository. */
 	@Query(value = """
 			SELECT * FROM libro
 			 WHERE estado = 'PENDIENTE'

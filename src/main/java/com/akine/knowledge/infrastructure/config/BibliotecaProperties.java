@@ -12,8 +12,7 @@ public record BibliotecaProperties(
 		@DefaultValue Troceo troceo,
 		@DefaultValue Busqueda busqueda,
 		@DefaultValue Modelo modelo,
-		@DefaultValue Worker worker,
-		@DefaultValue("./var/biblioteca") String baseDir) {
+		@DefaultValue Worker worker) {
 
 	public record Troceo(
 			@DefaultValue("1000") int tamano,

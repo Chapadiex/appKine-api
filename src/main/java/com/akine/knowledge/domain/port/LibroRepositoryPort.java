@@ -26,10 +26,19 @@ public interface LibroRepositoryPort {
 	/** Guarda y fuerza el INSERT/UPDATE ya, para que un unique violado salte aca. */
 	Libro guardarYSincronizar(Libro libro);
 
-	/** Libro activo de la organizacion con ese SHA-256 (incluye reemplazos pendientes). */
-	Optional<Libro> activoPorHash(long orgId, String hashSha256);
+	/**
+	 * Libro de la organizacion con ese SHA-256 que esta activo o es un reemplazo en curso (no
+	 * ERROR), salvo {@code excluirLibroId}. Solo es confiable bajo el lock de la organizacion.
+	 */
+	Optional<Libro> hashEnUso(long orgId, String hashSha256, long excluirLibroId);
 
-	/** El libro que reemplaza (pendiente) al indicado, si hay uno. */
+	/** Fuerza el SQL pendiente (un DELETE antes de un INSERT que depende de el). */
+	void flush();
+
+	/** El reemplazo del libro en cualquier estado, si hay uno. */
+	Optional<Libro> reemplazoDe(long libroId);
+
+	/** El reemplazo en curso (no ERROR) del libro, si hay uno. */
 	Optional<Libro> reemplazoPendienteDe(long libroId);
 
 	/** El libro PENDIENTE mas viejo, bloqueado con SKIP LOCKED. Exige transaccion abierta. */

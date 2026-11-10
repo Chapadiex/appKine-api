@@ -27,6 +27,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -79,7 +80,7 @@ class LibroServiceTest {
 	void mismo_hash_segunda_alta_es_duplicada() {
 		LibroView primero = service.subir(ACTOR, 1L, DATOS, pdf("x"), true);
 		assertThat(primero.estado()).isEqualTo(com.akine.knowledge.domain.EstadoVisibleLibro.PENDIENTE);
-		when(libros.activoPorHash(any(Long.class), anyString())).thenReturn(Optional.of(libro(5, EstadoLibro.PENDIENTE)));
+		when(libros.hashEnUso(anyLong(), anyString(), anyLong())).thenReturn(Optional.of(libro(5, EstadoLibro.PENDIENTE)));
 
 		assertThatThrownBy(() -> service.subir(ACTOR, 1L, DATOS, pdf("x"), true))
 				.isInstanceOf(LibroDuplicadoException.class)
@@ -123,7 +124,8 @@ class LibroServiceTest {
 		when(libros.reemplazoPendienteDe(11L)).thenReturn(Optional.of(libro(12, EstadoLibro.PENDIENTE)));
 		assertThatThrownBy(() -> service.reemplazar(ACTOR, 1L, 11L, pdf("y"), true))
 				.isInstanceOf(LibroEnProcesoException.class);
-		verify(almacen, never()).guardar(anyString(), anyString(), any());
+		// el archivo se escribe antes de las comprobaciones y se borra al fallar
+		verify(almacen, org.mockito.Mockito.times(2)).borrar(anyString(), anyString());
 	}
 
 	@Test
@@ -132,7 +134,7 @@ class LibroServiceTest {
 		Libro original = libro(20, EstadoLibro.PROCESANDO);
 		Libro reemplazo = libro(21, EstadoLibro.PENDIENTE);
 		when(libros.findByIdAndOrganization(20L, 1L)).thenReturn(Optional.of(original));
-		when(libros.reemplazoPendienteDe(20L)).thenReturn(Optional.of(reemplazo));
+		when(libros.reemplazoDe(20L)).thenReturn(Optional.of(reemplazo));
 
 		service.eliminar(ACTOR, 1L, 20L);
 
