@@ -25,6 +25,7 @@
 		<bouncycastle.version>1.86</bouncycastle.version>
 		<greenmail.version>2.1.15</greenmail.version>
 		<dependency-check.version>12.2.2</dependency-check.version>
+		<pdfbox.version>3.0.8</pdfbox.version>
 		<akine.it.procesos>2</akine.it.procesos>
 		<!-- Parches de seguridad por encima de lo que gestiona Spring Boot 4.1.1 (G-6, 09/10/2026).
 		     Tomcat 11.0.24: tres CVE criticos (CVE-2026-65905, -65182, -68525), corregidos en
@@ -80,6 +81,13 @@
 			<groupId>com.mysql</groupId>
 			<artifactId>mysql-connector-j</artifactId>
 			<scope>runtime</scope>
+		</dependency>
+
+		<!-- Extraccion de texto de la biblioteca de libros (modulo knowledge). -->
+		<dependency>
+			<groupId>org.apache.pdfbox</groupId>
+			<artifactId>pdfbox</artifactId>
+			<version>${pdfbox.version}</version>
 		</dependency>
 
 		<!-- ===== Seguridad =====
