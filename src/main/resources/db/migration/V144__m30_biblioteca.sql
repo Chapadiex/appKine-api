@@ -78,7 +78,8 @@ CREATE TABLE libro_fragmento
     CONSTRAINT pk_libro_fragmento PRIMARY KEY (id),
     CONSTRAINT fk_libro_fragmento_organization FOREIGN KEY (organization_id) REFERENCES organization (id),
     CONSTRAINT fk_libro_fragmento_libro FOREIGN KEY (libro_id) REFERENCES libro (id) ON DELETE CASCADE,
-    INDEX ix_libro_fragmento_libro (organization_id, libro_id),
+    INDEX ix_libro_fragmento_libro (libro_id, organization_id),
+    INDEX ix_libro_fragmento_organizacion (organization_id, modelo_embeddings),
     INDEX ix_libro_fragmento_modelo (modelo_embeddings),
     FULLTEXT INDEX ft_libro_fragmento_texto (texto)
 );

@@ -154,4 +154,19 @@ class BusquedaServiceTest {
 		verify(almacen).porPalabras(1L, "ok", 5);
 		assertThatThrownBy(() -> service(true).buscar(0L, "ok", 5)).isInstanceOf(IllegalArgumentException.class);
 	}
+
+	@Test
+	@DisplayName("sin ningun vector del modelo vigente cae a palabras")
+	void sin_vectores_del_modelo_cae_a_palabras() {
+		when(proveedor.getIfAvailable()).thenReturn(modelo);
+		when(almacen.porVector(eq(1L), eq("m"), any(), eq(5))).thenReturn(List.of());
+		when(almacen.porPalabras(1L, "lumbalgia", 5)).thenReturn(List.of(c(10, "0.6000"), c(11, "0.5500")));
+
+		ResultadoBusqueda r = service(true).buscar(ACTOR, 1L, "lumbalgia", 5);
+
+		assertThat(r.camino()).isEqualTo(CaminoBusqueda.PALABRAS);
+		assertThat(r.corte()).isEqualTo(0.5);
+		assertThat(r.pasajes()).hasSize(2);
+		assertThat(r.alcanza()).isTrue();
+	}
 }

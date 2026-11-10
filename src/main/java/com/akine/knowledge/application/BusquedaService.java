@@ -25,8 +25,9 @@ import java.util.stream.Collectors;
 /**
  * Busqueda en la biblioteca de una organizacion (M30).
  *
- * <p>Camino {@code VECTOR} con el modelo de embeddings vigente; si el modelo no esta o falla al
- * calcular la consulta, camino {@code PALABRAS} (texto completo de MySQL). Cada camino tiene su
+ * <p>Camino {@code VECTOR} con el modelo de embeddings vigente; si el modelo no esta, falla al
+ * calcular la consulta o no hay ningun vector de ese modelo en la organizacion (por ejemplo
+ * justo despues de cambiar de modelo), camino {@code PALABRAS} (texto completo de MySQL). Cada camino tiene su
  * corte, porque sus puntajes no son comparables.
  *
  * <p>No se audita cada consulta: desde la API es la prueba del administrador sobre su propia
@@ -99,6 +100,12 @@ public class BusquedaService implements BibliotecaDirectory {
 				coincidencias = almacen.porVector(orgId, m.id(), vector, k);
 				camino = CaminoBusqueda.VECTOR;
 			}
+		}
+		if (coincidencias != null && coincidencias.isEmpty()) {
+			// Ningun vector del modelo vigente (recien cambiado, o el reindexado no termino):
+			// las palabras alcanzan tambien a los pedazos sin vector.
+			coincidencias = null;
+			camino = CaminoBusqueda.PALABRAS;
 		}
 		if (coincidencias == null) {
 			coincidencias = almacen.porPalabras(orgId, texto, k);

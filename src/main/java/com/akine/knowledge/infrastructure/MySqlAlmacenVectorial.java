@@ -14,6 +14,7 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -63,6 +64,8 @@ public class MySqlAlmacenVectorial implements AlmacenVectorial {
 	private final long topeBytes;
 	private final LinkedHashMap<Long, Entrada> cache = new LinkedHashMap<>(16, 0.75f, true);
 	private long bytesEnUso;
+	/** Organizaciones que superan solas el tope, con la version ya avisada. Bajo el lock de cache. */
+	private final Map<Long, Long> excedidas = new HashMap<>();
 
 	public MySqlAlmacenVectorial(
 			JdbcTemplate jdbc, BibliotecaVersionPort versiones, BibliotecaProperties properties) {
@@ -125,6 +128,11 @@ public class MySqlAlmacenVectorial implements AlmacenVectorial {
 				bytesEnUso -= actual.bytes();
 			}
 			if (entrada.bytes() > topeBytes) {
+				// Un aviso por (organizacion, version): sin esto se repetia en cada busqueda.
+				Long avisada = excedidas.put(orgId, entrada.version());
+				if (avisada != null && avisada == entrada.version()) {
+					return;
+				}
 				log.warn("Los vectores de la organizacion {} ocupan {} bytes y superan el tope de cache ({}): no se cachean y cada busqueda los recarga",
 						orgId, entrada.bytes(), topeBytes);
 				return;

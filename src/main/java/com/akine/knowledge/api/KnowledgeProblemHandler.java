@@ -24,7 +24,10 @@ public class KnowledgeProblemHandler {
 				"Biblioteca deshabilitada", exception.getMessage());
 	}
 
-	/** Inexistente, de otra organizacion o sin contexto: 404, nunca 403. */
+	/**
+	 * Inexistente o de otra organizacion (tambien la de la ruta distinta de la del contexto): 404,
+	 * nunca 403. Sin contexto no llega aca: {@code AccessDeniedException}, 403.
+	 */
 	@ExceptionHandler(LibroNoEncontradoException.class)
 	public ProblemDetail handleNoEncontrado(LibroNoEncontradoException exception) {
 		return problema(HttpStatus.NOT_FOUND, ProblemType.LIBRO_NO_ENCONTRADO,

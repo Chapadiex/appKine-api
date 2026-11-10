@@ -57,13 +57,27 @@ COPY --from=build /build/extracted/application/ ./
 # modelo ONNX cuantizado y su tokenizer.json quedan en /opt/akine/modelos/e5-base/ y se activan con
 # AKINE_BIBLIOTECA_ENABLED=true, AKINE_BIBLIOTECA_MODELO_RUTAMODELO=/opt/akine/modelos/e5-base/model.onnx
 # y AKINE_BIBLIOTECA_MODELO_RUTATOKENIZER=/opt/akine/modelos/e5-base/tokenizer.json.
+# Pasar una sola de las dos URL corta el build: antes se salteaba en silencio y la imagen salia sin
+# modelo. Opcionalmente, AKINE_BIBLIOTECA_MODELO_SHA256 y AKINE_BIBLIOTECA_TOKENIZER_SHA256 fijan el
+# hash esperado de cada archivo y el build falla si no coincide (sha256sum -c).
 ARG AKINE_BIBLIOTECA_MODELO_URL=""
 ARG AKINE_BIBLIOTECA_TOKENIZER_URL=""
+ARG AKINE_BIBLIOTECA_MODELO_SHA256=""
+ARG AKINE_BIBLIOTECA_TOKENIZER_SHA256=""
 RUN if [ -n "$AKINE_BIBLIOTECA_MODELO_URL" ] && [ -n "$AKINE_BIBLIOTECA_TOKENIZER_URL" ]; then \
 		mkdir -p /opt/akine/modelos/e5-base \
 		&& curl -fsSL "$AKINE_BIBLIOTECA_MODELO_URL" -o /opt/akine/modelos/e5-base/model.onnx \
 		&& curl -fsSL "$AKINE_BIBLIOTECA_TOKENIZER_URL" -o /opt/akine/modelos/e5-base/tokenizer.json \
+		&& if [ -n "$AKINE_BIBLIOTECA_MODELO_SHA256" ]; then \
+			echo "$AKINE_BIBLIOTECA_MODELO_SHA256  /opt/akine/modelos/e5-base/model.onnx" | sha256sum -c -; \
+		fi \
+		&& if [ -n "$AKINE_BIBLIOTECA_TOKENIZER_SHA256" ]; then \
+			echo "$AKINE_BIBLIOTECA_TOKENIZER_SHA256  /opt/akine/modelos/e5-base/tokenizer.json" | sha256sum -c -; \
+		fi \
 		&& chmod -R a+rX /opt/akine/modelos; \
+	elif [ -n "$AKINE_BIBLIOTECA_MODELO_URL" ] || [ -n "$AKINE_BIBLIOTECA_TOKENIZER_URL" ]; then \
+		echo "Faltan datos del modelo de la biblioteca: hay que pasar AKINE_BIBLIOTECA_MODELO_URL y AKINE_BIBLIOTECA_TOKENIZER_URL juntas" >&2; \
+		exit 1; \
 	fi
 
 # Raiz de los adjuntos administrativos (./var/adjuntos) y clinicos (./var/adjuntos-clinicos).
