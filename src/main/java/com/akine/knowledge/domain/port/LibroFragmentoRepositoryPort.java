@@ -20,6 +20,9 @@ public interface LibroFragmentoRepositoryPort {
 
 	long contarPorLibro(long libroId);
 
+	/** Fragmentos del libro que ya tienen vector. */
+	long contarConVectorPorLibro(long libroId);
+
 	/** Fragmentos marcados sospechosos, por orden. */
 	List<LibroFragmento> sospechososDe(long libroId);
 }

@@ -19867,7 +19867,7 @@ Permitir que cada organización administre su propia biblioteca de bibliografía
 ## 4. Reglas de negocio
 
 - **RN-M30-001:** La biblioteca es de la organización. Ningún libro, pedazo ni metadato se comparte entre organizaciones, y toda consulta se acota por la organización del contexto antes de ordenar.
-- **RN-M30-002:** El mismo archivo (mismo hash SHA-256) no puede cargarse dos veces entre los libros activos de una organización.
+- **RN-M30-002:** El mismo archivo (mismo hash SHA-256) no puede cargarse dos veces entre los libros activos de una organización. Las cargas simultáneas del mismo archivo se serializan por el unique sobre el hash activo: una gana y la otra recibe 409 `libro-duplicado`.
 - **RN-M30-003:** Un pedazo sospechoso de contener instrucciones escondidas para un modelo de lenguaje se guarda marcado y nunca se recupera en una búsqueda.
 - **RN-M30-004:** La búsqueda vectorial compara únicamente vectores generados por el modelo de embeddings vigente. Los pedazos sin vector vigente se encuentran por palabras hasta que el reindexado los complete.
 - **RN-M30-005:** Un reemplazo no deja hueco: el libro anterior sigue respondiendo hasta que el nuevo queda `LISTO`, y recién entonces se desactiva, en la misma transacción. Reprocesar tampoco deja un libro mitad viejo y mitad nuevo.
@@ -20154,19 +20154,19 @@ Permitir que cada organización administre su propia biblioteca de bibliografía
 **Descripción:** Borrar definitivamente un libro, su archivo y sus pedazos.
 
 **Precondiciones generales:**
-- Usuario autenticado; actor con `biblioteca:manage`; libro de la organización que no esté `PROCESANDO`.
+- Usuario autenticado; actor con `biblioteca:manage`; libro de la organización, en cualquier estado.
 
 **Disparador:**
 - El administrador confirma "Eliminar".
 
 **Flujo principal:**
-1. El sistema valida permiso, organización y estado.
-2. En una transacción borra los pedazos y la fila del libro, y avanza la versión de búsqueda.
+1. El sistema valida permiso y organización.
+2. En una transacción borra, si lo hay, el reemplazo pendiente del libro (con sus pedazos), luego los pedazos y la fila del libro, y avanza la versión de búsqueda.
 3. Borra el archivo del almacenamiento al confirmar la transacción.
 4. Audita (con título y hash) y responde 204.
 
 **Flujos alternativos / excepciones:**
-- Libro `PROCESANDO`: `libro-en-proceso`.
+- Un libro `PENDIENTE` o `PROCESANDO` también se elimina: el procesamiento en curso lo detecta y descarta su resultado.
 - Si falla el borrado del archivo tras el commit, se registra para limpieza posterior y el libro ya no existe para el usuario.
 - Eliminar un libro con un reemplazo pendiente descarta también el reemplazo.
 

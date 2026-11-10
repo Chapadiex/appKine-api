@@ -61,6 +61,11 @@ class LibroFragmentoRepository implements LibroFragmentoRepositoryPort {
 	}
 
 	@Override
+	public long contarConVectorPorLibro(long libroId) {
+		return jpa.countByLibroIdAndVectorIsNotNull(libroId);
+	}
+
+	@Override
 	public List<LibroFragmento> sospechososDe(long libroId) {
 		return jpa.findByLibroIdAndSospechosoTrueOrderByOrden(libroId);
 	}

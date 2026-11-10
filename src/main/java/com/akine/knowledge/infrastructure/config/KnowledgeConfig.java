@@ -14,6 +14,6 @@ public class KnowledgeConfig {
 
 	@Bean
 	public BibliotecaAjustes bibliotecaAjustes(BibliotecaProperties properties) {
-		return new BibliotecaAjustes(properties.enabled());
+		return new BibliotecaAjustes(properties.enabled(), properties.maxBytes());
 	}
 }

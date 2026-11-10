@@ -57,7 +57,9 @@ spring:
 
   servlet:
     multipart:
-      # Adjuntos administrativos (M25, AKINE-03.02).
+      # Adjuntos administrativos (M25, AKINE-03.02) y biblioteca de libros (M30): el tope del
+      # contenedor es el del PDF mas grande (100 MB + margen). Los limites propios de person y
+      # clinical siguen en 10 MB y se aplican en su capa de aplicacion.
       #
       # ESTOS TOPES SON DEL CONTENEDOR Y TIENEN QUE QUEDAR POR ENCIMA del tope de la aplicacion
       # (akine.person.adjuntos.max-bytes, 10 MB por defecto). Si el mas chico fuera el de aca, el
@@ -65,8 +67,8 @@ spring:
       # operador recibiria un 500 generico en vez del 400 archivo-no-aceptado que le explica que
       # su archivo pesa demasiado. El margen tambien cubre el overhead del propio multipart:
       # cabeceras de parte y los campos de categoria y titulo.
-      max-file-size: 15MB
-      max-request-size: 16MB
+      max-file-size: 101MB
+      max-request-size: 102MB
 
   jackson:
     default-property-inclusion: non_null

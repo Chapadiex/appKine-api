@@ -23,6 +23,15 @@ public interface LibroRepositoryPort {
 
 	void delete(Libro libro);
 
+	/** Guarda y fuerza el INSERT/UPDATE ya, para que un unique violado salte aca. */
+	Libro guardarYSincronizar(Libro libro);
+
+	/** Libro activo de la organizacion con ese SHA-256 (incluye reemplazos pendientes). */
+	Optional<Libro> activoPorHash(long orgId, String hashSha256);
+
+	/** El libro que reemplaza (pendiente) al indicado, si hay uno. */
+	Optional<Libro> reemplazoPendienteDe(long libroId);
+
 	/** El libro PENDIENTE mas viejo, bloqueado con SKIP LOCKED. Exige transaccion abierta. */
 	Optional<Libro> reclamarPendiente(Instant ahora);
 

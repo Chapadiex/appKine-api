@@ -33,5 +33,7 @@ interface LibroFragmentoJpa extends JpaRepository<LibroFragmento, Long> {
 
 	long countByLibroId(long libroId);
 
+	long countByLibroIdAndVectorIsNotNull(long libroId);
+
 	List<LibroFragmento> findByLibroIdAndSospechosoTrueOrderByOrden(long libroId);
 }

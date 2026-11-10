@@ -39,6 +39,19 @@ public interface LibroRepository extends JpaRepository<Libro, Long>, LibroReposi
 	Page<Libro> buscar(@Param("orgId") long orgId, @Param("q") String q, @Param("area") String area,
 			@Param("estado") EstadoLibro estado, @Param("activo") Boolean activo, Pageable pageable);
 
+	@Override
+	default Libro guardarYSincronizar(Libro libro) {
+		return saveAndFlush(libro);
+	}
+
+	@Override
+	@Query("select l from Libro l where l.organizationId = :orgId and l.hashSha256 = :hash and l.activo = true")
+	Optional<Libro> activoPorHash(@Param("orgId") long orgId, @Param("hash") String hash);
+
+	@Override
+	@Query("select l from Libro l where l.reemplazaLibroId = :libroId")
+	Optional<Libro> reemplazoPendienteDe(@Param("libroId") long libroId);
+
 	/** Query nativa por SKIP LOCKED, como NotificationOutboxRepository. */
 	@Query(value = """
 			SELECT * FROM libro
