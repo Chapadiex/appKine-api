@@ -86,6 +86,10 @@ public class Libro {
 	@Column(name = "procesando_desde")
 	private Instant procesandoDesde;
 
+	/** Ultima senal de vida del intento en curso; el barrido mira esta columna, no procesando_desde. */
+	@Column(name = "latido")
+	private Instant latido;
+
 	@Column(name = "declaracion_derechos_en", nullable = false, updatable = false)
 	private Instant declaracionDerechosEn;
 
@@ -154,6 +158,7 @@ public class Libro {
 	public void marcarProcesando(Instant ahora) {
 		this.estado = EstadoLibro.PROCESANDO;
 		this.procesandoDesde = ahora;
+		this.latido = ahora;
 		this.progreso = 0;
 		this.motivoError = null;
 	}
@@ -167,12 +172,14 @@ public class Libro {
 		this.paginas = paginas;
 		this.progreso = 100;
 		this.procesandoDesde = null;
+		this.latido = null;
 		this.motivoError = null;
 	}
 
 	public void marcarError(String motivo) {
 		this.estado = EstadoLibro.ERROR;
 		this.procesandoDesde = null;
+		this.latido = null;
 		this.motivoError = motivo != null && motivo.length() > 500 ? motivo.substring(0, 500) : motivo;
 	}
 
@@ -180,6 +187,7 @@ public class Libro {
 	public void reencolar() {
 		this.estado = EstadoLibro.PENDIENTE;
 		this.procesandoDesde = null;
+		this.latido = null;
 		this.progreso = 0;
 		this.motivoError = null;
 	}
@@ -222,6 +230,7 @@ public class Libro {
 	public Long getReemplazaLibroId() { return reemplazaLibroId; }
 	public boolean isActivo() { return activo; }
 	public Instant getProcesandoDesde() { return procesandoDesde; }
+	public Instant getLatido() { return latido; }
 	public Instant getDeclaracionDerechosEn() { return declaracionDerechosEn; }
 	public Long getDeclaracionDerechosPorCuentaId() { return declaracionDerechosPorCuentaId; }
 	public Long getCreadoPorCuentaId() { return creadoPorCuentaId; }

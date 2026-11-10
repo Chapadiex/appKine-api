@@ -43,13 +43,13 @@ import java.util.Optional;
  * <ol>
  *   <li><b>Reclamo</b>: {@code REQUIRES_NEW} en {@code READ_COMMITTED} (en REPEATABLE READ un
  *       segundo reclamo simultaneo vuelve vacio), {@code SKIP LOCKED}, pasa a PROCESANDO con
- *       {@code procesando_desde} = el lease.</li>
+ *       {@code procesando_desde} (identidad del intento) y {@code latido} = ahora.</li>
  *   <li><b>Trabajo</b>: fuera de toda transaccion. El progreso se mueve con UPDATE dirigidos y
- *       cortos, guardados por estado y lease; si no tocan fila el libro se borro o se reencolo y
- *       se abandona sin gastar mas vectores.</li>
+ *       cortos, guardados por estado e intento, que ademas renuevan el latido; si no tocan
+ *       fila el libro se borro o se reencolo y se abandona sin gastar mas vectores.</li>
  *   <li><b>Cierre</b>: una transaccion en {@code READ_COMMITTED} que toma primero la fila de
  *       {@code biblioteca_version} (orden de locks de la organizacion) y despues relee el libro
- *       con FOR UPDATE. Si ya no existe, no esta PROCESANDO o el lease cambio, descarta en
+ *       con FOR UPDATE. Si ya no existe, no esta PROCESANDO o el intento cambio, descarta en
  *       silencio. Si sigue: fragmentos, LISTO, cambio de reemplazo y version.</li>
  * </ol>
  *
@@ -70,7 +70,7 @@ public class ProcesamientoDeLibroService {
 	private static final int PROGRESO_EXTRAIDO = 10;
 	private static final int PROGRESO_VECTORES = 85;
 
-	/** Lo que el reclamo deja fijado: el lease identifica a este intento. */
+	/** Lo que el reclamo deja fijado: procesando_desde identifica a este intento. */
 	record Reclamo(long libroId, long orgId, String storageKey, Instant desde) {
 	}
 
@@ -118,7 +118,7 @@ public class ProcesamientoDeLibroService {
 		this.transaccionReclamo.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 	}
 
-	/** Devuelve a PENDIENTE los PROCESANDO cuyo lease empezo antes de {@code limite}. */
+	/** Devuelve a PENDIENTE los PROCESANDO cuyo ultimo latido es anterior a {@code limite}. */
 	public int devolverTrabados(Instant limite) {
 		Integer devueltos = transaccion.execute(status -> libros.devolverTrabados(limite));
 		if (devueltos != null && devueltos > 0) {
@@ -133,7 +133,7 @@ public class ProcesamientoDeLibroService {
 	 * @return {@code false} si no habia ninguno
 	 */
 	public boolean procesarSiguiente(Instant ahora) {
-		// DATETIME(6) redondea: el lease se fija en microsegundos para poder compararlo despues.
+		// DATETIME(6) redondea: el intento se fija en microsegundos para poder compararlo despues.
 		Instant desde = ahora.truncatedTo(ChronoUnit.MICROS);
 		Reclamo reclamo = transaccionReclamo.execute(status -> libros.reclamarPendiente(desde)
 				.map(libro -> {
@@ -150,7 +150,10 @@ public class ProcesamientoDeLibroService {
 		} catch (DocumentoIlegibleException ilegible) {
 			fallar(reclamo, ilegible.getMotivoLegible());
 		} catch (RuntimeException falla) {
-			log.error("Biblioteca: fallo el procesamiento del libro {}", reclamo.libroId(), falla);
+			// Sin el mensaje: podria arrastrar texto del libro. La traza completa, solo en DEBUG.
+			log.error("Biblioteca: fallo el procesamiento del libro {} ({})", reclamo.libroId(),
+					falla.getClass().getName());
+			log.debug("Biblioteca: detalle de la falla del libro {}", reclamo.libroId(), falla);
 			fallar(reclamo, MOTIVO_INESPERADO);
 		}
 		return true;
@@ -221,10 +224,13 @@ public class ProcesamientoDeLibroService {
 		}
 	}
 
-	/** Mueve el progreso. {@code false}: el libro ya no es de este intento, se abandona. */
+	/**
+	 * Mueve el progreso y el latido (el barrido de trabados mira el latido, asi un libro grande
+	 * no se reencola mientras avanza). {@code false}: el libro ya no es de este intento.
+	 */
 	private boolean avanzar(Reclamo reclamo, int progreso) {
 		Integer filas = transaccion.execute(status ->
-				libros.actualizarProgreso(reclamo.libroId(), reclamo.desde(), progreso));
+				libros.actualizarProgreso(reclamo.libroId(), reclamo.desde(), progreso, Instant.now()));
 		if (filas == null || filas == 0) {
 			log.debug("Biblioteca: el libro {} se borro o se reencolo durante el proceso; se descarta",
 					reclamo.libroId());

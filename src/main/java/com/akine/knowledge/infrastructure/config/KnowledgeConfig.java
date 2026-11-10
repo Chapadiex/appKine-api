@@ -12,6 +12,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+import java.util.Set;
+
 /**
  * Cableado del modulo {@code knowledge}.
  *
@@ -23,9 +25,21 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableConfigurationProperties(BibliotecaProperties.class)
 public class KnowledgeConfig {
 
+	static final Set<String> TIPOS_DE_MODELO = Set.of("onnx", "prueba");
+
 	@Bean
 	public BibliotecaAjustes bibliotecaAjustes(BibliotecaProperties properties) {
+		exigirTipoDeModelo(properties);
 		return new BibliotecaAjustes(properties.enabled(), properties.maxBytes(), properties.maxPaginas());
+	}
+
+	/** Habilitada con un tipo desconocido no habria modelo y nadie se enteraria: no arranca. */
+	static void exigirTipoDeModelo(BibliotecaProperties properties) {
+		String tipo = properties.modelo().tipo();
+		if (properties.enabled() && !TIPOS_DE_MODELO.contains(tipo)) {
+			throw new IllegalStateException("akine.biblioteca.modelo.tipo='" + tipo
+					+ "' no es valido: tiene que ser onnx o prueba");
+		}
 	}
 
 	@Bean

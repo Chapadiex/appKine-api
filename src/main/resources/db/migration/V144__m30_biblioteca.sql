@@ -40,7 +40,8 @@ CREATE TABLE libro
     hash_activo                        CHAR(64) GENERATED ALWAYS AS (IF(activo AND reemplaza_libro_id IS NULL, hash_sha256, NULL)) STORED
         COMMENT 'Hash solo para libros activos que no son un reemplazo en curso: soporta el unique sin bloquear al reemplazo',
 
-    procesando_desde                   DATETIME(6)  NULL COMMENT 'Lease del worker',
+    procesando_desde                   DATETIME(6)  NULL COMMENT 'Identidad del intento del worker: la fija el reclamo y no cambia',
+    latido                             DATETIME(6)  NULL COMMENT 'Ultima senal de vida del intento (reclamo y cada avance); el barrido de trabados la compara',
     declaracion_derechos_en            DATETIME(6)  NOT NULL,
     declaracion_derechos_por_cuenta_id BIGINT       NOT NULL,
 
@@ -56,7 +57,7 @@ CREATE TABLE libro
     CONSTRAINT fk_libro_reemplaza FOREIGN KEY (reemplaza_libro_id) REFERENCES libro (id),
     CONSTRAINT ck_libro_estado CHECK (estado IN ('PENDIENTE', 'PROCESANDO', 'LISTO', 'ERROR')),
     CONSTRAINT ck_libro_progreso CHECK (progreso BETWEEN 0 AND 100),
-    INDEX ix_libro_estado (estado, procesando_desde),
+    INDEX ix_libro_estado (estado, latido),
     INDEX ix_libro_organizacion (organization_id, activo, titulo)
 );
 

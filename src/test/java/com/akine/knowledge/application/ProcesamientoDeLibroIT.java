@@ -4,6 +4,7 @@ import com.akine.TestcontainersConfiguration;
 import com.akine.knowledge.application.LibroService.ArchivoSubido;
 import com.akine.knowledge.application.LibroService.DatosDeLibro;
 import com.akine.knowledge.domain.port.BibliotecaVersionPort;
+import com.akine.knowledge.domain.port.ModeloEmbeddings;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -31,15 +32,18 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
 
 /**
  * El procesamiento de libros contra MySQL, con el modelo de prueba y el worker apagado:
  * {@code procesarSiguiente} se llama a mano.
  *
- * <p>La cola es global: si otra clase de IT dejo libros PENDIENTE en la misma base, el bucle
- * los procesa tambien hasta llegar al del test (terminan en ERROR, no molestan).
+ * <p>La cola es global y la base se comparte con las demas clases de IT del mismo proceso (corren
+ * de a una). Antes de cada test se borran los PENDIENTE que dejaron otras clases, para que el
+ * bucle procese solo libros de este test.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("local")
@@ -59,6 +63,7 @@ class ProcesamientoDeLibroIT {
 	@Autowired LibroService libros;
 	@Autowired JdbcTemplate jdbc;
 	@MockitoSpyBean BibliotecaVersionPort version;
+	@MockitoSpyBean ModeloEmbeddings modelo;
 	@MockitoBean BibliotecaAcceso acceso;
 
 	long orgId;
@@ -66,6 +71,16 @@ class ProcesamientoDeLibroIT {
 
 	@BeforeEach
 	void organizacion() {
+		// Libros PENDIENTE que otras clases de IT dejaron en la base compartida. Primero los
+		// reemplazos que son PENDIENTE o apuntan a un PENDIENTE: la FK no deja borrar al original.
+		jdbc.update("""
+				DELETE r FROM libro r
+				  JOIN libro orig ON orig.id = r.reemplaza_libro_id
+				  JOIN organization o ON o.id = r.organization_id
+				 WHERE o.slug NOT LIKE 'proc-it-%' AND (r.estado = 'PENDIENTE' OR orig.estado = 'PENDIENTE')""");
+		jdbc.update("""
+				DELETE l FROM libro l JOIN organization o ON o.id = l.organization_id
+				 WHERE l.estado = 'PENDIENTE' AND o.slug NOT LIKE 'proc-it-%'""");
 		String sufijo = UUID.randomUUID().toString().substring(0, 8);
 		jdbc.update("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
@@ -177,7 +192,8 @@ class ProcesamientoDeLibroIT {
 
 		// Un nodo que se cayo a mitad del proceso
 		jdbc.update("""
-				UPDATE libro SET estado = 'PROCESANDO', procesando_desde = UTC_TIMESTAMP(6) - INTERVAL 1 DAY
+				UPDATE libro SET estado = 'PROCESANDO', procesando_desde = UTC_TIMESTAMP(6) - INTERVAL 1 DAY,
+				       latido = UTC_TIMESTAMP(6) - INTERVAL 1 DAY
 				 WHERE id = ?""", id);
 		assertThat(procesamiento.devolverTrabados(Instant.now().minus(Duration.ofMinutes(15))))
 				.isGreaterThanOrEqualTo(1);
@@ -187,6 +203,52 @@ class ProcesamientoDeLibroIT {
 
 		assertThat(estado(id)).isEqualTo("LISTO");
 		assertThat(fragmentos(id)).hasSize(pedazos);
+	}
+
+	@Test
+	void el_barrido_mira_el_latido_y_no_el_comienzo_del_intento() throws Exception {
+		long vivo = subir(pdf(null, pagina(1)));
+		long muerto = subir(pdf(null, pagina(2)));
+		// Los dos empezaron hace un dia; solo el vivo siguio latiendo.
+		jdbc.update("""
+				UPDATE libro SET estado = 'PROCESANDO', procesando_desde = UTC_TIMESTAMP(6) - INTERVAL 1 DAY,
+				       latido = UTC_TIMESTAMP(6) WHERE id = ?""", vivo);
+		jdbc.update("""
+				UPDATE libro SET estado = 'PROCESANDO', procesando_desde = UTC_TIMESTAMP(6) - INTERVAL 1 DAY,
+				       latido = UTC_TIMESTAMP(6) - INTERVAL 1 DAY WHERE id = ?""", muerto);
+
+		procesamiento.devolverTrabados(Instant.now().minus(Duration.ofMinutes(15)));
+
+		assertThat(estado(vivo)).isEqualTo("PROCESANDO");
+		assertThat(estado(muerto)).isEqualTo("PENDIENTE");
+		jdbc.update("UPDATE libro SET estado = 'ERROR', procesando_desde = NULL, latido = NULL WHERE id = ?", vivo);
+		procesarHasta(muerto);
+	}
+
+	@Test
+	void un_lote_de_vectores_que_falla_deja_sus_pedazos_sin_vector_y_el_libro_listo() throws Exception {
+		String[] paginas = new String[30];
+		for (int i = 0; i < paginas.length; i++) {
+			paginas[i] = pagina(i + 1);
+		}
+		long id = subir(pdf(null, paginas));
+		// Primer lote bien, segundo falla, el resto bien.
+		doCallRealMethod().doThrow(new IllegalStateException("onnx caido")).doCallRealMethod()
+				.when(modelo).pasajes(anyList());
+
+		procesarHasta(id);
+
+		assertThat(estado(id)).isEqualTo("LISTO");
+		List<Map<String, Object>> frags = fragmentos(id);
+		assertThat(frags.size()).isGreaterThan(2 * ProcesamientoDeLibroService.LOTE_VECTORES);
+		List<Map<String, Object>> sinVector = frags.stream().filter(f -> f.get("vector") == null).toList();
+		assertThat(sinVector).hasSize(ProcesamientoDeLibroService.LOTE_VECTORES)
+				.allSatisfy(f -> assertThat(f.get("modelo_embeddings")).isNull())
+				.extracting(f -> (int) f.get("orden"))
+				.allSatisfy(orden -> assertThat(orden).isBetween(ProcesamientoDeLibroService.LOTE_VECTORES,
+						2 * ProcesamientoDeLibroService.LOTE_VECTORES - 1));
+		assertThat(frags).filteredOn(f -> f.get("vector") != null)
+				.allSatisfy(f -> assertThat(f.get("modelo_embeddings")).isEqualTo("prueba-hash-768"));
 	}
 
 	@Test

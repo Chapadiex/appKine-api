@@ -44,17 +44,20 @@ public interface LibroRepositoryPort {
 	/** El libro PENDIENTE mas viejo, bloqueado con SKIP LOCKED. Exige transaccion abierta. */
 	Optional<Libro> reclamarPendiente(Instant ahora);
 
-	/** Devuelve a PENDIENTE los PROCESANDO con el lease anterior a {@code limite}. */
+	/**
+	 * Devuelve a PENDIENTE los PROCESANDO cuyo ultimo latido es anterior a {@code limite} (un
+	 * intento vivo late en cada avance, aunque haya empezado hace mucho).
+	 */
 	int devolverTrabados(Instant limite);
 
 	/** Relee el libro con FOR UPDATE. Exige transaccion abierta. */
 	Optional<Libro> bloquearPorId(long id);
 
 	/**
-	 * Mueve solo {@code progreso} (sin avanzar la version) si el libro sigue PROCESANDO con ese
-	 * lease. Devuelve las filas tocadas.
+	 * Mueve solo {@code progreso} y {@code latido} (sin avanzar la version) si el libro sigue
+	 * PROCESANDO con ese intento. Devuelve las filas tocadas.
 	 */
-	int actualizarProgreso(long id, Instant procesandoDesde, int progreso);
+	int actualizarProgreso(long id, Instant procesandoDesde, int progreso, Instant latido);
 
 	/**
 	 * Pasa a ERROR con su motivo, avanzando la version, si el libro sigue PROCESANDO con ese

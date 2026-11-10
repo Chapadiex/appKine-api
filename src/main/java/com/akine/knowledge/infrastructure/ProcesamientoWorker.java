@@ -18,7 +18,7 @@ import java.time.Instant;
  *
  * <p>Corre solo con la biblioteca habilitada y el worker encendido
  * ({@code akine.biblioteca.worker.enabled}, default true). {@code fixedDelay}: un tick no arranca
- * hasta que termino el anterior. Antes de procesar devuelve a la cola los PROCESANDO cuyo lease
+ * hasta que termino el anterior. Antes de procesar devuelve a la cola los PROCESANDO cuyo latido
  * vencio (un nodo que se cayo a mitad de un libro).
  *
  * <p><b>Nunca propaga</b> y nunca loguea el texto del libro: solo la clase del error.

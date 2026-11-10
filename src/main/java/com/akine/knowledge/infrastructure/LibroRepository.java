@@ -87,8 +87,9 @@ public interface LibroRepository extends JpaRepository<Libro, Long>, LibroReposi
 	@Modifying(clearAutomatically = true)
 	@Query(value = """
 			UPDATE libro
-			   SET estado = 'PENDIENTE', procesando_desde = NULL, progreso = 0, version = version + 1
-			 WHERE estado = 'PROCESANDO' AND procesando_desde < :limite
+			   SET estado = 'PENDIENTE', procesando_desde = NULL, latido = NULL, progreso = 0,
+			       version = version + 1
+			 WHERE estado = 'PROCESANDO' AND (latido IS NULL OR latido < :limite)
 			""", nativeQuery = true)
 	int devolverTrabados(@Param("limite") Instant limite);
 
@@ -100,20 +101,20 @@ public interface LibroRepository extends JpaRepository<Libro, Long>, LibroReposi
 	@Override
 	@Modifying
 	@Query("""
-			update Libro l set l.progreso = :progreso
+			update Libro l set l.progreso = :progreso, l.latido = :latido
 			 where l.id = :id
 			   and l.estado = com.akine.knowledge.domain.EstadoLibro.PROCESANDO
 			   and l.procesandoDesde = :desde
 			""")
 	int actualizarProgreso(@Param("id") long id, @Param("desde") Instant procesandoDesde,
-			@Param("progreso") int progreso);
+			@Param("progreso") int progreso, @Param("latido") Instant latido);
 
 	@Override
 	@Modifying
 	@Query("""
 			update Libro l
 			   set l.estado = com.akine.knowledge.domain.EstadoLibro.ERROR,
-			       l.motivoError = :motivo, l.procesandoDesde = null,
+			       l.motivoError = :motivo, l.procesandoDesde = null, l.latido = null,
 			       l.version = l.version + 1, l.updatedAt = :ahora
 			 where l.id = :id
 			   and l.estado = com.akine.knowledge.domain.EstadoLibro.PROCESANDO
