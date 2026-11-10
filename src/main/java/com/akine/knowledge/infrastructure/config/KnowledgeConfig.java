@@ -1,6 +1,7 @@
 package com.akine.knowledge.infrastructure.config;
 
 import com.akine.knowledge.domain.BibliotecaAjustes;
+import com.akine.knowledge.domain.BusquedaAjustes;
 import com.akine.knowledge.domain.DetectorDeInstrucciones;
 import com.akine.knowledge.domain.ReindexadoAjustes;
 import com.akine.knowledge.domain.Troceador;
@@ -13,6 +14,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+import java.math.BigDecimal;
 import java.util.Set;
 
 /**
@@ -37,6 +39,16 @@ public class KnowledgeConfig {
 	@Bean
 	public ReindexadoAjustes reindexadoAjustes(BibliotecaProperties properties) {
 		return new ReindexadoAjustes(properties.worker().reindexLote());
+	}
+
+	/** {@code valueOf(double)} pasa por el texto decimal: {@code 0.818} queda exacto. */
+	@Bean
+	public BusquedaAjustes busquedaAjustes(BibliotecaProperties properties) {
+		BibliotecaProperties.Busqueda busqueda = properties.busqueda();
+		return new BusquedaAjustes(
+				BigDecimal.valueOf(busqueda.minScore()),
+				BigDecimal.valueOf(busqueda.minScorePalabras()),
+				busqueda.minPedazos());
 	}
 
 	/** Habilitada con un tipo desconocido no habria modelo y nadie se enteraria: no arranca. */
