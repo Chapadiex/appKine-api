@@ -2,6 +2,7 @@ package com.akine.knowledge.infrastructure.config;
 
 import com.akine.knowledge.domain.BibliotecaAjustes;
 import com.akine.knowledge.domain.DetectorDeInstrucciones;
+import com.akine.knowledge.domain.ReindexadoAjustes;
 import com.akine.knowledge.domain.Troceador;
 import com.akine.knowledge.domain.port.ModeloEmbeddings;
 import com.akine.knowledge.infrastructure.ModeloEmbeddingsDePrueba;
@@ -31,6 +32,11 @@ public class KnowledgeConfig {
 	public BibliotecaAjustes bibliotecaAjustes(BibliotecaProperties properties) {
 		exigirTipoDeModelo(properties);
 		return new BibliotecaAjustes(properties.enabled(), properties.maxBytes(), properties.maxPaginas());
+	}
+
+	@Bean
+	public ReindexadoAjustes reindexadoAjustes(BibliotecaProperties properties) {
+		return new ReindexadoAjustes(properties.worker().reindexLote());
 	}
 
 	/** Habilitada con un tipo desconocido no habria modelo y nadie se enteraria: no arranca. */

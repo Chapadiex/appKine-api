@@ -1,12 +1,12 @@
 package com.akine.knowledge.application;
 
+import com.akine.knowledge.domain.ReindexadoAjustes;
 import com.akine.knowledge.domain.Vectores;
 import com.akine.knowledge.domain.port.BibliotecaVersionPort;
 import com.akine.knowledge.domain.port.LibroFragmentoRepositoryPort;
 import com.akine.knowledge.domain.port.LibroFragmentoRepositoryPort.TextoDeFragmento;
 import com.akine.knowledge.domain.port.ModeloEmbeddings;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -29,7 +29,6 @@ import java.util.Set;
 @Service
 public class ReindexadoService {
 
-
 	private final LibroFragmentoRepositoryPort fragmentos;
 	private final BibliotecaVersionPort version;
 	private final ObjectProvider<ModeloEmbeddings> modelos;
@@ -38,12 +37,12 @@ public class ReindexadoService {
 	private final TransactionTemplate transaccion;
 
 	public ReindexadoService(LibroFragmentoRepositoryPort fragmentos, BibliotecaVersionPort version,
-			ObjectProvider<ModeloEmbeddings> modelos, @Value("${akine.biblioteca.worker.reindex-lote:32}") int lote,
+			ObjectProvider<ModeloEmbeddings> modelos, ReindexadoAjustes ajustes,
 			PlatformTransactionManager transactionManager) {
 		this.fragmentos = fragmentos;
 		this.version = version;
 		this.modelos = modelos;
-		this.lote = lote;
+		this.lote = ajustes.lote();
 		this.transaccionLote = new TransactionTemplate(transactionManager);
 		this.transaccionLote.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
 		this.transaccionLote.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -71,6 +70,10 @@ public class ReindexadoService {
 				pasajes.add(t.texto());
 			}
 			List<float[]> vectores = modelo.pasajes(pasajes);
+			if (vectores.size() != textos.size()) {
+				throw new IllegalStateException("El modelo devolvio " + vectores.size()
+						+ " vectores para " + textos.size() + " pasajes");
+			}
 			for (int i = 0; i < textos.size(); i++) {
 				TextoDeFragmento t = textos.get(i);
 				fragmentos.actualizarVector(t.id(), Vectores.aBytes(vectores.get(i)), modelo.id());

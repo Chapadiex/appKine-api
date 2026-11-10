@@ -32,8 +32,10 @@ public class ReindexadoWorker {
 			initialDelayString = "${akine.biblioteca.worker.initial-delay-ms:30000}")
 	public void tick() {
 		try {
-			for (int i = 0; i < LOTES_POR_TICK && reindexado.reindexarLote() > 0; i++) {
-				// un lote por vuelta
+			for (int i = 0; i < LOTES_POR_TICK; i++) {
+				if (reindexado.reindexarLote() == 0) {
+					break;
+				}
 			}
 		} catch (RuntimeException e) {
 			log.error("El reindexado de la biblioteca fallo ({}); se reintenta en el proximo ciclo",
