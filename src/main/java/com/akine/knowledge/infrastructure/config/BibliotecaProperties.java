@@ -27,17 +27,24 @@ public record BibliotecaProperties(
 			@DefaultValue("536870912") long cacheMaxBytes) {
 	}
 
-	/** {@code tipo}: {@code onnx} o {@code prueba}. Las rutas se validan al crear el modelo. */
+	/**
+	 * {@code tipo}: {@code onnx} o {@code prueba}. Las rutas se validan al crear el modelo.
+	 * {@code hilos}: tope de hilos de onnxruntime (intra-op) para no ocupar todos los nucleos del
+	 * nodo; {@code 0} deja el default de la libreria (un hilo por nucleo).
+	 */
 	public record Modelo(
 			@DefaultValue("onnx") String tipo,
 			@DefaultValue("multilingual-e5-base") String id,
 			@DefaultValue("") String rutaModelo,
-			@DefaultValue("") String rutaTokenizer) {
+			@DefaultValue("") String rutaTokenizer,
+			@DefaultValue("0") int hilos) {
 	}
 
 	public record Worker(
 			@DefaultValue("true") boolean enabled,
 			@DefaultValue("5000") long fixedDelayMs,
+			@DefaultValue("30000") long reindexFixedDelayMs,
+			@DefaultValue("30000") long initialDelayMs,
 			@DefaultValue("32") int reindexLote,
 			@DefaultValue("15") int leaseMinutos) {
 	}

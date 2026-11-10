@@ -12,7 +12,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.math.BigDecimal;
 import java.util.Set;
@@ -22,9 +21,11 @@ import java.util.Set;
  *
  * <p>El modelo de embeddings existe solo con la biblioteca habilitada: apagada no hay bean de
  * {@link ModeloEmbeddings} y quien lo use lo pide por {@code ObjectProvider}.
+ *
+ * <p>Sin {@code @EnableScheduling}: los workers corren en el hilo propio de
+ * {@code PlanificadorDeBiblioteca}, no en el planificador compartido.
  */
 @Configuration
-@EnableScheduling
 @EnableConfigurationProperties(BibliotecaProperties.class)
 public class KnowledgeConfig {
 
@@ -76,7 +77,7 @@ public class KnowledgeConfig {
 	@ConditionalOnExpression("${akine.biblioteca.enabled:false} and '${akine.biblioteca.modelo.tipo:onnx}' == 'onnx'")
 	public ModeloEmbeddings onnxModeloEmbeddings(BibliotecaProperties properties) {
 		BibliotecaProperties.Modelo modelo = properties.modelo();
-		return new OnnxModeloEmbeddings(modelo.id(), modelo.rutaModelo(), modelo.rutaTokenizer());
+		return new OnnxModeloEmbeddings(modelo.id(), modelo.rutaModelo(), modelo.rutaTokenizer(), modelo.hilos());
 	}
 
 	/** Determinista, para tests y desarrollo sin el modelo descargado. */

@@ -51,11 +51,44 @@ public class ReindexadoService {
 
 	/** Reindexa hasta un lote y devuelve cuantos pedazos quedaron con el vector vigente. */
 	public int reindexarLote() {
+		return reindexar(1);
+	}
+
+	/**
+	 * Reindexa hasta {@code maxLotes} lotes (para antes si uno vuelve vacio) y despues avanza la
+	 * version de cada organizacion tocada UNA vez, no una por lote: cada avance invalida la cache
+	 * de busqueda de esa organizacion. Si un lote falla, las organizaciones de los lotes ya
+	 * confirmados avanzan igual antes de propagar.
+	 *
+	 * @return pedazos que quedaron con el vector vigente
+	 */
+	public int reindexar(int maxLotes) {
 		ModeloEmbeddings modelo = modelos.getIfAvailable();
 		if (modelo == null) {
 			return 0;
 		}
 		Set<Long> organizaciones = new LinkedHashSet<>();
+		int total = 0;
+		try {
+			for (int i = 0; i < maxLotes; i++) {
+				int hechos = lote(modelo, organizaciones);
+				if (hechos == 0) {
+					break;
+				}
+				total += hechos;
+			}
+		} finally {
+			for (long orgId : organizaciones) {
+				// La fila se crea aparte; recien despues se la bloquea para sumar.
+				transaccion.executeWithoutResult(status -> version.asegurarFila(orgId));
+				transaccion.executeWithoutResult(status -> version.avanzar(orgId));
+			}
+		}
+		return total;
+	}
+
+	/** Un lote en su transaccion; anota en {@code organizaciones} las que toco. */
+	private int lote(ModeloEmbeddings modelo, Set<Long> organizaciones) {
 		Integer hechos = transaccionLote.execute(status -> {
 			List<Long> ids = fragmentos.reclamarSinVector(modelo.id(), lote);
 			if (ids.isEmpty()) {
@@ -81,12 +114,6 @@ public class ReindexadoService {
 			}
 			return textos.size();
 		});
-		int total = hechos == null ? 0 : hechos;
-		for (long orgId : organizaciones) {
-			// La fila se crea aparte; recien despues se la bloquea para sumar.
-			transaccion.executeWithoutResult(status -> version.asegurarFila(orgId));
-			transaccion.executeWithoutResult(status -> version.avanzar(orgId));
-		}
-		return total;
+		return hechos == null ? 0 : hechos;
 	}
 }
