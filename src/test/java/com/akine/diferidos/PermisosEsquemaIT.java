@@ -247,6 +247,8 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						"pase:adjust",
 						// `reporte:read` lo sumo G-1 (DP-15): la matriz da "Si" al ORG_ADMIN en Ver Reportes.
 						"reporte:read",
+						// M30: la biblioteca de libros, solo ORG_ADMIN.
+						"biblioteca:manage",
 						// Agenda de profesionales: horario habitual y excepciones, separados de
 						// consultorio:manage (docs/diseno/AKINE-agenda-roles.md).
 						"agenda:horario", "agenda:excepciones");

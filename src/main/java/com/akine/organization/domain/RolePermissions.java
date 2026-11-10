@@ -330,6 +330,8 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.PASE_MANAGE, PermissionScope.ORGANIZACION),
 				// AKINE-08.07. Ajustar y anular pases: permiso reforzado, fuera del mostrador.
 				Map.entry(PermissionCode.PASE_ADJUST, PermissionScope.ORGANIZACION),
+				// M30. La biblioteca de libros es de la organizacion; sin grant.
+				Map.entry(PermissionCode.BIBLIOTECA_MANAGE, PermissionScope.ORGANIZACION),
 				// AKINE-G-1 (DP-15). La matriz §2 le dice "Si" en Ver Reportes. Lo que ve de cada
 				// seccion lo decide el permiso de su fuente: sin hc:read ni sesion:register, lo
 				// clinico se omite y se declara en las secciones omitidas.

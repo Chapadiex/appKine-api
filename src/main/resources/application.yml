@@ -225,6 +225,11 @@ akine:
       # la IP del nginx y los cupos de arriba pasan a ser globales para todo el sistema.
       trusted-proxies: ${AKINE_TRUSTED_PROXIES:}
 
+  # Biblioteca de libros PDF con busqueda vectorial (M30). Apagada por defecto: apagada no crea
+  # workers ni modelo y toda operacion responde 409 biblioteca-deshabilitada.
+  biblioteca:
+    enabled: ${AKINE_BIBLIOTECA_ENABLED:false}
+
   notification:
     email:
       # log | smtp. El default 'log' registra el mensaje y NO envia nada: sirve para

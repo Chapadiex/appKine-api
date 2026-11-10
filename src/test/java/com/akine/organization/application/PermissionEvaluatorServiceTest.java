@@ -622,7 +622,9 @@ class PermissionEvaluatorServiceTest {
 							// AKINE-08.07: ajustar y anular pases, permiso reforzado fuera del mostrador.
 							"pase:adjust",
 							// AKINE-G-1 (DP-15): "Si" en Ver Reportes.
-							"reporte:read");
+							"reporte:read",
+							// M30: la biblioteca de libros, solo ORG_ADMIN.
+							"biblioteca:manage");
 		}
 
 		@Test

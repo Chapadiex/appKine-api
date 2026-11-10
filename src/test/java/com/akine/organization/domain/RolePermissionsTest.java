@@ -86,6 +86,7 @@ class RolePermissionsTest {
 			// Agenda de profesionales (decision del usuario del 03/11/2026, checklist §14).
 			"ORG_ADMIN,          AGENDA_HORARIO,          ORGANIZACION",
 			"ORG_ADMIN,          AGENDA_EXCEPCIONES,      ORGANIZACION",
+			"ORG_ADMIN,          BIBLIOTECA_MANAGE,       ORGANIZACION",
 			"CONSULTORIO_ADMIN,  AGENDA_HORARIO,          CONSULTORIO",
 			"CONSULTORIO_ADMIN,  AGENDA_EXCEPCIONES,      CONSULTORIO",
 			"ADMINISTRATIVO,     AGENDA_EXCEPCIONES,      CONSULTORIO",
@@ -459,6 +460,9 @@ class RolePermissionsTest {
 			"PROFESIONAL,       TURNO_SOBRETURNO,       true",
 			"PROFESIONAL,       TURNO_MANAGE,           true",
 			"PROFESIONAL,       AGENDA_EXCEPCIONES,     true",
+			// biblioteca:manage: solo ORG_ADMIN por la tabla base; nunca por grant.
+			"PROFESIONAL,       BIBLIOTECA_MANAGE,      false",
+			"ORG_ADMIN,         BIBLIOTECA_MANAGE,      false",
 			"PACIENTE,          AGENDA_HORARIO,         false",
 			"PACIENTE,          TURNO_SOBRETURNO,       false",
 			"ORG_ADMIN,         CAJA_OPERATE,           false",

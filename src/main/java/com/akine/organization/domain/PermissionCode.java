@@ -385,7 +385,13 @@ public enum PermissionCode {
 	 * vendido no es venderlo. Sin fila en la matriz §32; lo tienen {@code ORG_ADMIN} y
 	 * {@code CONSULTORIO_ADMIN}, no el mostrador, con el mismo criterio que {@code producto:manage}.
 	 */
-	PASE_ADJUST("pase:adjust");
+	PASE_ADJUST("pase:adjust"),
+
+	/**
+	 * Gestionar la biblioteca de libros de la organizacion (M30): subir, editar, reemplazar,
+	 * activar, reprocesar y eliminar PDF. Solo {@code ORG_ADMIN}; no se otorga por grant.
+	 */
+	BIBLIOTECA_MANAGE("biblioteca:manage");
 
 	private final String code;
 
