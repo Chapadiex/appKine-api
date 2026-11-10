@@ -11,11 +11,13 @@ import java.util.List;
 interface LibroFragmentoJpa extends JpaRepository<LibroFragmento, Long> {
 
 	@Query(value = """
-			SELECT id FROM libro_fragmento
-			 WHERE vector IS NULL OR modelo_embeddings IS NULL OR modelo_embeddings <> :modelo
-			 ORDER BY id
+			SELECT f.id FROM libro_fragmento f
+			  JOIN libro l ON l.id = f.libro_id
+			 WHERE (f.modelo_embeddings IS NULL OR f.modelo_embeddings <> :modelo)
+			   AND f.sospechoso = 0
+			   AND l.activo = 1 AND l.estado = 'LISTO'
 			 LIMIT :lote
-			 FOR UPDATE SKIP LOCKED
+			 FOR UPDATE OF f SKIP LOCKED
 			""", nativeQuery = true)
 	List<Long> reclamarSinVector(@Param("modelo") String modelo, @Param("lote") int lote);
 

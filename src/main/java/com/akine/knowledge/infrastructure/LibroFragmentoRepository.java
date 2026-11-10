@@ -40,7 +40,7 @@ class LibroFragmentoRepository implements LibroFragmentoRepositoryPort {
 			ps.setInt(5, f.getPaginaHasta());
 			ps.setString(6, f.getTexto());
 			ps.setBytes(7, f.getVector());
-			ps.setString(8, f.getModeloEmbeddings());
+			ps.setString(8, f.getVector() == null ? null : f.getModeloEmbeddings());
 			ps.setBoolean(9, f.isSospechoso());
 		});
 	}

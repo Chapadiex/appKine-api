@@ -10,7 +10,8 @@ public interface LibroFragmentoRepositoryPort {
 	void reemplazarDeLibro(long libroId, List<LibroFragmento> fragmentos);
 
 	/**
-	 * Ids de fragmentos sin vector o con vector de otro modelo, bloqueados con SKIP LOCKED.
+	 * Ids de fragmentos no sospechosos de libros activos y LISTO, sin vector o con vector de otro
+	 * modelo (invariante: vector NULL equivale a modelo NULL), bloqueados con SKIP LOCKED.
 	 * Exige transaccion abierta.
 	 */
 	List<Long> reclamarSinVector(String modeloVigente, int lote);

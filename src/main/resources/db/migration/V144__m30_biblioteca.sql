@@ -68,11 +68,12 @@ CREATE TABLE libro_fragmento
     pagina_desde      INT          NOT NULL,
     pagina_hasta      INT          NOT NULL,
     texto             TEXT         NOT NULL,
-    vector            BLOB         NULL COMMENT '768 float32 little-endian (3072 bytes). NULL hasta que el worker lo calcula',
+    vector            BLOB         NULL COMMENT '768 float32 little-endian (3072 bytes). NULL hasta que el worker lo calcula. Invariante: vector IS NULL <=> modelo_embeddings IS NULL',
     modelo_embeddings VARCHAR(100) NULL COMMENT 'Modelo que calculo el vector; distinto del vigente = a reindexar',
     sospechoso        TINYINT(1)   NOT NULL DEFAULT 0,
 
     CONSTRAINT pk_libro_fragmento PRIMARY KEY (id),
+    CONSTRAINT fk_libro_fragmento_organization FOREIGN KEY (organization_id) REFERENCES organization (id),
     CONSTRAINT fk_libro_fragmento_libro FOREIGN KEY (libro_id) REFERENCES libro (id) ON DELETE CASCADE,
     INDEX ix_libro_fragmento_libro (organization_id, libro_id),
     INDEX ix_libro_fragmento_modelo (modelo_embeddings),
