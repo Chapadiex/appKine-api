@@ -62,6 +62,17 @@ public class LibroFragmento {
 		this.sospechoso = sospechoso;
 	}
 
+	/** Fragmento con su vector; {@code vector} y {@code modelo} van juntos o los dos nulos. */
+	public LibroFragmento(long organizationId, long libroId, int orden, int paginaDesde,
+			int paginaHasta, String texto, boolean sospechoso, byte[] vector, String modelo) {
+		this(organizationId, libroId, orden, paginaDesde, paginaHasta, texto, sospechoso);
+		if ((vector == null) != (modelo == null)) {
+			throw new IllegalArgumentException("vector y modelo van juntos");
+		}
+		this.vector = vector;
+		this.modeloEmbeddings = modelo;
+	}
+
 	public Long getId() { return id; }
 	public Long getOrganizationId() { return organizationId; }
 	public Long getLibroId() { return libroId; }

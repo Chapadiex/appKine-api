@@ -46,4 +46,19 @@ public interface LibroRepositoryPort {
 
 	/** Devuelve a PENDIENTE los PROCESANDO con el lease anterior a {@code limite}. */
 	int devolverTrabados(Instant limite);
+
+	/** Relee el libro con FOR UPDATE. Exige transaccion abierta. */
+	Optional<Libro> bloquearPorId(long id);
+
+	/**
+	 * Mueve solo {@code progreso} (sin avanzar la version) si el libro sigue PROCESANDO con ese
+	 * lease. Devuelve las filas tocadas.
+	 */
+	int actualizarProgreso(long id, Instant procesandoDesde, int progreso);
+
+	/**
+	 * Pasa a ERROR con su motivo, avanzando la version, si el libro sigue PROCESANDO con ese
+	 * lease. Devuelve las filas tocadas.
+	 */
+	int marcarError(long id, Instant procesandoDesde, String motivo, Instant ahora);
 }

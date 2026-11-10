@@ -11,6 +11,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.time.Instant;
 
@@ -19,8 +20,13 @@ import java.time.Instant;
  *
  * <p>El estado cambia solo por los metodos de esta clase. {@code hash_activo} es una columna
  * generada por la base: no se mapea.
+ *
+ * <p>{@code @DynamicUpdate}: el worker mueve {@code progreso} con un UPDATE dirigido que no
+ * avanza la version (para no dar 409 a una edicion del admin mientras se procesa). Sin esto, el
+ * flush de una edicion reescribiria {@code progreso}, {@code estado} y el resto con lo leido.
  */
 @Entity
+@DynamicUpdate
 @Table(name = "libro")
 public class Libro {
 

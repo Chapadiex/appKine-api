@@ -5,7 +5,9 @@ import com.akine.knowledge.domain.Libro;
 import com.akine.knowledge.domain.port.LibroRepositoryPort;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -89,4 +91,34 @@ public interface LibroRepository extends JpaRepository<Libro, Long>, LibroReposi
 			 WHERE estado = 'PROCESANDO' AND procesando_desde < :limite
 			""", nativeQuery = true)
 	int devolverTrabados(@Param("limite") Instant limite);
+
+	@Override
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select l from Libro l where l.id = :id")
+	Optional<Libro> bloquearPorId(@Param("id") long id);
+
+	@Override
+	@Modifying
+	@Query("""
+			update Libro l set l.progreso = :progreso
+			 where l.id = :id
+			   and l.estado = com.akine.knowledge.domain.EstadoLibro.PROCESANDO
+			   and l.procesandoDesde = :desde
+			""")
+	int actualizarProgreso(@Param("id") long id, @Param("desde") Instant procesandoDesde,
+			@Param("progreso") int progreso);
+
+	@Override
+	@Modifying
+	@Query("""
+			update Libro l
+			   set l.estado = com.akine.knowledge.domain.EstadoLibro.ERROR,
+			       l.motivoError = :motivo, l.procesandoDesde = null,
+			       l.version = l.version + 1, l.updatedAt = :ahora
+			 where l.id = :id
+			   and l.estado = com.akine.knowledge.domain.EstadoLibro.PROCESANDO
+			   and l.procesandoDesde = :desde
+			""")
+	int marcarError(@Param("id") long id, @Param("desde") Instant procesandoDesde,
+			@Param("motivo") String motivo, @Param("ahora") Instant ahora);
 }
