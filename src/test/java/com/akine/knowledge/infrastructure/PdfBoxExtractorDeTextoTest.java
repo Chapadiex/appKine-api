@@ -23,6 +23,10 @@ class PdfBoxExtractorDeTextoTest {
 	private final PdfBoxExtractorDeTexto extractor = new PdfBoxExtractorDeTexto();
 
 	private static byte[] pdf(boolean cifrado, String... textos) throws Exception {
+		return pdf(cifrado ? "usuario" : null, textos);
+	}
+
+	private static byte[] pdf(String claveDeUsuario, String... textos) throws Exception {
 		try (PDDocument doc = new PDDocument()) {
 			for (String t : textos) {
 				PDPage page = new PDPage();
@@ -35,8 +39,8 @@ class PdfBoxExtractorDeTextoTest {
 					cs.endText();
 				}
 			}
-			if (cifrado) {
-				StandardProtectionPolicy policy = new StandardProtectionPolicy("dueno", "usuario", new AccessPermission());
+			if (claveDeUsuario != null) {
+				StandardProtectionPolicy policy = new StandardProtectionPolicy("dueno", claveDeUsuario, new AccessPermission());
 				policy.setEncryptionKeyLength(128);
 				doc.protect(policy);
 			}
@@ -53,6 +57,13 @@ class PdfBoxExtractorDeTextoTest {
 		assertThat(paginas.get(0).numero()).isEqualTo(1);
 		assertThat(paginas.get(0).texto()).contains("Hola uno");
 		assertThat(paginas.get(1).texto()).contains("Hola dos");
+	}
+
+	@Test
+	void pdfConSoloClaveDeDuenoSeLee() throws Exception {
+		List<PaginaDeTexto> paginas = extractor.extraer(pdf("", "Texto libre"), 10);
+		assertThat(paginas).hasSize(1);
+		assertThat(paginas.get(0).texto()).contains("Texto libre");
 	}
 
 	@Test

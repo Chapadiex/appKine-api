@@ -2,12 +2,15 @@ package com.akine.knowledge.domain;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Parte el texto de un libro en pedazos de {@code tamano} caracteres con {@code solape} de repeticion
  * entre vecinos, cortando en espacios y conservando el rango de paginas de cada uno.
  */
 public final class Troceador {
+
+	private static final Pattern ESPACIOS = Pattern.compile("\\s+");
 
 	private final int tamano;
 	private final int solape;
@@ -29,7 +32,7 @@ public final class Troceador {
 		StringBuilder todo = new StringBuilder();
 		List<int[]> inicios = new ArrayList<>(); // {offset de inicio, numero de pagina}
 		for (PaginaDeTexto p : paginas) {
-			String t = p.texto() == null ? "" : p.texto().replaceAll("\\s+", " ").strip();
+			String t = p.texto() == null ? "" : ESPACIOS.matcher(p.texto()).replaceAll(" ").strip();
 			if (t.isEmpty()) {
 				continue;
 			}

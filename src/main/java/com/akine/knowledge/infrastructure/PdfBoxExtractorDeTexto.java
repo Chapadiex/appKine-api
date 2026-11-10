@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -21,10 +22,9 @@ public class PdfBoxExtractorDeTexto implements ExtractorDeTexto {
 
 	@Override
 	public List<PaginaDeTexto> extraer(byte[] pdf, int maxPaginas) {
-		try (PDDocument documento = Loader.loadPDF(pdf)) {
-			if (documento.isEncrypted()) {
-				throw new DocumentoIlegibleException(MOTIVO_PROTEGIDO);
-			}
+		// Cache en archivos temporales: acota el heap con PDF de 100 MB. Un PDF con sólo restricciones de
+		// dueño (clave de usuario vacía) se abre y se lee; si pide clave, falla con InvalidPasswordException.
+		try (PDDocument documento = Loader.loadPDF(pdf, "", null, null, IOUtils.createTempFileOnlyStreamCache())) {
 			int total = documento.getNumberOfPages();
 			if (total > maxPaginas) {
 				throw new DocumentoIlegibleException("El PDF tiene más de " + maxPaginas + " páginas");
