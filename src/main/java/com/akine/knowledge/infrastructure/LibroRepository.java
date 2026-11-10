@@ -48,7 +48,7 @@ public interface LibroRepository extends JpaRepository<Libro, Long>, LibroReposi
 	@Query("""
 			select l from Libro l
 			 where l.organizationId = :orgId and l.hashSha256 = :hash and l.id <> :excluir
-			   and (l.activo = true
+			   and ((l.activo = true and l.reemplazaLibroId is null)
 			        or (l.reemplazaLibroId is not null
 			            and l.estado <> com.akine.knowledge.domain.EstadoLibro.ERROR))
 			""")

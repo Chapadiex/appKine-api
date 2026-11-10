@@ -184,4 +184,16 @@ class LibroConcurrenteIT {
 				""", String.class, fallido.id());
 		assertThat(detalles).contains("titulo").contains("hashSha256").contains("reemplazo-fallido");
 	}
+
+	@Test
+	void un_reemplazo_en_error_no_cuenta_como_hash_en_uso() {
+		LibroView original = service.subir(actor, orgId, DATOS, pdf("orig2"), true);
+		jdbc.update("UPDATE libro SET estado = 'LISTO' WHERE id = ?", original.id());
+		LibroView fallido = service.reemplazar(actor, orgId, original.id(), pdf("X"), true);
+		jdbc.update("UPDATE libro SET estado = 'ERROR' WHERE id = ?", fallido.id());
+
+		LibroView alta = service.subir(actor, orgId, DATOS, pdf("X"), true);
+
+		assertThat(alta.reemplazaLibroId()).isNull();
+	}
 }

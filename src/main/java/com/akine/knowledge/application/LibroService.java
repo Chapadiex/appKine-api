@@ -232,11 +232,11 @@ public class LibroService {
 	private LibroView guardarNuevo(
 			OperatingActor actor, long orgId, DatosDeLibro datosAlta, ArchivoSubido archivo,
 			Contenido contenido, Long reemplazaLibroId, String evento) {
+		// La fila-lock se crea aparte: crearla dentro de la transaccion que la bloquea da deadlock.
+		asegurarFila(orgId);
 		// Primero el archivo, despues la fila; si la fila falla el archivo se borra.
 		String clave = UUID.randomUUID().toString().replace("-", "") + ".pdf";
 		almacen.guardar(ESPACIO, clave, archivo.contenido());
-		// La fila-lock se crea aparte: crearla dentro de la transaccion que la bloquea da deadlock.
-		transaccion.executeWithoutResult(status -> version.asegurarFila(orgId));
 		List<String> aBorrar = new ArrayList<>();
 		try {
 			LibroView creado = transaccionLecturaConfirmada.execute(status -> {
@@ -283,7 +283,8 @@ public class LibroService {
 			if (ganador != null && ganador.isPresent()) {
 				throw new LibroDuplicadoException(ganador.get().getId());
 			}
-			if (reemplazaLibroId != null) {
+			if (reemplazaLibroId != null && String.valueOf(choque.getMostSpecificCause().getMessage())
+					.contains("uk_libro_reemplaza")) {
 				throw new LibroEnProcesoException();
 			}
 			throw choque;
@@ -318,7 +319,9 @@ public class LibroService {
 	 */
 	public LibroView reprocesar(OperatingActor actor, long orgId, long libroId) {
 		acceso.exigir(actor, orgId);
+		asegurarFila(orgId);
 		return transaccion.execute(status -> {
+			version.bloquear(orgId);
 			Libro libro = cargar(libroId, orgId);
 			exigirQuieto(libro);
 			if (libros.reemplazoPendienteDe(libroId).isPresent()) {
@@ -337,7 +340,7 @@ public class LibroService {
 	/** Reactiva un libro. 409 libro-duplicado si el contenido ya esta en uso. */
 	public LibroView activar(OperatingActor actor, long orgId, long libroId) {
 		acceso.exigir(actor, orgId);
-		transaccion.executeWithoutResult(status -> version.asegurarFila(orgId));
+		asegurarFila(orgId);
 		try {
 			return transaccionLecturaConfirmada.execute(status -> {
 				version.bloquear(orgId);
@@ -367,7 +370,9 @@ public class LibroService {
 
 	public LibroView desactivar(OperatingActor actor, long orgId, long libroId) {
 		acceso.exigir(actor, orgId);
+		asegurarFila(orgId);
 		return transaccion.execute(status -> {
+			version.bloquear(orgId);
 			Libro libro = cargar(libroId, orgId);
 			if (!libro.isActivo()) {
 				return LibroView.de(libro);
@@ -387,7 +392,9 @@ public class LibroService {
 	 */
 	public void eliminar(OperatingActor actor, long orgId, long libroId) {
 		acceso.exigir(actor, orgId);
+		asegurarFila(orgId);
 		List<String> claves = transaccion.execute(status -> {
+			version.bloquear(orgId);
 			Libro libro = cargar(libroId, orgId);
 			List<String> aBorrar = new ArrayList<>();
 			libros.reemplazoDe(libroId).ifPresent(reemplazo -> {
@@ -416,6 +423,14 @@ public class LibroService {
 	}
 
 	// ---------------------------------------------------------------- privados
+
+	/**
+	 * Toda operacion que toca la fila de version la toma PRIMERO (despues de crearla aparte): el
+	 * orden es siempre fila de version y despues filas de libro, para no invertir locks.
+	 */
+	private void asegurarFila(long orgId) {
+		transaccion.executeWithoutResult(status -> version.asegurarFila(orgId));
+	}
 
 	private Libro cargar(long libroId, long orgId) {
 		return libros.findByIdAndOrganization(libroId, orgId)
