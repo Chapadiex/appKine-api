@@ -56,6 +56,17 @@ class LibroFragmentoRepository implements LibroFragmentoRepositoryPort {
 	}
 
 	@Override
+	public List<TextoDeFragmento> textosDe(List<Long> ids) {
+		if (ids.isEmpty()) {
+			return List.of();
+		}
+		String marcas = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+		return jdbc.query("SELECT id, organization_id, texto FROM libro_fragmento WHERE id IN (" + marcas + ")",
+				(rs, n) -> new TextoDeFragmento(rs.getLong(1), rs.getLong(2), rs.getString(3)),
+				ids.toArray());
+	}
+
+	@Override
 	public long contarPorLibro(long libroId) {
 		return jpa.countByLibroId(libroId);
 	}

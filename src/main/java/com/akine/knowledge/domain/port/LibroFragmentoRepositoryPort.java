@@ -18,6 +18,12 @@ public interface LibroFragmentoRepositoryPort {
 
 	void actualizarVector(long id, byte[] vector, String modelo);
 
+	/** Id, organizacion y texto de los fragmentos pedidos (los ids que no existen se omiten). */
+	List<TextoDeFragmento> textosDe(List<Long> ids);
+
+	record TextoDeFragmento(long id, long organizationId, String texto) {
+	}
+
 	long contarPorLibro(long libroId);
 
 	/** Fragmentos del libro que ya tienen vector. */
