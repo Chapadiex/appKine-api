@@ -11590,3 +11590,62 @@ en controllers no pasan por `errors`: responden el 400 genérico de `handleProto
 **Pendiente en `appKine-web`:** regenerar el cliente a `0.151.0`. Con este contrato desplegado,
 `fraseDelCampo` y `nombreDelCampo` de `src/app/core/interceptors/error.interceptor.ts` se pueden borrar: el
 frontend deja de adivinar por la minúscula inicial y muestra el mensaje tal cual.
+
+## Registro de avance — Biblioteca del centro, M30 (10/11/2026)
+
+**Alcance.** Módulo `com.akine.knowledge` (M30): biblioteca de libros PDF por organización con búsqueda por similitud. Rama `akine-biblioteca-rag`, base `11f0ba6c`. Migración `V144`, contrato `0.164.0` (385 a 395 operaciones, aditivo). Apagada por defecto (`akine.biblioteca.enabled`).
+
+**Qué entró, por tarea (commits de `git log 11f0ba6c..HEAD`):**
+
+1. Diseño y requisitos M30: `8d2f2501`.
+2. Módulo, interruptor, permiso `biblioteca:manage` y errores: `d163d72b`.
+3. `V144` (`libro`, `libro_fragmento`, `biblioteca_version`): `4c7e788e`, corrección `e1a4b419`.
+4. Subida, listado, detalle, edición y bajas: `edec3acc`, correcciones `a3a32382`, `f2d9c662` (escrituras que dependen del hash serializadas por organización).
+5. Extracción con PDFBox, troceado y detección de pedazos sospechosos: `56232bb8`, corrección `f551b76a`.
+6. Embeddings e5 locales y procesamiento en segundo plano: `7b5d7dae`, corrección `eb9a931d`.
+7. Reindexado de pedazos sin vector o de otro modelo: `3e1d0179`, corrección `05b5bc43`.
+8. Búsqueda por similitud con caché por organización y plan B por palabras: `b30836f6`.
+9. Contrato `0.164.0`, Dockerfile opcional con el modelo, limpieza de `topK`, Javadoc de `alcanza` y este registro (commit de cierre).
+
+**Contrato 0.164.0.** Diez operaciones nuevas (listar, subir, ver, editar, reemplazar, reprocesar, activar, desactivar, eliminar, buscar), cinco `problemType` (`biblioteca-deshabilitada`, `libro-archivo-no-aceptado`, `libro-duplicado`, `libro-en-proceso`, `libro-no-encontrado`) y ocho schemas. Sin otra diferencia en el YAML. `OpenApiContractIT` en verde sin la bandera de actualización.
+
+**Decisiones tomadas sin consulta, a confirmar (R1 a R23):**
+
+- R1: `Coincidencia` lleva `BigDecimal puntaje` (escala 4), porque la convención prohíbe `double` en `domain`.
+- R2: propiedad `akine.biblioteca.worker.enabled`; los workers exigen las dos banderas, los ITs la apagan.
+- R3: al quedar `LISTO` un reemplazo, su `reemplaza_libro_id` pasa a NULL para que su hash quede protegido.
+- R4: `ResultadoBusqueda` y `PasajeRecuperado` viven en `knowledge.spi`.
+- R5: un libro se elimina en cualquier estado y arrastra su reemplazo pendiente.
+- R6: el contrato queda en drift hasta esta tarea, que lo regenera una sola vez.
+- R7: `fk_libro_reemplaza` sin `ON DELETE SET NULL` (MySQL no lo permite con columna generada); el servicio borra el reemplazo antes que el original.
+- R8: `LibroRepositoryPort.buscar` suma el filtro `activo`.
+- R9: las transacciones que reclaman trabajo van en `READ_COMMITTED`.
+- R10: el orden del cambio de reemplazo (desactivar y flush del viejo antes de soltar el vínculo del nuevo) se resuelve en la tarea 6.
+- R11: duplicado es cualquier libro activo con el mismo SHA-256; reemplazar o reprocesar un libro en proceso da 409 `libro-en-proceso`.
+- R12: alta, reemplazo y activación se serializan por organización con `FOR UPDATE` sobre `biblioteca_version`.
+- R13: evento de auditoría propio `LIBRO_REEMPLAZO_APLICADO`.
+- R14: el detector de instrucciones usa límites de palabra y marcadores de rol sólo al inicio de línea; se quitaron frases que marcaban texto clínico legítimo.
+- R15: un PDF cifrado sólo con contraseña de propietario se acepta.
+- R16: dependency-check no se corre en local, lo corre el CI.
+- R17: los pedazos sospechosos se guardan sin vector; el cierre del procesamiento se descarta si cambió el intento.
+- R18: columna `latido` renovada por cada avance, para que otra instancia no reclame un libro grande en curso.
+- R19: el reindexado avanza `biblioteca_version` en una transacción corta posterior.
+- R20: la búsqueda no se audita por consulta.
+- R21: con la biblioteca apagada, `BibliotecaDirectory` devuelve resultado vacío con `alcanza=false` en vez de 409.
+- R22: se eliminó la propiedad sin uso `busqueda.topK`; `k` lo decide quien llama.
+- R23: la prueba con el modelo ONNX real no la corrió un agente (ver abajo).
+
+**Variables de entorno y modelo.** `AKINE_BIBLIOTECA_ENABLED=true` enciende la biblioteca. Con el modelo real: `AKINE_BIBLIOTECA_MODELO_TIPO=onnx`, `AKINE_BIBLIOTECA_MODELO_RUTAMODELO` y `AKINE_BIBLIOTECA_MODELO_RUTATOKENIZER` (rutas del `model.onnx` cuantizado y del `tokenizer.json`). El `Dockerfile` los baja a `/opt/akine/modelos/e5-base/` sólo si al construir se pasan `AKINE_BIBLIOTECA_MODELO_URL` y `AKINE_BIBLIOTECA_TOKENIZER_URL`; sin ellos la imagen queda como antes. La sintaxis del `Dockerfile` se revisó leyendo; la imagen no se construyó.
+
+**No hecho:**
+
+- **Prueba con el modelo real (pendiente del usuario, R23).** Bajar `Xenova/multilingual-e5-base` cuantizado de Hugging Face (verificar su licencia), arrancar con `AKINE_BIBLIOTECA_ENABLED=true` y `tipo=onnx`, subir un PDF de kinesiología propio, comprobar que "ejercicios para lumbalgia crónica" devuelve pasajes pertinentes con puntaje mayor que 0,818 y medir la memoria del proceso con el modelo cargado. Sin esto la calidad real de la búsqueda y la memoria quedan sin medir.
+- Migrar `person` y `clinical` al almacenamiento compartido `platform.spi.archivo.AlmacenDeArchivos`.
+- Calibrar el corte por palabras (`minScorePalabras`) con material real.
+- Plan del frontend en `appKine-web` (pantalla de biblioteca y "Probar búsqueda") y regenerar el cliente a `0.164.0`.
+- `/simplify` y `/code-review` de la rama: los hace el controlador sobre toda la rama.
+- Menores diferidos que conviene seguir: el IDF de FULLTEXT es global entre organizaciones; no hay timeout en la consulta al modelo de embeddings; el primer latido llega recién tras la extracción (una extracción de más de 15 minutos se reencola); multipart global de 101 MB con `getBytes` en heap; dependency-check no corrido en local; la caché sin test de LRU y tope (ahora al menos avisa con WARN cuando una organización excede el tope).
+
+**Medido en esta tarea (10/11/2026, `./mvnw verify` acotado):** 62 unitarias en verde (knowledge, ArchUnit `ModuleArchitectureTest` 5/5, `CodingConventionsTest` 12/12, `SchemaNameCollisionTest`), `BusquedaIT` 6/6 y `OpenApiContractIT` 6/6 sin la bandera de actualización. Operaciones del contrato: 385 a 395. No se corrió la suite completa (la corre el CI), ni se midió memoria ni calidad con el modelo real.
+
+Diseño: `docs/diseno/AKINE-biblioteca-rag.md` (sección 12).

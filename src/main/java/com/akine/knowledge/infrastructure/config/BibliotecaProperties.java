@@ -21,7 +21,6 @@ public record BibliotecaProperties(
 	}
 
 	public record Busqueda(
-			@DefaultValue("8") int topK,
 			@DefaultValue("0.818") double minScore,
 			@DefaultValue("0.5") double minScorePalabras,
 			@DefaultValue("2") int minPedazos,

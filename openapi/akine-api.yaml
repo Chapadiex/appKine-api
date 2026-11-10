@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.162.0
+  version: 0.164.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -60,6 +60,8 @@ tags:
   name: Registro y activacion
 - description: "Que horarios se pueden reservar, y si uno puntual se puede"
   name: Disponibilidad
+- description: Libros PDF de la organizacion
+  name: Biblioteca
 - description: "Estudios, informes y documentos de una Historia Clinica (M09/M25)"
   name: Adjuntos clinicos
 - description: Documentos administrativos de una persona (M07/M25)
@@ -19199,6 +19201,398 @@ paths:
       summary: Hechos registrados en la auditoria de la organizacion
       tags:
       - Auditoria
+  /api/v1/organizations/{orgId}/biblioteca/busquedas:
+    post:
+      description: "Devuelve los `k` pasajes mas parecidos (1 a 20, por defecto 5)\
+        \ de libros activos y listos. `camino` dice si se busco por similitud (VECTOR)\
+        \ o por palabras (PALABRAS, si el modelo no esta disponible); `alcanza` es\
+        \ verdadero con al menos 2 pasajes sobre el `corte`. Consulta en blanco o\
+        \ de mas de 600 caracteres: 400."
+      operationId: buscarEnBiblioteca
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BibliotecaBusquedaRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BibliotecaBusquedaResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BibliotecaBusquedaResponse"
+          description: OK
+      summary: Buscar pasajes en la biblioteca
+      tags:
+      - Biblioteca
+  /api/v1/organizations/{orgId}/biblioteca/libros:
+    get:
+      description: "`q` busca en titulo y autores; `estado=INACTIVO` lista los dados\
+        \ de baja. `sort` ordena por titulo, creadoEn o estado."
+      operationId: listarLibros
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: area
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - PENDIENTE
+          - PROCESANDO
+          - LISTO
+          - ERROR
+          - INACTIVO
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: creadoEn\
+          \ descendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "titulo,asc"
+          - "titulo,desc"
+          - "creadoEn,asc"
+          - "creadoEn,desc"
+          - "estado,asc"
+          - "estado,desc"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroPageResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroPageResponse"
+          description: OK
+      summary: Listar los libros de la biblioteca
+      tags:
+      - Biblioteca
+    post:
+      description: "El tipo se decide por los bytes. 202: queda PENDIENTE y se procesa\
+        \ aparte. 409 libro-duplicado si ya hay un libro activo con el mismo contenido."
+      operationId: subirLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: titulo
+        required: true
+        schema:
+          type: string
+      - in: query
+        name: autores
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: edicion
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: area
+        required: false
+        schema:
+          type: string
+      - description: "Debe ser true: declara que se tienen los derechos"
+        in: query
+        name: declaracionDerechos
+        required: true
+        schema:
+          type: boolean
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                archivo:
+                  type: string
+                  format: binary
+              required:
+              - archivo
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+          description: OK
+      summary: Subir un libro PDF
+      tags:
+      - Biblioteca
+  /api/v1/organizations/{orgId}/biblioteca/libros/{id}:
+    delete:
+      description: En cualquier estado; tambien elimina su reemplazo pendiente.
+      operationId: eliminarLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+      summary: Eliminar un libro y su archivo
+      tags:
+      - Biblioteca
+    get:
+      operationId: verLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroDetalleResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroDetalleResponse"
+          description: OK
+      summary: Detalle de un libro
+      tags:
+      - Biblioteca
+    put:
+      description: "Con `version`; si cambio, 409 concurrent-modification."
+      operationId: editarLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibroDatosRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+          description: OK
+      summary: "Editar titulo, autores, edicion y area"
+      tags:
+      - Biblioteca
+  /api/v1/organizations/{orgId}/biblioteca/libros/{id}/activacion:
+    post:
+      operationId: activarLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+          description: OK
+      summary: Activar un libro dado de baja
+      tags:
+      - Biblioteca
+  /api/v1/organizations/{orgId}/biblioteca/libros/{id}/desactivacion:
+    post:
+      operationId: desactivarLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+          description: OK
+      summary: Dar de baja un libro sin borrarlo
+      tags:
+      - Biblioteca
+  /api/v1/organizations/{orgId}/biblioteca/libros/{id}/reemplazo:
+    post:
+      description: "Copia los datos del original; devuelve el libro nuevo, PENDIENTE.\
+        \ El original sigue vigente hasta que el nuevo este LISTO."
+      operationId: reemplazarLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: declaracionDerechos
+        required: true
+        schema:
+          type: boolean
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                archivo:
+                  type: string
+                  format: binary
+              required:
+              - archivo
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+          description: OK
+      summary: Subir un archivo que reemplaza al libro
+      tags:
+      - Biblioteca
+  /api/v1/organizations/{orgId}/biblioteca/libros/{id}/reproceso:
+    post:
+      operationId: reprocesarLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+          description: OK
+      summary: Volver a procesar un libro
+      tags:
+      - Biblioteca
   /api/v1/organizations/{orgId}/colaborador-invitaciones:
     get:
       description: |-
@@ -27619,6 +28013,65 @@ components:
           minLength: 0
       required:
       - motivo
+    BibliotecaBusquedaRequest:
+      type: object
+      description: Consulta a la biblioteca
+      properties:
+        consulta:
+          type: string
+          maxLength: 600
+        k:
+          type: integer
+          format: int32
+          description: "Pasajes a devolver, de 1 a 20; por defecto 5"
+          maximum: 20
+          minimum: 1
+      required:
+      - consulta
+    BibliotecaBusquedaResponse:
+      type: object
+      description: Resultado de una busqueda en la biblioteca
+      properties:
+        alcanza:
+          type: boolean
+          description: Hay al menos 2 pasajes sobre el corte
+        camino:
+          type: string
+          description: VECTOR por similitud; PALABRAS si el modelo no esta disponible
+          enum:
+          - VECTOR
+          - PALABRAS
+        corte:
+          type: number
+          format: double
+          description: Puntaje minimo del camino usado
+        pasajes:
+          type: array
+          items:
+            $ref: "#/components/schemas/BibliotecaPasajeResponse"
+    BibliotecaPasajeResponse:
+      type: object
+      description: Pasaje de un libro de la biblioteca
+      properties:
+        libroId:
+          type: integer
+          format: int64
+        paginaDesde:
+          type: integer
+          format: int32
+        paginaHasta:
+          type: integer
+          format: int32
+        puntaje:
+          type: number
+          format: double
+        superaCorte:
+          type: boolean
+        texto:
+          type: string
+          maxLength: 500
+        titulo:
+          type: string
     BloqueResponse:
       type: object
       description: Bloque recurrente de disponibilidad de un profesional en una sede
@@ -36042,6 +36495,126 @@ components:
             \ cuando la mitad entro por tarjeta."
           items:
             $ref: "#/components/schemas/TotalPorMedioDeCaja"
+    LibroDatosRequest:
+      type: object
+      description: Datos editables de un libro
+      properties:
+        area:
+          type: string
+          maxLength: 100
+        autores:
+          type: string
+          maxLength: 500
+        edicion:
+          type: string
+          maxLength: 100
+        titulo:
+          type: string
+          maxLength: 300
+        version:
+          type: integer
+          format: int64
+          description: "Version leida, para el control optimista"
+      required:
+      - titulo
+    LibroDetalleResponse:
+      type: object
+      description: "Detalle de un libro: datos, fragmentos y los marcados como sospechosos"
+      properties:
+        fragmentos:
+          type: integer
+          format: int64
+          description: Cantidad de fragmentos
+        fragmentosConVector:
+          type: integer
+          format: int64
+          description: Fragmentos que ya tienen vector
+        libro:
+          $ref: "#/components/schemas/LibroResponse"
+        sospechosos:
+          type: array
+          description: Fragmentos que parecen texto corrupto o instrucciones
+          items:
+            $ref: "#/components/schemas/LibroFragmentoSospechosoResponse"
+    LibroFragmentoSospechosoResponse:
+      type: object
+      description: Un fragmento marcado como sospechoso
+      properties:
+        extracto:
+          type: string
+          description: Primeros 200 caracteres
+        paginaDesde:
+          type: integer
+          format: int32
+          description: Primera pagina del fragmento
+    LibroPageResponse:
+      type: object
+      description: Pagina de libros de la biblioteca
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibroResponse"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina, base cero"
+        size:
+          type: integer
+          format: int32
+          description: Elementos por pagina
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    LibroResponse:
+      type: object
+      description: Un libro de la biblioteca de la organizacion
+      properties:
+        area:
+          type: string
+        autores:
+          type: string
+        edicion:
+          type: string
+        estado:
+          type: string
+          description: Estado que ve el usuario; INACTIVO si esta dado de baja
+          enum:
+          - PENDIENTE
+          - PROCESANDO
+          - LISTO
+          - ERROR
+          - INACTIVO
+        id:
+          type: integer
+          format: int64
+          example: 12
+        motivoError:
+          type: string
+          description: "Por que fallo el procesamiento, si fallo"
+        paginas:
+          type: integer
+          format: int32
+          description: Paginas del PDF; vacio hasta que se procesa
+        progreso:
+          type: integer
+          format: int32
+          description: "Avance del procesamiento, 0 a 100"
+          example: 40
+        reemplazaLibroId:
+          type: integer
+          format: int64
+          description: "Libro al que reemplaza, mientras el reemplazo no esta LISTO"
+        titulo:
+          type: string
+          example: Kinesiologia del deporte
+        version:
+          type: integer
+          format: int64
+          description: Version para el control optimista de PUT
     LimitUsageResponse:
       type: object
       description: Consumo actual de un limite del plan contratado
@@ -39963,6 +40536,11 @@ components:
       - https://akine.app/problems/caso-clinico-requerido
       - https://akine.app/problems/enmienda-fuera-de-ventana
       - https://akine.app/problems/profesional-no-habilitado-en-oferta
+      - https://akine.app/problems/biblioteca-deshabilitada
+      - https://akine.app/problems/libro-no-encontrado
+      - https://akine.app/problems/libro-duplicado
+      - https://akine.app/problems/libro-archivo-no-aceptado
+      - https://akine.app/problems/libro-en-proceso
     Producto:
       type: object
       description: Producto de pack del catalogo de una sede (RF-M29-001).

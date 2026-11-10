@@ -8,6 +8,8 @@ import java.util.List;
  * @param corte puntaje minimo del camino usado
  * @param alcanza hay al menos el minimo de pasajes (2) con puntaje sobre el corte: si es
  *     {@code false}, quien llama no deberia apoyarse en la biblioteca para responder
+ *     Requiere al menos {@code minPedazos} pasajes sobre el corte: con {@code k < minPedazos} es
+ *     siempre {@code false}, y con la biblioteca apagada tambien (resultado vacio).
  * @param pasajes por puntaje descendente
  */
 public record ResultadoBusqueda(

@@ -125,6 +125,8 @@ public class MySqlAlmacenVectorial implements AlmacenVectorial {
 				bytesEnUso -= actual.bytes();
 			}
 			if (entrada.bytes() > topeBytes) {
+				log.warn("Los vectores de la organizacion {} ocupan {} bytes y superan el tope de cache ({}): no se cachean y cada busqueda los recarga",
+						orgId, entrada.bytes(), topeBytes);
 				return;
 			}
 			cache.put(orgId, entrada);

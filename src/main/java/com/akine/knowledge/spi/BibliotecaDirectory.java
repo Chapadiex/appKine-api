@@ -10,6 +10,10 @@ package com.akine.knowledge.spi;
 public interface BibliotecaDirectory {
 
 	/**
+	 * Con la biblioteca apagada devuelve un resultado vacio con {@code alcanza=false}. Como
+	 * {@code alcanza} exige al menos {@code minPedazos} pasajes sobre el corte, con
+	 * {@code k < minPedazos} es siempre {@code false}.
+	 *
 	 * @param consulta no en blanco, hasta 600 caracteres
 	 * @param k entre 1 y 20
 	 * @throws IllegalArgumentException si la consulta o {@code k} no son validos

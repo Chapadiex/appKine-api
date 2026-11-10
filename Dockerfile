@@ -51,6 +51,21 @@ COPY --from=build /build/extracted/spring-boot-loader/ ./
 COPY --from=build /build/extracted/snapshot-dependencies/ ./
 COPY --from=build /build/extracted/application/ ./
 
+# Modelo de embeddings de la biblioteca (M30), OPCIONAL: sólo si al construir se pasan las dos URL
+#   docker build --build-arg AKINE_BIBLIOTECA_MODELO_URL=... --build-arg AKINE_BIBLIOTECA_TOKENIZER_URL=... .
+# Sin ellas la imagen queda exactamente como antes y la biblioteca sigue apagada. Con ellas, el
+# modelo ONNX cuantizado y su tokenizer.json quedan en /opt/akine/modelos/e5-base/ y se activan con
+# AKINE_BIBLIOTECA_ENABLED=true, AKINE_BIBLIOTECA_MODELO_RUTAMODELO=/opt/akine/modelos/e5-base/model.onnx
+# y AKINE_BIBLIOTECA_MODELO_RUTATOKENIZER=/opt/akine/modelos/e5-base/tokenizer.json.
+ARG AKINE_BIBLIOTECA_MODELO_URL=""
+ARG AKINE_BIBLIOTECA_TOKENIZER_URL=""
+RUN if [ -n "$AKINE_BIBLIOTECA_MODELO_URL" ] && [ -n "$AKINE_BIBLIOTECA_TOKENIZER_URL" ]; then \
+		mkdir -p /opt/akine/modelos/e5-base \
+		&& curl -fsSL "$AKINE_BIBLIOTECA_MODELO_URL" -o /opt/akine/modelos/e5-base/model.onnx \
+		&& curl -fsSL "$AKINE_BIBLIOTECA_TOKENIZER_URL" -o /opt/akine/modelos/e5-base/tokenizer.json \
+		&& chmod -R a+rX /opt/akine/modelos; \
+	fi
+
 # Raiz de los adjuntos administrativos (./var/adjuntos) y clinicos (./var/adjuntos-clinicos).
 # Es lo unico en lo que la aplicacion escribe. En un despliegue real se monta un volumen sobre
 # /app/var —o uno por raiz, que es para lo que estan separadas—: sin volumen, los binarios se
