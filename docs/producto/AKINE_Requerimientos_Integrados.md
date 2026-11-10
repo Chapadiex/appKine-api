@@ -19845,6 +19845,515 @@ Los consumos de créditos no deben duplicar ingresos de caja ya reconocidos en l
 - Pago de compra rechazado luego de crear el producto: política de estado pendiente.
 - Ajuste manual negativo cercano a cero.
 
+# M30 — Biblioteca del centro
+
+## 1. Objetivo
+
+Permitir que cada organización administre su propia biblioteca de bibliografía en PDF: cargar libros, procesarlos en segundo plano (extracción de texto, troceado y vectorización local) y buscar en ellos por significado. Es la base de recuperación sobre la que se apoyarán después la sugerencia de tratamiento y la evaluación de evolución (fuera del alcance de M30). M30 no redacta respuestas con IA, no guarda claves de proveedores y no envía material a servicios externos: los libros no salen del servidor.
+
+## 2. Actores
+
+- Administrador de organización (único actor con acceso)
+- Sistema (procesamiento en segundo plano y reindexado)
+
+## 3. Dependencias
+
+- M01–M02 Organización y tenant
+- M04 Roles, permisos y memberships
+- M24 Auditoría
+- M26 Notificaciones y tareas en segundo plano (patrón de worker)
+- Almacenamiento de archivos de la plataforma
+
+## 4. Reglas de negocio
+
+- **RN-M30-001:** La biblioteca es de la organización. Ningún libro, pedazo ni metadato se comparte entre organizaciones, y toda consulta se acota por la organización del contexto antes de ordenar.
+- **RN-M30-002:** El mismo archivo (mismo hash SHA-256) no puede cargarse dos veces entre los libros activos de una organización.
+- **RN-M30-003:** Un pedazo sospechoso de contener instrucciones escondidas para un modelo de lenguaje se guarda marcado y nunca se recupera en una búsqueda.
+- **RN-M30-004:** La búsqueda vectorial compara únicamente vectores generados por el modelo de embeddings vigente. Los pedazos sin vector vigente se encuentran por palabras hasta que el reindexado los complete.
+- **RN-M30-005:** Un reemplazo no deja hueco: el libro anterior sigue respondiendo hasta que el nuevo queda `LISTO`, y recién entonces se desactiva, en la misma transacción. Reprocesar tampoco deja un libro mitad viejo y mitad nuevo.
+- **RN-M30-006:** Estados de procesamiento: `PENDIENTE`, `PROCESANDO`, `LISTO`, `ERROR`. Un libro desactivado se muestra `INACTIVO` sin perder su estado de procesamiento. Sólo un libro activo y `LISTO` participa en búsquedas.
+- **RN-M30-007:** Subir exige declarar que la organización tiene derecho a usar el material; la declaración se guarda con fecha y cuenta.
+- **RN-M30-008:** El tipo del archivo lo deciden sus bytes, no la extensión ni el `Content-Type`.
+- **RN-M30-009:** La biblioteca no es información clínica: Eliminar es un borrado físico auditado (archivo, pedazos y fila). Desactivar conserva todo.
+- **RN-M30-010:** La biblioteca está detrás de un interruptor global del despliegue. Apagada, ninguna operación está disponible y el modelo de embeddings no se carga.
+
+## 5. Requerimientos funcionales detallados
+
+### RF-M30-001 — Subir libro
+
+**Descripción:** Cargar un PDF con sus datos bibliográficos para que quede en cola de procesamiento.
+
+**Precondiciones generales:**
+- Usuario autenticado con contexto de organización resuelto.
+- Actor con `biblioteca:manage`.
+- Biblioteca habilitada en el despliegue.
+
+**Disparador:**
+- El administrador envía el formulario de subida (multipart) desde la UI o la API.
+
+**Flujo principal:**
+1. El sistema valida permiso, organización y que la biblioteca esté habilitada.
+2. Valida título obligatorio, declaración de derechos aceptada y tamaño del archivo.
+3. Verifica por los bytes que el archivo es un PDF no vacío.
+4. Calcula el hash SHA-256 y comprueba que no exista entre los libros activos de la organización.
+5. Guarda el archivo en el almacenamiento y crea el libro en `PENDIENTE`, con la declaración de derechos (fecha y cuenta).
+6. Audita y responde con el libro creado.
+
+**Flujos alternativos / excepciones:**
+- Archivo que no es PDF, vacío o más grande que el máximo configurado: rechazo sin guardar nada.
+- Hash repetido entre libros activos: conflicto, indicando el libro existente.
+- Si falla el guardado del archivo, no queda fila huérfana.
+
+**Validaciones obligatorias:**
+- Título no vacío; autores, edición y área opcionales con longitud máxima.
+- Declaración de derechos en `true`.
+- Tipo por bytes, tamaño máximo por despliegue (100 MB por defecto).
+- Aislamiento multi-tenant y permiso en backend.
+
+**Postcondiciones:**
+- Existe un libro `PENDIENTE` con su archivo, o no existe nada.
+- La versión de búsqueda de la organización no cambia hasta que el libro quede `LISTO`.
+
+**Errores esperables:**
+- `biblioteca-deshabilitada` (409), `libro-archivo-no-aceptado` (400, causa `NO_ES_PDF`, `MUY_GRANDE` o `VACIO`), `libro-duplicado` (409), `VALIDATION_ERROR`, `FORBIDDEN`.
+
+**Auditoría:**
+- Registrar actor, organización, libro, nombre de archivo, tamaño y hash. No registrar el contenido.
+
+**Criterios de aceptación:**
+- **CA-M30-001-01:** un PDF válido deja un libro `PENDIENTE` visible en el listado.
+- **CA-M30-001-02:** un usuario sin `biblioteca:manage` recibe 403 y no se guarda nada.
+- **CA-M30-001-03:** un archivo renombrado `.pdf` que no es PDF responde `libro-archivo-no-aceptado` con causa `NO_ES_PDF`.
+- **CA-M30-001-04:** subir el mismo archivo dos veces en la misma organización responde `libro-duplicado`; en otra organización es válido.
+- **CA-M30-001-05:** sin la declaración de derechos la subida se rechaza con 400.
+- **CA-M30-001-06:** con la biblioteca apagada responde `biblioteca-deshabilitada` y no hay efectos.
+
+### RF-M30-002 — Listar y filtrar libros
+
+**Descripción:** Mostrar los libros de la organización con su estado y permitir buscar por texto y filtrar.
+
+**Precondiciones generales:**
+- Usuario autenticado con contexto de organización; actor con `biblioteca:manage`.
+
+**Disparador:**
+- El administrador abre la pantalla de biblioteca o cambia búsqueda, filtro u orden.
+
+**Flujo principal:**
+1. El sistema valida permiso y organización.
+2. Aplica `q` (título o autor), filtros por área y estado, orden y paginación.
+3. Devuelve título, autores, edición, área, páginas, estado, progreso, motivo de error legible y si está activo.
+4. Para un libro `LISTO` con pedazos aún sin vector vigente, informa el avance de indexado.
+
+**Flujos alternativos / excepciones:**
+- Sin libros: lista vacía, no error.
+- Orden o filtro inválidos: 400.
+
+**Validaciones obligatorias:**
+- Paginación acotada, orden sobre campos permitidos, aislamiento multi-tenant.
+
+**Postcondiciones:**
+- Lectura sin efectos.
+
+**Errores esperables:**
+- `biblioteca-deshabilitada`, `VALIDATION_ERROR`, `FORBIDDEN`.
+
+**Auditoría:**
+- No se audita la lectura del listado.
+
+**Criterios de aceptación:**
+- **CA-M30-002-01:** el listado sólo contiene libros de la organización del contexto.
+- **CA-M30-002-02:** `q` filtra por título y por autor sin distinguir mayúsculas ni tildes.
+- **CA-M30-002-03:** un libro desactivado se muestra `INACTIVO`.
+- **CA-M30-002-04:** un libro en `ERROR` expone un motivo legible, por ejemplo "El PDF no tiene texto: parece escaneado".
+
+### RF-M30-003 — Ver detalle del libro
+
+**Descripción:** Consultar un libro con sus datos, cantidad de pedazos y los pedazos marcados como sospechosos.
+
+**Precondiciones generales:**
+- Usuario autenticado; actor con `biblioteca:manage`; libro de la organización del contexto.
+
+**Disparador:**
+- El administrador abre el detalle desde el listado.
+
+**Flujo principal:**
+1. El sistema valida permiso y que el libro pertenezca a la organización.
+2. Devuelve datos bibliográficos, estado, progreso, versión, declaración de derechos y reemplazo vinculado.
+3. Informa la cantidad total de pedazos y la de sospechosos, con la página de cada uno.
+
+**Flujos alternativos / excepciones:**
+- Libro inexistente o de otra organización: 404.
+
+**Validaciones obligatorias:**
+- Aislamiento multi-tenant.
+
+**Postcondiciones:**
+- Lectura sin efectos.
+
+**Errores esperables:**
+- `libro-no-encontrado` (404), `biblioteca-deshabilitada`, `FORBIDDEN`.
+
+**Auditoría:**
+- No se audita la lectura.
+
+**Criterios de aceptación:**
+- **CA-M30-003-01:** el detalle muestra cuántos pedazos quedaron como sospechosos y en qué página.
+- **CA-M30-003-02:** un libro de otra organización responde `libro-no-encontrado`, nunca 403.
+
+### RF-M30-004 — Editar datos del libro
+
+**Descripción:** Corregir título, autores, edición y área sin tocar el archivo ni los pedazos.
+
+**Precondiciones generales:**
+- Usuario autenticado; actor con `biblioteca:manage`; libro de la organización.
+
+**Disparador:**
+- El administrador guarda la edición.
+
+**Flujo principal:**
+1. El sistema valida permiso, organización y `version` enviada.
+2. Valida los campos y actualiza los datos bibliográficos.
+3. Avanza la versión de búsqueda de la organización, porque el título viaja en los resultados.
+4. Audita y devuelve el libro.
+
+**Flujos alternativos / excepciones:**
+- `version` vieja: conflicto de concurrencia, sin sobrescribir.
+
+**Validaciones obligatorias:**
+- Título no vacío, longitudes máximas, `version` obligatoria.
+
+**Postcondiciones:**
+- El archivo, el hash, el estado y los pedazos no cambian.
+
+**Errores esperables:**
+- `libro-no-encontrado`, `concurrent-modification` (409), `VALIDATION_ERROR`, `biblioteca-deshabilitada`, `FORBIDDEN`.
+
+**Auditoría:**
+- Registrar valores anteriores y nuevos de los campos editados.
+
+**Criterios de aceptación:**
+- **CA-M30-004-01:** el cambio de título se refleja en las siguientes búsquedas.
+- **CA-M30-004-02:** editar con una versión vieja responde 409 y no pisa el cambio ajeno.
+- **CA-M30-004-03:** editar no reprocesa el libro ni cambia su estado.
+
+### RF-M30-005 — Reemplazar archivo
+
+**Descripción:** Subir una nueva edición de un libro sin dejar la biblioteca sin ese material mientras se procesa.
+
+**Precondiciones generales:**
+- Usuario autenticado; actor con `biblioteca:manage`; libro activo de la organización.
+
+**Disparador:**
+- El administrador elige "Reemplazar archivo" y envía el nuevo PDF.
+
+**Flujo principal:**
+1. El sistema valida permiso, organización y el archivo como en RF-M30-001.
+2. Crea un libro nuevo `PENDIENTE` con `reemplaza_libro_id` apuntando al anterior y copia sus datos bibliográficos editables.
+3. El anterior sigue activo y respondiendo.
+4. Cuando el nuevo queda `LISTO` (RF-M30-010), en la misma transacción el anterior se desactiva y el `reemplaza_libro_id` del nuevo se limpia.
+5. Si el nuevo termina en `ERROR`, el anterior sigue activo y el error se informa en el nuevo.
+
+**Flujos alternativos / excepciones:**
+- Archivo idéntico al de otro libro activo: `libro-duplicado`.
+- Ya hay un reemplazo en curso para ese libro: `libro-en-proceso`.
+
+**Validaciones obligatorias:**
+- Las de RF-M30-001; la declaración de derechos se vuelve a exigir.
+- Un libro sólo puede tener un reemplazo pendiente a la vez.
+
+**Postcondiciones:**
+- En ningún momento hay un hueco, ni dos versiones activas del mismo libro devolviendo resultados duplicados tras el cambio.
+
+**Errores esperables:**
+- `libro-no-encontrado`, `libro-archivo-no-aceptado`, `libro-duplicado`, `libro-en-proceso`, `biblioteca-deshabilitada`, `FORBIDDEN`.
+
+**Auditoría:**
+- Registrar libro anterior, libro nuevo y, al completarse, la desactivación del anterior.
+
+**Criterios de aceptación:**
+- **CA-M30-005-01:** mientras el reemplazo procesa, la búsqueda sigue devolviendo pasajes del libro anterior.
+- **CA-M30-005-02:** al quedar `LISTO` el nuevo, el anterior queda inactivo y la búsqueda devuelve sólo el nuevo.
+- **CA-M30-005-03:** si el nuevo termina en `ERROR`, el anterior sigue activo y buscable.
+- **CA-M30-005-04:** un segundo reemplazo simultáneo del mismo libro responde `libro-en-proceso`.
+
+### RF-M30-006 — Reprocesar
+
+**Descripción:** Volver a extraer, trocear y vectorizar un libro, típicamente tras un `ERROR` o un cambio de parámetros.
+
+**Precondiciones generales:**
+- Usuario autenticado; actor con `biblioteca:manage`; libro de la organización en `LISTO` o `ERROR`.
+
+**Disparador:**
+- El administrador elige "Reprocesar".
+
+**Flujo principal:**
+1. El sistema valida permiso, organización y que el libro no esté `PENDIENTE` ni `PROCESANDO`.
+2. Pasa el libro a `PENDIENTE` conservando sus pedazos vigentes.
+3. El worker (RF-M30-010) genera los pedazos nuevos y, al final, los intercambia por los viejos en una sola transacción.
+
+**Flujos alternativos / excepciones:**
+- Libro `PENDIENTE` o `PROCESANDO`: `libro-en-proceso`.
+- Si el reprocesado falla, los pedazos anteriores se conservan intactos.
+
+**Validaciones obligatorias:**
+- Estado admitido y aislamiento multi-tenant.
+
+**Postcondiciones:**
+- Nunca queda un libro con pedazos viejos y nuevos mezclados.
+
+**Errores esperables:**
+- `libro-no-encontrado`, `libro-en-proceso`, `biblioteca-deshabilitada`, `FORBIDDEN`.
+
+**Auditoría:**
+- Registrar actor, libro y estado de origen.
+
+**Criterios de aceptación:**
+- **CA-M30-006-01:** un libro en `ERROR` vuelve a `PENDIENTE` y se procesa de nuevo.
+- **CA-M30-006-02:** reprocesar un libro `LISTO` no interrumpe sus búsquedas hasta el intercambio.
+- **CA-M30-006-03:** reprocesar un libro `PROCESANDO` responde `libro-en-proceso`.
+
+### RF-M30-007 — Activar o desactivar
+
+**Descripción:** Sacar un libro de las búsquedas, o volver a incluirlo, conservando todo su contenido.
+
+**Precondiciones generales:**
+- Usuario autenticado; actor con `biblioteca:manage`; libro de la organización.
+
+**Disparador:**
+- El administrador elige "Desactivar" o "Activar".
+
+**Flujo principal:**
+1. El sistema valida permiso, organización y `version`.
+2. Cambia `activo`; al desactivar, el libro deja de participar en búsquedas al instante.
+3. Al activar, valida que no haya otro libro activo con el mismo hash.
+4. Avanza la versión de búsqueda de la organización, audita y devuelve el libro.
+
+**Flujos alternativos / excepciones:**
+- Activar un libro cuyo hash coincide con otro activo: `libro-duplicado`.
+- Operación sobre el estado en que ya está: idempotente, sin error.
+
+**Validaciones obligatorias:**
+- `version` obligatoria y aislamiento multi-tenant.
+
+**Postcondiciones:**
+- Archivo, pedazos y estado de procesamiento se conservan.
+
+**Errores esperables:**
+- `libro-no-encontrado`, `libro-duplicado`, `concurrent-modification`, `biblioteca-deshabilitada`, `FORBIDDEN`.
+
+**Auditoría:**
+- Registrar actor, libro y el cambio de `activo`.
+
+**Criterios de aceptación:**
+- **CA-M30-007-01:** un libro desactivado no aparece en ninguna búsqueda y se muestra `INACTIVO`.
+- **CA-M30-007-02:** reactivarlo lo vuelve buscable sin reprocesar.
+- **CA-M30-007-03:** reactivar un libro cuyo archivo ya está cargado en otro libro activo responde `libro-duplicado`.
+
+### RF-M30-008 — Eliminar
+
+**Descripción:** Borrar definitivamente un libro, su archivo y sus pedazos.
+
+**Precondiciones generales:**
+- Usuario autenticado; actor con `biblioteca:manage`; libro de la organización que no esté `PROCESANDO`.
+
+**Disparador:**
+- El administrador confirma "Eliminar".
+
+**Flujo principal:**
+1. El sistema valida permiso, organización y estado.
+2. En una transacción borra los pedazos y la fila del libro, y avanza la versión de búsqueda.
+3. Borra el archivo del almacenamiento al confirmar la transacción.
+4. Audita (con título y hash) y responde 204.
+
+**Flujos alternativos / excepciones:**
+- Libro `PROCESANDO`: `libro-en-proceso`.
+- Si falla el borrado del archivo tras el commit, se registra para limpieza posterior y el libro ya no existe para el usuario.
+- Eliminar un libro con un reemplazo pendiente descarta también el reemplazo.
+
+**Validaciones obligatorias:**
+- Estado admitido y aislamiento multi-tenant.
+
+**Postcondiciones:**
+- No quedan fila, pedazos ni archivo. Es un borrado físico por RN-M30-009: no es información clínica ni histórica.
+
+**Errores esperables:**
+- `libro-no-encontrado`, `libro-en-proceso`, `biblioteca-deshabilitada`, `FORBIDDEN`.
+
+**Auditoría:**
+- Registrar actor, título, hash y cantidad de pedazos borrados.
+
+**Criterios de aceptación:**
+- **CA-M30-008-01:** tras eliminar, el libro y sus pasajes no aparecen en listado, detalle ni búsqueda.
+- **CA-M30-008-02:** el evento de auditoría conserva título y hash del libro eliminado.
+- **CA-M30-008-03:** un libro de otra organización responde `libro-no-encontrado` y no se borra.
+- **CA-M30-008-04:** el mismo archivo puede subirse de nuevo después de eliminarlo.
+
+### RF-M30-009 — Probar búsqueda
+
+**Descripción:** Consultar la biblioteca con una pregunta para verificar que un libro quedó bien cargado. Es el mismo servicio que expondrá la biblioteca a otros módulos; no hay IA redactando.
+
+**Precondiciones generales:**
+- Usuario autenticado con contexto de organización; actor con `biblioteca:manage`.
+
+**Disparador:**
+- El administrador escribe una consulta en el panel "Probar búsqueda".
+
+**Flujo principal:**
+1. El sistema valida permiso, organización, la consulta (no vacía, longitud máxima) y `k` acotado.
+2. Acota el universo: organización del contexto, libro activo y `LISTO`, pedazo no sospechoso y `modelo_embeddings` igual al vigente. Recién después ordena.
+3. Calcula la similitud y devuelve los mejores pasajes con libro, páginas, fragmento y puntaje.
+4. Marca cada pasaje según supere o no el corte de respaldo, para que el administrador vea si la biblioteca alcanza para esa pregunta.
+5. Informa el camino usado: `VECTOR` o `PALABRAS`.
+
+**Flujos alternativos / excepciones:**
+- Si el modelo de embeddings no está disponible, usa la búsqueda por palabras con los mismos filtros y lo informa.
+- Los pedazos sin vector vigente se alcanzan por palabras, de modo que la búsqueda no queda vacía durante un reindexado.
+- Biblioteca sin libros listos: lista vacía.
+
+**Validaciones obligatorias:**
+- Consulta y `k` válidos, aislamiento multi-tenant, exclusión de sospechosos, un solo modelo de embeddings.
+
+**Postcondiciones:**
+- Lectura sin efectos sobre la biblioteca.
+
+**Errores esperables:**
+- `biblioteca-deshabilitada`, `VALIDATION_ERROR`, `FORBIDDEN`.
+
+**Auditoría:**
+- Registrar actor y cantidad de resultados; la consulta se registra sin datos de pacientes.
+
+**Criterios de aceptación:**
+- **CA-M30-009-01:** una consulta devuelve pasajes con libro, página, fragmento, puntaje, si supera el corte y el camino usado.
+- **CA-M30-009-02:** una organización jamás recibe pasajes de libros de otra, aunque sean idénticos.
+- **CA-M30-009-03:** un pedazo marcado sospechoso nunca aparece.
+- **CA-M30-009-04:** con el modelo de embeddings no disponible la búsqueda responde por `PALABRAS`.
+- **CA-M30-009-05:** los pedazos con vectores de un modelo distinto al vigente no participan de la comparación vectorial.
+- **CA-M30-009-06:** los libros desactivados o no `LISTO` no aparecen.
+
+### RF-M30-010 — Procesamiento en segundo plano
+
+**Descripción:** Convertir un libro `PENDIENTE` en pedazos buscables sin intervención del usuario.
+
+**Precondiciones generales:**
+- Biblioteca habilitada y worker habilitado en el despliegue.
+
+**Disparador:**
+- Ciclo programado del worker o barrido de libros abandonados.
+
+**Flujo principal:**
+1. El worker reclama un libro `PENDIENTE` con bloqueo que saltea los reclamados por otras instancias y lo pasa a `PROCESANDO`.
+2. Extrae el texto por página. Si casi no hay texto, termina en `ERROR` con motivo "PDF escaneado sin texto"; si supera el tope de páginas, termina en `ERROR`.
+3. Trocea en pedazos de tamaño y solape configurados, sin cortar palabras, conservando página inicial y final.
+4. Marca como sospechoso todo pedazo que coincida con la lista versionada de frases de inyección y roles falsos, normalizando tildes y mayúsculas.
+5. Vectoriza en lotes con el modelo local y actualiza el progreso por lote. Si el vector de un pedazo falla, lo guarda igual sin vector.
+6. Al final, en una sola transacción, intercambia los pedazos, deja el libro `LISTO`, aplica el reemplazo de RF-M30-005 si corresponde y avanza la versión de búsqueda.
+
+**Flujos alternativos / excepciones:**
+- Un libro `PROCESANDO` sin actividad reciente vuelve a `PENDIENTE` (el proceso murió).
+- Cualquier excepción del worker se registra y no se propaga ni detiene el ciclo.
+- Un fallo de procesamiento deja el libro en `ERROR` con motivo legible y sin pedazos a medias.
+
+**Validaciones obligatorias:**
+- Aislamiento por organización en cada pedazo, un solo reclamante por libro, atomicidad del intercambio.
+
+**Postcondiciones:**
+- El libro queda `LISTO` o `ERROR`; nunca mitad viejo y mitad nuevo.
+
+**Errores esperables:**
+- No hay respuesta a un usuario; los fallos quedan en `motivo_error`, en el registro técnico y en las métricas.
+
+**Auditoría:**
+- Registrar el paso a `LISTO` o `ERROR` con el libro, la cantidad de pedazos y de sospechosos.
+
+**Criterios de aceptación:**
+- **CA-M30-010-01:** un PDF con texto termina `LISTO` con pedazos con página inicial y final.
+- **CA-M30-010-02:** un PDF sin texto termina `ERROR` con el motivo legible.
+- **CA-M30-010-03:** un pedazo con "ignorá tus reglas" queda `sospechoso` y fuera de la búsqueda.
+- **CA-M30-010-04:** dos instancias del worker no procesan el mismo libro.
+- **CA-M30-010-05:** un libro `PROCESANDO` abandonado vuelve a `PENDIENTE` y se completa.
+- **CA-M30-010-06:** un fallo del modelo de embeddings deja los pedazos sin vector y el libro `LISTO`, buscable por palabras.
+
+### RF-M30-011 — Reindexado
+
+**Descripción:** Completar los vectores faltantes y rehacer los generados por un modelo distinto del vigente. El cambio de modelo es una decisión de la plataforma (configuración y despliegue), no del centro.
+
+**Precondiciones generales:**
+- Biblioteca habilitada y worker habilitado.
+
+**Disparador:**
+- Ciclo programado del reindexador.
+
+**Flujo principal:**
+1. El sistema toma pedazos con `modelo_embeddings` nulo o distinto del vigente, en lotes de tamaño fijo y salteando los reclamados por otras instancias.
+2. Vuelve a vectorizarlos con el modelo vigente y guarda vector y `modelo_embeddings`.
+3. Al terminar un lote avanza la versión de búsqueda de la organización afectada.
+4. Informa el avance por libro, visible como indexado parcial en el listado.
+
+**Flujos alternativos / excepciones:**
+- Si el modelo no está disponible, no hace nada y reintenta en el siguiente ciclo.
+- Mientras dura, esos pedazos se encuentran por palabras (RF-M30-009).
+- El fallo en un pedazo no detiene el lote.
+
+**Validaciones obligatorias:**
+- Aislamiento por organización, idempotencia y un solo modelo vigente.
+
+**Postcondiciones:**
+- Al terminar, todos los pedazos no sospechosos tienen vector del modelo vigente.
+
+**Errores esperables:**
+- Sin respuesta a usuario; los fallos se registran y se reintentan.
+
+**Auditoría:**
+- Registrar el inicio y el fin de cada reindexado masivo por cambio de modelo.
+
+**Criterios de aceptación:**
+- **CA-M30-011-01:** tras cambiar el modelo vigente, los pedazos viejos se reindexan sin intervención.
+- **CA-M30-011-02:** durante el reindexado la búsqueda no queda vacía ni mezcla modelos.
+- **CA-M30-011-03:** los pedazos que fallaron al procesar se completan en un ciclo posterior.
+
+## 6. Requerimientos no funcionales específicos
+
+### RNF-M30-001 — Aislamiento entre organizaciones
+
+Toda tabla de la biblioteca lleva `organization_id`, incluidos sus índices y consultas de búsqueda. Primero se acota el universo y después se ordena: nunca se trae el top-k global para filtrar después.
+
+### RNF-M30-002 — Privacidad del material
+
+Los embeddings son locales, dentro del proceso del backend. Ni los libros ni sus pedazos salen del servidor en M30. Con el interruptor global apagado, el modelo no se carga y no consume memoria.
+
+### RNF-M30-003 — Búsqueda intercambiable
+
+La búsqueda está detrás de una interfaz propia, de modo que cambiar el motor (por ejemplo, a una base vectorial dedicada) no toque la lógica. La implementación inicial calcula la similitud en memoria con caché por organización, con tope global de memoria y desalojo de las organizaciones menos usadas. Una versión de búsqueda por organización invalida la caché entre varias instancias.
+
+### RNF-M30-004 — Procesamiento robusto
+
+El worker nunca propaga excepciones, puede ejecutarse en varias instancias y tiene un interruptor propio (`akine.biblioteca.worker.enabled`) distinto del de la biblioteca.
+
+### RNF-M30-005 — Disponibilidad del despliegue
+
+`akine.biblioteca.enabled` viene apagado por defecto para que `main` siga desplegable. Es para todas las organizaciones, sin límite por plan ni tope de cantidad de libros.
+
+### RNF-M30-006 — Almacenamiento
+
+El archivo se guarda por un puerto de almacenamiento: disco local en desarrollo, volumen compartido u objeto en un despliegue con varias instancias.
+
+### RNF-M30-007 — Límite aceptado
+
+Sin tope de libros, una organización con muchísimos pedazos vuelve lenta y pesada la búsqueda en memoria. Ese es el disparador para migrar a una base vectorial dedicada.
+
+## 7. Casos borde mínimos de QA
+
+- Dos administradores suben el mismo archivo al mismo tiempo en la misma organización.
+- Dos organizaciones suben el mismo archivo: ambas deben poder.
+- Reemplazar un libro y eliminar el original mientras el nuevo procesa.
+- Un PDF con una página con una frase de inyección: sólo ese pedazo queda excluido.
+- Un PDF protegido por contraseña o corrupto.
+- Cambio del modelo de embeddings con libros a medio reindexar y búsquedas en curso.
+- El modelo de embeddings no carga al arrancar.
+- El proceso muere con un libro `PROCESANDO`.
+- Eliminar un libro `PROCESANDO`.
+- Una organización con 100.000 pedazos y la caché al tope de memoria.
+
 ---
 
 # 30. Visión funcional consolidada — Servicios, Clases y Circuito de Salud
