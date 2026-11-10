@@ -57,6 +57,14 @@ import java.util.Optional;
  * ERROR deja al original activo. Un lote de vectores que falla deja esos pedazos sin vector (los
  * recupera el reindexado) y el libro queda LISTO igual. Los pedazos sospechosos se guardan sin
  * vector: no entran en la busqueda semantica y no se gastan embeddings en ellos.
+ *
+ * <h2>Topes</h2>
+ *
+ * <p>Cada reclamo suma un intento. Un libro que vuelve a la cola por el barrido (el nodo se cayo,
+ * se quedo sin memoria o se colgo) y ya tiene {@link #MAX_INTENTOS} intentos pasa a ERROR en el
+ * reclamo siguiente, en vez de reintentarse para siempre; el reproceso manual los pone en cero.
+ * Un {@code StackOverflowError} de la extraccion (PDF con estructuras anidadas sin fin) es ERROR
+ * "protegido o danado", y mas de {@link #MAX_CARACTERES} caracteres extraidos, ERROR por texto.
  */
 @Service
 public class ProcesamientoDeLibroService {
@@ -64,9 +72,14 @@ public class ProcesamientoDeLibroService {
 	private static final Logger log = LoggerFactory.getLogger(ProcesamientoDeLibroService.class);
 
 	static final int LOTE_VECTORES = 16;
+	static final int MAX_INTENTOS = 3;
+	static final long MAX_CARACTERES = 20_000_000L;
 	static final String MOTIVO_SIN_TEXTO = "El PDF no tiene texto: parece escaneado";
 	static final String MOTIVO_SIN_ARCHIVO = "No se encontró el archivo del libro";
 	static final String MOTIVO_INESPERADO = "No se pudo procesar el libro";
+	static final String MOTIVO_INTENTOS = "No se pudo procesar el libro después de 3 intentos";
+	static final String MOTIVO_DANADO = "El PDF está protegido o dañado";
+	static final String MOTIVO_DEMASIADO_TEXTO = "El PDF tiene demasiado texto para procesarlo";
 	private static final int PROGRESO_EXTRAIDO = 10;
 	private static final int PROGRESO_VECTORES = 85;
 
@@ -135,15 +148,21 @@ public class ProcesamientoDeLibroService {
 	public boolean procesarSiguiente(Instant ahora) {
 		// DATETIME(6) redondea: el intento se fija en microsegundos para poder compararlo despues.
 		Instant desde = ahora.truncatedTo(ChronoUnit.MICROS);
+		boolean[] agotado = {false};
 		Reclamo reclamo = transaccionReclamo.execute(status -> libros.reclamarPendiente(desde)
 				.map(libro -> {
+					if (libro.getIntentos() >= MAX_INTENTOS) {
+						agotarIntentos(libro);
+						agotado[0] = true;
+						return null;
+					}
 					libro.marcarProcesando(desde);
 					libros.guardarYSincronizar(libro);
 					return new Reclamo(libro.getId(), libro.getOrganizationId(), libro.getStorageKey(), desde);
 				})
 				.orElse(null));
 		if (reclamo == null) {
-			return false;
+			return agotado[0];
 		}
 		try {
 			procesar(reclamo);
@@ -159,11 +178,35 @@ public class ProcesamientoDeLibroService {
 		return true;
 	}
 
+	/** Dentro del reclamo: el libro volvio a la cola con los intentos agotados. */
+	private void agotarIntentos(Libro libro) {
+		libro.marcarError(MOTIVO_INTENTOS);
+		libros.guardarYSincronizar(libro);
+		auditTrail.record(new AuditEntry(libro.getOrganizationId(), null, null, AuditEvents.LIBRO_CON_ERROR,
+				LibroService.ENTIDAD, libro.getId(), EstadoLibro.PENDIENTE.name(), EstadoLibro.ERROR.name(),
+				Map.of("motivo", MOTIVO_INTENTOS, "intentos", String.valueOf(libro.getIntentos())),
+				null, null, Instant.now()));
+		log.warn("Biblioteca: el libro {} paso a ERROR tras {} intentos", libro.getId(), libro.getIntentos());
+	}
+
 	private void procesar(Reclamo reclamo) {
 		byte[] pdf = almacen.leer(LibroService.ESPACIO, reclamo.storageKey())
 				.orElseThrow(() -> new DocumentoIlegibleException(MOTIVO_SIN_ARCHIVO));
-		List<PaginaDeTexto> paginas = extractor.extraer(pdf, ajustes.maxPaginas());
+		List<PaginaDeTexto> paginas;
+		try {
+			paginas = extractor.extraer(pdf, ajustes.maxPaginas());
+		} catch (StackOverflowError recursion) {
+			// PDF con estructuras anidadas sin fin: PDFBox recursa hasta agotar la pila.
+			throw new DocumentoIlegibleException(MOTIVO_DANADO);
+		}
 		pdf = null; // el PDF puede pesar 100 MB: que no viva durante los vectores
+		long caracteres = 0;
+		for (PaginaDeTexto pagina : paginas) {
+			caracteres += pagina.texto().length();
+		}
+		if (caracteres > MAX_CARACTERES) {
+			throw new DocumentoIlegibleException(MOTIVO_DEMASIADO_TEXTO);
+		}
 		if (DetectorDeInstrucciones.casiSinTexto(paginas)) {
 			throw new DocumentoIlegibleException(MOTIVO_SIN_TEXTO);
 		}
@@ -256,7 +299,7 @@ public class ProcesamientoDeLibroService {
 			Long reemplazaId = libro.getReemplazaLibroId();
 			Boolean originalDesactivado = null;
 			if (reemplazaId != null) {
-				originalDesactivado = desactivarOriginal(reemplazaId);
+				originalDesactivado = desactivarOriginal(reemplazaId, libro);
 				libro.soltarReemplazo();
 			}
 			libro.marcarListo(paginas);
@@ -283,12 +326,19 @@ public class ProcesamientoDeLibroService {
 	/**
 	 * Desactiva el original y lo manda a la base ANTES de que el reemplazo suelte su vinculo:
 	 * con el mismo hash, {@code uk_libro_hash_activo} chocaria si el nuevo quedara activo
-	 * primero. Si el original ya no existe o ya estaba inactivo, no hace nada.
+	 * primero. Si el original ya no existe o ya estaba inactivo, no lo toca.
+	 *
+	 * <p>Antes copia al reemplazo el titulo, autores, edicion y area VIGENTES del original: el
+	 * reemplazo los copio al subirse, y el admin pudo editar el original mientras se procesaba
+	 * (la fila del reemplazo no se edita mientras esta pendiente: 409 {@code libro-en-proceso}).
 	 *
 	 * @return si se desactivo
 	 */
-	private boolean desactivarOriginal(long originalId) {
-		Optional<Libro> original = libros.bloquearPorId(originalId).filter(Libro::isActivo);
+	private boolean desactivarOriginal(long originalId, Libro reemplazo) {
+		Optional<Libro> releido = libros.bloquearPorId(originalId);
+		releido.ifPresent(viejo -> reemplazo.editarMetadatos(
+				viejo.getTitulo(), viejo.getAutores(), viejo.getEdicion(), viejo.getArea()));
+		Optional<Libro> original = releido.filter(Libro::isActivo);
 		original.ifPresent(viejo -> {
 			viejo.desactivar();
 			libros.save(viejo);

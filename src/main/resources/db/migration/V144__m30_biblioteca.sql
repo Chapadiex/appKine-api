@@ -33,6 +33,7 @@ CREATE TABLE libro
     estado                             VARCHAR(20)  NOT NULL DEFAULT 'PENDIENTE',
     progreso                           INT          NOT NULL DEFAULT 0,
     motivo_error                       VARCHAR(500) NULL,
+    intentos                           INT          NOT NULL DEFAULT 0 COMMENT 'Reclamos del worker desde el alta o el ultimo reproceso; al tercero que vuelve a la cola pasa a ERROR',
 
     reemplaza_libro_id                 BIGINT       NULL COMMENT 'Libro al que este reemplaza mientras no este LISTO',
     activo                             TINYINT(1)   NOT NULL DEFAULT 1,

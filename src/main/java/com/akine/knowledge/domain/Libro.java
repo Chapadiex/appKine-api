@@ -77,6 +77,10 @@ public class Libro {
 	@Column(name = "motivo_error", length = 500)
 	private String motivoError;
 
+	/** Reclamos del worker desde el alta o el ultimo reproceso manual. */
+	@Column(name = "intentos", nullable = false)
+	private int intentos;
+
 	@Column(name = "reemplaza_libro_id")
 	private Long reemplazaLibroId;
 
@@ -155,7 +159,9 @@ public class Libro {
 		return EstadoVisibleLibro.valueOf(estado.name());
 	}
 
+	/** Cuenta un intento mas; el barrido de trabados no lo descuenta. */
 	public void marcarProcesando(Instant ahora) {
+		this.intentos++;
 		this.estado = EstadoLibro.PROCESANDO;
 		this.procesandoDesde = ahora;
 		this.latido = ahora;
@@ -183,8 +189,9 @@ public class Libro {
 		this.motivoError = motivo != null && motivo.length() > 500 ? motivo.substring(0, 500) : motivo;
 	}
 
-	/** Vuelve a la cola, por ejemplo en un reintento manual. */
+	/** Vuelve a la cola en un reintento manual: los intentos empiezan de nuevo. */
 	public void reencolar() {
+		this.intentos = 0;
 		this.estado = EstadoLibro.PENDIENTE;
 		this.procesandoDesde = null;
 		this.latido = null;
@@ -227,6 +234,7 @@ public class Libro {
 	public EstadoLibro getEstado() { return estado; }
 	public int getProgreso() { return progreso; }
 	public String getMotivoError() { return motivoError; }
+	public int getIntentos() { return intentos; }
 	public Long getReemplazaLibroId() { return reemplazaLibroId; }
 	public boolean isActivo() { return activo; }
 	public Instant getProcesandoDesde() { return procesandoDesde; }

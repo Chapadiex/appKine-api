@@ -4,7 +4,9 @@ import com.akine.TestcontainersConfiguration;
 import com.akine.knowledge.application.LibroService.ArchivoSubido;
 import com.akine.knowledge.application.LibroService.DatosDeLibro;
 import com.akine.knowledge.domain.port.BibliotecaVersionPort;
+import com.akine.knowledge.domain.port.ExtractorDeTexto;
 import com.akine.knowledge.domain.port.ModeloEmbeddings;
+import com.akine.knowledge.domain.exception.LibroEnProcesoException;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -32,7 +34,11 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -64,6 +70,7 @@ class ProcesamientoDeLibroIT {
 	@Autowired JdbcTemplate jdbc;
 	@MockitoSpyBean BibliotecaVersionPort version;
 	@MockitoSpyBean ModeloEmbeddings modelo;
+	@MockitoSpyBean ExtractorDeTexto extractor;
 	@MockitoBean BibliotecaAcceso acceso;
 
 	long orgId;
@@ -302,7 +309,91 @@ class ProcesamientoDeLibroIT {
 		assertThat(activo(original)).isFalse();
 	}
 
+	@Test
+	void un_stack_overflow_de_la_extraccion_termina_en_error_y_no_en_reintentos() throws Exception {
+		long id = subir(pdf(null, pagina(10)));
+		doThrow(new StackOverflowError()).when(extractor).extraer(any(), anyInt());
+
+		procesarHasta(id);
+
+		assertThat(jdbc.queryForMap("SELECT estado, motivo_error FROM libro WHERE id = ?", id))
+				.containsEntry("estado", "ERROR")
+				.containsEntry("motivo_error", "El PDF está protegido o dañado");
+	}
+
+	@Test
+	void un_libro_que_vuelve_tres_veces_a_la_cola_termina_en_error_y_el_reproceso_lo_reinicia() throws Exception {
+		long id = subir(pdf(null, pagina(11)));
+		// El nodo "se cae" a mitad del libro: el error no lo atrapa nadie y el libro queda PROCESANDO.
+		doThrow(new OutOfMemoryError("simulado")).when(extractor).extraer(any(), anyInt());
+		for (int intento = 1; intento <= 3; intento++) {
+			soloLosDeEsteTest();
+			assertThatThrownBy(() -> procesamiento.procesarSiguiente(Instant.now()))
+					.isInstanceOf(OutOfMemoryError.class);
+			assertThat(jdbc.queryForMap("SELECT estado, intentos FROM libro WHERE id = ?", id))
+					.containsEntry("estado", "PROCESANDO").containsEntry("intentos", intento);
+			jdbc.update("UPDATE libro SET latido = UTC_TIMESTAMP(6) - INTERVAL 1 DAY WHERE id = ?", id);
+			procesamiento.devolverTrabados(Instant.now().minus(Duration.ofMinutes(15)));
+			assertThat(estado(id)).isEqualTo("PENDIENTE");
+		}
+
+		soloLosDeEsteTest();
+		assertThat(procesamiento.procesarSiguiente(Instant.now())).isTrue();
+
+		assertThat(jdbc.queryForMap("SELECT estado, motivo_error FROM libro WHERE id = ?", id))
+				.containsEntry("estado", "ERROR")
+				.containsEntry("motivo_error", "No se pudo procesar el libro después de 3 intentos");
+		assertThat(jdbc.queryForObject("""
+				SELECT COUNT(*) FROM audit_event WHERE entity_id = ? AND event_type = 'LIBRO_CON_ERROR'
+				""", Integer.class, id)).isEqualTo(1);
+
+		libros.reprocesar(actor, orgId, id);
+		assertThat(jdbc.queryForMap("SELECT estado, intentos FROM libro WHERE id = ?", id))
+				.containsEntry("estado", "PENDIENTE").containsEntry("intentos", 0);
+	}
+
+	@Test
+	void con_un_reemplazo_pendiente_su_fila_no_se_toca_y_al_cerrar_toma_los_datos_vigentes_del_original()
+			throws Exception {
+		long original = subir(pdf(null, pagina(12)));
+		procesarHasta(original);
+		long reemplazo = libros.reemplazar(actor, orgId, original,
+				new ArchivoSubido("nuevo.pdf", pdf(null, pagina(13))), true).id();
+
+		assertThatThrownBy(() -> libros.editar(actor, orgId, reemplazo,
+				new DatosDeLibro("Otro", null, null, null), versionDe(reemplazo)))
+				.isInstanceOf(LibroEnProcesoException.class);
+		assertThatThrownBy(() -> libros.activar(actor, orgId, reemplazo)).isInstanceOf(LibroEnProcesoException.class);
+		assertThatThrownBy(() -> libros.desactivar(actor, orgId, reemplazo)).isInstanceOf(LibroEnProcesoException.class);
+		assertThatThrownBy(() -> libros.desactivar(actor, orgId, original)).isInstanceOf(LibroEnProcesoException.class);
+		assertThat(activo(original)).isTrue();
+
+		// El original se edita mientras el reemplazo se procesa: el reemplazo hereda la edicion.
+		libros.editar(actor, orgId, original, new DatosDeLibro("Titulo corregido", "Autora", "3a", "Rodilla"),
+				versionDe(original));
+
+		procesarHasta(reemplazo);
+
+		assertThat(estado(reemplazo)).isEqualTo("LISTO");
+		assertThat(jdbc.queryForMap("SELECT titulo, autores, edicion, area FROM libro WHERE id = ?", reemplazo))
+				.containsEntry("titulo", "Titulo corregido").containsEntry("autores", "Autora")
+				.containsEntry("edicion", "3a").containsEntry("area", "Rodilla");
+		assertThat(activo(original)).isFalse();
+	}
+
 	// ------------------------------------------------------------------ soporte
+
+	private long versionDe(long id) {
+		return jdbc.queryForObject("SELECT version FROM libro WHERE id = ?", Long.class, id);
+	}
+
+	/** Borra los PENDIENTE de otras organizaciones (de otras clases o de este proceso). */
+	private void soloLosDeEsteTest() {
+		jdbc.update("""
+				DELETE r FROM libro r JOIN libro orig ON orig.id = r.reemplaza_libro_id
+				 WHERE r.organization_id <> ? AND (r.estado = 'PENDIENTE' OR orig.estado = 'PENDIENTE')""", orgId);
+		jdbc.update("DELETE FROM libro WHERE estado = 'PENDIENTE' AND organization_id <> ?", orgId);
+	}
 
 	private long subir(byte[] pdf) {
 		return libros.subir(actor, orgId, new DatosDeLibro("Libro " + UUID.randomUUID(), null, null, null),

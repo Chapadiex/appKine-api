@@ -301,6 +301,7 @@ public class LibroService {
 		acceso.exigir(actor, orgId);
 		return transaccion.execute(status -> {
 			Libro libro = cargar(libroId, orgId);
+			exigirQueNoSeaReemplazoPendiente(libro);
 			if (libro.getVersion() != versionLeida) {
 				throw new OptimisticLockingFailureException(
 						"El libro cambio desde que se leyo (version " + libro.getVersion() + ")");
@@ -320,7 +321,7 @@ public class LibroService {
 	public LibroView reprocesar(OperatingActor actor, long orgId, long libroId) {
 		acceso.exigir(actor, orgId);
 		asegurarFila(orgId);
-		return transaccion.execute(status -> {
+		return transaccionLecturaConfirmada.execute(status -> {
 			version.bloquear(orgId);
 			Libro libro = cargar(libroId, orgId);
 			exigirQuieto(libro);
@@ -345,6 +346,7 @@ public class LibroService {
 			return transaccionLecturaConfirmada.execute(status -> {
 				version.bloquear(orgId);
 				Libro libro = cargar(libroId, orgId);
+				exigirQueNoSeaReemplazoPendiente(libro);
 				if (libro.isActivo()) {
 					return LibroView.de(libro);
 				}
@@ -371,11 +373,17 @@ public class LibroService {
 	public LibroView desactivar(OperatingActor actor, long orgId, long libroId) {
 		acceso.exigir(actor, orgId);
 		asegurarFila(orgId);
-		return transaccion.execute(status -> {
+		return transaccionLecturaConfirmada.execute(status -> {
 			version.bloquear(orgId);
 			Libro libro = cargar(libroId, orgId);
+			exigirQueNoSeaReemplazoPendiente(libro);
 			if (!libro.isActivo()) {
 				return LibroView.de(libro);
+			}
+			// Desactivar el original con un reemplazo en curso: al quedar LISTO el reemplazo
+			// ocuparia su lugar y el libro "dado de baja" reapareceria con otro archivo.
+			if (libros.reemplazoPendienteDe(libroId).isPresent()) {
+				throw new LibroEnProcesoException();
 			}
 			String antes = libro.estadoVisible().name();
 			libro.desactivar();
@@ -393,7 +401,7 @@ public class LibroService {
 	public void eliminar(OperatingActor actor, long orgId, long libroId) {
 		acceso.exigir(actor, orgId);
 		asegurarFila(orgId);
-		List<String> claves = transaccion.execute(status -> {
+		List<String> claves = transaccionLecturaConfirmada.execute(status -> {
 			version.bloquear(orgId);
 			Libro libro = cargar(libroId, orgId);
 			List<String> aBorrar = new ArrayList<>();
@@ -439,6 +447,17 @@ public class LibroService {
 
 	private static void exigirQuieto(Libro libro) {
 		if (libro.getEstado() == EstadoLibro.PENDIENTE || libro.getEstado() == EstadoLibro.PROCESANDO) {
+			throw new LibroEnProcesoException();
+		}
+	}
+
+	/**
+	 * La fila de un reemplazo en curso (no ERROR) no se edita, activa ni desactiva: al quedar
+	 * LISTO toma los datos del original vigente y ocupa su lugar, asi que cualquier cambio sobre
+	 * ella se perderia o haria reaparecer un libro dado de baja.
+	 */
+	private static void exigirQueNoSeaReemplazoPendiente(Libro libro) {
+		if (libro.getReemplazaLibroId() != null && libro.getEstado() != EstadoLibro.ERROR) {
 			throw new LibroEnProcesoException();
 		}
 	}

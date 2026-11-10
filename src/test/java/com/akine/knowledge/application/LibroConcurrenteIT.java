@@ -6,6 +6,14 @@ import com.akine.knowledge.application.LibroService.DatosDeLibro;
 
 import com.akine.knowledge.domain.exception.LibroDuplicadoException;
 import com.akine.knowledge.domain.exception.LibroEnProcesoException;
+import com.akine.knowledge.domain.exception.LibroNoEncontradoException;
+import com.akine.knowledge.domain.BibliotecaAjustes;
+import com.akine.knowledge.domain.port.LibroFragmentoRepositoryPort;
+import com.akine.knowledge.domain.port.LibroRepositoryPort;
+import com.akine.organization.spi.PermissionGuard;
+import com.akine.platform.spi.archivo.AlmacenDeArchivos;
+import com.akine.platform.spi.audit.AuditTrail;
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.knowledge.domain.port.BibliotecaVersionPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +37,10 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 /** Altas simultaneas del mismo PDF contra MySQL: una gana, la otra recibe 409, nunca 500. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -43,6 +55,11 @@ class LibroConcurrenteIT {
 	@Autowired JdbcTemplate jdbc;
 	@Autowired BibliotecaVersionPort version;
 	@MockitoBean BibliotecaAcceso acceso;
+	@Autowired LibroRepositoryPort libros;
+	@Autowired LibroFragmentoRepositoryPort fragmentos;
+	@Autowired AlmacenDeArchivos almacen;
+	@Autowired AuditTrail auditTrail;
+	@Autowired PlatformTransactionManager transactionManager;
 
 	long orgId;
 	OperatingActor actor;
@@ -195,5 +212,34 @@ class LibroConcurrenteIT {
 		LibroView alta = service.subir(actor, orgId, DATOS, pdf("X"), true);
 
 		assertThat(alta.reemplazaLibroId()).isNull();
+	}
+
+	@Test
+	void el_libro_de_A_pedido_con_el_contexto_de_B_es_404_por_el_acceso_y_el_servicio_reales() {
+		LibroView deA = service.subir(actor, orgId, DATOS, pdf("de A " + UUID.randomUUID()), true);
+		String sufijo = UUID.randomUUID().toString().substring(0, 8);
+		jdbc.update("""
+				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
+				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				""", "Centro " + sufijo, "lib-it-" + sufijo);
+		long orgB = jdbc.queryForObject("SELECT id FROM organization WHERE slug = ?", Long.class,
+				"lib-it-" + sufijo);
+		OperatingActor deB = new OperatingActor(77L, false, orgB);
+
+		// El BibliotecaAcceso del contexto es un doble; este es el real, con el permiso concedido:
+		// mockear PermissionGuard con @MockitoBean no arranca (su bean es tambien PermissionEvaluator).
+		PermissionGuard permisos = mock(PermissionGuard.class);
+		LibroService real = new LibroService(
+				new BibliotecaAcceso(new BibliotecaAjustes(true, 104857600L, 2000), permisos),
+				new BibliotecaAjustes(true, 104857600L, 2000), libros, fragmentos, version, almacen,
+				auditTrail, transactionManager);
+
+		// Con su propio contexto y su propia ruta: el id de A no existe para B.
+		assertThatThrownBy(() -> real.detalle(deB, orgB, deA.id()))
+				.isInstanceOf(LibroNoEncontradoException.class);
+		// Con la ruta de A y el contexto de B: 404 antes de mirar permisos.
+		assertThatThrownBy(() -> real.detalle(deB, orgId, deA.id()))
+				.isInstanceOf(LibroNoEncontradoException.class);
+		verify(permisos, never()).requirePermission(argThat(q -> Long.valueOf(orgId).equals(q.organizationId())));
 	}
 }
