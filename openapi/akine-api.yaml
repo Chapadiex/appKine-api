@@ -19359,6 +19359,13 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "`consulta-ocupada`: la cola de la instancia esta llena (1\
             \ en curso y 3 esperando); trae `Retry-After`"
+          headers:
+            Retry-After:
+              description: Segundos sugeridos antes de reintentar
+              schema:
+                type: integer
+                example: 15
+              style: simple
       summary: Preguntar a la biblioteca
       tags:
       - Biblioteca

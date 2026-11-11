@@ -23,6 +23,7 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 	private volatile boolean fallarEnGenerar;
 	private volatile boolean fallarEnCompletar;
 	private volatile boolean sinFin;
+	private volatile Duration demoraAntesDelPrimero = Duration.ZERO;
 
 	static final long PAUSA_SIN_FIN_MS = 50;
 
@@ -42,6 +43,14 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 		if (fallarEnGenerar) {
 			throw new AsistenteNoDisponibleException();
 		}
+		// Como Ollama evaluando el prompt: nada se emite hasta que pase la demora o se cancele.
+		long finDemora = System.nanoTime() + demoraAntesDelPrimero.toNanos();
+		while (System.nanoTime() - finDemora < 0) {
+			if (cancelado.getAsBoolean()) {
+				return;
+			}
+			dormir(PAUSA_SIN_FIN_MS);
+		}
 		String primerRenglon = ultimoDeUsuario(mensajes).lines().findFirst().orElse("");
 		for (String fragmento : List.of("Respuesta de prueba: ", primerRenglon, ".")) {
 			if (cancelado.getAsBoolean()) {
@@ -57,12 +66,7 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 			if (System.nanoTime() - vence >= 0) {
 				throw new AsistenteNoDisponibleException();
 			}
-			try {
-				Thread.sleep(PAUSA_SIN_FIN_MS);
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-				throw new AsistenteNoDisponibleException(e);
-			}
+			dormir(PAUSA_SIN_FIN_MS);
 			alFragmento.accept(".");
 		}
 	}
@@ -75,11 +79,29 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 		this.sinFin = sinFin;
 	}
 
+	/**
+	 * Espera antes del primer fragmento, como Ollama evaluando el prompt; corta antes si se cancela.
+	 * No cuenta contra el plazo.
+	 */
+	public void demorarAntesDelPrimero(Duration demora) {
+		this.demoraAntesDelPrimero = demora;
+	}
+
 	/** Vuelve al comportamiento de fabrica; el contador de llamadas sigue. */
 	public void reiniciar() {
 		this.fallarEnGenerar = false;
 		this.fallarEnCompletar = false;
 		this.sinFin = false;
+		this.demoraAntesDelPrimero = Duration.ZERO;
+	}
+
+	private static void dormir(long ms) {
+		try {
+			Thread.sleep(ms);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new AsistenteNoDisponibleException(e);
+		}
 	}
 
 	public void fallarEnGenerar(boolean fallar) {

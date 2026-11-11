@@ -220,6 +220,25 @@ class ConsultaIT {
 		assertThat(cola.enCurso()).as("el cierre del cliente cancela la generacion y libera el lugar").isZero();
 	}
 
+	/**
+	 * El cliente se va mientras el modelo todavia no emitio nada (Ollama evaluando el prompt): sin
+	 * fragmentos, solo el latido revela el corte, y el lugar se libera sin esperar al primer token.
+	 */
+	@Test
+	void desconexionAntesDelPrimerFragmentoLiberaLaCola() throws Exception {
+		modelo.demorarAntesDelPrimero(Duration.ofSeconds(60));
+		HttpResponse<InputStream> respuesta = abrir(tenant.token(), cuerpo(preguntaDelTema));
+		assertThat(respuesta.statusCode()).isEqualTo(200);
+		try (BufferedReader lector = new BufferedReader(
+				new InputStreamReader(respuesta.body(), StandardCharsets.UTF_8))) {
+			assertThat(siguienteEvento(lector).nombre()).isEqualTo("fuentes");
+			assertThat(cola.enCurso()).isEqualTo(1);
+		}
+
+		esperarHasta(() -> cola.enCurso() == 0, Duration.ofSeconds(3));
+		assertThat(cola.enCurso()).as("el latido nota el corte y libera el lugar antes del primer token").isZero();
+	}
+
 	@Test
 	void modeloCaidoEmiteError() throws Exception {
 		modelo.fallarEnGenerar(true);

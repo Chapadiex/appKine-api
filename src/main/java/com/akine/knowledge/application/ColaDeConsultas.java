@@ -3,7 +3,6 @@ package com.akine.knowledge.application;
 import com.akine.knowledge.domain.exception.ConsultaOcupadaException;
 
 import java.util.ArrayDeque;
-import java.util.concurrent.TimeUnit;
 import java.util.function.IntConsumer;
 
 /**
@@ -12,14 +11,10 @@ import java.util.function.IntConsumer;
  *
  * <p>Un monitor con una fila explicita y no un {@code Semaphore}: quien libera el lugar se lo da
  * al primero de la fila en el mismo paso, asi el orden de llegada y la posicion que ve cada uno
- * coinciden siempre. Con un semaforo justo y esperas con plazo (necesarias para el latido), un
- * turno que vuelve a esperar se pone al final de la cola del semaforo y lo pasa el que llego
- * despues.
+ * coinciden siempre. Con un semaforo justo y esperas con plazo, un turno que vuelve a esperar se
+ * pone al final de la cola del semaforo y lo pasa el que llego despues.
  */
 public class ColaDeConsultas {
-
-	/** Cada cuanto se despierta un turno que espera aunque nadie le avise, para el latido. */
-	static final long LATIDO_MS = 2_000;
 
 	private final int maxEnEspera;
 	private final Object monitor = new Object();
@@ -83,23 +78,16 @@ public class ColaDeConsultas {
 		private Turno() {
 		}
 
-		/** Igual que {@link #esperar(IntConsumer, Runnable)} sin latido. */
-		public boolean esperar(IntConsumer alCambiarPosicion) {
-			return esperar(alCambiarPosicion, () -> { });
-		}
-
 		/**
-		 * Bloquea hasta obtener el lugar. Avisa la posicion (1 = el proximo) cada vez que cambia, y
-		 * llama a {@code latido} cada {@link #LATIDO_MS} mientras espera, para que quien escribe al
-		 * cliente note si se fue. Los dos se llaman fuera del monitor; si lanzan, la excepcion sale
-		 * de aca y el turno sigue reservado hasta {@link #close()}.
+		 * Bloquea hasta obtener el lugar. Avisa la posicion (1 = el proximo) cada vez que cambia,
+		 * fuera del monitor; si el aviso lanza, la excepcion sale de aca y el turno sigue reservado
+		 * hasta {@link #close()}.
 		 *
 		 * @return {@code true} con el lugar tomado; {@code false} si el turno se abandono o se cerro
 		 *         mientras esperaba, o si el hilo se interrumpio
 		 */
-		public boolean esperar(IntConsumer alCambiarPosicion, Runnable latido) {
+		public boolean esperar(IntConsumer alCambiarPosicion) {
 			int avisada = 0;
-			long proximoLatido = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(LATIDO_MS);
 			while (true) {
 				int posicion;
 				synchronized (monitor) {
@@ -111,25 +99,17 @@ public class ColaDeConsultas {
 					}
 					posicion = posicion();
 					if (posicion == avisada) {
-						long restante = TimeUnit.NANOSECONDS.toMillis(proximoLatido - System.nanoTime());
-						if (restante > 0) {
-							try {
-								monitor.wait(restante);
-							} catch (InterruptedException e) {
-								Thread.currentThread().interrupt();
-								return false;
-							}
-							continue;
+						try {
+							monitor.wait();
+						} catch (InterruptedException e) {
+							Thread.currentThread().interrupt();
+							return false;
 						}
+						continue;
 					}
 				}
-				if (posicion != avisada) {
-					avisada = posicion;
-					alCambiarPosicion.accept(posicion);
-				} else {
-					proximoLatido = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(LATIDO_MS);
-					latido.run();
-				}
+				avisada = posicion;
+				alCambiarPosicion.accept(posicion);
 			}
 		}
 

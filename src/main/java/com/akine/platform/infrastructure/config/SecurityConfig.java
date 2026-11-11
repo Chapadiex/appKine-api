@@ -20,6 +20,9 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.DispatcherTypeRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatchers;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -259,7 +262,13 @@ public class SecurityConfig {
 					// autenticacion, contexto y permiso. El filtro del token no corre en ese despacho
 					// (OncePerRequestFilter), asi que sin esta regla llega anonimo, AuthorizationFilter
 					// lo rechaza sobre una respuesta ya enviada y el stream queda cortado.
-					auth.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll();
+					// Acotado a esa ruta a proposito: un endpoint asincrono nuevo tiene que sumarse
+					// aca de forma explicita, no heredar el permiso por ser ASYNC.
+					auth.requestMatchers(RequestMatchers.allOf(
+							new DispatcherTypeRequestMatcher(DispatcherType.ASYNC),
+							PathPatternRequestMatcher.pathPattern(
+									HttpMethod.POST, "/api/v1/organizations/*/biblioteca/consultas")))
+							.permitAll();
 
 					// Todo lo demas: autenticado. Sin excepciones implicitas.
 					auth.anyRequest().authenticated();

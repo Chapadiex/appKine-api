@@ -19,6 +19,7 @@ import com.akine.platform.spi.problem.ProblemType;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -28,6 +29,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -47,6 +49,8 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -82,6 +86,12 @@ public class ConsultaController implements DisposableBean {
 	 */
 	static final long TIMEOUT_EMISOR_MS = 95_000L;
 
+	/**
+	 * Cada cuanto se escribe un comentario de latido. Un cliente ido se nota en la segunda escritura
+	 * (la primera va al buffer y vuelve un RST): con 1 s, en unos 2 s.
+	 */
+	static final long LATIDO_MS = 1_000;
+
 	static final String EVENTO_ESPERA = "espera";
 	static final String EVENTO_FUENTES = "fuentes";
 	static final String EVENTO_TEXTO = "texto";
@@ -94,6 +104,12 @@ public class ConsultaController implements DisposableBean {
 	private final KnowledgeApiActor apiActor;
 	private final Map<String, Counter> contadores;
 	private final ExecutorService trabajos = Executors.newVirtualThreadPerTaskExecutor();
+	/**
+	 * Un hilo para los latidos de todos los streams abiertos (como mucho 1 + max-en-espera). Una
+	 * escritura que bloquea demora los latidos de los demas, no las respuestas.
+	 */
+	private final ScheduledExecutorService latidos = Executors.newSingleThreadScheduledExecutor(
+			Thread.ofPlatform().daemon().name("consulta-latido").factory());
 
 	public ConsultaController(
 			ConsultaService consultas,
@@ -166,6 +182,9 @@ public class ConsultaController implements DisposableBean {
 									schema = @Schema(implementation = ProblemDetail.class))}),
 			@ApiResponse(responseCode = "503", description = "`consulta-ocupada`: la cola de la instancia esta "
 					+ "llena (1 en curso y 3 esperando); trae `Retry-After`",
+					headers = @Header(name = HttpHeaders.RETRY_AFTER,
+							description = "Segundos sugeridos antes de reintentar",
+							schema = @Schema(type = "integer", example = "15")),
 					content = {
 							@Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 									schema = @Schema(implementation = ProblemDetail.class)),
@@ -196,7 +215,7 @@ public class ConsultaController implements DisposableBean {
 			emitter.complete();
 		});
 		try {
-			trabajos.execute(() -> atender(emitter, turno, orgId, pedido, cancelado));
+			trabajos.execute(() -> atender(emitter, turno, orgId, pedido, cancelado, cortar));
 		} catch (RejectedExecutionException e) {
 			turno.close();
 			throw new AsistenteNoDisponibleException();
@@ -218,19 +237,24 @@ public class ConsultaController implements DisposableBean {
 
 	private void atender(
 			SseEmitter emitter, ColaDeConsultas.Turno turno, long orgId, ConsultaPedido pedido,
-			AtomicBoolean cancelado) {
+			AtomicBoolean cancelado, Runnable cortar) {
 		long inicio = System.nanoTime();
 		String resultado = Resultado.CANCELADA;
 		int pasajes = 0;
+		ScheduledFuture<?> latido = null;
 		try (turno) {
+			latido = latidos.scheduleAtFixedRate(
+					() -> latir(emitter, cortar), LATIDO_MS, LATIDO_MS, TimeUnit.MILLISECONDS);
 			if (!turno.esperar(
-					posicion -> enviar(emitter, EVENTO_ESPERA, new ConsultaEventoEspera(posicion)),
-					() -> latido(emitter))
+					posicion -> enviar(emitter, EVENTO_ESPERA, new ConsultaEventoEspera(posicion)))
 					|| cancelado.get()) {
 				return;
 			}
 			Instant limite = Instant.now().plus(LIMITE);
 			PlanDeRespuesta plan = consultas.preparar(orgId, pedido, limite);
+			if (cancelado.get()) {
+				return;
+			}
 			String camino = plan.camino().name();
 			if (plan.sinMaterial()) {
 				enviar(emitter, EVENTO_TEXTO, new ConsultaEventoTexto(SIN_MATERIAL));
@@ -272,6 +296,9 @@ public class ConsultaController implements DisposableBean {
 				terminarConError(emitter);
 			}
 		} finally {
+			if (latido != null) {
+				latido.cancel(false);
+			}
 			contadores.get(resultado).increment();
 			log.info("Consulta a la biblioteca terminada: resultado={} pasajes={} duracionMs={}",
 					resultado, pasajes, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - inicio));
@@ -301,12 +328,17 @@ public class ConsultaController implements DisposableBean {
 		}
 	}
 
-	/** Comentario SSE mientras espera en la cola: si el cliente se fue, la escritura falla. */
-	private static void latido(SseEmitter emitter) {
+	/**
+	 * Comentario SSE cada {@link #LATIDO_MS} desde que se abre el stream hasta {@code fin} o
+	 * {@code error}: en la cola, durante {@code preparar} y mientras el modelo evalua el prompt antes
+	 * del primer token no se escribe nada mas, y solo una escritura revela que el cliente se fue. Si
+	 * falla, corta: marca {@code cancelado} (el modelo lo mira) y saca el turno de la fila si espera.
+	 */
+	private static void latir(SseEmitter emitter, Runnable cortar) {
 		try {
-			emitter.send(SseEmitter.event().comment("en cola"));
+			emitter.send(SseEmitter.event().comment("procesando"));
 		} catch (IOException | IllegalStateException e) {
-			throw new ClienteDesconectado();
+			cortar.run();
 		}
 	}
 
@@ -320,6 +352,7 @@ public class ConsultaController implements DisposableBean {
 	@Override
 	public void destroy() {
 		trabajos.shutdownNow();
+		latidos.shutdownNow();
 	}
 
 	/** Valores de la etiqueta {@code resultado} de {@code akine_consultas_total}. */
