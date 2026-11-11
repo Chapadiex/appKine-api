@@ -86,7 +86,7 @@ class LimpiadorDePaginasTest {
 		}
 		larga.add("Copyright 2021 Elsevier.");
 		larga.add("All rights reserved.");
-		assertThat(LimpiadorDePaginas.esRelleno(larga, 10)).isFalse();
+		assertThat(LimpiadorDePaginas.esRelleno(larga)).isFalse();
 	}
 
 	@Test
@@ -101,8 +101,21 @@ class LimpiadorDePaginasTest {
 				Intensidad (escala de Borg) 13
 				Carga inicial del 1RM 40""";
 
-		assertThat(LimpiadorDePaginas.esRelleno(List.of(tabla.split("\n")), 116)).isFalse();
+		assertThat(LimpiadorDePaginas.esRelleno(List.of(tabla.split("\n")))).isFalse();
 		assertThat(LimpiadorDePaginas.limpiar(List.of(new PaginaDeTexto(1, tabla)))).hasSize(1);
+	}
+
+	@Test
+	void tablaDeProgresionCrecienteNoEsIndice() {
+		String tabla = """
+				Progresión semanal de la marcha
+				Semana uno, minutos 8
+				Semana dos, minutos 10
+				Semana tres, minutos 12
+				Semana cuatro, minutos 14
+				Semana cinco, minutos 15""";
+
+		assertThat(LimpiadorDePaginas.esRelleno(List.of(tabla.split("\n")))).isFalse();
 	}
 
 	@Test
@@ -116,7 +129,7 @@ class LimpiadorDePaginasTest {
 				RM (repetición, máxima)
 				IMC (índice, masa)""";
 
-		assertThat(LimpiadorDePaginas.esRelleno(List.of(siglas.split("\n")), 10)).isFalse();
+		assertThat(LimpiadorDePaginas.esRelleno(List.of(siglas.split("\n")))).isFalse();
 	}
 
 	@Test

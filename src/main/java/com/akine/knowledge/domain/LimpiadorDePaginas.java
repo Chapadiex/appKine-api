@@ -65,7 +65,6 @@ public final class LimpiadorDePaginas {
 	private static final Pattern GUIA_DE_INDICE = Pattern.compile(".*(\\t|\\.{2,}|\\u2026)\\s*\\d{1,4}$");
 	private static final Pattern TITULO_DE_INDICE = Pattern
 			.compile("^(indice|contenido|contenidos|contents|table of contents|sumario)\\b.*");
-	private static final Pattern NUMERO_FINAL = Pattern.compile("(\\d{1,4})$");
 	/** Una referencia: numero y un apellido seguido de iniciales o de una coma. */
 	private static final Pattern RENGLON_DE_REFERENCIA = Pattern
 			.compile("^\\d{1,3}[.)]?\\s+\\p{Lu}[\\p{L}'’-]+(\\s+\\p{Lu}{1,3}\\b|,).*");
@@ -93,7 +92,7 @@ public final class LimpiadorDePaginas {
 		List<PaginaDeTexto> limpias = new ArrayList<>(paginas.size());
 		for (PaginaDeTexto p : paginas) {
 			String texto = limpiarPagina(p.texto(), repetidos);
-			if (!esRelleno(renglones(texto), paginas.size())) {
+			if (!esRelleno(renglones(texto))) {
 				limpias.add(new PaginaDeTexto(p.numero(), texto));
 			}
 		}
@@ -122,15 +121,15 @@ public final class LimpiadorDePaginas {
 	 *       ultimos renglones; en una pagina de seis renglones o menos, tres marcas;</li>
 	 *   <li><b>indice:</b> cinco o mas renglones que terminan en un numero y son al menos la mitad
 	 *       de la pagina, y ademas un titulo de indice, o tabuladores o puntos antes del numero en
-	 *       la mitad de esos renglones, o numeros que no decrecen y no pasan de
-	 *       {@code totalPaginas} (una tabla de dosis tambien termina sus renglones en numeros);</li>
+	 *       la mitad de esos renglones (una tabla de dosis o de progresion tambien termina sus
+	 *       renglones en numeros: sin titulo ni guia se conserva);</li>
 	 *   <li><b>referencias:</b> la mitad de los renglones son "numero + apellido + iniciales", o el
 	 *       titulo es "Referencias" y hay tres entradas numeradas;</li>
 	 *   <li><b>miembros:</b> el titulo "Miembros de los grupos de trabajo", o cinco entradas
 	 *       "APELLIDO (profesion, pais);".</li>
 	 * </ul>
 	 */
-	static boolean esRelleno(List<String> renglones, int totalPaginas) {
+	static boolean esRelleno(List<String> renglones) {
 		List<String> llenos = renglones.stream().map(String::strip).filter(r -> !r.isEmpty()).toList();
 		if (llenos.isEmpty()) {
 			return false;
@@ -140,7 +139,7 @@ public final class LimpiadorDePaginas {
 		}
 		List<String> titulo = llenos.subList(0, Math.min(3, llenos.size())).stream()
 				.map(LimpiadorDePaginas::sinTildes).toList();
-		if (esIndice(llenos, titulo, totalPaginas)) {
+		if (esIndice(llenos, titulo)) {
 			return true;
 		}
 		long deReferencia = llenos.stream().filter(r -> RENGLON_DE_REFERENCIA.matcher(r).matches()).count();
@@ -171,7 +170,7 @@ public final class LimpiadorDePaginas {
 		return marcas >= (corta ? 3 : 2);
 	}
 
-	private static boolean esIndice(List<String> llenos, List<String> titulo, int totalPaginas) {
+	private static boolean esIndice(List<String> llenos, List<String> titulo) {
 		List<String> deIndice = llenos.stream().filter(r -> RENGLON_DE_INDICE.matcher(r).matches()).toList();
 		if (deIndice.size() < 5 || deIndice.size() * 2 < llenos.size()) {
 			return false;
@@ -180,22 +179,7 @@ public final class LimpiadorDePaginas {
 			return true;
 		}
 		long conGuia = deIndice.stream().filter(r -> GUIA_DE_INDICE.matcher(r).matches()).count();
-		if (conGuia * 2 >= deIndice.size()) {
-			return true;
-		}
-		int anterior = 0;
-		for (String r : deIndice) {
-			Matcher m = NUMERO_FINAL.matcher(r);
-			if (!m.find()) {
-				return false;
-			}
-			int pagina = Integer.parseInt(m.group(1));
-			if (pagina < anterior || pagina > totalPaginas) {
-				return false;
-			}
-			anterior = pagina;
-		}
-		return true;
+		return conGuia * 2 >= deIndice.size();
 	}
 
 
