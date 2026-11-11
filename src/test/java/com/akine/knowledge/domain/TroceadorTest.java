@@ -24,7 +24,8 @@ class TroceadorTest {
 
 		assertThat(pedazos).hasSize(3);
 		for (Pedazo p : pedazos) {
-			assertThat(p.texto().length()).isLessThanOrEqualTo(1000);
+			// tamano + minimo: el resto chico se pega al ultimo pedazo
+			assertThat(p.texto().length()).isLessThanOrEqualTo(1000 + 100);
 			// cada palabra del pedazo existe completa en el original
 			for (String palabra : p.texto().split(" ")) {
 				assertThat(palabra).matches("palabra\\d+");
@@ -39,7 +40,8 @@ class TroceadorTest {
 
 	@Test
 	void pedazoQueCruzaPaginasConservaElRango() {
-		String a = palabras(700);
+		// La primera pagina es corta: cortar en su fin dejaria el pedazo por debajo de la mitad.
+		String a = palabras(400);
 		String b = palabras(700);
 		List<Pedazo> pedazos = new Troceador(1000, 200, 100)
 				.trocear(List.of(new PaginaDeTexto(1, a), new PaginaDeTexto(2, b)));
@@ -61,6 +63,43 @@ class TroceadorTest {
 		List<Pedazo> pedazos = new Troceador(50, 10, 5).trocear(List.of(new PaginaDeTexto(1, "x".repeat(130))));
 		assertThat(pedazos.size()).isGreaterThan(1);
 		assertThat(pedazos).allSatisfy(p -> assertThat(p.texto().length()).isLessThanOrEqualTo(55));
+	}
+
+	@Test
+	void noPartePalabrasYRespetaParrafos() {
+		// Tres parrafos de ~450 caracteres en renglones de ~60: con 1000 de tamano, el primer
+		// pedazo tiene que cerrar al final del segundo parrafo, no en la mitad del tercero.
+		StringBuilder texto = new StringBuilder();
+		for (int parrafo = 1; parrafo <= 3; parrafo++) {
+			for (int renglon = 1; renglon <= 8; renglon++) {
+				texto.append("Parrafo").append(parrafo).append(" renglon").append(renglon)
+						.append(" con palabras clinicas de ejemplo\n");
+			}
+			texto.append("Cierre del parrafo ").append(parrafo).append(".\n\n");
+		}
+		List<Pedazo> pedazos = new Troceador(1000, 200, 100)
+				.trocear(List.of(new PaginaDeTexto(1, texto.toString())));
+
+		assertThat(pedazos.size()).isGreaterThan(1);
+		assertThat(pedazos.get(0).texto()).endsWith("Cierre del parrafo 2.");
+		for (Pedazo p : pedazos) {
+			// tamano + minimo: el resto chico se pega al ultimo pedazo
+			assertThat(p.texto().length()).isLessThanOrEqualTo(1000 + 100);
+			for (String palabra : p.texto().split(" ")) {
+				assertThat(texto.toString()).containsPattern("(^|\\s)" + java.util.regex.Pattern.quote(palabra) + "(\\s|$)");
+			}
+		}
+		// El solape arranca al principio de un renglon.
+		assertThat(pedazos.get(1).texto()).startsWith("Parrafo2 renglon");
+	}
+
+	@Test
+	void sinParrafosCortaEnFinDeOracion() {
+		String texto = "Primera oracion corta de prueba. ".repeat(40);
+		List<Pedazo> pedazos = new Troceador(1000, 200, 100).trocear(List.of(new PaginaDeTexto(1, texto)));
+
+		assertThat(pedazos.size()).isGreaterThan(1);
+		assertThat(pedazos.get(0).texto()).endsWith("prueba.");
 	}
 
 	@Test

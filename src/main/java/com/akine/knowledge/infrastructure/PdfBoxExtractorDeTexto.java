@@ -20,6 +20,10 @@ public class PdfBoxExtractorDeTexto implements ExtractorDeTexto {
 
 	static final String MOTIVO_PROTEGIDO = "El PDF está protegido o dañado";
 
+	private static String sinRetornos(String texto) {
+		return texto.replace("\r\n", "\n").replace('\r', '\n');
+	}
+
 	@Override
 	public List<PaginaDeTexto> extraer(byte[] pdf, int maxPaginas) {
 		// Cache en archivos temporales: acota el heap con PDF de 100 MB. Un PDF con sólo restricciones de
@@ -29,12 +33,19 @@ public class PdfBoxExtractorDeTexto implements ExtractorDeTexto {
 			if (total > maxPaginas) {
 				throw new DocumentoIlegibleException("El PDF tiene más de " + maxPaginas + " páginas");
 			}
+			// Por posicion: las celdas de una tabla salen en el orden en que se leen y no en el del
+			// archivo. Renglones con "\n" (no el separador del sistema) y un renglon en blanco al final
+			// de cada parrafo: el limpiador y el troceador cortan por ahi.
 			PDFTextStripper stripper = new PDFTextStripper();
+			stripper.setSortByPosition(true);
+			stripper.setLineSeparator("\n");
+			stripper.setParagraphEnd("\n");
 			List<PaginaDeTexto> paginas = new ArrayList<>(total);
 			for (int n = 1; n <= total; n++) {
 				stripper.setStartPage(n);
 				stripper.setEndPage(n);
-				paginas.add(new PaginaDeTexto(n, stripper.getText(documento)));
+				// El fin de pagina y otros separadores de PDFBox usan el del sistema (CR LF en Windows).
+				paginas.add(new PaginaDeTexto(n, sinRetornos(stripper.getText(documento))));
 			}
 			return paginas;
 		}

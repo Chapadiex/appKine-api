@@ -51,6 +51,35 @@ class PdfBoxExtractorDeTextoTest {
 	}
 
 	@Test
+	void ordenaPorPosicionYConservaLosRenglones() throws Exception {
+		byte[] bytes;
+		try (PDDocument doc = new PDDocument()) {
+			PDPage page = new PDPage();
+			doc.addPage(page);
+			try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+				PDType1Font fuente = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+				// El archivo escribe primero el renglon de abajo.
+				for (Object[] r : new Object[][] { { 600f, "Renglon de abajo" }, { 700f, "Renglon de arriba" } }) {
+					cs.beginText();
+					cs.setFont(fuente, 12);
+					cs.newLineAtOffset(50, (float) r[0]);
+					cs.showText((String) r[1]);
+					cs.endText();
+				}
+			}
+			ByteArrayOutputStream out = new ByteArrayOutputStream();
+			doc.save(out);
+			bytes = out.toByteArray();
+		}
+
+		String texto = extractor.extraer(bytes, 10).get(0).texto();
+
+		assertThat(texto).doesNotContain("\r");
+		assertThat(texto.indexOf("Renglon de arriba")).isLessThan(texto.indexOf("Renglon de abajo"));
+		assertThat(texto).containsPattern("Renglon de arriba\\n+Renglon de abajo");
+	}
+
+	@Test
 	void dosPaginasDanDosPaginasDeTexto() throws Exception {
 		List<PaginaDeTexto> paginas = extractor.extraer(pdf(false, "Hola uno", "Hola dos"), 10);
 		assertThat(paginas).hasSize(2);

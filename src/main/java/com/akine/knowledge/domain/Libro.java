@@ -87,6 +87,10 @@ public class Libro {
 	@Column(name = "activo", nullable = false)
 	private boolean activo = true;
 
+	/** Version de la ingesta con la que se armo el indice; menor que la vigente = a reprocesar. */
+	@Column(name = "version_procesamiento", nullable = false)
+	private int versionProcesamiento = 1;
+
 	@Column(name = "procesando_desde")
 	private Instant procesandoDesde;
 
@@ -137,6 +141,30 @@ public class Libro {
 		this.creadoPorCuentaId = cuentaId;
 	}
 
+	/**
+	 * Reemplazo de {@code original} con el mismo archivo (copiado a {@code storageKey}) para
+	 * rearmar su indice con la version {@code versionVigente} de la ingesta. Lleva los metadatos y
+	 * la declaracion de derechos del original: el archivo es el mismo y nadie lo volvio a subir.
+	 */
+	public static Libro reprocesoDe(Libro original, String storageKey, int versionVigente) {
+		Libro nuevo = new Libro(original.organizationId, original.titulo, original.autores, original.edicion,
+				original.area, storageKey, original.nombreArchivo, original.contentType, original.tamanoBytes,
+				original.hashSha256, original.id, original.declaracionDerechosEn,
+				original.declaracionDerechosPorCuentaId);
+		nuevo.versionProcesamiento = versionVigente;
+		return nuevo;
+	}
+
+	/**
+	 * Lo creo el reproceso por version: reemplaza a {@code original} con el mismo archivo y nacio
+	 * con una version de procesamiento mayor. Un reemplazo subido a mano nace en 1 (la subida
+	 * ademas rechaza el archivo identico) y recien al quedar LISTO toma la vigente.
+	 */
+	public boolean esReprocesoDe(Libro original) {
+		return original.id.equals(reemplazaLibroId) && original.hashSha256.equals(hashSha256)
+				&& versionProcesamiento > original.versionProcesamiento;
+	}
+
 	@PrePersist
 	void alInsertar() {
 		Instant ahora = Instant.now();
@@ -174,6 +202,12 @@ public class Libro {
 	}
 
 	public void marcarListo(int paginas) {
+		marcarListo(paginas, versionProcesamiento);
+	}
+
+	/** LISTO con el indice armado por la version {@code versionProcesamiento} de la ingesta. */
+	public void marcarListo(int paginas, int versionProcesamiento) {
+		this.versionProcesamiento = versionProcesamiento;
 		this.estado = EstadoLibro.LISTO;
 		this.paginas = paginas;
 		this.progreso = 100;
@@ -192,6 +226,18 @@ public class Libro {
 	/** Vuelve a la cola en un reintento manual: los intentos empiezan de nuevo. */
 	public void reencolar() {
 		this.intentos = 0;
+		this.estado = EstadoLibro.PENDIENTE;
+		this.procesandoDesde = null;
+		this.latido = null;
+		this.progreso = 0;
+		this.motivoError = null;
+	}
+
+	/**
+	 * Un reproceso por version que fallo vuelve a la cola SIN poner los intentos en cero: el
+	 * reclamo los sigue contando y al tope queda en ERROR para siempre.
+	 */
+	public void reintentarReproceso() {
 		this.estado = EstadoLibro.PENDIENTE;
 		this.procesandoDesde = null;
 		this.latido = null;
@@ -237,6 +283,7 @@ public class Libro {
 	public int getIntentos() { return intentos; }
 	public Long getReemplazaLibroId() { return reemplazaLibroId; }
 	public boolean isActivo() { return activo; }
+	public int getVersionProcesamiento() { return versionProcesamiento; }
 	public Instant getProcesandoDesde() { return procesandoDesde; }
 	public Instant getLatido() { return latido; }
 	public Instant getDeclaracionDerechosEn() { return declaracionDerechosEn; }
