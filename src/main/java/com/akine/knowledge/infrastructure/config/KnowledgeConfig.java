@@ -1,5 +1,6 @@
 package com.akine.knowledge.infrastructure.config;
 
+import com.akine.knowledge.application.BusquedaHibrida;
 import com.akine.knowledge.application.ColaDeConsultas;
 import com.akine.knowledge.domain.BibliotecaAjustes;
 import com.akine.knowledge.domain.BusquedaAjustes;
@@ -57,6 +58,13 @@ public class KnowledgeConfig {
 				BigDecimal.valueOf(busqueda.minScore()),
 				BigDecimal.valueOf(busqueda.minScorePalabras()),
 				busqueda.minPedazos());
+	}
+
+	@Bean
+	public BusquedaHibrida.Ajustes busquedaHibridaAjustes(BibliotecaProperties properties) {
+		BibliotecaProperties.Consulta.Busqueda b = properties.consulta().busqueda();
+		return new BusquedaHibrida.Ajustes(b.topKVector(), b.topKPalabras(), b.rrfK(), b.pasajesBreve(),
+				b.pasajesProfundo(), b.bonusLibro(), b.minimoPasajes(), BigDecimal.valueOf(b.corteVector()));
 	}
 
 	/** Habilitada con un tipo desconocido no habria modelo y nadie se enteraria: no arranca. */
