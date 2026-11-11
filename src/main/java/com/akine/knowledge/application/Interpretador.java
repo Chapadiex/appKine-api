@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -31,7 +32,7 @@ import java.util.regex.Pattern;
  *
  * <ul>
  * <li>Sin historial, una consulta que es solo un aspecto ("ejercicios", "dosis") pide la afeccion, y
- * una de 1 a 3 palabras sin intencion repregunta con los aspectos que tienen evidencia. Ninguna de
+ * una con 1 o 2 palabras de contenido y sin intencion repregunta con los aspectos que tienen evidencia. Ninguna de
  * las dos llama al modelo.</li>
  * <li>Con intencion o con historial, una llamada al modelo en modo JSON devuelve tema, tema nuevo,
  * intencion y pregunta completa. Reemplaza a la reescritura de v1.</li>
@@ -50,7 +51,10 @@ public class Interpretador {
 	static final String TEXTO_REPREGUNTA = "¿Qué buscás sobre %s?";
 	static final OpcionesGeneracion OPCIONES = new OpcionesGeneracion(BigDecimal.ZERO, 160, true);
 	static final Duration PLAZO = Duration.ofSeconds(10);
+	/** Hasta cuantas palabras puede tener una consulta que es solo un aspecto ("evaluación de"). */
 	static final int PALABRAS_AMBIGUA = 3;
+	/** Sin intencion, una consulta con hasta tantas palabras de contenido es ambigua (ruling R6). */
+	static final int CONTENIDO_AMBIGUA = 2;
 
 	/**
 	 * Intencion, sin tildes ni mayusculas. Los interrogativos y "mas" van como palabra entera para que
@@ -76,7 +80,14 @@ public class Interpretador {
 			"esas", "esos", "ella", "ello", "otro", "otra", "otros", "otras", "tambien", "hace", "hacen",
 			"hacer", "sirve", "sirven", "dura", "duran", "usa", "usar", "puede", "pueden", "debe", "deben",
 			"anterior", "ahora", "cosa", "cosas", "hay", "tiene", "tienen", "quien", "quienes", "cuanto",
-			"cuanta", "cuantos", "cuantas", "donde", "cuando", "algo", "todo", "todos", "eso", "aca", "ahi");
+			"cuanta", "cuantos", "cuantas", "donde", "cuando", "algo", "todo", "todos", "eso", "aca", "ahi",
+			"cada", "hago", "haga", "hacerlo", "hacerla", "quiero", "saber", "conviene", "mejor", "puedo",
+			"vale", "bien", "igual", "entonces", "asi", "ya", "si", "no");
+	/** Relleno que no nombra un tema: personas, sesion, materiales y verbos comunes de la consulta. */
+	private static final Pattern RELLENO = Pattern.compile(
+			"^(?:sesion(?:es)?$|material(?:es)?$|necesit|pacientes?$|trabaj|ninos?$|ninas?$|adultos?$"
+					+ "|mayores$|personas?$|casos?$|tipos?$|principal(?:es)?$|tras$|indica|recomiend|utiliz"
+					+ "|realiz|aplica$|aplican$|sirv|usad|empez|comenz|hacen?$)");
 
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -131,22 +142,23 @@ public class Interpretador {
 		String normal = normalizar(consulta);
 		List<String> palabras = palabras(normal);
 		boolean conIntencion = INTENCION.matcher(normal).find();
-		boolean corta = !palabras.isEmpty() && palabras.size() <= PALABRAS_AMBIGUA;
+		long deContenido = palabras.stream().filter(Interpretador::esDeContenido).count();
+		boolean ambigua = deContenido >= 1 && deContenido <= CONTENIDO_AMBIGUA && !conIntencion;
 
 		if (historial.isEmpty()) {
 			// Antes que la intencion: "ejercicios" matchea "ejerc" y nunca seria ambigua.
 			if (esAspectoSuelto(palabras)) {
 				return new Aclarar(TEXTO_SIN_AFECCION, List.of());
 			}
-			if (corta && !conIntencion) {
+			if (ambigua) {
 				return aclararOBuscar(orgId, sinBordes(consulta), consulta);
 			}
 		}
-		return conModelo(orgId, consulta, normal, historial, limite, corta && !conIntencion);
+		return conModelo(orgId, consulta, normal, historial, limite, ambigua);
 	}
 
 	private Interpretacion conModelo(long orgId, String consulta, String normal, List<TurnoDeConsulta> historial,
-			Instant limite, boolean cortaSinIntencion) {
+			Instant limite, boolean ambigua) {
 		Duration restante = Duration.between(Instant.now(), limite);
 		Duration plazo = restante.compareTo(PLAZO) < 0 ? restante : PLAZO;
 		if (plazo.isNegative() || plazo.isZero()) {
@@ -161,26 +173,35 @@ public class Interpretador {
 			log.info("Interpretacion fallida, se usa el respaldo: {}", e.getClass().getSimpleName());
 			return respaldo(consulta, historial);
 		}
-		String charla = normalizar(String.join(" ", preguntasDe(historial)));
-		String fuente = normal + " " + charla;
+		Set<String> enCharla = palabrasDeLaCharla(historial);
+		Set<String> enConsulta = Set.copyOf(palabras(normal));
+		Set<String> fuente = new HashSet<>(enCharla);
+		fuente.addAll(enConsulta);
 		if (leida == null || inventaTema(leida, fuente)) {
 			log.info("Interpretacion descartada, se usa el respaldo");
 			return respaldo(consulta, historial);
 		}
-		List<String> propias = palabrasDeTema(normal);
-		boolean nombraOtroTema = !propias.isEmpty() && propias.stream().noneMatch(charla::contains);
-		if (nombraOtroTema && propias.stream().noneMatch(normalizar(leida.tema())::contains)) {
-			// La consulta nombra su tema y el modelo lo cambio por el de la charla.
+		boolean profundo = !historial.isEmpty() && PROFUNDO.matcher(normal).find();
+		// Un seguimiento ("¿quién lo hace y cuánto dura cada sesión?") hereda: decide el modelo, no las palabras.
+		List<String> nuevas = profundo ? List.of() : nuevasRespectoDe(normal, enCharla);
+		boolean nombraOtroTema = !historial.isEmpty() && !nuevas.isEmpty();
+		Set<String> enTema = Set.copyOf(palabras(normalizar(leida.tema())));
+		if (nombraOtroTema && nuevas.stream().noneMatch(p -> estaEn(p, enTema))) {
+			// La consulta nombra un tema nuevo y el modelo lo cambio por el de la charla.
 			return respaldo(consulta, historial);
 		}
 		boolean independiente = leida.temaNuevo() || historial.isEmpty() || nombraOtroTema
-				|| !contenido(normalizar(leida.tema()), charla);
-		if (independiente && !historial.isEmpty() && cortaSinIntencion) {
+				|| !contenido(normalizar(leida.tema()), enCharla);
+		if (independiente && !historial.isEmpty() && ambigua) {
 			return aclararOBuscar(orgId, leida.tema(), leida.preguntaCompleta());
 		}
-		boolean profundo = !historial.isEmpty() && PROFUNDO.matcher(normal).find();
-		return new Buscar(leida.tema(), leida.intencion(), leida.preguntaCompleta(),
-				consultas(leida.preguntaCompleta(), leida.intencion(), leida.tema()), independiente, profundo);
+		String completa = leida.preguntaCompleta();
+		if (independiente && !contenido(normalizar(completa), enConsulta)) {
+			// Independiente: la pregunta completa no suma temas que la consulta no nombra (ni los de la charla).
+			completa = consulta;
+		}
+		return new Buscar(leida.tema(), leida.intencion(), completa,
+				consultas(completa, leida.intencion(), leida.tema()), independiente, profundo);
 	}
 
 	/** Repregunta con los aspectos que tienen evidencia; sin ninguno, busqueda normal. */
@@ -213,10 +234,9 @@ public class Interpretador {
 	 * pregunta tal cual e independiente; si no, la ultima pregunta de la charla mas la nueva.
 	 */
 	private static Buscar respaldo(String consulta, List<TurnoDeConsulta> historial) {
-		String charla = normalizar(String.join(" ", preguntasDe(historial)));
-		List<String> propias = palabrasDeTema(normalizar(consulta));
-		boolean nombraOtroTema = !propias.isEmpty() && propias.stream().noneMatch(charla::contains);
-		if (historial.isEmpty() || nombraOtroTema) {
+		String normal = normalizar(consulta);
+		boolean profundo = PROFUNDO.matcher(normal).find();
+		if (historial.isEmpty() || !profundo && !nuevasRespectoDe(normal, palabrasDeLaCharla(historial)).isEmpty()) {
 			return new Buscar(consulta, Intencion.OTRA, consulta, List.of(consulta), true, false);
 		}
 		String junta = respaldoConcatenado(historial, consulta);
@@ -247,6 +267,10 @@ public class Interpretador {
 		}
 		usuario.append("\nConsulta: ").append(consulta);
 		return List.of(new MensajeChat(Rol.SISTEMA, prompt), new MensajeChat(Rol.USUARIO, usuario.toString()));
+	}
+
+	private static Set<String> palabrasDeLaCharla(List<TurnoDeConsulta> historial) {
+		return Set.copyOf(palabras(normalizar(String.join(" ", preguntasDe(historial)))));
 	}
 
 	private static List<String> preguntasDe(List<TurnoDeConsulta> historial) {
@@ -310,37 +334,54 @@ public class Interpretador {
 	 * El modelo agrego un tema: alguna palabra del tema, o alguna sigla de la pregunta completa, que
 	 * ni la consulta ni la charla nombran.
 	 */
-	private static boolean inventaTema(Leida leida, String fuente) {
+	private static boolean inventaTema(Leida leida, Set<String> fuente) {
 		if (!contenido(normalizar(leida.tema()), fuente)) {
 			return true;
 		}
 		Matcher siglas = SIGLA.matcher(leida.preguntaCompleta());
-		Set<String> palabrasFuente = Set.copyOf(palabras(fuente));
 		while (siglas.find()) {
-			if (!palabrasFuente.contains(normalizar(siglas.group()))) {
+			if (!fuente.contains(normalizar(siglas.group()))) {
 				return true;
 			}
 		}
 		return false;
 	}
 
-	/** Cada palabra de tema de {@code texto} aparece en {@code fuente}, tolerando plural y genero. */
-	private static boolean contenido(String texto, String fuente) {
-		for (String palabra : palabrasDeTema(texto)) {
-			boolean esta = fuente.contains(palabra)
-					|| palabra.length() >= 5 && fuente.contains(palabra.substring(0, palabra.length() - 2));
-			if (!esta) {
-				return false;
-			}
-		}
-		return true;
+	/** Cada palabra de tema de {@code texto} esta, como palabra, en {@code fuente}. */
+	private static boolean contenido(String texto, Set<String> fuente) {
+		return palabrasDeTema(texto).stream().allMatch(p -> estaEn(p, fuente));
 	}
 
-	/** Palabras que pueden nombrar un tema: ni vacias ni aspectos. */
+	/**
+	 * La palabra esta en el conjunto, comparando palabras enteras y tolerando plural, genero o
+	 * conjugacion: la misma raiz (todo menos las dos ultimas letras) y a lo sumo dos letras de
+	 * diferencia. "fractura" esta en "fracturas"; "dolor" no esta en "doloroso".
+	 */
+	private static boolean estaEn(String palabra, Set<String> palabras) {
+		if (palabras.contains(palabra)) {
+			return true;
+		}
+		if (palabra.length() < 5) {
+			return false;
+		}
+		String raiz = palabra.substring(0, palabra.length() - 2);
+		return palabras.stream().anyMatch(w -> w.startsWith(raiz) && Math.abs(w.length() - palabra.length()) <= 2);
+	}
+
+	/** Palabras que pueden nombrar un tema: ni vacias, ni relleno, ni aspectos. */
 	private static List<String> palabrasDeTema(String normal) {
 		return palabras(normal).stream()
-				.filter(p -> p.length() >= 3 && !VACIAS.contains(p) && !ASPECTO.matcher(p).find())
+				.filter(p -> p.length() >= 3 && esDeContenido(p) && !ASPECTO.matcher(p).find())
 				.toList();
+	}
+
+	private static boolean esDeContenido(String palabra) {
+		return !VACIAS.contains(palabra) && !RELLENO.matcher(palabra).find();
+	}
+
+	/** Palabras de tema de la consulta que la charla no nombra. */
+	private static List<String> nuevasRespectoDe(String normal, Set<String> charla) {
+		return palabrasDeTema(normal).stream().filter(p -> !estaEn(p, charla)).toList();
 	}
 
 	/** Solo aspectos ("ejercicios", "evaluación de", "dosis"), sin afeccion. */

@@ -226,6 +226,93 @@ class InterpretadorTest {
 	}
 
 	@Test
+	void preguntaCompletaNoMeteTemaDeLaCharla() {
+		modelo.responderJson(json("manguito rotador", true, "ejercicios", "Ejercicios para manguito rotador en lumbalgia"));
+
+		Buscar buscar = (Buscar) conEvidenciaEnTodo().interpretar(
+				ORG, "ejercicios para manguito rotador", CHARLA_LUMBALGIA, limite());
+
+		assertThat(buscar.independiente()).isTrue();
+		assertThat(buscar.preguntaCompleta()).isEqualTo("ejercicios para manguito rotador");
+		assertThat(buscar.consultas()).containsExactly("ejercicios para manguito rotador");
+
+		// Tampoco un tema que no esta en ninguna de las dos.
+		modelo.responderJson(json("manguito rotador", true, "ejercicios", "Ejercicios para manguito rotador y escoliosis"));
+
+		Buscar otro = (Buscar) conEvidenciaEnTodo().interpretar(
+				ORG, "ejercicios para manguito rotador", CHARLA_LUMBALGIA, limite());
+
+		assertThat(otro.consultas()).noneMatch(c -> c.contains("escoliosis") || c.contains("lumbalgia"));
+	}
+
+	@Test
+	void palabraCompartidaNoOcultaTemaNuevo() {
+		List<TurnoDeConsulta> charla = List.of(
+				new TurnoDeConsulta(TurnoDeConsulta.Rol.USUARIO, "ejercicios fractura cadera"));
+		modelo.responderJson(json("fractura de muñeca", false, "ejercicios", "¿Qué ejercicios sirven para la fractura de muñeca?"));
+
+		Buscar buscar = (Buscar) conEvidenciaEnTodo().interpretar(
+				ORG, "ejercicios para fractura de muñeca", charla, limite());
+
+		assertThat(buscar.independiente()).isTrue();
+		assertThat(buscar.consultas()).noneMatch(c -> c.contains("cadera"));
+
+		// Palabra entera: "dolor" no es "doloroso".
+		List<TurnoDeConsulta> hombro = List.of(new TurnoDeConsulta(TurnoDeConsulta.Rol.USUARIO, "hombro doloroso"));
+		modelo.responderJson(json("dolor", false, "ejercicios", "¿Qué ejercicios sirven para el dolor?"));
+
+		Buscar dolor = (Buscar) conEvidenciaEnTodo().interpretar(ORG, "ejercicios para el dolor", hombro, limite());
+
+		assertThat(dolor.independiente()).isTrue();
+		assertThat(dolor.consultas()).noneMatch(c -> c.contains("hombro"));
+	}
+
+	@Test
+	void seguimientoDeSesionHereda() {
+		List<TurnoDeConsulta> charla = List.of(
+				new TurnoDeConsulta(TurnoDeConsulta.Rol.USUARIO, "ejercicios para fractura de cadera"),
+				new TurnoDeConsulta(TurnoDeConsulta.Rol.ASISTENTE, "- Fortalecimiento: recupera la marcha."));
+		String consulta = "¿quién lo hace y cuánto dura cada sesión?";
+		String completa = "¿Quién hace los ejercicios para fractura de cadera y cuánto dura cada sesión?";
+		modelo.responderJson(json("fractura de cadera", false, "profesionales", completa));
+
+		Buscar buscar = (Buscar) conEvidenciaEnTodo().interpretar(ORG, consulta, charla, limite());
+
+		assertThat(buscar.independiente()).isFalse();
+		assertThat(buscar.profundo()).isTrue();
+		assertThat(buscar.tema()).isEqualTo("fractura de cadera");
+		assertThat(buscar.consultas()).containsExactly(completa, "profesionales que intervienen en fractura de cadera");
+
+		// Con el modelo caido tambien hereda: el respaldo concatenado.
+		modelo.fallarEnCompletar(true);
+		Buscar caido = (Buscar) conEvidenciaEnTodo().interpretar(ORG, consulta, charla, limite());
+
+		assertThat(caido.independiente()).isFalse();
+		assertThat(caido.preguntaCompleta()).isEqualTo("ejercicios para fractura de cadera " + consulta);
+	}
+
+	@Test
+	void ambiguaCuentaPalabrasDeContenido() {
+		for (String suelta : List.of("lumbalgia", "fractura de cadera", "artritis reumatoide")) {
+			assertThat(conEvidenciaEnTodo().interpretar(ORG, suelta, List.of(), limite())).as(suelta)
+					.isInstanceOf(Aclarar.class);
+		}
+		assertThat(modelo.llamadas()).isZero();
+
+		for (String directa : List.of("acv hombro doloroso", "ortesis artritis reumatoide")) {
+			modelo.responderJson(json(directa, true, "otra", directa));
+			sondeadas.clear();
+
+			Interpretacion resultado = conEvidenciaEnTodo().interpretar(ORG, directa, List.of(), limite());
+
+			assertThat(resultado).as(directa).isEqualTo(
+					new Buscar(directa, Intencion.OTRA, directa, List.of(directa), true, false));
+			assertThat(sondeadas).isEmpty();
+		}
+		assertThat(modelo.llamadas()).isEqualTo(2);
+	}
+
+	@Test
 	void noAgregaTemasQueNadieNombra() {
 		modelo.responderJson(json("lumbalgia y ACV", true, "ejercicios", "¿Qué ejercicios sirven para lumbalgia y ACV?"));
 
