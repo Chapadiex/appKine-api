@@ -295,3 +295,24 @@ tipos primitivos, incremento y decremento) y 3 no:
 primera palabra tarda más de los 5 s buscados, y la reescritura de repreguntas falla. El corte de la búsqueda
 también resulta estricto para preguntas cortas. Siguiente paso propuesto: medir `qwen2.5:3b` con las mismas
 15 preguntas antes de tocar el diseño, y revisar el corte por camino.
+
+### 10.1 Segunda medición: `qwen2.5:3b` con prompt para temas sueltos y 3 pasajes
+
+Mismas 15 preguntas, más "operadores" y "operadores matemáticos". Commit `667149a9`: el prompt pide resumir
+cuando la pregunta es un tema suelto y no repetir frases; al modelo llegan 3 pasajes y la salida baja a 300
+tokens.
+
+| | 1,5 B (antes) | 3 B (ahora) |
+|---|---|---|
+| Sin relación con el libro | 5/5 aviso fijo | 5/5 aviso fijo |
+| Respondidas, de 10 sobre el libro | 6 | 7 (las dos repreguntas que pasan la búsqueda salen bien) |
+| Con datos agregados o repetidos | 3 de 6 | 1 o 2 de 9: "operadores matemáticos" mezcla portugués y temas ajenos; el "programa mínimo" muestra un `HolaMundo` que puede no estar en el apunte |
+| "operadores" (palabra suelta) | rechazo del modelo | resumen correcto de los operadores |
+| Primera palabra, modelo cargado | 6–18 s | 12–25 s |
+| Respuesta completa | 12–50 s | 15–57 s |
+
+**Lectura:** el 3 B es claramente más fiel y resuelve las repreguntas y las palabras sueltas. Queda cerca de la
+vara de §7 (no más de 2 de 10 con datos agregados). Pero en esta máquina, sin GPU, tarda el doble hasta la
+primera palabra. La velocidad no se arregla con el modelo: hace falta GPU, un servidor más potente o un modelo
+por API. Las tres preguntas que siguen sin material ("ámbito de clase", "operador ternario" y su repregunta)
+son por el corte de la búsqueda, no por el modelo.
