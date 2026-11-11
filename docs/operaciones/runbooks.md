@@ -540,7 +540,7 @@ docker logs --since 1h akine-api 2>&1 | jq -r 'select(.message|test("Lote de asi
 
 ## R-consulta. Consulta a la biblioteca: Ollama
 
-La consulta redacta sus respuestas con un modelo de lenguaje local (`qwen2.5:1.5b`) servido por
+La consulta redacta sus respuestas con un modelo de lenguaje local (`qwen2.5:3b`) servido por
 Ollama. Esta apagada por defecto y exige ademas `akine.biblioteca.enabled`. No guarda preguntas ni
 respuestas: los logs llevan solo tiempos y cantidades.
 
@@ -548,7 +548,7 @@ respuestas: los logs llevan solo tiempos y cantidades.
 
 ```bash
 docker compose up -d ollama
-docker compose exec ollama ollama pull qwen2.5:1.5b
+docker compose exec ollama ollama pull qwen2.5:3b
 ```
 
 **Variables**
@@ -557,7 +557,7 @@ docker compose exec ollama ollama pull qwen2.5:1.5b
 |---|---|---|
 | `AKINE_BIBLIOTECA_CONSULTA_ENABLED` | Enciende la consulta | `false` |
 | `AKINE_BIBLIOTECA_CONSULTA_URL` | Direccion de Ollama | `http://localhost:11434` |
-| `AKINE_BIBLIOTECA_CONSULTA_MODELO` | Modelo a usar | `qwen2.5:1.5b` |
+| `AKINE_BIBLIOTECA_CONSULTA_MODELO` | Modelo a usar | `qwen2.5:3b` |
 
 **Si Ollama esta caido o no tiene el modelo:** solo la consulta responde 503
 (`asistente-no-disponible`) o devuelve el error por el stream; la busqueda y el resto de la

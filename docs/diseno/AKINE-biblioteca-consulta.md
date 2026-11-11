@@ -46,7 +46,7 @@ que se ajuste.
 | Tema | Decisión |
 |---|---|
 | Patrón | **El backend busca siempre** y después le pide al modelo que redacte (opción A). El modelo no decide si busca |
-| Modelo | **Ollama en Docker con `qwen2.5:1.5b`** (986 MB), probado el 11/11: ~11 s caliente, 81 s la primera carga, en CPU (12 núcleos, sin GPU) |
+| Modelo | **Ollama en Docker con `qwen2.5:3b`** (1,9 GB), elegido por el usuario el 11/11 después de medir los dos (§10): más fiel que `qwen2.5:1.5b`, 12–25 s hasta la primera palabra en CPU sin GPU |
 | Quién | Todo el equipo del centro |
 | Persistencia | Ninguna |
 | Repreguntas | Sí |
@@ -164,14 +164,14 @@ segunda capa contra un PDF que traiga órdenes escondidas.
 akine.biblioteca.consulta:
   enabled: false            # apagado por defecto, como la biblioteca
   url: http://localhost:11434
-  modelo: qwen2.5:1.5b
+  modelo: qwen2.5:3b
   timeout-segundos: 90
   keep-alive: 30m
   max-en-espera: 3
 ```
 
 Docker: servicio `ollama` (imagen fijada por digest) en el `compose.yaml` del backend, con volumen
-para los modelos; el modelo se baja una vez (`ollama pull qwen2.5:1.5b`). En producción, el mismo
+para los modelos; el modelo se baja una vez (`ollama pull qwen2.5:3b`). En producción, el mismo
 servicio al lado del backend.
 
 ### 5.8 Privacidad y auditoría
@@ -249,7 +249,7 @@ Todas **[decisión del agente]**; ninguna cambia lo que el usuario pidió.
    `OpenApiContractIT`, el chequeo de `operationId` y la generación del cliente pasen antes de cerrar.
 6. **Docker y modelo.** `compose.yaml` del backend suma el servicio `ollama` con la imagen fijada por
    digest (`ollama/ollama@sha256:910d0d81…`, 0.40.16, la probada) y un volumen. El modelo se baja con
-   un paso manual documentado en el runbook (`docker exec … ollama pull qwen2.5:1.5b`); el arranque
+   un paso manual documentado en el runbook (`docker exec … ollama pull qwen2.5:3b`); el arranque
    del backend no depende de que esté: sin Ollama, la consulta responde 503 y nada más se rompe. CI y
    ITs usan un modelo de lenguaje falso y no necesitan Ollama.
 7. **Recorte de contexto.** Estimación por caracteres, **3 caracteres por token**, con presupuesto de
