@@ -29,7 +29,8 @@ import java.util.UUID;
  * reemplazo</b>. Se crea un reemplazo PENDIENTE con el mismo archivo (copiado a una clave propia:
  * si compartieran la clave, borrar el viejo inactivo o un reemplazo fallido borraria el archivo
  * del otro) y el worker lo procesa como cualquier reemplazo. El indice viejo responde hasta que el
- * nuevo queda LISTO; ahi el cierre desactiva el viejo en la misma transaccion.
+ * nuevo queda LISTO; ahi el cierre borra el viejo, sus fragmentos y (despues del commit) su archivo:
+ * un reproceso no deja duplicados inactivos.
  *
  * <p>Uno por vuelta: el worker lo llama solo cuando no hay ningun PENDIENTE. Si el reproceso
  * termina en ERROR, el viejo sigue activo y el reemplazo fallido vuelve a la cola sin poner los

@@ -155,9 +155,14 @@ public class Libro {
 		return nuevo;
 	}
 
-	/** Un reemplazo con el mismo archivo que su original: lo creo el reproceso por version. */
+	/**
+	 * Lo creo el reproceso por version: reemplaza a {@code original} con el mismo archivo y nacio
+	 * con una version de procesamiento mayor. Un reemplazo subido a mano nace en 1 (la subida
+	 * ademas rechaza el archivo identico) y recien al quedar LISTO toma la vigente.
+	 */
 	public boolean esReprocesoDe(Libro original) {
-		return original.id.equals(reemplazaLibroId) && original.hashSha256.equals(hashSha256);
+		return original.id.equals(reemplazaLibroId) && original.hashSha256.equals(hashSha256)
+				&& versionProcesamiento > original.versionProcesamiento;
 	}
 
 	@PrePersist

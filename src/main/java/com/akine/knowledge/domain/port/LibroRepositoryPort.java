@@ -54,7 +54,8 @@ public interface LibroRepositoryPort {
 	 * El libro mas viejo de cualquier organizacion a reprocesar por version: LISTO, activo, que no
 	 * es un reemplazo en curso, con {@code version_procesamiento < versionVigente}, y sin otro
 	 * reemplazo salvo un reproceso fallido (mismo hash, ERROR) con menos de {@code maxIntentos}
-	 * intentos. Sin lock: quien lo usa lo relee bajo el de la organizacion.
+	 * intentos. Primero los que nunca fallaron (por intentos del reproceso fallido), para que un
+	 * libro que falla siempre no frene a los demas. Sin lock: quien lo usa lo relee bajo el de la organizacion.
 	 */
 	Optional<Libro> aReprocesarPorVersion(int versionVigente, int maxIntentos);
 

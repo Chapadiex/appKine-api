@@ -96,6 +96,8 @@ class ReprocesoPorVersionIT {
 	void el_indice_viejo_responde_durante_el_reproceso_y_al_final_queda_uno_solo_en_la_version_vigente()
 			throws Exception {
 		long viejo = libroEnVersionUno();
+		String claveVieja = jdbc.queryForObject("SELECT storage_key FROM libro WHERE id = ?", String.class, viejo);
+		assertThat(almacen.leer(LibroService.ESPACIO, claveVieja)).isPresent();
 		assertThat(libroIds(directory.buscar(orgId, CONSULTA_DERECHOS, 5).pasajes())).containsOnly(viejo);
 
 		assertThat(reproceso.encolarSiguiente()).isTrue();
@@ -126,9 +128,16 @@ class ReprocesoPorVersionIT {
 
 		assertThat(durante).hasSize(2).allSatisfy(p -> assertThat(libroIds(p)).isNotEmpty().containsOnly(viejo));
 		assertThat(estado(nuevo)).isEqualTo("LISTO");
-		assertThat(jdbc.queryForList("""
-				SELECT id FROM libro WHERE organization_id = ? AND activo = 1""", Long.class, orgId))
+		// El viejo no queda como duplicado inactivo: ni su fila, ni sus fragmentos, ni su archivo.
+		assertThat(jdbc.queryForList("SELECT id FROM libro WHERE organization_id = ?", Long.class, orgId))
 				.containsExactly(nuevo);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM libro_fragmento WHERE libro_id = ?",
+				Integer.class, viejo)).isZero();
+		assertThat(almacen.leer(LibroService.ESPACIO, claveVieja)).isEmpty();
+		assertThat(jdbc.queryForObject("""
+				SELECT COUNT(*) FROM audit_event
+				 WHERE entity_id = ? AND event_type = 'LIBRO_ELIMINADO' AND actor_account_id IS NULL""",
+				Integer.class, viejo)).isEqualTo(1);
 		assertThat(jdbc.queryForMap("SELECT version_procesamiento, reemplaza_libro_id FROM libro WHERE id = ?", nuevo))
 				.containsEntry("version_procesamiento", 2).containsEntry("reemplaza_libro_id", null);
 		assertThat(jdbc.queryForObject("""

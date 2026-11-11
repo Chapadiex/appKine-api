@@ -218,6 +218,11 @@ public class ProcesamientoDeLibroService {
 		// Sin relleno (derechos, indice, miembros, referencias), encabezados ni pies repetidos: no
 		// entran al indice. Las paginas del libro siguen siendo todas.
 		List<Pedazo> pedazos = troceador.trocear(LimpiadorDePaginas.limpiar(paginas));
+		if (pedazos.isEmpty()) {
+			// Un indice vacio no reemplaza a nada: el libro termina en ERROR y, si es un reemplazo
+			// (o un reproceso por version), el original sigue respondiendo.
+			throw new DocumentoIlegibleException(MOTIVO_SIN_TEXTO);
+		}
 		if (!avanzar(reclamo, PROGRESO_EXTRAIDO)) {
 			return;
 		}
@@ -292,6 +297,7 @@ public class ProcesamientoDeLibroService {
 	private void cerrar(Reclamo reclamo, int paginas, List<LibroFragmento> lista) {
 		// La fila-lock se crea aparte: crearla dentro de la transaccion que la bloquea da deadlock.
 		transaccion.executeWithoutResult(status -> version.asegurarFila(reclamo.orgId()));
+		String[] archivoABorrar = {null};
 		transaccionLecturaConfirmada.executeWithoutResult(status -> {
 			version.bloquear(reclamo.orgId());
 			Optional<Libro> releido = libros.bloquearPorId(reclamo.libroId());
@@ -305,12 +311,31 @@ public class ProcesamientoDeLibroService {
 			fragmentos.reemplazarDeLibro(libro.getId(), lista);
 			Long reemplazaId = libro.getReemplazaLibroId();
 			Boolean originalDesactivado = null;
+			Optional<Libro> original = Optional.empty();
+			Optional<Libro> viejoDeReproceso = Optional.empty();
 			if (reemplazaId != null) {
-				originalDesactivado = desactivarOriginal(reemplazaId, libro);
+				original = libros.bloquearPorId(reemplazaId);
+				// Antes de soltar el vinculo: esReprocesoDe mira reemplaza_libro_id.
+				viejoDeReproceso = original.filter(libro::esReprocesoDe);
+				originalDesactivado = desactivarOriginal(original, libro);
 				libro.soltarReemplazo();
 			}
 			libro.marcarListo(paginas, procesamientoAjustes.versionVigente());
 			libros.guardarYSincronizar(libro);
+			// Un reproceso por version (mismo archivo) no deja un duplicado inactivo: el viejo, sus
+			// fragmentos y, despues del commit, su archivo se borran. Un reemplazo manual conserva
+			// el original inactivo, como siempre.
+			viejoDeReproceso.ifPresent(viejo -> {
+				fragmentos.reemplazarDeLibro(viejo.getId(), List.of());
+				auditar(viejo, AuditEvents.LIBRO_ELIMINADO, EstadoLibro.LISTO.name(), null, Map.of(
+						"motivo", ReprocesoPorVersionService.MOTIVO,
+						"reemplazadoPorLibroId", String.valueOf(libro.getId())));
+				libros.delete(viejo);
+				libros.flush();
+				if (!viejo.getStorageKey().equals(libro.getStorageKey())) {
+					archivoABorrar[0] = viejo.getStorageKey();
+				}
+			});
 			version.avanzar(reclamo.orgId());
 
 			long sospechosos = lista.stream().filter(LibroFragmento::isSospechoso).count();
@@ -325,9 +350,13 @@ public class ProcesamientoDeLibroService {
 			if (reemplazaId != null) {
 				auditar(libro, AuditEvents.LIBRO_REEMPLAZO_APLICADO, null, null, Map.of(
 						"reemplazaLibroId", String.valueOf(reemplazaId),
-						"originalDesactivado", String.valueOf(originalDesactivado)));
+						"originalDesactivado", String.valueOf(originalDesactivado),
+						"originalEliminado", String.valueOf(viejoDeReproceso.isPresent())));
 			}
 		});
+		if (archivoABorrar[0] != null) {
+			almacen.borrar(LibroService.ESPACIO, archivoABorrar[0]);
+		}
 	}
 
 	/**
@@ -341,8 +370,7 @@ public class ProcesamientoDeLibroService {
 	 *
 	 * @return si se desactivo
 	 */
-	private boolean desactivarOriginal(long originalId, Libro reemplazo) {
-		Optional<Libro> releido = libros.bloquearPorId(originalId);
+	private boolean desactivarOriginal(Optional<Libro> releido, Libro reemplazo) {
 		releido.ifPresent(viejo -> reemplazo.editarMetadatos(
 				viejo.getTitulo(), viejo.getAutores(), viejo.getEdicion(), viejo.getArea()));
 		Optional<Libro> original = releido.filter(Libro::isActivo);

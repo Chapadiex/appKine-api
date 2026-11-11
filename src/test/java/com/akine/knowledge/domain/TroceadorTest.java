@@ -24,7 +24,8 @@ class TroceadorTest {
 
 		assertThat(pedazos).hasSize(3);
 		for (Pedazo p : pedazos) {
-			assertThat(p.texto().length()).isLessThanOrEqualTo(1000);
+			// tamano + minimo: el resto chico se pega al ultimo pedazo
+			assertThat(p.texto().length()).isLessThanOrEqualTo(1000 + 100);
 			// cada palabra del pedazo existe completa en el original
 			for (String palabra : p.texto().split(" ")) {
 				assertThat(palabra).matches("palabra\\d+");
@@ -82,7 +83,8 @@ class TroceadorTest {
 		assertThat(pedazos.size()).isGreaterThan(1);
 		assertThat(pedazos.get(0).texto()).endsWith("Cierre del parrafo 2.");
 		for (Pedazo p : pedazos) {
-			assertThat(p.texto().length()).isLessThanOrEqualTo(1000);
+			// tamano + minimo: el resto chico se pega al ultimo pedazo
+			assertThat(p.texto().length()).isLessThanOrEqualTo(1000 + 100);
 			for (String palabra : p.texto().split(" ")) {
 				assertThat(texto.toString()).containsPattern("(^|\\s)" + java.util.regex.Pattern.quote(palabra) + "(\\s|$)");
 			}
