@@ -29,6 +29,15 @@ public class BibliotecaAcceso {
 	 * @throws LibroNoEncontradoException si la organizacion de la ruta no es la del contexto (404)
 	 */
 	public void exigir(OperatingActor actor, long orgId) {
+		exigir(actor, orgId, PermissionCodes.BIBLIOTECA_MANAGE);
+	}
+
+	/** Igual que {@link #exigir}, con el permiso {@code biblioteca:consultar}. */
+	public void exigirConsulta(OperatingActor actor, long orgId) {
+		exigir(actor, orgId, PermissionCodes.BIBLIOTECA_CONSULTAR);
+	}
+
+	private void exigir(OperatingActor actor, long orgId, String permiso) {
 		if (!ajustes.habilitada()) {
 			throw new BibliotecaDeshabilitadaException();
 		}
@@ -40,6 +49,6 @@ public class BibliotecaAcceso {
 			throw new LibroNoEncontradoException();
 		}
 		permissionGuard.requirePermission(PermissionQuery.of(
-				actor.accountId(), PermissionCodes.BIBLIOTECA_MANAGE, orgId, Instant.now()));
+				actor.accountId(), permiso, orgId, Instant.now()));
 	}
 }

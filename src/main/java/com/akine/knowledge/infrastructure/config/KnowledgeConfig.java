@@ -39,7 +39,8 @@ public class KnowledgeConfig {
 	public BibliotecaAjustes bibliotecaAjustes(BibliotecaProperties properties) {
 		exigirTipoDeModelo(properties);
 		exigirTipoDeConsulta(properties);
-		return new BibliotecaAjustes(properties.enabled(), properties.maxBytes(), properties.maxPaginas());
+		return new BibliotecaAjustes(properties.enabled(), properties.maxBytes(), properties.maxPaginas(),
+				properties.consulta().enabled());
 	}
 
 	@Bean

@@ -1,0 +1,1 @@
+Reescribí la última pregunta del usuario como una pregunta completa y autosuficiente, en castellano, usando la conversación para completar lo que falta. Respondé sólo con la pregunta reescrita, sin explicaciones.
