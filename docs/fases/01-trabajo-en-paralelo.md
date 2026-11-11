@@ -175,6 +175,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V142` | Agenda — disponibilidad central por persona | **Vacía**: reservada por si la consulta de aperturas por persona necesitaba índice; las aperturas de una persona son pocas filas y alcanza la FK de `membership_id`. No se reusa |
 | `V143` | Servicios propios y clases semanales (rama local `akine-clases-servicios`) | **Reservada** por la rama local `akine-clases-servicios` (ADR-0025, serie sin tabla, boxes separados). Todavía no está en `main`: no tomarla |
 | `V144` | Biblioteca del centro, M30 (`akine-biblioteca-rag`) | **Reservada**: tablas `libro`, `libro_fragmento` (con índice `FULLTEXT`) y `biblioteca_version` (dueño `knowledge`), todas con `organization_id`. Contrato 0.164.0 |
+| `V145` | Biblioteca — consulta v2, reproceso por versión (`akine-biblioteca-rag`) | **Reservada**: versión de procesamiento por libro, para reindexar en segundo plano sin dejar la biblioteca vacía (`docs/diseno/AKINE-biblioteca-consulta-v2.md`). Contrato 0.166.0 |
 
 ## 7. Paquetes de trabajo
 
