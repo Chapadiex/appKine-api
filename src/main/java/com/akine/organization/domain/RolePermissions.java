@@ -335,7 +335,9 @@ public final class RolePermissions {
 				// AKINE-G-1 (DP-15). La matriz §2 le dice "Si" en Ver Reportes. Lo que ve de cada
 				// seccion lo decide el permiso de su fuente: sin hc:read ni sesion:register, lo
 				// clinico se omite y se declara en las secciones omitidas.
-				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.ORGANIZACION)));
+				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.ORGANIZACION),
+				// M30, RF-M30-012. Consultar la biblioteca; sin grant.
+				Map.entry(PermissionCode.BIBLIOTECA_CONSULTAR, PermissionScope.ORGANIZACION)));
 
 		// CONSULTORIO_ADMIN â todo acotado a SU sede. Sin tenant:read: la matriz no se lo da.
 		// `Map.ofEntries` y no `Map.of`: AKINE-07.03 sumo `caja:operate` y este mapa llego a once
@@ -386,6 +388,8 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.CATALOGO_MANAGE, PermissionScope.CONSULTORIO),
 				// AKINE-G-1 (DP-15). "Si" en Ver Reportes, con el alcance de su sede.
 				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.CONSULTORIO),
+				// M30, RF-M30-012. Consultar la biblioteca; sin grant.
+				Map.entry(PermissionCode.BIBLIOTECA_CONSULTAR, PermissionScope.ORGANIZACION),
 				// U-24 (DP-43): reemplazar al profesional de una atencion abierta es decision de quien
 				// administra la sede, y solo de el. No le da sesion:register: no atiende ni escribe
 				// en la atencion, cambia quien la atiende.
@@ -461,7 +465,9 @@ public final class RolePermissions {
 				// sede como CONSULTORIO y le avisa a ReporteService que recorte turnos, sesiones y
 				// casos a lo que atendio o le fue asignado. Lo economico ni siquiera llega: no
 				// tiene cobro:register.
-				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.ACTIVIDAD_PROPIA)));
+				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.ACTIVIDAD_PROPIA),
+				// M30, RF-M30-012. Consultar la biblioteca; sin grant.
+				Map.entry(PermissionCode.BIBLIOTECA_CONSULTAR, PermissionScope.ORGANIZACION)));
 		// Map.ofEntries y no Map.of desde AKINE-08.02: el segundo tiene un tope de diez pares y
 		// esta fila lo alcanzo. Mismo cambio que hizo 08.01 con el CONSULTORIO_ADMIN, y por el
 		// mismo motivo: no es semantica, es el unico constructor que admite el par once.
@@ -505,7 +511,9 @@ public final class RolePermissions {
 				// no tiene hc:read ni sesion:register, asi que las secciones clinicas se omiten por
 				// su permiso de fuente y quedan declaradas como omitidas. Darle ACTIVIDAD_PROPIA lo
 				// dejaria viendo solo los turnos que "atendio", que son cero.
-				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.CONSULTORIO)));
+				Map.entry(PermissionCode.REPORTE_READ, PermissionScope.CONSULTORIO),
+				// M30, RF-M30-012. Consultar la biblioteca; sin grant.
+				Map.entry(PermissionCode.BIBLIOTECA_CONSULTAR, PermissionScope.ORGANIZACION)));
 
 		// PACIENTE â ninguna fila de la matriz Â§6 le da nada en F1. Sus celdas ("Propio",
 		// "Propia autorizada") viven en acciones de F3 y F4.

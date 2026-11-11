@@ -20311,6 +20311,28 @@ Permitir que cada organización administre su propia biblioteca de bibliografía
 - **CA-M30-011-02:** durante el reindexado la búsqueda no queda vacía ni mezcla modelos.
 - **CA-M30-011-03:** los pedazos que fallaron al procesar se completan en un ciclo posterior.
 
+### RF-M30-012 — Consulta a la biblioteca
+
+**Objetivo:** que cualquier persona del equipo pregunte en lenguaje natural sobre la bibliografía del centro y reciba una respuesta redactada sólo con lo que dicen los libros cargados, con sus fuentes a la vista. Diseño: `docs/diseno/AKINE-biblioteca-consulta.md`.
+
+**Actores:** `ORG_ADMIN`, `CONSULTORIO_ADMIN`, `PROFESIONAL` y `ADMINISTRATIVO`, con `biblioteca:consultar` (alcance organización, sin grant). `PACIENTE` y plataforma, no.
+
+**Reglas:**
+- La búsqueda se hace siempre antes de redactar; el modelo de lenguaje, local y sin salida a internet, recibe sólo los pasajes que superan el corte. Sin pasajes responde "No encontré material en la biblioteca para responder eso." sin llamar al modelo.
+- Admite repreguntas: el historial (hasta 6 turnos) viaja con cada pedido y se usa sólo para reescribir la pregunta, nunca como instrucciones.
+- No se guarda nada: ni la pregunta, ni la respuesta, ni los pasajes llegan a la base, a la auditoría ni a los logs.
+- La respuesta lleva el aviso "Respuestas orientativas basadas sólo en la bibliografía cargada por el centro. No reemplazan el criterio profesional."
+- Interruptor propio `akine.biblioteca.consulta.enabled` (apagado por defecto) además del de la biblioteca: cualquiera apagado responde 409 `biblioteca-deshabilitada`.
+- Cola de una consulta en curso y hasta tres en espera por instancia; con la cola llena, 503 `consulta-ocupada` con `Retry-After`. Si el modelo no responde, `asistente-no-disponible` (503). Plazo máximo de 90 s por consulta.
+
+**Límites de entrada:** pregunta de 1 a 600 caracteres; historial de hasta 6 turnos de hasta 2.000 caracteres cada uno; fuera de eso, 400 `validation-error`.
+
+**Criterios de aceptación:**
+- **CA-M30-012-01:** un usuario sin `biblioteca:consultar` recibe 403.
+- **CA-M30-012-02:** una pregunta sin material en la biblioteca responde el texto fijo de "sin material" y el modelo no se invoca.
+- **CA-M30-012-03:** con la cola llena la consulta responde 503 `consulta-ocupada` antes de abrir el stream.
+- **CA-M30-012-04:** con la consulta apagada responde `biblioteca-deshabilitada` y no hay efectos.
+
 ## 6. Requerimientos no funcionales específicos
 
 ### RNF-M30-001 — Aislamiento entre organizaciones

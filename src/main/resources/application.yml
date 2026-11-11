@@ -231,6 +231,9 @@ akine:
   # workers ni modelo y toda operacion responde 409 biblioteca-deshabilitada.
   biblioteca:
     enabled: ${AKINE_BIBLIOTECA_ENABLED:false}
+    # Consulta con un modelo de lenguaje local (RF-M30-012). Exige tambien biblioteca.enabled.
+    consulta:
+      enabled: ${AKINE_BIBLIOTECA_CONSULTA_ENABLED:false}
 
   notification:
     email:

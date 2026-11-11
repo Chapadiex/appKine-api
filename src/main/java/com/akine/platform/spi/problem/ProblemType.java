@@ -1434,7 +1434,13 @@ public enum ProblemType {
 	LIBRO_ARCHIVO_NO_ACEPTADO("libro-archivo-no-aceptado"),
 
 	/** El libro se esta procesando y no admite la operacion (409). */
-	LIBRO_EN_PROCESO("libro-en-proceso");
+	LIBRO_EN_PROCESO("libro-en-proceso"),
+
+	/** La cola de consultas a la biblioteca esta llena (503, con {@code Retry-After}). */
+	CONSULTA_OCUPADA("consulta-ocupada"),
+
+	/** El modelo de lenguaje no responde o vencio el plazo (503). */
+	ASISTENTE_NO_DISPONIBLE("asistente-no-disponible");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

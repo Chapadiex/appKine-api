@@ -391,7 +391,14 @@ public enum PermissionCode {
 	 * Gestionar la biblioteca de libros de la organizacion (M30): subir, editar, reemplazar,
 	 * activar, reprocesar y eliminar PDF. Solo {@code ORG_ADMIN}; no se otorga por grant.
 	 */
-	BIBLIOTECA_MANAGE("biblioteca:manage");
+	BIBLIOTECA_MANAGE("biblioteca:manage"),
+
+	/**
+	 * Consultar la biblioteca con un asistente (M30, RF-M30-012): preguntar y recibir una respuesta
+	 * basada en los libros. Por base para {@code ORG_ADMIN}, {@code CONSULTORIO_ADMIN},
+	 * {@code PROFESIONAL} y {@code ADMINISTRATIVO}; no se otorga por grant.
+	 */
+	BIBLIOTECA_CONSULTAR("biblioteca:consultar");
 
 	private final String code;
 

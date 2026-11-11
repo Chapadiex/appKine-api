@@ -6,6 +6,9 @@ public final class PermissionCodes {
 	/** Gestionar la biblioteca de libros de la organizacion. Solo {@code ORG_ADMIN}. */
 	public static final String BIBLIOTECA_MANAGE = "biblioteca:manage";
 
+	/** Consultar la biblioteca con el asistente. Los cuatro roles de personal, por base. */
+	public static final String BIBLIOTECA_CONSULTAR = "biblioteca:consultar";
+
 	private PermissionCodes() {
 	}
 }

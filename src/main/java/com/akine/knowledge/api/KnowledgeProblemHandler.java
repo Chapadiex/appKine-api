@@ -1,6 +1,8 @@
 package com.akine.knowledge.api;
 
+import com.akine.knowledge.domain.exception.AsistenteNoDisponibleException;
 import com.akine.knowledge.domain.exception.BibliotecaDeshabilitadaException;
+import com.akine.knowledge.domain.exception.ConsultaOcupadaException;
 import com.akine.knowledge.domain.exception.LibroArchivoNoAceptadoException;
 import com.akine.knowledge.domain.exception.LibroDuplicadoException;
 import com.akine.knowledge.domain.exception.LibroEnProcesoException;
@@ -9,7 +11,9 @@ import com.akine.platform.spi.problem.ProblemType;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -54,6 +58,22 @@ public class KnowledgeProblemHandler {
 	public ProblemDetail handleEnProceso(LibroEnProcesoException exception) {
 		return problema(HttpStatus.CONFLICT, ProblemType.LIBRO_EN_PROCESO,
 				"Libro en proceso", exception.getMessage());
+	}
+
+	/** Cola llena: 503 con {@code Retry-After}. */
+	@ExceptionHandler(ConsultaOcupadaException.class)
+	public ResponseEntity<ProblemDetail> handleConsultaOcupada(ConsultaOcupadaException exception) {
+		ProblemDetail problem = problema(HttpStatus.SERVICE_UNAVAILABLE, ProblemType.CONSULTA_OCUPADA,
+				"Asistente ocupado", exception.getMessage());
+		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+				.header(HttpHeaders.RETRY_AFTER, String.valueOf(ConsultaOcupadaException.REINTENTAR_EN_SEGUNDOS))
+				.body(problem);
+	}
+
+	@ExceptionHandler(AsistenteNoDisponibleException.class)
+	public ProblemDetail handleAsistenteNoDisponible(AsistenteNoDisponibleException exception) {
+		return problema(HttpStatus.SERVICE_UNAVAILABLE, ProblemType.ASISTENTE_NO_DISPONIBLE,
+				"Asistente no disponible", exception.getMessage());
 	}
 
 	private static ProblemDetail problema(

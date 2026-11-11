@@ -12,7 +12,8 @@ public record BibliotecaProperties(
 		@DefaultValue Troceo troceo,
 		@DefaultValue Busqueda busqueda,
 		@DefaultValue Modelo modelo,
-		@DefaultValue Worker worker) {
+		@DefaultValue Worker worker,
+		@DefaultValue Consulta consulta) {
 
 	public record Troceo(
 			@DefaultValue("1000") int tamano,
@@ -47,5 +48,20 @@ public record BibliotecaProperties(
 			@DefaultValue("30000") long initialDelayMs,
 			@DefaultValue("32") int reindexLote,
 			@DefaultValue("15") int leaseMinutos) {
+	}
+
+	/**
+	 * Consulta a la biblioteca con un modelo de lenguaje local ({@code akine.biblioteca.consulta.*}).
+	 * Apagada por defecto; ademas exige {@code akine.biblioteca.enabled}. {@code tipo}:
+	 * {@code ollama} o {@code prueba}.
+	 */
+	public record Consulta(
+			@DefaultValue("false") boolean enabled,
+			@DefaultValue("ollama") String tipo,
+			@DefaultValue("http://localhost:11434") String url,
+			@DefaultValue("qwen2.5:1.5b") String modelo,
+			@DefaultValue("90") int timeoutSegundos,
+			@DefaultValue("30m") String keepAlive,
+			@DefaultValue("3") int maxEnEspera) {
 	}
 }

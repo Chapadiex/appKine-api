@@ -1,6 +1,8 @@
 package com.akine.knowledge.api;
 
+import com.akine.knowledge.domain.exception.AsistenteNoDisponibleException;
 import com.akine.knowledge.domain.exception.BibliotecaDeshabilitadaException;
+import com.akine.knowledge.domain.exception.ConsultaOcupadaException;
 import com.akine.knowledge.domain.exception.LibroArchivoNoAceptadoException;
 import com.akine.knowledge.domain.exception.LibroArchivoNoAceptadoException.Causa;
 import com.akine.knowledge.domain.exception.LibroDuplicadoException;
@@ -10,6 +12,7 @@ import com.akine.platform.spi.problem.ProblemType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -55,5 +58,20 @@ class KnowledgeProblemHandlerTest {
 		ProblemDetail p = handler.handleEnProceso(new LibroEnProcesoException());
 		assertThat(p.getStatus()).isEqualTo(409);
 		assertThat(p.getType()).isEqualTo(ProblemType.LIBRO_EN_PROCESO.uri());
+	}
+
+	@Test
+	void consulta_ocupada_es_503_con_retry_after() {
+		ResponseEntity<ProblemDetail> r = handler.handleConsultaOcupada(new ConsultaOcupadaException());
+		assertThat(r.getStatusCode().value()).isEqualTo(503);
+		assertThat(r.getBody().getType()).isEqualTo(ProblemType.CONSULTA_OCUPADA.uri());
+		assertThat(r.getHeaders().getFirst("Retry-After")).isEqualTo("15");
+	}
+
+	@Test
+	void asistente_no_disponible_es_503() {
+		ProblemDetail p = handler.handleAsistenteNoDisponible(new AsistenteNoDisponibleException());
+		assertThat(p.getStatus()).isEqualTo(503);
+		assertThat(p.getType()).isEqualTo(ProblemType.ASISTENTE_NO_DISPONIBLE.uri());
 	}
 }
