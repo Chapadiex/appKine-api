@@ -6,6 +6,7 @@ import com.akine.knowledge.domain.port.ModeloDeLenguaje;
 import com.akine.knowledge.domain.port.OpcionesGeneracion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -20,10 +21,15 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
@@ -59,74 +65,153 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 	@Override
 	public String completar(List<MensajeChat> mensajes, OpcionesGeneracion opciones, Duration plazo) {
 		HttpRequest request = armar(mensajes, opciones, false, plazo);
+		HttpResponse<String> respuesta;
 		try {
-			HttpResponse<String> respuesta = http.send(request, HttpResponse.BodyHandlers.ofString());
-			exigirOk(respuesta.statusCode());
-			return json.readTree(respuesta.body()).path("message").path("content").asString("");
+			respuesta = http.send(request, HttpResponse.BodyHandlers.ofString());
 		}
 		catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			throw new AsistenteNoDisponibleException(e);
 		}
-		catch (AsistenteNoDisponibleException e) {
-			throw e;
-		}
 		catch (IOException | RuntimeException e) {
 			throw noDisponible(e);
 		}
+		exigirOk(respuesta.statusCode());
+		return contenido(respuesta.body());
 	}
 
+	/**
+	 * Emite fragmentos. Un vigilante revisa cada 250 ms {@code cancelado} y el plazo, tambien mientras
+	 * se esperan los encabezados o el proximo token: si se cancela termina sin lanzar; si vence el
+	 * plazo lanza {@link AsistenteNoDisponibleException}. Lo que lance {@code alFragmento} se propaga
+	 * tal cual.
+	 */
 	@Override
 	public void generar(List<MensajeChat> mensajes, OpcionesGeneracion opciones, Duration plazo,
 			Consumer<String> alFragmento, BooleanSupplier cancelado) {
 		HttpRequest request = armar(mensajes, opciones, true, plazo);
 		long limite = System.nanoTime() + plazo.toNanos();
+		CompletableFuture<HttpResponse<Stream<String>>> futuro =
+				http.sendAsync(request, HttpResponse.BodyHandlers.ofLines());
+		AtomicBoolean porCancelacion = new AtomicBoolean();
+		AtomicBoolean porPlazo = new AtomicBoolean();
+		AtomicReference<Stream<String>> abierto = new AtomicReference<>();
+		ScheduledFuture<?> vigia = VIGILANTE.scheduleAtFixedRate(() -> {
+			try {
+				if (cancelado.getAsBoolean()) {
+					porCancelacion.set(true);
+				}
+				else if (System.nanoTime() > limite) {
+					porPlazo.set(true);
+				}
+				else {
+					return;
+				}
+				futuro.cancel(true);
+				Stream<String> lineas = abierto.get();
+				if (lineas != null) {
+					lineas.close();
+				}
+			}
+			catch (RuntimeException e) {
+				// el vigilante no debe morir: el proximo ciclo reintenta
+			}
+		}, 0, 250, TimeUnit.MILLISECONDS);
 		try {
-			HttpResponse<Stream<String>> respuesta = http.send(request, HttpResponse.BodyHandlers.ofLines());
+			HttpResponse<Stream<String>> respuesta = esperar(futuro);
 			Stream<String> lineas = respuesta.body();
-			// El plazo del request cubre hasta los encabezados: despues lo hace cumplir este corte.
-			ScheduledFuture<?> corte = VIGILANTE.schedule(lineas::close,
-					Math.max(0, limite - System.nanoTime()), TimeUnit.NANOSECONDS);
+			abierto.set(lineas);
 			try (lineas) {
 				exigirOk(respuesta.statusCode());
 				Iterator<String> it = lineas.iterator();
-				while (it.hasNext()) {
-					if (cancelado.getAsBoolean()) {
-						return;
-					}
-					if (System.nanoTime() > limite) {
-						throw new AsistenteNoDisponibleException();
-					}
+				while (!porCancelacion.get() && !porPlazo.get() && siguiente(it)) {
 					String linea = it.next();
 					if (linea.isBlank()) {
 						continue;
 					}
-					JsonNode nodo = json.readTree(linea);
-					String fragmento = nodo.path("message").path("content").asString("");
-					if (!fragmento.isEmpty()) {
-						alFragmento.accept(fragmento);
+					NodoDeFragmento nodo = leer(linea);
+					if (porCancelacion.get() || cancelado.getAsBoolean()) {
+						return;
 					}
-					if (nodo.path("done").asBoolean(false)) {
+					if (!nodo.texto().isEmpty()) {
+						alFragmento.accept(nodo.texto());
+					}
+					if (nodo.fin()) {
 						return;
 					}
 				}
 			}
-			finally {
-				corte.cancel(false);
+			if (porPlazo.get()) {
+				throw new AsistenteNoDisponibleException();
 			}
+		}
+		catch (CancelacionDeLaLlamada e) {
+			if (porCancelacion.get() && !porPlazo.get()) {
+				return;
+			}
+			throw new AsistenteNoDisponibleException();
+		}
+		finally {
+			vigia.cancel(false);
+			futuro.cancel(true);
+		}
+	}
+
+	/** Marca interna: la llamada se corto desde afuera (cancelacion, plazo o stream cerrado). */
+	private static final class CancelacionDeLaLlamada extends RuntimeException {
+		CancelacionDeLaLlamada() {
+			super(null, null, false, false);
+		}
+	}
+
+	private record NodoDeFragmento(String texto, boolean fin) {
+	}
+
+	private static HttpResponse<Stream<String>> esperar(CompletableFuture<HttpResponse<Stream<String>>> futuro) {
+		try {
+			return futuro.get();
+		}
+		catch (CancellationException e) {
+			throw new CancelacionDeLaLlamada();
 		}
 		catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			throw new AsistenteNoDisponibleException(e);
 		}
-		catch (AsistenteNoDisponibleException e) {
-			throw e;
+		catch (ExecutionException e) {
+			throw noDisponible(e.getCause() instanceof Exception c ? c : e);
 		}
-		catch (IOException | RuntimeException e) {
-			if (cancelado.getAsBoolean()) {
-				return;
-			}
-			throw noDisponible(e);
+	}
+
+	/** hasNext() puede bloquearse; si el vigilante cierra el stream o hay un error de lectura, corta. */
+	private static boolean siguiente(Iterator<String> it) {
+		try {
+			return it.hasNext();
+		}
+		catch (RuntimeException e) {
+			throw new CancelacionDeLaLlamada();
+		}
+	}
+
+	private NodoDeFragmento leer(String linea) {
+		try {
+			JsonNode nodo = json.readTree(linea);
+			return new NodoDeFragmento(nodo.path("message").path("content").asString(""),
+					nodo.path("done").asBoolean(false));
+		}
+		catch (JacksonException e) {
+			log.warn("Respuesta de Ollama ilegible");
+			throw new AsistenteNoDisponibleException();
+		}
+	}
+
+	private String contenido(String cuerpo) {
+		try {
+			return json.readTree(cuerpo).path("message").path("content").asString("");
+		}
+		catch (JacksonException e) {
+			log.warn("Respuesta de Ollama ilegible");
+			throw new AsistenteNoDisponibleException();
 		}
 	}
 

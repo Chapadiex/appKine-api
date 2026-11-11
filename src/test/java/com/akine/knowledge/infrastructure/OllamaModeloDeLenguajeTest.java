@@ -15,18 +15,21 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OllamaModeloDeLenguajeTest {
 
 	private static final List<MensajeChat> MENSAJES = List.of(new MensajeChat(MensajeChat.Rol.USUARIO, "hola"));
 	private static final OpcionesGeneracion OPCIONES = new OpcionesGeneracion(0.2, 400);
-	private static final Duration PLAZO = Duration.ofSeconds(10);
+	private static final Duration PLAZO = Duration.ofSeconds(2);
 
 	private HttpServer servidor;
+	private final java.util.concurrent.CountDownLatch liberar = new java.util.concurrent.CountDownLatch(1);
 
 	@AfterEach
 	void apagar() {
+		liberar.countDown();
 		if (servidor != null) {
 			servidor.stop(0);
 		}
@@ -80,5 +83,55 @@ class OllamaModeloDeLenguajeTest {
 
 		assertThatThrownBy(() -> modelo.completar(MENSAJES, OPCIONES, PLAZO))
 				.isInstanceOf(AsistenteNoDisponibleException.class);
+	}
+
+	/** Manda los encabezados y despues nada: ni una linea. */
+	private OllamaModeloDeLenguaje conServidorMudo() throws Exception {
+		servidor = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		servidor.createContext("/api/chat", exchange -> {
+			exchange.sendResponseHeaders(200, 0);
+			exchange.getResponseBody().flush();
+			try {
+				liberar.await(15, java.util.concurrent.TimeUnit.SECONDS);
+			}
+			catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+			exchange.close();
+		});
+		servidor.start();
+		return new OllamaModeloDeLenguaje("http://127.0.0.1:" + servidor.getAddress().getPort(), "qwen2.5:1.5b", "30m");
+	}
+
+	@Test
+	void generarSinLineasVenceElPlazoYLanzaAsistenteNoDisponible() throws Exception {
+		OllamaModeloDeLenguaje modelo = conServidorMudo();
+		long inicio = System.nanoTime();
+
+		assertThatThrownBy(() -> modelo.generar(MENSAJES, OPCIONES, Duration.ofSeconds(1), f -> { }, () -> false))
+				.isInstanceOf(AsistenteNoDisponibleException.class);
+
+		assertThat(Duration.ofNanos(System.nanoTime() - inicio)).isLessThan(Duration.ofSeconds(3));
+	}
+
+	@Test
+	void generarCanceladoConElServidorMudoVuelveSinLanzar() throws Exception {
+		OllamaModeloDeLenguaje modelo = conServidorMudo();
+		long inicio = System.nanoTime();
+		long cancelarA = inicio + Duration.ofMillis(300).toNanos();
+
+		assertThatCode(() -> modelo.generar(MENSAJES, OPCIONES, Duration.ofSeconds(10), f -> { },
+				() -> System.nanoTime() > cancelarA)).doesNotThrowAnyException();
+
+		assertThat(Duration.ofNanos(System.nanoTime() - inicio)).isLessThan(Duration.ofSeconds(1));
+	}
+
+	@Test
+	void lasExcepcionesDelConsumidorSePropaganTalCual() throws Exception {
+		OllamaModeloDeLenguaje modelo = conServidorNdjson();
+
+		assertThatThrownBy(() -> modelo.generar(MENSAJES, OPCIONES, PLAZO, f -> {
+			throw new IllegalStateException("escritura SSE fallida");
+		}, () -> false)).isInstanceOf(IllegalStateException.class).hasMessage("escritura SSE fallida");
 	}
 }
