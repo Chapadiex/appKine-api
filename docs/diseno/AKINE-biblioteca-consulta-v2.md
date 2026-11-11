@@ -208,6 +208,27 @@ Con el set de evaluación:
    20 candidatos del FULLTEXT **y** su texto contiene, sin distinguir mayúsculas ni tildes, alguna palabra del
    `tema` de 4 letras o más, o la sigla desarrollada.
 
+8. **Preguntas independientes, sin respuestas cruzadas (pedido del usuario).**
+
+   Si la consulta **nombra su propio tema** ("qué es lumbalgia" y después "ejercicios para manguito rotador"),
+   se trata como **independiente**:
+   - no hereda el tema;
+   - no suma el bonus de libro de la charla;
+   - **no manda el historial al modelo que redacta**. Esto cambia la decisión R10 de v1, que mandaba las
+     preguntas previas.
+
+   El historial sólo se usa cuando la consulta **no** nombra tema ("ejercicios", "¿y quién la hace?"), y
+   únicamente para completarla.
+
+   No hay caché de respuestas ni de búsquedas entre consultas. Lo único que se reutiliza es la caché de
+   vectores de los libros de la organización, que no depende de la pregunta. Cada consulta busca y redacta de
+   cero con sus propios pasajes.
+
+   Test obligatorio:
+   - "qué es lumbalgia" seguido de "ejercicios para manguito rotador": la segunda no puede tener fuentes ni
+     texto de lumbalgia;
+   - lo mismo con las dos consultas en paralelo desde dos sesiones.
+
 ## 8. Design challenge
 
 1. **Ownership.** Todo sigue en `knowledge`. La versión de procesamiento es una columna de `libro` (migración
