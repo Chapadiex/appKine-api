@@ -316,3 +316,22 @@ vara de §7 (no más de 2 de 10 con datos agregados). Pero en esta máquina, sin
 primera palabra. La velocidad no se arregla con el modelo: hace falta GPU, un servidor más potente o un modelo
 por API. Las tres preguntas que siguen sin material ("ámbito de clase", "operador ternario" y su repregunta)
 son por el corte de la búsqueda, no por el modelo.
+
+### 10.2 Tercera medición: `qwen2.5:3b` en GPU (RTX 4050 Laptop, 6 GB)
+
+La demora era de hardware: Ollama corría en CPU (12 hilos, i5-13420H) aunque la máquina tiene una GPU NVIDIA,
+porque el contenedor se creó sin acceso a ella. Medido contra Ollama directo, con el mismo pedido de unos
+1.000 tokens: en CPU, 16 s para leer el pedido y 8–9 tokens/s para escribir, ~24 s en total; en GPU, 0,2–0,6 s
+y 50–55 tokens/s, ~1,5 s en total.
+
+Con las mismas 17 preguntas por la API de AKINE:
+
+| | 3 B en CPU | 3 B en GPU |
+|---|---|---|
+| Primera palabra | 12–25 s | 0,4–0,95 s |
+| Respuesta completa | 15–57 s | 0,7–2,8 s |
+| Sin material | ~0,1–0,6 s | ~0,07–0,4 s |
+
+La primera consulta después de arrancar el contenedor tarda entre uno y tres minutos (carga del modelo e
+inicialización de CUDA). La GPU queda como opcional en `compose.gpu.yaml`; el runbook R-consulta explica cómo
+usarla.

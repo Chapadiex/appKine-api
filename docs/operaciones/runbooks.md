@@ -551,6 +551,16 @@ docker compose up -d ollama
 docker compose exec ollama ollama pull qwen2.5:3b
 ```
 
+**Con GPU NVIDIA** (recomendado: ~1,5 s por respuesta contra ~24 s en CPU, medido el 11/11/2026)
+
+```bash
+docker compose -f compose.yaml -f compose.gpu.yaml up -d ollama
+docker compose exec ollama ollama ps   # PROCESSOR tiene que decir "100% GPU"
+```
+
+La primera consulta despues de arrancar el contenedor tarda entre uno y tres minutos: carga el
+modelo en la placa. Despues queda cargado 30 minutos desde la ultima consulta.
+
 **Variables**
 
 | Variable | Que hace | Default |
