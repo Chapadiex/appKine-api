@@ -123,18 +123,20 @@ class BusquedaHibridaTest {
 	@Test
 	void evidenciaSoloCuentaLoQueSeDevuelve() {
 		Falso a = new Falso();
-		// 6 pasajes flojos arriba y dos con evidencia (coinciden por palabras) fuera del top 6.
+		// El vector llena 20 posiciones con pasajes sin evidencia (ids 1..20) y las palabras traen
+		// 14 pasajes sin evidencia (ids 101..114) y recien en las posiciones 15 y 16 dos con
+		// evidencia (ids 115 y 116): su RRF (1/75, 1/76) queda por debajo del puesto 6 (>= 1/66).
 		List<Coincidencia> flojos = new ArrayList<>();
 		Map<Long, String> textos = new java.util.HashMap<>();
-		for (long i = 1; i <= 6; i++) {
+		for (long i = 1; i <= 20; i++) {
 			flojos.add(c(i, "0.5"));
 			textos.put(i, "nada que ver");
 		}
 		a.vector = flojos;
 		List<Coincidencia> palabras = new ArrayList<>();
-		for (long i = 21; i <= 28; i++) {
+		for (long i = 101; i <= 116; i++) {
 			palabras.add(c(i, "0.1"));
-			textos.put(i, i >= 27 ? "habla de lumbalgia" : "otra cosa");
+			textos.put(i, i >= 115 ? "habla de lumbalgia" : "otra cosa");
 		}
 		a.palabras = palabras;
 		a.textos = textos;
@@ -143,6 +145,7 @@ class BusquedaHibridaTest {
 				.buscar(1, List.of("q"), "lumbalgia", Set.of());
 
 		assertThat(r.pasajes()).hasSize(6);
+		assertThat(r.pasajes()).extracting(p -> p.pasaje().texto()).doesNotContain("habla de lumbalgia");
 		assertThat(r.pasajes()).noneMatch(p -> p.superaCorte() || p.coincidePalabra());
 		assertThat(r.hayEvidencia()).isFalse();
 	}

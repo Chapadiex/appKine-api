@@ -76,14 +76,17 @@ public class BusquedaHibrida {
 		String fallaDelModelo = null;
 		ModeloEmbeddings m = modelo.getIfAvailable();
 		for (String texto : textos) {
-			List<Coincidencia> porVector = List.of();
+			float[] vector = null;
 			if (m != null) {
+				// El catch cubre solo al modelo: una falla del almacen se propaga.
 				try {
-					porVector = porVector(orgId, m, texto);
+					vector = m.consulta(texto);
 				} catch (RuntimeException falla) {
 					fallaDelModelo = falla.getClass().getSimpleName();
 				}
 			}
+			List<Coincidencia> porVector = vector == null
+					? List.of() : almacen.porVector(orgId, m.id(), vector, ajustes.topKVector());
 			hayVector |= !porVector.isEmpty();
 			sumar(candidatos, porVector, true);
 			sumar(candidatos, almacen.porPalabras(orgId, texto, ajustes.topKPalabras()), false);
@@ -126,12 +129,6 @@ public class BusquedaHibrida {
 		log.debug("Busqueda hibrida: {} consultas, {} candidatos, {} con evidencia, camino {}",
 				textos.size(), candidatos.size(), conEvidencia, camino);
 		return new ResultadoHibrido(camino, devueltos, conEvidencia >= ajustes.minimoPasajes());
-	}
-
-	/** Deja subir la falla del modelo: la registra {@link #buscar} una sola vez por busqueda. */
-	private List<Coincidencia> porVector(long orgId, ModeloEmbeddings m, String texto) {
-		float[] vector = m.consulta(texto);
-		return vector == null ? List.of() : almacen.porVector(orgId, m.id(), vector, ajustes.topKVector());
 	}
 
 	private void sumar(Map<Long, Acumulado> candidatos, List<Coincidencia> lista, boolean vector) {
