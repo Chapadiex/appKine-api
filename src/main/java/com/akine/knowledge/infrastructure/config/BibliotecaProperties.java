@@ -62,6 +62,22 @@ public record BibliotecaProperties(
 			@DefaultValue("qwen2.5:3b") String modelo,
 			@DefaultValue("90") int timeoutSegundos,
 			@DefaultValue("30m") String keepAlive,
-			@DefaultValue("3") int maxEnEspera) {
+			@DefaultValue("3") int maxEnEspera,
+			@DefaultValue Busqueda busqueda) {
+
+		/**
+		 * Busqueda hibrida de la consulta ({@code akine.biblioteca.consulta.busqueda.*}): vector y
+		 * texto completo fusionados con RRF.
+		 */
+		public record Busqueda(
+				@DefaultValue("20") int topKVector,
+				@DefaultValue("20") int topKPalabras,
+				@DefaultValue("60") int rrfK,
+				@DefaultValue("5") int pasajesBreve,
+				@DefaultValue("6") int pasajesProfundo,
+				@DefaultValue("0.005") double bonusLibro,
+				@DefaultValue("2") int minimoPasajes,
+				@DefaultValue("0.818") double corteVector) {
+		}
 	}
 }
