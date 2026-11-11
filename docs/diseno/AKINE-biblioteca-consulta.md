@@ -268,3 +268,30 @@ Todas **[decisión del agente]**; ninguna cambia lo que el usuario pidió.
 - La disposición visual del chat dentro de `DESIGN.md`.
 - Tests: los que exigen las reglas del repo (pocos): la compuerta sin material no llama al modelo,
   la reescritura con historial, la cola llena da 503, y un IT del endpoint con un modelo falso.
+
+## 10. Medición (11/11/2026, tarea 7)
+
+Pila local: backend de esta rama con la consulta prendida, embeddings e5-base ONNX, Ollama 0.40.16 en
+Docker con `qwen2.5:1.5b`, CPU de 12 núcleos sin GPU. Biblioteca con un solo libro (apunte de Java, 36
+páginas). 15 preguntas por la API, con el mismo flujo SSE que usa la pantalla.
+
+| Grupo | Resultado |
+|---|---|
+| 5 sin relación con el libro (clínicas) | **5/5 con el aviso fijo, sin llamar al modelo**, en 0,3–0,8 s |
+| 10 sobre el libro (3 repreguntas) | 6 respondidas, 4 con el aviso fijo (la búsqueda no alcanzó: "ámbito de clase", "operador ternario" y dos repreguntas) |
+| Primera palabra | 6–18 s con el modelo cargado; 42 s la primera de todas |
+| Respuesta completa | 12–50 s |
+
+**Fidelidad, revisada a mano contra las fuentes:** de las 6 respondidas, 3 están bien (variable local,
+tipos primitivos, incremento y decremento) y 3 no:
+
+- "¿Dónde se puede usar?" (repregunta sobre variable local): la reescritura la entendió como "¿dónde se usa
+  Java?" y el modelo entró en una lista que se repite hasta cortar por tope de tokens.
+- "¿Qué operadores lógicos existen?": agrega `==` y `!=` como lógicos, que no están en ese pasaje.
+- "¿Cuál es el programa mínimo?": estructura repetida e inventada.
+
+**Conclusión:** la compuerta funciona y ataja todo lo que no está en la biblioteca. Pero con material,
+`qwen2.5:1.5b` agrega o repite contenido en 3 de 6 respuestas (pasa la vara de §7, "no más de 2 de 10"), la
+primera palabra tarda más de los 5 s buscados, y la reescritura de repreguntas falla. El corte de la búsqueda
+también resulta estricto para preguntas cortas. Siguiente paso propuesto: medir `qwen2.5:3b` con las mismas
+15 preguntas antes de tocar el diseño, y revisar el corte por camino.
