@@ -134,4 +134,25 @@ class OllamaModeloDeLenguajeTest {
 			throw new IllegalStateException("escritura SSE fallida");
 		}, () -> false)).isInstanceOf(IllegalStateException.class).hasMessage("escritura SSE fallida");
 	}
+
+	@Test
+	void completarEnModoJsonPideFormatJson() throws Exception {
+		List<String> pedidos = new ArrayList<>();
+		servidor = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		servidor.createContext("/api/chat", exchange -> {
+			pedidos.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+			byte[] cuerpo = "{\"message\":{\"content\":\"{}\"},\"done\":true}".getBytes(StandardCharsets.UTF_8);
+			exchange.sendResponseHeaders(200, cuerpo.length);
+			exchange.getResponseBody().write(cuerpo);
+			exchange.close();
+		});
+		servidor.start();
+		OllamaModeloDeLenguaje modelo = new OllamaModeloDeLenguaje("http://127.0.0.1:" + servidor.getAddress().getPort(), "qwen2.5:1.5b", "30m");
+
+		modelo.completar(MENSAJES, new OpcionesGeneracion(java.math.BigDecimal.ZERO, 160, true), PLAZO);
+		modelo.completar(MENSAJES, OPCIONES, PLAZO);
+
+		assertThat(pedidos.get(0)).contains("\"format\":\"json\"");
+		assertThat(pedidos.get(1)).doesNotContain("\"format\"");
+	}
 }

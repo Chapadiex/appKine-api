@@ -223,6 +223,9 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 				.toList());
 		cuerpo.put("stream", stream);
 		cuerpo.put("keep_alive", keepAlive);
+		if (opciones.json()) {
+			cuerpo.put("format", "json");
+		}
 		cuerpo.put("options", Map.of(
 				"temperature", opciones.temperatura().doubleValue(),
 				"num_predict", opciones.maxTokens(),
