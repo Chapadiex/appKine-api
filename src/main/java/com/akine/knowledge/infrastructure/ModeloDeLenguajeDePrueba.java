@@ -15,7 +15,8 @@ import java.util.function.Consumer;
  * Modelo determinista para tests y desarrollo ({@code akine.biblioteca.consulta.tipo=prueba}).
  * {@code completar} devuelve el texto del ultimo mensaje de usuario; {@code generar} emite tres
  * fragmentos: "Respuesta de prueba: ", el primer renglon de lo recibido y ".". Cuenta las llamadas
- * y puede forzar el fallo de cada una.
+ * y puede forzar el fallo de cada una. Con {@link #responderJson(String)}, las llamadas a
+ * {@code completar} en modo JSON devuelven ese texto.
  */
 public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 
@@ -23,6 +24,7 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 	private volatile boolean fallarEnGenerar;
 	private volatile boolean fallarEnCompletar;
 	private volatile boolean sinFin;
+	private volatile String respuestaJson;
 	private volatile Duration demoraAntesDelPrimero = Duration.ZERO;
 
 	static final long PAUSA_SIN_FIN_MS = 50;
@@ -32,6 +34,10 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 		llamadas.incrementAndGet();
 		if (fallarEnCompletar) {
 			throw new AsistenteNoDisponibleException();
+		}
+		String json = respuestaJson;
+		if (opciones.json() && json != null) {
+			return json;
 		}
 		return ultimoDeUsuario(mensajes);
 	}
@@ -91,6 +97,7 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 	public void reiniciar() {
 		this.fallarEnGenerar = false;
 		this.fallarEnCompletar = false;
+		this.respuestaJson = null;
 		this.sinFin = false;
 		this.demoraAntesDelPrimero = Duration.ZERO;
 	}
@@ -106,6 +113,14 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 
 	public void fallarEnGenerar(boolean fallar) {
 		this.fallarEnGenerar = fallar;
+	}
+
+	/**
+	 * Texto que devuelve {@code completar} cuando se pide JSON; {@code null} vuelve al eco del
+	 * ultimo mensaje de usuario (que no es JSON).
+	 */
+	public void responderJson(String json) {
+		this.respuestaJson = json;
 	}
 
 	public void fallarEnCompletar(boolean fallar) {

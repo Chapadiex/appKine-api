@@ -139,19 +139,7 @@ public class ConsultaService {
 				log.info("Reescritura de la pregunta fallida, se usa el respaldo: {}", e.getClass().getSimpleName());
 			}
 		}
-		return respaldo(historial, pregunta);
-	}
-
-	/** Ultima pregunta del historial, un espacio y la nueva; si pasa de 600, se conserva el final. */
-	private static String respaldo(List<TurnoDeConsulta> historial, String pregunta) {
-		String anterior = null;
-		for (int i = historial.size() - 1; i >= 0 && anterior == null; i--) {
-			if (historial.get(i).rol() == TurnoDeConsulta.Rol.USUARIO) {
-				anterior = historial.get(i).texto();
-			}
-		}
-		String junta = anterior == null || anterior.isBlank() ? pregunta : anterior.strip() + " " + pregunta;
-		return ultimos(junta, PREGUNTA_MAXIMA);
+		return Interpretador.respaldoConcatenado(historial, pregunta);
 	}
 
 	/** Hasta {@code n} caracteres del principio, sin partir un par sustituto en el corte. */
@@ -179,7 +167,7 @@ public class ConsultaService {
 		return pedido.historial() == null ? List.of() : pedido.historial();
 	}
 
-	private static String recurso(String ruta) {
+	static String recurso(String ruta) {
 		try (InputStream in = ConsultaService.class.getClassLoader().getResourceAsStream(ruta)) {
 			if (in == null) {
 				throw new IllegalStateException("Falta el recurso " + ruta);
