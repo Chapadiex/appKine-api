@@ -42,12 +42,12 @@ class PresupuestoDeContextoTest {
 	}
 
 	@Test
-	void sinHistorialSaleElPasajeDeMenorPuntaje() {
+	void sinHistorialSaleElUltimoPasajeYSeRespetaElOrden() {
 		PresupuestoDeContexto.Armado armado = PresupuestoDeContexto.armar("sistema",
 				List.of(pasaje(1, 3000, 0.5), pasaje(2, 3000, 0.9), pasaje(3, 3000, 0.7)), List.of(), "pregunta?");
 
-		assertThat(armado.pasajes()).extracting(PasajeRecuperado::libroId).containsExactly(2L, 3L);
-		assertThat(armado.mensajes()).noneMatch(m -> m.texto().contains("Libro 1"));
+		assertThat(armado.pasajes()).extracting(PasajeRecuperado::libroId).containsExactly(1L, 2L);
+		assertThat(armado.mensajes()).noneMatch(m -> m.texto().contains("Libro 3"));
 	}
 
 	@Test

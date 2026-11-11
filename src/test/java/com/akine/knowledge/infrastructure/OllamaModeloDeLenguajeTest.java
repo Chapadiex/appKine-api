@@ -1,6 +1,7 @@
 package com.akine.knowledge.infrastructure;
 
 import com.akine.knowledge.domain.exception.AsistenteNoDisponibleException;
+import com.akine.knowledge.domain.port.EstadisticasDeGeneracion;
 import com.akine.knowledge.domain.port.MensajeChat;
 import com.akine.knowledge.domain.port.OpcionesGeneracion;
 import com.sun.net.httpserver.HttpServer;
@@ -40,7 +41,9 @@ class OllamaModeloDeLenguajeTest {
 		servidor.createContext("/api/chat", exchange -> {
 			byte[] cuerpo = ("{\"message\":{\"content\":\"Hola\"},\"done\":false}\n"
 					+ "{\"message\":{\"content\":\" mundo\"},\"done\":false}\n"
-					+ "{\"message\":{\"content\":\"\"},\"done\":true}\n").getBytes(StandardCharsets.UTF_8);
+					+ "{\"message\":{\"content\":\"\"},\"done\":true,\"prompt_eval_count\":120,"
+					+ "\"prompt_eval_duration\":400000000,\"eval_count\":40,\"eval_duration\":2000000000}\n")
+					.getBytes(StandardCharsets.UTF_8);
 			exchange.getResponseHeaders().add("Content-Type", "application/x-ndjson");
 			exchange.sendResponseHeaders(200, cuerpo.length);
 			exchange.getResponseBody().write(cuerpo);
@@ -55,9 +58,11 @@ class OllamaModeloDeLenguajeTest {
 		OllamaModeloDeLenguaje modelo = conServidorNdjson();
 		List<String> recibidos = new ArrayList<>();
 
-		modelo.generar(MENSAJES, OPCIONES, PLAZO, recibidos::add, () -> false);
+		EstadisticasDeGeneracion estadisticas = modelo.generar(MENSAJES, OPCIONES, PLAZO, recibidos::add, () -> false);
 
 		assertThat(recibidos).containsExactly("Hola", " mundo");
+		assertThat(estadisticas).isEqualTo(new EstadisticasDeGeneracion(120, 400_000_000L, 40, 2_000_000_000L));
+		assertThat(estadisticas.tokensPorSegundo()).isEqualTo(20.0);
 	}
 
 	@Test

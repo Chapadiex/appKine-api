@@ -16,7 +16,10 @@ public interface ModeloDeLenguaje {
 	 */
 	String completar(List<MensajeChat> mensajes, OpcionesGeneracion opciones, Duration plazo);
 
-	/** Emite fragmentos a medida que llegan; corta si {@code cancelado} pasa a true. */
-	void generar(List<MensajeChat> mensajes, OpcionesGeneracion opciones, Duration plazo,
+	/**
+	 * Emite fragmentos a medida que llegan; corta si {@code cancelado} pasa a true. Devuelve las
+	 * estadisticas que informo el servidor, o {@link EstadisticasDeGeneracion#NINGUNA}.
+	 */
+	EstadisticasDeGeneracion generar(List<MensajeChat> mensajes, OpcionesGeneracion opciones, Duration plazo,
 			Consumer<String> alFragmento, BooleanSupplier cancelado);
 }

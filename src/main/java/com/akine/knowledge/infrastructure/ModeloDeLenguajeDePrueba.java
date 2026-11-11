@@ -1,6 +1,7 @@
 package com.akine.knowledge.infrastructure;
 
 import com.akine.knowledge.domain.exception.AsistenteNoDisponibleException;
+import com.akine.knowledge.domain.port.EstadisticasDeGeneracion;
 import com.akine.knowledge.domain.port.MensajeChat;
 import com.akine.knowledge.domain.port.ModeloDeLenguaje;
 import com.akine.knowledge.domain.port.OpcionesGeneracion;
@@ -21,6 +22,7 @@ import java.util.function.Consumer;
 public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 
 	private final AtomicInteger llamadas = new AtomicInteger();
+	private final AtomicInteger generaciones = new AtomicInteger();
 	private volatile boolean fallarEnGenerar;
 	private volatile boolean fallarEnCompletar;
 	private volatile boolean sinFin;
@@ -43,9 +45,10 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 	}
 
 	@Override
-	public void generar(List<MensajeChat> mensajes, OpcionesGeneracion opciones, Duration plazo,
+	public EstadisticasDeGeneracion generar(List<MensajeChat> mensajes, OpcionesGeneracion opciones, Duration plazo,
 			Consumer<String> alFragmento, BooleanSupplier cancelado) {
 		llamadas.incrementAndGet();
+		generaciones.incrementAndGet();
 		if (fallarEnGenerar) {
 			throw new AsistenteNoDisponibleException();
 		}
@@ -53,21 +56,21 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 		long finDemora = System.nanoTime() + demoraAntesDelPrimero.toNanos();
 		while (System.nanoTime() - finDemora < 0) {
 			if (cancelado.getAsBoolean()) {
-				return;
+				return EstadisticasDeGeneracion.NINGUNA;
 			}
 			dormir(PAUSA_SIN_FIN_MS);
 		}
 		String primerRenglon = ultimoDeUsuario(mensajes).lines().findFirst().orElse("");
 		for (String fragmento : List.of("Respuesta de prueba: ", primerRenglon, ".")) {
 			if (cancelado.getAsBoolean()) {
-				return;
+				return EstadisticasDeGeneracion.NINGUNA;
 			}
 			alFragmento.accept(fragmento);
 		}
 		long vence = System.nanoTime() + plazo.toNanos();
 		while (sinFin) {
 			if (cancelado.getAsBoolean()) {
-				return;
+				return EstadisticasDeGeneracion.NINGUNA;
 			}
 			if (System.nanoTime() - vence >= 0) {
 				throw new AsistenteNoDisponibleException();
@@ -75,6 +78,7 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 			dormir(PAUSA_SIN_FIN_MS);
 			alFragmento.accept(".");
 		}
+		return new EstadisticasDeGeneracion(10, 1_000_000, 3, 1_000_000);
 	}
 
 	/**
@@ -125,6 +129,11 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 
 	public void fallarEnCompletar(boolean fallar) {
 		this.fallarEnCompletar = fallar;
+	}
+
+	/** Solo las llamadas a {@code generar} (redactar), sin las de interpretacion. */
+	public int generaciones() {
+		return generaciones.get();
 	}
 
 	public int llamadas() {

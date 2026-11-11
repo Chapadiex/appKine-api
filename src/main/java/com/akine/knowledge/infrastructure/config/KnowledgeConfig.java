@@ -2,6 +2,8 @@ package com.akine.knowledge.infrastructure.config;
 
 import com.akine.knowledge.application.BusquedaHibrida;
 import com.akine.knowledge.application.ColaDeConsultas;
+import com.akine.knowledge.application.Interpretador;
+import com.akine.knowledge.application.SondaDeEvidencia;
 import com.akine.knowledge.domain.BibliotecaAjustes;
 import com.akine.knowledge.domain.BusquedaAjustes;
 import com.akine.knowledge.domain.DetectorDeInstrucciones;
@@ -11,8 +13,10 @@ import com.akine.knowledge.domain.port.ModeloDeLenguaje;
 import com.akine.knowledge.domain.port.ModeloEmbeddings;
 import com.akine.knowledge.infrastructure.ModeloDeLenguajeDePrueba;
 import com.akine.knowledge.infrastructure.OllamaModeloDeLenguaje;
+import com.akine.knowledge.infrastructure.PrecargaDelModelo;
 import com.akine.knowledge.infrastructure.ModeloEmbeddingsDePrueba;
 import com.akine.knowledge.infrastructure.OnnxModeloEmbeddings;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -121,9 +125,27 @@ public class KnowledgeConfig {
 	@Bean
 	@ConditionalOnExpression("${akine.biblioteca.enabled:false} and ${akine.biblioteca.consulta.enabled:false}"
 			+ " and '${akine.biblioteca.consulta.tipo:ollama}' == 'ollama'")
-	public ModeloDeLenguaje ollamaModeloDeLenguaje(BibliotecaProperties properties) {
+	public OllamaModeloDeLenguaje ollamaModeloDeLenguaje(BibliotecaProperties properties) {
 		BibliotecaProperties.Consulta consulta = properties.consulta();
 		return new OllamaModeloDeLenguaje(consulta.url(), consulta.modelo(), consulta.keepAlive());
+	}
+
+	/** Carga el modelo en Ollama al arrancar, en segundo plano (diseño consulta v2, §4.9). */
+	@Bean
+	@ConditionalOnExpression("${akine.biblioteca.enabled:false} and ${akine.biblioteca.consulta.enabled:false}"
+			+ " and '${akine.biblioteca.consulta.tipo:ollama}' == 'ollama'")
+	public PrecargaDelModelo precargaDelModelo(OllamaModeloDeLenguaje modelo) {
+		return new PrecargaDelModelo(modelo);
+	}
+
+	/**
+	 * Interpreta la consulta antes de buscar. Pide el modelo de lenguaje en cada llamada: apagada la
+	 * consulta no hay bean, y la falla cae en el respaldo del interpretador.
+	 */
+	@Bean
+	public Interpretador interpretador(ObjectProvider<ModeloDeLenguaje> modelo, SondaDeEvidencia sonda,
+			BibliotecaProperties properties) {
+		return new Interpretador(modelo::getObject, sonda, properties.consulta().busqueda().corteVector());
 	}
 
 	/** Determinista, para tests y desarrollo sin Ollama. */

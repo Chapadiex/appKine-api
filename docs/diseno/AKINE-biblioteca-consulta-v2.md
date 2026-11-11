@@ -136,6 +136,8 @@ En el troceado (`ProcesamientoDeLibroService` / `Troceador`):
 - **Modelo de respuesta: `qwen3:4b-instruct`** por defecto (configurable; se mantiene el de 3 B como
   alternativa). La interpretación usa el mismo modelo **[decisión del agente]**: dos modelos no entran juntos en
   6 GB con margen.
+  Implementado en la Tarea 5: `akine.biblioteca.consulta.modelo` vale `qwen3:4b-instruct` por defecto (antes
+  `qwen2.5:3b`) y `akine.biblioteca.consulta.keep-alive`, `2h` (antes `30m`).
 - **5 pasajes** al modelo.
 - **Breve:** 3 a 6 viñetas de una línea con para qué sirve, sin introducción, 250 tokens.
 - **Profundo:** hasta 8 viñetas (objetivo, cómo, quién, tiempo, materiales), 450 tokens.

@@ -59,9 +59,9 @@ public record BibliotecaProperties(
 			@DefaultValue("false") boolean enabled,
 			@DefaultValue("ollama") String tipo,
 			@DefaultValue("http://localhost:11434") String url,
-			@DefaultValue("qwen2.5:3b") String modelo,
+			@DefaultValue("qwen3:4b-instruct") String modelo,
 			@DefaultValue("90") int timeoutSegundos,
-			@DefaultValue("30m") String keepAlive,
+			@DefaultValue("2h") String keepAlive,
 			@DefaultValue("3") int maxEnEspera,
 			@DefaultValue Busqueda busqueda) {
 

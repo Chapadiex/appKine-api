@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.165.0
+  version: 0.166.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -19282,10 +19282,14 @@ paths:
         La respuesta 200 es un stream `text/event-stream`. Cada evento lleva su nombre en `event:` y un JSON en `data:`:
 
         - `espera` (`ConsultaEventoEspera`): la consulta esta en la cola; cada vez que cambia la posicion.
+        - `etapa` (`ConsultaEventoEtapa`): `buscando` al salir de la cola y `redactando` antes del primer `texto` generado.
+        - `aclaracion` (`ConsultaEventoAclaracion`): la consulta no dice que se busca; repregunta con opciones, sin fuentes ni texto, y sigue `fin` con `sinMaterial` en false.
         - `fuentes` (`ConsultaEventoFuentes`): una vez, antes del texto, solo con material.
         - `texto` (`ConsultaEventoTexto`): fragmentos de la respuesta, en orden.
         - `fin` (`ConsultaEventoFin`): la respuesta termino. Sin material, antes llega un unico `texto` con el aviso fijo y el modelo no se llama.
         - `error` (`ConsultaEventoError`): el modelo fallo o se cumplieron los 90 s; el texto parcial queda. `type` es `asistente-no-disponible`.
+
+        Una consulta que nombra su propio tema es independiente: no hereda nada del historial ni de `librosPreferidos`. El historial solo completa una consulta sin tema ("ejercicios", "¿y quien la hace?").
 
         Las lineas que empiezan con `:` son comentarios de latido y se ignoran.
       operationId: consultarBiblioteca
@@ -19318,7 +19322,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Pregunta en blanco o de mas de 600 caracteres, historial de\
-            \ mas de 6 turnos, o un turno sin rol valido o con mas de 2000 caracteres"
+            \ mas de 6 turnos, un turno sin rol valido o con mas de 2000 caracteres,\
+            \ o mas de 10 `librosPreferidos` o alguno que no sea positivo"
         "403":
           content:
             application/json:
@@ -30783,6 +30788,23 @@ components:
           format: int64
           description: Ausente si el turno es de otra sede
           example: 501
+    ConsultaEventoAclaracion:
+      type: object
+      description: "Evento `aclaracion` del stream de consultarBiblioteca: la consulta\
+        \ no dice que se busca y se repregunta, sin fuentes ni texto. Le sigue `fin`\
+        \ con `sinMaterial` en false. Las opciones son los aspectos del tema que la\
+        \ biblioteca tiene; pueden venir vacias (\"¿Para qué afección o tema?\")"
+      properties:
+        opciones:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpcionDeAclaracionResponse"
+        texto:
+          type: string
+          description: "La repregunta, lista para mostrar"
+      required:
+      - opciones
+      - texto
     ConsultaEventoError:
       type: object
       description: "Evento `error` del stream de consultarBiblioteca: la respuesta\
@@ -30807,6 +30829,18 @@ components:
           minimum: 1
       required:
       - posicion
+    ConsultaEventoEtapa:
+      type: object
+      description: "Evento `etapa` del stream de consultarBiblioteca: `buscando` al\
+        \ salir de la cola y `redactando` antes del primer `texto` generado"
+      properties:
+        etapa:
+          type: string
+          enum:
+          - buscando
+          - redactando
+      required:
+      - etapa
     ConsultaEventoFin:
       type: object
       description: "Evento `fin` del stream de consultarBiblioteca: la respuesta termino\
@@ -30856,6 +30890,17 @@ components:
           items:
             $ref: "#/components/schemas/TurnoDeConsultaRequest"
           maxItems: 6
+        librosPreferidos:
+          type: array
+          description: "Libros de las fuentes de la respuesta anterior, solo en una\
+            \ repregunta o al profundizar. Solo reordenan los resultados dentro de\
+            \ la organizacion, y solo si la consulta continua la charla: una que nombra\
+            \ su propio tema los ignora"
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+          maxItems: 10
         pregunta:
           type: string
           maxLength: 600
@@ -38710,6 +38755,19 @@ components:
           type: boolean
           description: "Si HOY cae dentro de la ventana de vigencia, en la zona horaria\
             \ de la sede. Distinto de estado: ver la descripcion del esquema"
+    OpcionDeAclaracionResponse:
+      type: object
+      description: "Opcion de una repregunta de la biblioteca: el clic manda `pregunta`\
+        \ como una consulta nueva"
+      properties:
+        etiqueta:
+          type: string
+        pregunta:
+          type: string
+          maxLength: 600
+      required:
+      - etiqueta
+      - pregunta
     OperativoDeTurno:
       type: object
       description: "Lo que la agenda muestra de un turno ademas de la reserva. PHI\

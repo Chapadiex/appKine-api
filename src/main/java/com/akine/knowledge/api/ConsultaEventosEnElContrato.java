@@ -1,7 +1,9 @@
 package com.akine.knowledge.api;
 
+import com.akine.knowledge.api.dto.ConsultaEventoAclaracion;
 import com.akine.knowledge.api.dto.ConsultaEventoError;
 import com.akine.knowledge.api.dto.ConsultaEventoEspera;
+import com.akine.knowledge.api.dto.ConsultaEventoEtapa;
 import com.akine.knowledge.api.dto.ConsultaEventoFin;
 import com.akine.knowledge.api.dto.ConsultaEventoFuentes;
 import com.akine.knowledge.api.dto.ConsultaEventoTexto;
@@ -15,7 +17,7 @@ import java.util.List;
 
 /**
  * Publica como componentes los esquemas de los eventos del stream de {@code consultarBiblioteca}
- * (y, por referencia, {@code FuenteDeConsultaResponse}). El 200 es {@code text/event-stream} con
+ * (y, por referencia, {@code FuenteDeConsultaResponse} y {@code OpcionDeAclaracionResponse}). El 200 es {@code text/event-stream} con
  * esquema {@code string}, asi que springdoc no los alcanza desde la operacion; sin esto el cliente
  * generado no tendria sus tipos.
  */
@@ -27,7 +29,9 @@ class ConsultaEventosEnElContrato implements OpenApiCustomizer {
 			ConsultaEventoFuentes.class,
 			ConsultaEventoTexto.class,
 			ConsultaEventoFin.class,
-			ConsultaEventoError.class);
+			ConsultaEventoError.class,
+			ConsultaEventoAclaracion.class,
+			ConsultaEventoEtapa.class);
 
 	@Override
 	public void customise(io.swagger.v3.oas.models.OpenAPI openApi) {

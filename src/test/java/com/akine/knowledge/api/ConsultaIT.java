@@ -137,12 +137,12 @@ class ConsultaIT {
 		assertThat(respuesta.status()).as(respuesta.cuerpo()).isEqualTo(200);
 		assertThat(respuesta.contentType()).startsWith("text/event-stream");
 		assertThat(respuesta.sinBuffer()).isEqualTo("no");
-		List<String> nombres = respuesta.nombres();
+		List<String> nombres = respuesta.nombresSinEtapa();
 		assertThat(nombres.getFirst()).isEqualTo("fuentes");
 		assertThat(nombres.getLast()).isEqualTo("fin");
 		assertThat(nombres.subList(1, nombres.size() - 1)).isNotEmpty().containsOnly("texto");
 
-		JsonNode fuentes = respuesta.eventos().getFirst().data().get("fuentes");
+		JsonNode fuentes = respuesta.evento("fuentes").data().get("fuentes");
 		assertThat(fuentes.size()).isBetween(1, 5);
 		JsonNode fuente = fuentes.get(0);
 		assertThat(fuente.get("libroId").asLong()).isPositive();
@@ -158,15 +158,15 @@ class ConsultaIT {
 
 	@Test
 	void sinMaterialNoLlamaAlModelo() throws Exception {
-		int antes = modelo.llamadas();
+		int antes = modelo.generaciones();
 
 		Stream respuesta = consultar(tenant.token(), cuerpo(palabra() + " " + palabra() + " " + palabra()));
 
 		assertThat(respuesta.status()).as(respuesta.cuerpo()).isEqualTo(200);
-		assertThat(respuesta.nombres()).containsExactly("texto", "fin");
-		assertThat(respuesta.eventos().get(0).data().get("texto").asString()).isEqualTo(SIN_MATERIAL);
-		assertThat(respuesta.eventos().get(1).data().get("sinMaterial").asBoolean()).isTrue();
-		assertThat(modelo.llamadas()).isEqualTo(antes);
+		assertThat(respuesta.nombres()).containsExactly("etapa", "texto", "fin");
+		assertThat(respuesta.evento("texto").data().get("texto").asString()).isEqualTo(SIN_MATERIAL);
+		assertThat(respuesta.evento("fin").data().get("sinMaterial").asBoolean()).isTrue();
+		assertThat(modelo.generaciones()).as("el modelo no redacta").isEqualTo(antes);
 	}
 
 	@Test
@@ -186,12 +186,12 @@ class ConsultaIT {
 	/** Las memberships de sede (R1): sin la sede del contexto en el permiso recibian 403. */
 	@Test
 	void profesionalDeUnaSedeConsulta() throws Exception {
-		assertThat(consultarConRolDeSede("consulta-profesional", "PROFESIONAL").nombres()).startsWith("fuentes");
+		assertThat(consultarConRolDeSede("consulta-profesional", "PROFESIONAL").nombresSinEtapa()).startsWith("fuentes");
 	}
 
 	@Test
 	void administradorDeSedeConsulta() throws Exception {
-		assertThat(consultarConRolDeSede("consulta-admin-sede", "CONSULTORIO_ADMIN").nombres()).startsWith("fuentes");
+		assertThat(consultarConRolDeSede("consulta-admin-sede", "CONSULTORIO_ADMIN").nombresSinEtapa()).startsWith("fuentes");
 	}
 
 	private Stream consultarConRolDeSede(String etiqueta, String rol) throws Exception {
@@ -235,7 +235,7 @@ class ConsultaIT {
 		assertThat(respuesta.statusCode()).isEqualTo(200);
 		try (BufferedReader lector = new BufferedReader(
 				new InputStreamReader(respuesta.body(), StandardCharsets.UTF_8))) {
-			Evento primero = siguienteEvento(lector);
+			Evento primero = siguienteSinEtapa(lector);
 			assertThat(primero.nombre()).isEqualTo("fuentes");
 			assertThat(cola.enCurso()).isEqualTo(1);
 		}
@@ -255,7 +255,7 @@ class ConsultaIT {
 		assertThat(respuesta.statusCode()).isEqualTo(200);
 		try (BufferedReader lector = new BufferedReader(
 				new InputStreamReader(respuesta.body(), StandardCharsets.UTF_8))) {
-			assertThat(siguienteEvento(lector).nombre()).isEqualTo("fuentes");
+			assertThat(siguienteSinEtapa(lector).nombre()).isEqualTo("fuentes");
 			assertThat(cola.enCurso()).isEqualTo(1);
 		}
 
@@ -270,8 +270,99 @@ class ConsultaIT {
 		Stream respuesta = consultar(tenant.token(), cuerpo(preguntaDelTema));
 
 		assertThat(respuesta.status()).as(respuesta.cuerpo()).isEqualTo(200);
-		assertThat(respuesta.nombres()).containsExactly("fuentes", "error");
+		assertThat(respuesta.nombres()).containsExactly("etapa", "fuentes", "etapa", "error");
 		assertThat(respuesta.eventos().getLast().data().get("type").asString()).endsWith("asistente-no-disponible");
+	}
+
+	// ------------------------------------------------------------------ v2
+
+	/**
+	 * Una palabra sola, sin historial, es ambigua: repregunta con los aspectos que la biblioteca
+	 * tiene. El libro repite "que es {palabra}": con el modelo de embeddings de prueba (bolsa de
+	 * palabras) solo ese aspecto supera el corte.
+	 */
+	@Test
+	void palabraSueltaDevuelveAclaracion() throws Exception {
+		Sesion centro = altaCompleta("consulta-aclaracion");
+		String tema = palabra();
+		subirLibro(centro, "Definiciones", repetir("que es " + tema + ". "), repetir("que es " + tema + ". "));
+		int antes = modelo.generaciones();
+
+		Stream respuesta = consultarEn(centro, centro.token(), cuerpo(tema));
+
+		assertThat(respuesta.status()).as(respuesta.cuerpo()).isEqualTo(200);
+		assertThat(respuesta.nombres()).containsExactly("etapa", "aclaracion", "fin");
+		JsonNode aclaracion = respuesta.evento("aclaracion").data();
+		assertThat(aclaracion.get("texto").asString()).isEqualTo("¿Qué buscás sobre " + tema + "?");
+		assertThat(aclaracion.get("opciones").size()).isPositive();
+		JsonNode opcion = aclaracion.get("opciones").get(0);
+		assertThat(opcion.get("etiqueta").asString()).isEqualTo("¿Qué es " + tema + "?");
+		assertThat(opcion.get("pregunta").asString()).isEqualTo("¿Qué es " + tema + "?");
+		assertThat(respuesta.evento("fin").data().get("sinMaterial").asBoolean()).isFalse();
+		assertThat(respuesta.librosDeLasFuentes()).isEmpty();
+		assertThat(modelo.generaciones()).as("la repregunta no redacta").isEqualTo(antes);
+	}
+
+	@Test
+	void etapasEnOrden() throws Exception {
+		Stream respuesta = consultar(tenant.token(), cuerpo(preguntaDelTema));
+
+		assertThat(respuesta.status()).as(respuesta.cuerpo()).isEqualTo(200);
+		List<Evento> eventos = respuesta.eventos();
+		List<String> nombres = respuesta.nombres();
+		assertThat(eventos.getFirst().nombre()).isEqualTo("etapa");
+		assertThat(eventos.getFirst().data().get("etapa").asString()).isEqualTo("buscando");
+		int redactando = -1;
+		for (int i = 1; i < eventos.size(); i++) {
+			if (eventos.get(i).nombre().equals("etapa")) {
+				assertThat(eventos.get(i).data().get("etapa").asString()).isEqualTo("redactando");
+				redactando = i;
+			}
+		}
+		assertThat(redactando).isGreaterThan(nombres.indexOf("fuentes")).isLessThan(nombres.indexOf("texto"));
+		assertThat(nombres.getLast()).isEqualTo("fin");
+	}
+
+	/**
+	 * Review focus 1: "qué es lumbalgia" y despues "ejercicios para manguito rotador" con la charla
+	 * y los libros de la primera. La segunda nombra su tema: es independiente y no trae nada de
+	 * lumbalgia, ni en serie ni con las dos consultas en paralelo desde dos sesiones.
+	 */
+	@Test
+	void sinRespuestasCruzadas() throws Exception {
+		Sesion centro = altaCompleta("consulta-cruzadas");
+		long lumbalgia = subirLibro(centro, "Lumbalgia",
+				repetir("La lumbalgia es un dolor en la zona baja de la espalda. "),
+				repetir("La lumbalgia cronica dura meses y limita la marcha. "));
+		long hombro = subirLibro(centro, "Hombro",
+				repetir("El manguito rotador se fortalece con ejercicios para el hombro. "),
+				repetir("Los ejercicios para el manguito rotador usan bandas elasticas. "));
+		String primera = "qué es lumbalgia";
+		String segunda = "ejercicios para manguito rotador";
+
+		Stream uno = consultarEn(centro, centro.token(), cuerpo(primera));
+		assertThat(uno.librosDeLasFuentes()).isNotEmpty().containsOnly(lumbalgia);
+		Stream dos = consultarEn(centro, centro.token(),
+				cuerpo(segunda, primera, uno.textoCompleto(), uno.librosDeLasFuentes()));
+
+		assertThat(dos.status()).as(dos.cuerpo()).isEqualTo(200);
+		assertThat(dos.librosDeLasFuentes()).isNotEmpty().containsOnly(hombro);
+		assertThat(dos.evento("fuentes").data().toString().toLowerCase(Locale.ROOT)).doesNotContain("lumbalgia");
+		assertThat(dos.textoCompleto().toLowerCase(Locale.ROOT)).doesNotContain("lumbalgia");
+
+		String otroToken = seleccionarContexto(login(centro.email()), centro.organizationId(), centro.consultorioId());
+		java.util.concurrent.CompletableFuture<Stream> enParaleloUno = java.util.concurrent.CompletableFuture
+				.supplyAsync(() -> sinChequeo(() -> consultarEn(centro, centro.token(), cuerpo(primera))));
+		java.util.concurrent.CompletableFuture<Stream> enParaleloDos = java.util.concurrent.CompletableFuture
+				.supplyAsync(() -> sinChequeo(() -> consultarEn(centro, otroToken,
+						cuerpo(segunda, primera, uno.textoCompleto(), List.of(lumbalgia)))));
+		Stream paraleloUno = enParaleloUno.get(60, TimeUnit.SECONDS);
+		Stream paraleloDos = enParaleloDos.get(60, TimeUnit.SECONDS);
+
+		assertThat(paraleloUno.librosDeLasFuentes()).isNotEmpty().containsOnly(lumbalgia);
+		assertThat(paraleloDos.librosDeLasFuentes()).isNotEmpty().containsOnly(hombro);
+		assertThat(paraleloDos.textoCompleto().toLowerCase(Locale.ROOT)).doesNotContain("lumbalgia");
+		assertThat(paraleloUno.textoCompleto().toLowerCase(Locale.ROOT)).doesNotContain("manguito");
 	}
 
 	/** Review focus 3: una corre, tres esperan en 1, 2 y 3, y la quinta es 503 sin abrir el stream. */
@@ -282,7 +373,7 @@ class ConsultaIT {
 		try {
 			BufferedReader enCurso = lector(abrir(tenant.token(), cuerpo(preguntaDelTema)));
 			abiertas.add(enCurso);
-			assertThat(siguienteEvento(enCurso).nombre()).isEqualTo("fuentes");
+			assertThat(siguienteSinEtapa(enCurso).nombre()).isEqualTo("fuentes");
 			for (int posicion = 1; posicion <= 3; posicion++) {
 				BufferedReader enEspera = lector(abrir(tenant.token(), cuerpo(preguntaDelTema)));
 				abiertas.add(enEspera);
@@ -318,6 +409,24 @@ class ConsultaIT {
 			return eventos.stream().map(Evento::nombre).toList();
 		}
 
+		/** Los nombres sin los eventos {@code etapa}, para las aserciones de v1. */
+		List<String> nombresSinEtapa() {
+			return nombres().stream().filter(n -> !n.equals("etapa")).toList();
+		}
+
+		/** El primer evento con ese nombre. */
+		Evento evento(String nombre) {
+			return eventos.stream().filter(e -> e.nombre().equals(nombre)).findFirst().orElseThrow();
+		}
+
+		/** Los libros de las fuentes, o vacio si no hubo {@code fuentes}. */
+		List<Long> librosDeLasFuentes() {
+			List<Long> libros = new ArrayList<>();
+			eventos.stream().filter(e -> e.nombre().equals("fuentes"))
+					.forEach(e -> e.data().get("fuentes").forEach(f -> libros.add(f.get("libroId").asLong())));
+			return libros;
+		}
+
 		String textoCompleto() {
 			StringBuilder sb = new StringBuilder();
 			eventos.stream().filter(e -> e.nombre().equals("texto"))
@@ -330,8 +439,29 @@ class ConsultaIT {
 		return JSON.writeValueAsString(java.util.Map.of("pregunta", pregunta, "historial", List.of()));
 	}
 
+	/** Una repregunta: la pregunta anterior, la respuesta y los libros de sus fuentes. */
+	private static String cuerpo(String pregunta, String anterior, String respuesta, List<Long> libros) {
+		return JSON.writeValueAsString(java.util.Map.of("pregunta", pregunta,
+				"historial", List.of(java.util.Map.of("rol", "usuario", "texto", anterior),
+						java.util.Map.of("rol", "asistente", "texto", respuesta)),
+				"librosPreferidos", libros));
+	}
+
+	/** Salta los eventos {@code etapa}. */
+	private static Evento siguienteSinEtapa(BufferedReader lector) throws IOException {
+		Evento evento;
+		do {
+			evento = siguienteEvento(lector);
+		} while (evento != null && evento.nombre().equals("etapa"));
+		return evento;
+	}
+
 	private HttpResponse<InputStream> abrir(String token, String cuerpo) throws Exception {
-		HttpRequest request = HttpRequest.newBuilder(uri("/api/v1/organizations/" + tenant.organizationId()
+		return abrir(tenant.organizationId(), token, cuerpo);
+	}
+
+	private HttpResponse<InputStream> abrir(long organizationId, String token, String cuerpo) throws Exception {
+		HttpRequest request = HttpRequest.newBuilder(uri("/api/v1/organizations/" + organizationId
 						+ "/biblioteca/consultas"))
 				.header("Content-Type", "application/json")
 				.header("Accept", "text/event-stream")
@@ -343,7 +473,12 @@ class ConsultaIT {
 
 	/** Lee el stream entero (hasta que el servidor lo cierra), con tope de 30 s. */
 	private Stream consultar(String token, String cuerpo) throws Exception {
-		HttpResponse<InputStream> respuesta = abrir(token, cuerpo);
+		return consultarEn(tenant, token, cuerpo);
+	}
+
+	/** Consulta en la organizacion de {@code centro} con {@code token}. */
+	private Stream consultarEn(Sesion centro, String token, String cuerpo) throws Exception {
+		HttpResponse<InputStream> respuesta = abrir(centro.organizationId(), token, cuerpo);
 		String contentType = respuesta.headers().firstValue("Content-Type").orElse("");
 		String retryAfter = respuesta.headers().firstValue("Retry-After").orElse(null);
 		String sinBuffer = respuesta.headers().firstValue("X-Accel-Buffering").orElse(null);
@@ -451,6 +586,37 @@ class ConsultaIT {
 	}
 
 	// ------------------------------------------------------------------ libro
+
+	/** Sube y procesa un libro de {@code centro} hasta LISTO. */
+	private long subirLibro(Sesion centro, String titulo, String... paginas) throws IOException {
+		long id = libros.subir(new OperatingActor(centro.cuentaId(), false, centro.organizationId()),
+				centro.organizationId(), new DatosDeLibro(titulo + " " + UUID.randomUUID(), null, null, null),
+				new ArchivoSubido("libro.pdf", pdf(paginas)), true).id();
+		procesarHasta(id);
+		assertThat(jdbc.queryForObject("SELECT estado FROM libro WHERE id = ?", String.class, id)).isEqualTo("LISTO");
+		return id;
+	}
+
+	/** La frase repetida hasta llenar una pagina. */
+	private static String repetir(String frase) {
+		StringBuilder sb = new StringBuilder();
+		while (sb.length() < 1300) {
+			sb.append(frase);
+		}
+		return sb.toString();
+	}
+
+	private interface Llamada<T> {
+		T llamar() throws Exception;
+	}
+
+	private static <T> T sinChequeo(Llamada<T> llamada) {
+		try {
+			return llamada.llamar();
+		} catch (Exception e) {
+			throw new IllegalStateException(e);
+		}
+	}
 
 	private void procesarHasta(long id) {
 		for (int i = 0; i < 200; i++) {

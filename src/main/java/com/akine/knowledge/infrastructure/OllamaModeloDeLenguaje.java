@@ -1,6 +1,7 @@
 package com.akine.knowledge.infrastructure;
 
 import com.akine.knowledge.domain.exception.AsistenteNoDisponibleException;
+import com.akine.knowledge.domain.port.EstadisticasDeGeneracion;
 import com.akine.knowledge.domain.port.MensajeChat;
 import com.akine.knowledge.domain.port.ModeloDeLenguaje;
 import com.akine.knowledge.domain.port.OpcionesGeneracion;
@@ -87,7 +88,7 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 	 * tal cual.
 	 */
 	@Override
-	public void generar(List<MensajeChat> mensajes, OpcionesGeneracion opciones, Duration plazo,
+	public EstadisticasDeGeneracion generar(List<MensajeChat> mensajes, OpcionesGeneracion opciones, Duration plazo,
 			Consumer<String> alFragmento, BooleanSupplier cancelado) {
 		HttpRequest request = armar(mensajes, opciones, true, plazo);
 		long limite = System.nanoTime() + plazo.toNanos();
@@ -131,23 +132,24 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 					}
 					NodoDeFragmento nodo = leer(linea);
 					if (porCancelacion.get() || cancelado.getAsBoolean()) {
-						return;
+						return EstadisticasDeGeneracion.NINGUNA;
 					}
 					if (!nodo.texto().isEmpty()) {
 						alFragmento.accept(nodo.texto());
 					}
 					if (nodo.fin()) {
-						return;
+						return nodo.estadisticas();
 					}
 				}
 			}
 			if (porPlazo.get()) {
 				throw new AsistenteNoDisponibleException();
 			}
+			return EstadisticasDeGeneracion.NINGUNA;
 		}
 		catch (CancelacionDeLaLlamada e) {
 			if (porCancelacion.get() && !porPlazo.get()) {
-				return;
+				return EstadisticasDeGeneracion.NINGUNA;
 			}
 			throw new AsistenteNoDisponibleException();
 		}
@@ -157,6 +159,23 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 		}
 	}
 
+	/**
+	 * Pide a Ollama cargar el modelo: un {@code /api/chat} sin mensajes con {@code keep_alive}.
+	 * Asincrono: el futuro termina con el status HTTP, o con la excepcion si no responde.
+	 */
+	public CompletableFuture<Integer> precargar(Duration plazo) {
+		Map<String, Object> cuerpo = new LinkedHashMap<>();
+		cuerpo.put("model", modelo);
+		cuerpo.put("messages", List.of());
+		cuerpo.put("keep_alive", keepAlive);
+		HttpRequest request = HttpRequest.newBuilder(endpoint)
+				.timeout(plazo)
+				.header("Content-Type", "application/json")
+				.POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(cuerpo)))
+				.build();
+		return http.sendAsync(request, HttpResponse.BodyHandlers.discarding()).thenApply(HttpResponse::statusCode);
+	}
+
 	/** Marca interna: la llamada se corto desde afuera (cancelacion, plazo o stream cerrado). */
 	private static final class CancelacionDeLaLlamada extends RuntimeException {
 		CancelacionDeLaLlamada() {
@@ -164,7 +183,7 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 		}
 	}
 
-	private record NodoDeFragmento(String texto, boolean fin) {
+	private record NodoDeFragmento(String texto, boolean fin, EstadisticasDeGeneracion estadisticas) {
 	}
 
 	private static HttpResponse<Stream<String>> esperar(CompletableFuture<HttpResponse<Stream<String>>> futuro) {
@@ -196,8 +215,13 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 	private NodoDeFragmento leer(String linea) {
 		try {
 			JsonNode nodo = json.readTree(linea);
-			return new NodoDeFragmento(nodo.path("message").path("content").asString(""),
-					nodo.path("done").asBoolean(false));
+			boolean fin = nodo.path("done").asBoolean(false);
+			EstadisticasDeGeneracion estadisticas = fin
+					? new EstadisticasDeGeneracion(nodo.path("prompt_eval_count").asLong(0),
+							nodo.path("prompt_eval_duration").asLong(0), nodo.path("eval_count").asLong(0),
+							nodo.path("eval_duration").asLong(0))
+					: EstadisticasDeGeneracion.NINGUNA;
+			return new NodoDeFragmento(nodo.path("message").path("content").asString(""), fin, estadisticas);
 		}
 		catch (JacksonException e) {
 			log.warn("Respuesta de Ollama ilegible");

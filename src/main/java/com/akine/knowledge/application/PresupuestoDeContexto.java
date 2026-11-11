@@ -5,14 +5,15 @@ import com.akine.knowledge.domain.port.MensajeChat.Rol;
 import com.akine.knowledge.spi.PasajeRecuperado;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
  * Arma los mensajes para el modelo dentro del presupuesto de entrada: 3.000 tokens estimados a 3
- * caracteres por token. Del historial entran solo las preguntas previas del usuario (R10): las
+ * caracteres por token. Del historial entran solo las preguntas previas del usuario: las
  * respuestas del asistente no se le devuelven al modelo. El system prompt y la pregunta nunca se
- * recortan; primero salen las preguntas mas viejas y despues los pasajes de menor puntaje.
+ * recortan; primero salen las preguntas mas viejas y despues los ultimos pasajes: llegan ordenados
+ * por relevancia (RRF) y ese orden se respeta. Quien llama decide si manda historial (consulta v2:
+ * solo si la consulta continua la charla).
  */
 public final class PresupuestoDeContexto {
 
@@ -30,7 +31,6 @@ public final class PresupuestoDeContexto {
 	public static Armado armar(
 			String system, List<PasajeRecuperado> pasajes, List<TurnoDeConsulta> historial, String pregunta) {
 		List<PasajeRecuperado> restantes = new ArrayList<>(pasajes);
-		restantes.sort(Comparator.comparingDouble(PasajeRecuperado::puntaje).reversed());
 		List<TurnoDeConsulta> turnos = new ArrayList<>(historial.stream()
 				.filter(t -> t.rol() == TurnoDeConsulta.Rol.USUARIO).toList());
 

@@ -1,30 +1,33 @@
 package com.akine.knowledge.application;
 
+import com.akine.knowledge.application.Interpretacion.Aclarar;
+import com.akine.knowledge.application.Interpretacion.Buscar;
 import com.akine.knowledge.domain.BibliotecaAjustes;
 import com.akine.knowledge.domain.exception.BibliotecaDeshabilitadaException;
-import com.akine.knowledge.domain.port.MensajeChat;
-import com.akine.knowledge.domain.port.MensajeChat.Rol;
-import com.akine.knowledge.domain.port.ModeloDeLenguaje;
 import com.akine.knowledge.domain.port.OpcionesGeneracion;
-import com.akine.knowledge.spi.BibliotecaDirectory;
+import com.akine.knowledge.spi.CaminoBusqueda;
 import com.akine.knowledge.spi.PasajeRecuperado;
-import com.akine.knowledge.spi.ResultadoBusqueda;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Consulta a la biblioteca: valida, reescribe la repregunta, busca, decide si hay material y arma
- * los mensajes para el modelo. No guarda ni registra la pregunta, el historial, los pasajes ni la
+ * Consulta a la biblioteca (diseño consulta v2): valida, interpreta, busca con la busqueda hibrida,
+ * decide si hay material y arma los mensajes para el modelo, breves o en profundidad.
+ *
+ * <p>Cada consulta busca y arma de cero: no hay cache de respuestas ni de busquedas. Una consulta
+ * independiente (nombra su tema) no hereda nada de la charla: ni libros preferidos ni historial al
+ * modelo que redacta (§7.8). No guarda ni registra la pregunta, el historial, los pasajes ni la
  * respuesta; el log lleva solo cantidades.
  */
 @Service
@@ -35,37 +38,40 @@ public class ConsultaService {
 	public static final int PREGUNTA_MAXIMA = 600;
 	public static final int HISTORIAL_MAXIMO = 6;
 	public static final int TURNO_MAXIMO = 2000;
-	public static final int K = 5;
-	/** Pasajes que llegan al modelo: menos texto que leer en CPU, menos tiempo hasta la primera palabra. */
-	public static final int PASAJES_AL_MODELO = 3;
+	public static final int LIBROS_PREFERIDOS_MAXIMO = 10;
 	public static final int EXTRACTO_MAXIMO = 300;
 
-	static final OpcionesGeneracion OPCIONES_REESCRITURA = new OpcionesGeneracion(java.math.BigDecimal.ZERO, 80);
-	static final Duration PLAZO_REESCRITURA = Duration.ofSeconds(10);
+	/** Breve: 3 a 6 vinetas de una linea. */
+	public static final OpcionesGeneracion OPCIONES_BREVE = new OpcionesGeneracion(new BigDecimal("0.2"), 250);
+	/** Profundo: hasta 8 vinetas. */
+	public static final OpcionesGeneracion OPCIONES_PROFUNDO = new OpcionesGeneracion(new BigDecimal("0.2"), 450);
 
 	private final BibliotecaAcceso acceso;
 	private final BibliotecaAjustes ajustes;
-	private final BibliotecaDirectory directory;
-	private final ObjectProvider<ModeloDeLenguaje> modelo;
-	private final String promptConsulta;
-	private final String promptReescritura;
+	private final Interpretador interpretador;
+	private final BusquedaHibrida busqueda;
+	private final BusquedaHibrida.Ajustes busquedaAjustes;
+	private final String promptBreve;
+	private final String promptProfundo;
 
 	public ConsultaService(
 			BibliotecaAcceso acceso,
 			BibliotecaAjustes ajustes,
-			BibliotecaDirectory directory,
-			ObjectProvider<ModeloDeLenguaje> modelo) {
+			Interpretador interpretador,
+			BusquedaHibrida busqueda,
+			BusquedaHibrida.Ajustes busquedaAjustes) {
 		this.acceso = acceso;
 		this.ajustes = ajustes;
-		this.directory = directory;
-		this.modelo = modelo;
-		this.promptConsulta = recurso("knowledge/prompt-consulta.txt");
-		this.promptReescritura = recurso("knowledge/prompt-reescritura.txt");
+		this.interpretador = interpretador;
+		this.busqueda = busqueda;
+		this.busquedaAjustes = busquedaAjustes;
+		this.promptBreve = recurso("knowledge/prompt-consulta.txt");
+		this.promptProfundo = recurso("knowledge/prompt-profundo.txt");
 	}
 
 	/**
 	 * @throws BibliotecaDeshabilitadaException si la biblioteca o la consulta estan apagadas (409)
-	 * @throws IllegalArgumentException si la pregunta o el historial pasan los limites (400)
+	 * @throws IllegalArgumentException si la pregunta, el historial o los libros pasan los limites (400)
 	 */
 	public void validar(OperatingActor actor, long orgId, ConsultaPedido pedido) {
 		if (!ajustes.habilitada() || !ajustes.consultaHabilitada()) {
@@ -89,57 +95,72 @@ public class ConsultaService {
 								+ " caracteres.");
 			}
 		}
+		List<Long> libros = pedido.librosPreferidos();
+		if (libros != null && (libros.size() > LIBROS_PREFERIDOS_MAXIMO
+				|| libros.stream().anyMatch(id -> id == null || id <= 0))) {
+			throw new IllegalArgumentException("librosPreferidos admite hasta " + LIBROS_PREFERIDOS_MAXIMO
+					+ " ids positivos.");
+		}
 	}
 
 	/** Corre dentro del turno de la cola; {@code limite} es el fin de los 90 s de la consulta. */
 	public PlanDeRespuesta preparar(long orgId, ConsultaPedido pedido, Instant limite) {
 		List<TurnoDeConsulta> historial = historialDe(pedido);
-		String pregunta = pedido.pregunta();
-		String paraBuscar = historial.isEmpty() ? pregunta : reescribir(historial, pregunta, limite);
+		long inicio = System.nanoTime();
+		Interpretacion interpretacion = interpretador.interpretar(orgId, pedido.pregunta(), historial, limite);
+		long msInterpretar = msDesde(inicio);
 
-		ResultadoBusqueda resultado = directory.buscar(orgId, paraBuscar, K);
-		if (!resultado.alcanza()) {
-			log.info("Consulta a la biblioteca sin material: pasajes={}", resultado.pasajes().size());
-			return new PlanDeRespuesta(true, resultado.camino(), List.of(), List.of());
+		if (interpretacion instanceof Aclarar aclarar) {
+			log.info("Consulta a la biblioteca con repregunta: opciones={}", aclarar.opciones().size());
+			// Sin busqueda ni generacion; la sonda de la repregunta es vectorial.
+			return new PlanDeRespuesta(false, CaminoBusqueda.VECTOR, List.of(), List.of(), aclarar, null,
+					msInterpretar, -1);
 		}
+		Buscar buscar = (Buscar) interpretacion;
+
+		Set<Long> preferidos = buscar.independiente() ? Set.of() : librosDe(pedido);
+		long inicioBusqueda = System.nanoTime();
+		ResultadoHibrido resultado = busqueda.buscar(orgId, buscar.consultas(), buscar.tema(), preferidos);
+		long msBuscar = msDesde(inicioBusqueda);
+		if (!resultado.hayEvidencia()) {
+			log.info("Consulta a la biblioteca sin material: pasajes={}", resultado.pasajes().size());
+			return sinMaterial(resultado.camino(), msInterpretar, msBuscar);
+		}
+
+		int tope = buscar.profundo() ? busquedaAjustes.pasajesProfundo() : busquedaAjustes.pasajesBreve();
+		// Al modelo van solo los pasajes con evidencia, en el orden de la fusion.
 		List<PasajeRecuperado> pasajes = resultado.pasajes().stream()
-				.filter(PasajeRecuperado::superaCorte).limit(PASAJES_AL_MODELO).toList();
-		PresupuestoDeContexto.Armado armado = PresupuestoDeContexto.armar(promptConsulta, pasajes, historial, pregunta);
+				.filter(p -> p.superaCorte() || p.coincidePalabra())
+				.map(PasajeFusionado::pasaje)
+				.limit(tope)
+				.toList();
+		List<TurnoDeConsulta> charla = buscar.independiente() ? List.of() : historial;
+		PresupuestoDeContexto.Armado armado = PresupuestoDeContexto.armar(
+				buscar.profundo() ? promptProfundo : promptBreve, pasajes, charla, buscar.preguntaCompleta());
 		if (armado.pasajes().isEmpty()) {
 			log.info("Consulta a la biblioteca sin material: el presupuesto dejo fuera todos los pasajes");
-			return new PlanDeRespuesta(true, resultado.camino(), List.of(), List.of());
+			return sinMaterial(resultado.camino(), msInterpretar, msBuscar);
 		}
 		List<FuenteDeConsulta> fuentes = armado.pasajes().stream()
 				.map(p -> new FuenteDeConsulta(p.libroId(), p.titulo(), p.paginaDesde(), p.paginaHasta(),
 						primeros(p.texto(), EXTRACTO_MAXIMO)))
 				.toList();
-		log.info("Consulta a la biblioteca con material: pasajes={}", armado.pasajes().size());
-		return new PlanDeRespuesta(false, resultado.camino(), fuentes, armado.mensajes());
+		log.info("Consulta a la biblioteca con material: pasajes={} profundo={} independiente={}",
+				armado.pasajes().size(), buscar.profundo(), buscar.independiente());
+		return new PlanDeRespuesta(false, resultado.camino(), fuentes, armado.mensajes(), null,
+				buscar.profundo() ? OPCIONES_PROFUNDO : OPCIONES_BREVE, msInterpretar, msBuscar);
 	}
 
-	private String reescribir(List<TurnoDeConsulta> historial, String pregunta, Instant limite) {
-		Duration restante = Duration.between(Instant.now(), limite);
-		Duration plazo = restante.compareTo(PLAZO_REESCRITURA) < 0 ? restante : PLAZO_REESCRITURA;
-		if (!plazo.isNegative() && !plazo.isZero()) {
-			try {
-				List<MensajeChat> mensajes = new ArrayList<>();
-				mensajes.add(new MensajeChat(Rol.SISTEMA, promptReescritura));
-				for (TurnoDeConsulta turno : historial) {
-					mensajes.add(new MensajeChat(
-							turno.rol() == TurnoDeConsulta.Rol.ASISTENTE ? Rol.ASISTENTE : Rol.USUARIO,
-							turno.texto()));
-				}
-				mensajes.add(new MensajeChat(Rol.USUARIO, pregunta));
-				String respuesta = modelo.getObject().completar(mensajes, OPCIONES_REESCRITURA, plazo);
-				if (respuesta != null && !respuesta.isBlank()) {
-					String reescrita = respuesta.strip();
-					return primeros(reescrita, PREGUNTA_MAXIMA);
-				}
-			} catch (RuntimeException e) {
-				log.info("Reescritura de la pregunta fallida, se usa el respaldo: {}", e.getClass().getSimpleName());
-			}
-		}
-		return Interpretador.respaldoConcatenado(historial, pregunta);
+	private static PlanDeRespuesta sinMaterial(CaminoBusqueda camino, long msInterpretar, long msBuscar) {
+		return new PlanDeRespuesta(true, camino, List.of(), List.of(), null, null, msInterpretar, msBuscar);
+	}
+
+	private static Set<Long> librosDe(ConsultaPedido pedido) {
+		return pedido.librosPreferidos() == null ? Set.of() : new LinkedHashSet<>(pedido.librosPreferidos());
+	}
+
+	private static long msDesde(long inicio) {
+		return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - inicio);
 	}
 
 	/** Hasta {@code n} caracteres del principio, sin partir un par sustituto en el corte. */

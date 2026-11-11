@@ -100,8 +100,8 @@ services:
       retries: 10
       start_period: 10s
 
-  # Modelo de lenguaje local de la consulta a la biblioteca (qwen2.5:3b). Opcional: sin el, solo
-  # la consulta responde 503. Bajar el modelo: docker compose exec ollama ollama pull qwen2.5:3b
+  # Modelo de lenguaje local de la consulta a la biblioteca (qwen3:4b-instruct). Opcional: sin el, solo
+  # la consulta responde 503. Bajar el modelo: docker compose exec ollama ollama pull qwen3:4b-instruct
   ollama:
     # Fijada por digest (Ollama 0.40.16), no por tag.
     image: ollama/ollama@sha256:910d0d8107b538fb0894e63163eb195de0cc7aefcbc666dc62d3b18f71124592

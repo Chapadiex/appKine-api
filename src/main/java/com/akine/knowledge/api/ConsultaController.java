@@ -1,6 +1,8 @@
 package com.akine.knowledge.api;
 
+import com.akine.knowledge.api.dto.ConsultaEventoAclaracion;
 import com.akine.knowledge.api.dto.ConsultaEventoEspera;
+import com.akine.knowledge.api.dto.ConsultaEventoEtapa;
 import com.akine.knowledge.api.dto.ConsultaEventoError;
 import com.akine.knowledge.api.dto.ConsultaEventoFin;
 import com.akine.knowledge.api.dto.ConsultaEventoFuentes;
@@ -13,11 +15,12 @@ import com.akine.knowledge.application.ConsultaService;
 import com.akine.knowledge.application.PlanDeRespuesta;
 import com.akine.knowledge.domain.exception.AsistenteNoDisponibleException;
 import com.akine.knowledge.domain.exception.ConsultaOcupadaException;
+import com.akine.knowledge.domain.port.EstadisticasDeGeneracion;
 import com.akine.knowledge.domain.port.ModeloDeLenguaje;
-import com.akine.knowledge.domain.port.OpcionesGeneracion;
 import com.akine.platform.spi.problem.ProblemType;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -43,7 +46,6 @@ import org.springframework.web.context.request.async.AsyncRequestNotUsableExcept
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -65,7 +67,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * recibe {@code orgId} y el pedido ya validado, nunca el contexto de seguridad.
  *
  * <p>Nada de la pregunta, el historial, los pasajes ni la respuesta va al log ni a la metrica: el
- * log lleva duracion, cantidad de pasajes y resultado.
+ * log lleva tiempos por etapa, cantidad de pasajes, tokens y resultado.
  */
 @RestController
 @RequestMapping(
@@ -78,7 +80,6 @@ public class ConsultaController implements DisposableBean {
 	private static final Logger log = LoggerFactory.getLogger(ConsultaController.class);
 
 	static final String SIN_MATERIAL = "No encontré material en la biblioteca para responder eso.";
-	static final OpcionesGeneracion OPCIONES = new OpcionesGeneracion(new BigDecimal("0.2"), 300);
 	static final Duration LIMITE = Duration.ofSeconds(90);
 	/**
 	 * Algo mas que el limite de una consulta. El emisor lo multiplica por la consulta en curso mas
@@ -100,12 +101,15 @@ public class ConsultaController implements DisposableBean {
 	static final String EVENTO_TEXTO = "texto";
 	static final String EVENTO_FIN = "fin";
 	static final String EVENTO_ERROR = "error";
+	static final String EVENTO_ACLARACION = "aclaracion";
+	static final String EVENTO_ETAPA = "etapa";
 
 	private final ConsultaService consultas;
 	private final ColaDeConsultas cola;
 	private final ObjectProvider<ModeloDeLenguaje> modelo;
 	private final KnowledgeApiActor apiActor;
 	private final Map<String, Counter> contadores;
+	private final Map<String, Timer> etapas;
 	private final ExecutorService trabajos = Executors.newVirtualThreadPerTaskExecutor();
 	/**
 	 * Un hilo para los latidos de todos los streams abiertos (como mucho 1 + max-en-espera). Una
@@ -127,9 +131,16 @@ public class ConsultaController implements DisposableBean {
 		this.contadores = Map.of(
 				Resultado.CON_MATERIAL, contador(metricas, Resultado.CON_MATERIAL),
 				Resultado.SIN_MATERIAL, contador(metricas, Resultado.SIN_MATERIAL),
+				Resultado.ACLARACION, contador(metricas, Resultado.ACLARACION),
 				Resultado.ERROR, contador(metricas, Resultado.ERROR),
 				Resultado.OCUPADA, contador(metricas, Resultado.OCUPADA),
 				Resultado.CANCELADA, contador(metricas, Resultado.CANCELADA));
+		this.etapas = Map.of(
+				Etapa.COLA, temporizador(metricas, Etapa.COLA),
+				Etapa.INTERPRETAR, temporizador(metricas, Etapa.INTERPRETAR),
+				Etapa.BUSCAR, temporizador(metricas, Etapa.BUSCAR),
+				Etapa.PRIMERA_PALABRA, temporizador(metricas, Etapa.PRIMERA_PALABRA),
+				Etapa.TOTAL, temporizador(metricas, Etapa.TOTAL));
 	}
 
 	@PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -144,6 +155,10 @@ public class ConsultaController implements DisposableBean {
 
 					- `espera` (`ConsultaEventoEspera`): la consulta esta en la cola; cada vez que cambia \
 					la posicion.
+					- `etapa` (`ConsultaEventoEtapa`): `buscando` al salir de la cola y `redactando` \
+					antes del primer `texto` generado.
+					- `aclaracion` (`ConsultaEventoAclaracion`): la consulta no dice que se busca; \
+					repregunta con opciones, sin fuentes ni texto, y sigue `fin` con `sinMaterial` en false.
 					- `fuentes` (`ConsultaEventoFuentes`): una vez, antes del texto, solo con material.
 					- `texto` (`ConsultaEventoTexto`): fragmentos de la respuesta, en orden.
 					- `fin` (`ConsultaEventoFin`): la respuesta termino. Sin material, antes llega un \
@@ -151,13 +166,18 @@ public class ConsultaController implements DisposableBean {
 					- `error` (`ConsultaEventoError`): el modelo fallo o se cumplieron los 90 s; el \
 					texto parcial queda. `type` es `asistente-no-disponible`.
 
+					Una consulta que nombra su propio tema es independiente: no hereda nada del \
+					historial ni de `librosPreferidos`. El historial solo completa una consulta sin tema \
+					("ejercicios", "¿y quien la hace?").
+
 					Las lineas que empiezan con `:` son comentarios de latido y se ignoran.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Stream de eventos de la respuesta",
 					content = @Content(mediaType = MediaType.TEXT_EVENT_STREAM_VALUE,
 							schema = @Schema(type = "string"))),
 			@ApiResponse(responseCode = "400", description = "Pregunta en blanco o de mas de 600 caracteres, "
-					+ "historial de mas de 6 turnos, o un turno sin rol valido o con mas de 2000 caracteres",
+					+ "historial de mas de 6 turnos, un turno sin rol valido o con mas de 2000 caracteres, o mas "
+					+ "de 10 `librosPreferidos` o alguno que no sea positivo",
 					content = {
 							@Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 									schema = @Schema(implementation = ProblemDetail.class)),
@@ -244,9 +264,8 @@ public class ConsultaController implements DisposableBean {
 	private void atender(
 			SseEmitter emitter, ColaDeConsultas.Turno turno, long orgId, ConsultaPedido pedido,
 			AtomicBoolean cancelado, Runnable cortar) {
-		long inicio = System.nanoTime();
+		Medicion medicion = new Medicion(System.nanoTime());
 		String resultado = Resultado.CANCELADA;
-		int pasajes = 0;
 		ScheduledFuture<?> latido = null;
 		try (turno) {
 			latido = latidos.scheduleAtFixedRate(
@@ -256,18 +275,28 @@ public class ConsultaController implements DisposableBean {
 					|| cancelado.get()) {
 				return;
 			}
+			medicion.turnoTomado();
+			enviar(emitter, EVENTO_ETAPA, new ConsultaEventoEtapa(ConsultaEventoEtapa.BUSCANDO));
 			Instant limite = Instant.now().plus(LIMITE);
 			PlanDeRespuesta plan = consultas.preparar(orgId, pedido, limite);
+			medicion.msInterpretar = plan.msInterpretar();
+			medicion.msBuscar = plan.msBuscar();
 			if (cancelado.get()) {
 				return;
 			}
 			String camino = plan.camino().name();
-			if (plan.sinMaterial()) {
+			if (plan.esAclaracion()) {
+				enviar(emitter, EVENTO_ACLARACION, ConsultaEventoAclaracion.de(plan.aclaracion()));
+				medicion.primeraPalabra();
+				enviar(emitter, EVENTO_FIN, new ConsultaEventoFin(false, camino));
+				resultado = Resultado.ACLARACION;
+			} else if (plan.sinMaterial()) {
 				enviar(emitter, EVENTO_TEXTO, new ConsultaEventoTexto(SIN_MATERIAL));
+				medicion.primeraPalabra();
 				enviar(emitter, EVENTO_FIN, new ConsultaEventoFin(true, camino));
 				resultado = Resultado.SIN_MATERIAL;
 			} else {
-				pasajes = plan.fuentes().size();
+				medicion.pasajes = plan.fuentes().size();
 				enviar(emitter, EVENTO_FUENTES, new ConsultaEventoFuentes(
 						plan.fuentes().stream().map(FuenteDeConsultaResponse::de).toList()));
 				Duration plazo = Duration.between(Instant.now(), limite);
@@ -278,9 +307,14 @@ public class ConsultaController implements DisposableBean {
 				if (llm == null) {
 					throw new AsistenteNoDisponibleException();
 				}
-				llm.generar(plan.mensajes(), OPCIONES, plazo,
-						fragmento -> enviar(emitter, EVENTO_TEXTO, new ConsultaEventoTexto(fragmento)),
+				enviar(emitter, EVENTO_ETAPA, new ConsultaEventoEtapa(ConsultaEventoEtapa.REDACTANDO));
+				EstadisticasDeGeneracion estadisticas = llm.generar(plan.mensajes(), plan.opciones(), plazo,
+						fragmento -> {
+							enviar(emitter, EVENTO_TEXTO, new ConsultaEventoTexto(fragmento));
+							medicion.primeraPalabra();
+						},
 						cancelado::get);
+				medicion.estadisticas = estadisticas == null ? EstadisticasDeGeneracion.NINGUNA : estadisticas;
 				if (cancelado.get()) {
 					return;
 				}
@@ -306,8 +340,70 @@ public class ConsultaController implements DisposableBean {
 				latido.cancel(false);
 			}
 			contadores.get(resultado).increment();
-			log.info("Consulta a la biblioteca terminada: resultado={} pasajes={} duracionMs={}",
-					resultado, pasajes, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - inicio));
+			registrar(resultado, medicion);
+		}
+	}
+
+	/**
+	 * Una linea INFO por consulta y los timers por etapa: solo tiempos, cantidades y resultado. Las
+	 * etapas que no ocurrieron (cola abandonada, repregunta sin busqueda) no se registran y van como
+	 * {@code -} en el log.
+	 */
+	private void registrar(String resultado, Medicion m) {
+		long msTotal = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - m.inicio);
+		etapas.get(Etapa.TOTAL).record(Duration.ofMillis(msTotal));
+		if (m.msCola >= 0) {
+			etapas.get(Etapa.COLA).record(Duration.ofMillis(m.msCola));
+		}
+		if (m.msInterpretar >= 0) {
+			etapas.get(Etapa.INTERPRETAR).record(Duration.ofMillis(m.msInterpretar));
+		}
+		if (m.msBuscar >= 0) {
+			etapas.get(Etapa.BUSCAR).record(Duration.ofMillis(m.msBuscar));
+		}
+		if (m.msPrimeraPalabra >= 0) {
+			etapas.get(Etapa.PRIMERA_PALABRA).record(Duration.ofMillis(m.msPrimeraPalabra));
+		}
+		EstadisticasDeGeneracion e = m.estadisticas;
+		log.info("Consulta a la biblioteca terminada: resultado={} ms_cola={} ms_interpretar={} ms_buscar={} "
+						+ "ms_primera_palabra={} ms_total={} pasajes={} tokens_entrada={} tokens_salida={} "
+						+ "tokens_por_segundo={}",
+				resultado, valor(m.msCola), valor(m.msInterpretar), valor(m.msBuscar), valor(m.msPrimeraPalabra),
+				msTotal, m.pasajes, e.tokensEntrada(), e.tokensSalida(),
+				String.format(java.util.Locale.ROOT, "%.1f", e.tokensPorSegundo()));
+	}
+
+	private static String valor(long ms) {
+		return ms < 0 ? "-" : Long.toString(ms);
+	}
+
+	/**
+	 * Tiempos de una consulta, en ms; {@code -1} = la etapa no ocurrio. La primera palabra se mide
+	 * desde que la consulta toma el turno hasta el primer contenido (texto o repregunta).
+	 */
+	private static final class Medicion {
+		final long inicio;
+		long turno;
+		long msCola = -1;
+		long msInterpretar = -1;
+		long msBuscar = -1;
+		long msPrimeraPalabra = -1;
+		int pasajes;
+		EstadisticasDeGeneracion estadisticas = EstadisticasDeGeneracion.NINGUNA;
+
+		Medicion(long inicio) {
+			this.inicio = inicio;
+		}
+
+		void turnoTomado() {
+			turno = System.nanoTime();
+			msCola = TimeUnit.NANOSECONDS.toMillis(turno - inicio);
+		}
+
+		void primeraPalabra() {
+			if (msPrimeraPalabra < 0) {
+				msPrimeraPalabra = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - turno);
+			}
 		}
 	}
 
@@ -350,6 +446,25 @@ public class ConsultaController implements DisposableBean {
 		}
 	}
 
+	private static Timer temporizador(MeterRegistry metricas, String etapa) {
+		return Timer.builder("akine.consultas.etapa")
+				.description("Duracion de cada etapa de una consulta a la biblioteca")
+				.tag("etapa", etapa)
+				.register(metricas);
+	}
+
+	/** Valores de la etiqueta {@code etapa} de {@code akine_consultas_etapa_seconds}. */
+	static final class Etapa {
+		static final String COLA = "cola";
+		static final String INTERPRETAR = "interpretar";
+		static final String BUSCAR = "buscar";
+		static final String PRIMERA_PALABRA = "primera_palabra";
+		static final String TOTAL = "total";
+
+		private Etapa() {
+		}
+	}
+
 	private static Counter contador(MeterRegistry metricas, String resultado) {
 		return Counter.builder("akine.consultas")
 				.description("Consultas a la biblioteca por resultado")
@@ -367,6 +482,7 @@ public class ConsultaController implements DisposableBean {
 	static final class Resultado {
 		static final String CON_MATERIAL = "con_material";
 		static final String SIN_MATERIAL = "sin_material";
+		static final String ACLARACION = "aclaracion";
 		static final String ERROR = "error";
 		static final String OCUPADA = "ocupada";
 		static final String CANCELADA = "cancelada";
