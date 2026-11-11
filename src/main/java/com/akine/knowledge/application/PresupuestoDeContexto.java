@@ -10,8 +10,9 @@ import java.util.List;
 
 /**
  * Arma los mensajes para el modelo dentro del presupuesto de entrada: 3.000 tokens estimados a 3
- * caracteres por token. El system prompt y la pregunta nunca se recortan; primero salen los turnos
- * mas viejos del historial y despues los pasajes de menor puntaje.
+ * caracteres por token. Del historial entran solo las preguntas previas del usuario (R10): las
+ * respuestas del asistente no se le devuelven al modelo. El system prompt y la pregunta nunca se
+ * recortan; primero salen las preguntas mas viejas y despues los pasajes de menor puntaje.
  */
 public final class PresupuestoDeContexto {
 
@@ -30,7 +31,8 @@ public final class PresupuestoDeContexto {
 			String system, List<PasajeRecuperado> pasajes, List<TurnoDeConsulta> historial, String pregunta) {
 		List<PasajeRecuperado> restantes = new ArrayList<>(pasajes);
 		restantes.sort(Comparator.comparingDouble(PasajeRecuperado::puntaje).reversed());
-		List<TurnoDeConsulta> turnos = new ArrayList<>(historial);
+		List<TurnoDeConsulta> turnos = new ArrayList<>(historial.stream()
+				.filter(t -> t.rol() == TurnoDeConsulta.Rol.USUARIO).toList());
 
 		while (tamano(system, restantes, turnos, pregunta) > PRESUPUESTO_CARACTERES
 				&& (!turnos.isEmpty() || !restantes.isEmpty())) {
@@ -44,8 +46,7 @@ public final class PresupuestoDeContexto {
 		List<MensajeChat> mensajes = new ArrayList<>();
 		mensajes.add(new MensajeChat(Rol.SISTEMA, system));
 		for (TurnoDeConsulta turno : turnos) {
-			mensajes.add(new MensajeChat(
-					turno.rol() == TurnoDeConsulta.Rol.ASISTENTE ? Rol.ASISTENTE : Rol.USUARIO, turno.texto()));
+			mensajes.add(new MensajeChat(Rol.USUARIO, turno.texto()));
 		}
 		if (!restantes.isEmpty()) {
 			mensajes.add(new MensajeChat(Rol.USUARIO, bloqueDePasajes(restantes)));

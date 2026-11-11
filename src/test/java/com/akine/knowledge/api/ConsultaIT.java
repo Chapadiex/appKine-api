@@ -136,6 +136,7 @@ class ConsultaIT {
 
 		assertThat(respuesta.status()).as(respuesta.cuerpo()).isEqualTo(200);
 		assertThat(respuesta.contentType()).startsWith("text/event-stream");
+		assertThat(respuesta.sinBuffer()).isEqualTo("no");
 		List<String> nombres = respuesta.nombres();
 		assertThat(nombres.getFirst()).isEqualTo("fuentes");
 		assertThat(nombres.getLast()).isEqualTo("fin");
@@ -180,6 +181,29 @@ class ConsultaIT {
 		assertThat(respuesta.status()).as(respuesta.cuerpo()).isEqualTo(403);
 		assertThat(respuesta.contentType()).startsWith("application/problem+json");
 		assertThat(respuesta.eventos()).isEmpty();
+	}
+
+	/** Las memberships de sede (R1): sin la sede del contexto en el permiso recibian 403. */
+	@Test
+	void profesionalDeUnaSedeConsulta() throws Exception {
+		assertThat(consultarConRolDeSede("consulta-profesional", "PROFESIONAL").nombres()).startsWith("fuentes");
+	}
+
+	@Test
+	void administradorDeSedeConsulta() throws Exception {
+		assertThat(consultarConRolDeSede("consulta-admin-sede", "CONSULTORIO_ADMIN").nombres()).startsWith("fuentes");
+	}
+
+	private Stream consultarConRolDeSede(String etiqueta, String rol) throws Exception {
+		Sesion cuenta = altaCompleta(etiqueta);
+		membershipService.createDirect(tenant.cuentaId(), false, tenant.organizationId(),
+				new DirectMembershipCommand(cuenta.cuentaId(), tenant.consultorioId(), rol, "prueba sintetica"));
+		String token = seleccionarContexto(login(cuenta.email()), tenant.organizationId(), tenant.consultorioId());
+
+		Stream respuesta = consultar(token, cuerpo(preguntaDelTema));
+
+		assertThat(respuesta.status()).as(respuesta.cuerpo()).isEqualTo(200);
+		return respuesta;
 	}
 
 	/**
@@ -287,7 +311,8 @@ class ConsultaIT {
 	record Evento(String nombre, JsonNode data) {
 	}
 
-	record Stream(int status, String contentType, String retryAfter, String cuerpo, List<Evento> eventos) {
+	record Stream(int status, String contentType, String retryAfter, String sinBuffer, String cuerpo,
+			List<Evento> eventos) {
 
 		List<String> nombres() {
 			return eventos.stream().map(Evento::nombre).toList();
@@ -321,6 +346,7 @@ class ConsultaIT {
 		HttpResponse<InputStream> respuesta = abrir(token, cuerpo);
 		String contentType = respuesta.headers().firstValue("Content-Type").orElse("");
 		String retryAfter = respuesta.headers().firstValue("Retry-After").orElse(null);
+		String sinBuffer = respuesta.headers().firstValue("X-Accel-Buffering").orElse(null);
 		java.util.concurrent.CompletableFuture<String> lectura = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
 			try (InputStream in = respuesta.body()) {
 				return new String(in.readAllBytes(), StandardCharsets.UTF_8);
@@ -337,7 +363,7 @@ class ConsultaIT {
 				eventos.add(evento);
 			}
 		}
-		return new Stream(respuesta.statusCode(), contentType, retryAfter, cuerpoLeido, eventos);
+		return new Stream(respuesta.statusCode(), contentType, retryAfter, sinBuffer, cuerpoLeido, eventos);
 	}
 
 	private static BufferedReader lector(HttpResponse<InputStream> respuesta) {

@@ -109,7 +109,7 @@ public class ConsultaService {
 		}
 		List<FuenteDeConsulta> fuentes = armado.pasajes().stream()
 				.map(p -> new FuenteDeConsulta(p.libroId(), p.titulo(), p.paginaDesde(), p.paginaHasta(),
-						p.texto().length() <= EXTRACTO_MAXIMO ? p.texto() : p.texto().substring(0, EXTRACTO_MAXIMO)))
+						primeros(p.texto(), EXTRACTO_MAXIMO)))
 				.toList();
 		log.info("Consulta a la biblioteca con material: pasajes={}", armado.pasajes().size());
 		return new PlanDeRespuesta(false, resultado.camino(), fuentes, armado.mensajes());
@@ -131,7 +131,7 @@ public class ConsultaService {
 				String respuesta = modelo.getObject().completar(mensajes, OPCIONES_REESCRITURA, plazo);
 				if (respuesta != null && !respuesta.isBlank()) {
 					String reescrita = respuesta.strip();
-					return reescrita.length() <= PREGUNTA_MAXIMA ? reescrita : reescrita.substring(0, PREGUNTA_MAXIMA);
+					return primeros(reescrita, PREGUNTA_MAXIMA);
 				}
 			} catch (RuntimeException e) {
 				log.info("Reescritura de la pregunta fallida, se usa el respaldo: {}", e.getClass().getSimpleName());
@@ -149,7 +149,28 @@ public class ConsultaService {
 			}
 		}
 		String junta = anterior == null || anterior.isBlank() ? pregunta : anterior.strip() + " " + pregunta;
-		return junta.length() <= PREGUNTA_MAXIMA ? junta : junta.substring(junta.length() - PREGUNTA_MAXIMA);
+		return ultimos(junta, PREGUNTA_MAXIMA);
+	}
+
+	/** Hasta {@code n} caracteres del principio, sin partir un par sustituto en el corte. */
+	static String primeros(String texto, int n) {
+		if (texto.length() <= n) {
+			return texto;
+		}
+		int fin = Character.isHighSurrogate(texto.charAt(n - 1)) ? n - 1 : n;
+		return texto.substring(0, fin);
+	}
+
+	/** Hasta {@code n} caracteres del final, sin partir un par sustituto en el corte. */
+	static String ultimos(String texto, int n) {
+		if (texto.length() <= n) {
+			return texto;
+		}
+		int inicio = texto.length() - n;
+		if (Character.isHighSurrogate(texto.charAt(inicio - 1))) {
+			inicio++;
+		}
+		return texto.substring(inicio);
 	}
 
 	private static List<TurnoDeConsulta> historialDe(ConsultaPedido pedido) {

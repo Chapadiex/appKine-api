@@ -25,6 +25,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
@@ -91,6 +92,8 @@ public class ConsultaController implements DisposableBean {
 	 * (la primera va al buffer y vuelve un RST): con 1 s, en unos 2 s.
 	 */
 	static final long LATIDO_MS = 1_000;
+
+	static final String SIN_BUFFER_DEL_PROXY = "X-Accel-Buffering";
 
 	static final String EVENTO_ESPERA = "espera";
 	static final String EVENTO_FUENTES = "fuentes";
@@ -190,7 +193,8 @@ public class ConsultaController implements DisposableBean {
 									schema = @Schema(implementation = ProblemDetail.class)),
 							@Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
 									schema = @Schema(implementation = ProblemDetail.class))})})
-	public SseEmitter consultar(@PathVariable long orgId, @RequestBody ConsultaRequest request) {
+	public SseEmitter consultar(
+			@PathVariable long orgId, @RequestBody ConsultaRequest request, HttpServletResponse response) {
 		ConsultaPedido pedido = request.aPedido();
 		consultas.validar(apiActor.current(), orgId, pedido);
 		ColaDeConsultas.Turno turno;
@@ -202,6 +206,8 @@ public class ConsultaController implements DisposableBean {
 			throw e;
 		}
 
+		// Que un nginx delante no junte los eventos en su buffer: el stream llegaria de a bloques.
+		response.setHeader(SIN_BUFFER_DEL_PROXY, "no");
 		SseEmitter emitter = new SseEmitter(TIMEOUT_EMISOR_MS * (1 + cola.maxEnEspera()));
 		AtomicBoolean cancelado = new AtomicBoolean();
 		Runnable cortar = () -> {
@@ -333,11 +339,13 @@ public class ConsultaController implements DisposableBean {
 	 * {@code error}: en la cola, durante {@code preparar} y mientras el modelo evalua el prompt antes
 	 * del primer token no se escribe nada mas, y solo una escritura revela que el cliente se fue. Si
 	 * falla, corta: marca {@code cancelado} (el modelo lo mira) y saca el turno de la fila si espera.
+	 * Atrapa cualquier {@code RuntimeException}: una que escapara cancelaria en silencio la tarea
+	 * periodica y el stream se quedaria sin latido.
 	 */
 	private static void latir(SseEmitter emitter, Runnable cortar) {
 		try {
 			emitter.send(SseEmitter.event().comment("procesando"));
-		} catch (IOException | IllegalStateException e) {
+		} catch (IOException | RuntimeException e) {
 			cortar.run();
 		}
 	}

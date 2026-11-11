@@ -108,7 +108,8 @@ services:
     container_name: akine-ollama
     restart: unless-stopped
     ports:
-      - "11434:11434"
+      # Solo en la maquina local: Ollama no tiene autenticacion.
+      - "127.0.0.1:11434:11434"
     volumes:
       - akine-ollama-data:/root/.ollama
 

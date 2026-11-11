@@ -111,7 +111,7 @@ POST /api/v1/organizations/{orgId}/biblioteca/consultas
 5. Compuerta: si `alcanza` es falso → respuesta fija "No encontré material…", sin fuentes,
    SIN llamar al modelo. Fin.
 6. Si alcanza: armar el mensaje = system prompt + pasajes sobre el corte (máx. 5, numerados) +
-   historial + pregunta. Llamar al modelo (temperatura 0,2, salida ≤ 400 tokens).
+   preguntas previas del usuario (sin las respuestas del asistente, R10) + pregunta. Llamar al modelo (temperatura 0,2, salida ≤ 400 tokens).
 7. Responder en streaming (§5.4). Las fuentes las arma el backend con los pasajes que le pasó al
    modelo: libro, páginas, extracto. No dependen de que el modelo cite.
 ```

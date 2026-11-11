@@ -33,7 +33,8 @@ class KnowledgeApiActor {
 		return new OperatingActor(
 				principal.accountId(),
 				principal.platformAdmin(),
-				contexto == null ? null : contexto.organizationId());
+				contexto == null ? null : contexto.organizationId(),
+				contexto == null ? null : contexto.consultorioId());
 	}
 
 	private static AuthenticatedPrincipal principalAutenticado() {

@@ -29,15 +29,20 @@ public class BibliotecaAcceso {
 	 * @throws LibroNoEncontradoException si la organizacion de la ruta no es la del contexto (404)
 	 */
 	public void exigir(OperatingActor actor, long orgId) {
-		exigir(actor, orgId, PermissionCodes.BIBLIOTECA_MANAGE);
+		exigir(actor, orgId, PermissionCodes.BIBLIOTECA_MANAGE, null);
 	}
 
-	/** Igual que {@link #exigir}, con el permiso {@code biblioteca:consultar}. */
+	/**
+	 * Igual que {@link #exigir}, con el permiso {@code biblioteca:consultar} y la sede del
+	 * contexto: sin ella el evaluador solo mira memberships de organizacion, y un
+	 * CONSULTORIO_ADMIN o un profesional vinculado a una sede recibirian 403. La gestion sigue
+	 * sin sede: es solo del ORG_ADMIN, y con sede ganaria una membership de sede mas especifica.
+	 */
 	public void exigirConsulta(OperatingActor actor, long orgId) {
-		exigir(actor, orgId, PermissionCodes.BIBLIOTECA_CONSULTAR);
+		exigir(actor, orgId, PermissionCodes.BIBLIOTECA_CONSULTAR, actor.contextConsultorioId());
 	}
 
-	private void exigir(OperatingActor actor, long orgId, String permiso) {
+	private void exigir(OperatingActor actor, long orgId, String permiso, Long consultorioId) {
 		if (!ajustes.habilitada()) {
 			throw new BibliotecaDeshabilitadaException();
 		}
@@ -48,7 +53,7 @@ public class BibliotecaAcceso {
 		if (contexto != orgId) {
 			throw new LibroNoEncontradoException();
 		}
-		permissionGuard.requirePermission(PermissionQuery.of(
-				actor.accountId(), permiso, orgId, Instant.now()));
+		permissionGuard.requirePermission(new PermissionQuery(
+				actor.accountId(), permiso, orgId, consultorioId, null, Instant.now()));
 	}
 }
