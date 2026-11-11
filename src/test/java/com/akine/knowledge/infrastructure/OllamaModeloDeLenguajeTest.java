@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class OllamaModeloDeLenguajeTest {
 
 	private static final List<MensajeChat> MENSAJES = List.of(new MensajeChat(MensajeChat.Rol.USUARIO, "hola"));
-	private static final OpcionesGeneracion OPCIONES = new OpcionesGeneracion(0.2, 400);
+	private static final OpcionesGeneracion OPCIONES = new OpcionesGeneracion(new java.math.BigDecimal("0.2"), 400);
 	private static final Duration PLAZO = Duration.ofSeconds(2);
 
 	private HttpServer servidor;

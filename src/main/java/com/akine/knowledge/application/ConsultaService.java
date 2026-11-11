@@ -38,7 +38,7 @@ public class ConsultaService {
 	public static final int K = 5;
 	public static final int EXTRACTO_MAXIMO = 300;
 
-	static final OpcionesGeneracion OPCIONES_REESCRITURA = new OpcionesGeneracion(0.0, 80);
+	static final OpcionesGeneracion OPCIONES_REESCRITURA = new OpcionesGeneracion(java.math.BigDecimal.ZERO, 80);
 	static final Duration PLAZO_REESCRITURA = Duration.ofSeconds(10);
 
 	private final BibliotecaAcceso acceso;

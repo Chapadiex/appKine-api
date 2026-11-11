@@ -224,7 +224,7 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 		cuerpo.put("stream", stream);
 		cuerpo.put("keep_alive", keepAlive);
 		cuerpo.put("options", Map.of(
-				"temperature", opciones.temperatura(),
+				"temperature", opciones.temperatura().doubleValue(),
 				"num_predict", opciones.maxTokens(),
 				"num_ctx", NUM_CTX));
 		return HttpRequest.newBuilder(endpoint)

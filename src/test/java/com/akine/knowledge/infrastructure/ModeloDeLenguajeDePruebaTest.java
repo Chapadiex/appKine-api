@@ -20,7 +20,7 @@ class ModeloDeLenguajeDePruebaTest {
 
 		modelo.generar(List.of(new MensajeChat(Rol.SISTEMA, "reglas"),
 						new MensajeChat(Rol.USUARIO, "primer renglon\nsegundo")),
-				new OpcionesGeneracion(0.2, 400), Duration.ofSeconds(5), fragmentos::add, () -> false);
+				new OpcionesGeneracion(new java.math.BigDecimal("0.2"), 400), Duration.ofSeconds(5), fragmentos::add, () -> false);
 
 		assertThat(fragmentos).containsExactly("Respuesta de prueba: ", "primer renglon", ".");
 		assertThat(modelo.llamadas()).isEqualTo(1);
