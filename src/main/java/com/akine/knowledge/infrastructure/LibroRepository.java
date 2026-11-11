@@ -84,6 +84,21 @@ public interface LibroRepository extends JpaRepository<Libro, Long>, LibroReposi
 	}
 
 	@Override
+	@Query(value = """
+			SELECT l.* FROM libro l
+			 WHERE l.estado = 'LISTO' AND l.activo = 1 AND l.reemplaza_libro_id IS NULL
+			   AND l.version_procesamiento < :vigente
+			   AND NOT EXISTS (
+			       SELECT 1 FROM libro r
+			        WHERE r.reemplaza_libro_id = l.id
+			          AND NOT (r.estado = 'ERROR' AND r.hash_sha256 = l.hash_sha256 AND r.intentos < :maxIntentos))
+			 ORDER BY l.id
+			 LIMIT 1
+			""", nativeQuery = true)
+	Optional<Libro> aReprocesarPorVersion(@Param("vigente") int versionVigente,
+			@Param("maxIntentos") int maxIntentos);
+
+	@Override
 	@Modifying(clearAutomatically = true)
 	@Query(value = """
 			UPDATE libro

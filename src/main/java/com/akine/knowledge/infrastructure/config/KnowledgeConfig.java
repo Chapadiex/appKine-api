@@ -4,6 +4,7 @@ import com.akine.knowledge.application.ColaDeConsultas;
 import com.akine.knowledge.domain.BibliotecaAjustes;
 import com.akine.knowledge.domain.BusquedaAjustes;
 import com.akine.knowledge.domain.DetectorDeInstrucciones;
+import com.akine.knowledge.domain.ProcesamientoAjustes;
 import com.akine.knowledge.domain.ReindexadoAjustes;
 import com.akine.knowledge.domain.Troceador;
 import com.akine.knowledge.domain.port.ModeloDeLenguaje;
@@ -42,6 +43,11 @@ public class KnowledgeConfig {
 		exigirTipoDeConsulta(properties);
 		return new BibliotecaAjustes(properties.enabled(), properties.maxBytes(), properties.maxPaginas(),
 				properties.consulta().enabled());
+	}
+
+	@Bean
+	public ProcesamientoAjustes procesamientoAjustes(BibliotecaProperties properties) {
+		return new ProcesamientoAjustes(properties.versionProcesamientoVigente());
 	}
 
 	@Bean

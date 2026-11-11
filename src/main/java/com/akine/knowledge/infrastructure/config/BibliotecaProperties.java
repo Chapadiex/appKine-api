@@ -3,7 +3,11 @@ package com.akine.knowledge.infrastructure.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
-/** Configuracion de la biblioteca ({@code akine.biblioteca.*}). Apagada por defecto. */
+/**
+ * Configuracion de la biblioteca ({@code akine.biblioteca.*}). Apagada por defecto.
+ * {@code versionProcesamientoVigente}: version de la ingesta (limpieza y troceado); los libros
+ * LISTO con una menor se reprocesan solos en segundo plano. Se sube cuando cambia la ingesta.
+ */
 @ConfigurationProperties(prefix = "akine.biblioteca")
 public record BibliotecaProperties(
 		@DefaultValue("false") boolean enabled,
@@ -13,7 +17,8 @@ public record BibliotecaProperties(
 		@DefaultValue Busqueda busqueda,
 		@DefaultValue Modelo modelo,
 		@DefaultValue Worker worker,
-		@DefaultValue Consulta consulta) {
+		@DefaultValue Consulta consulta,
+		@DefaultValue("2") int versionProcesamientoVigente) {
 
 	public record Troceo(
 			@DefaultValue("1000") int tamano,
