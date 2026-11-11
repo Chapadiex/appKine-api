@@ -102,13 +102,17 @@ public class ConsultaService {
 		}
 		List<PasajeRecuperado> pasajes = resultado.pasajes().stream()
 				.filter(PasajeRecuperado::superaCorte).limit(K).toList();
-		List<FuenteDeConsulta> fuentes = pasajes.stream()
+		PresupuestoDeContexto.Armado armado = PresupuestoDeContexto.armar(promptConsulta, pasajes, historial, pregunta);
+		if (armado.pasajes().isEmpty()) {
+			log.info("Consulta a la biblioteca sin material: el presupuesto dejo fuera todos los pasajes");
+			return new PlanDeRespuesta(true, resultado.camino(), List.of(), List.of());
+		}
+		List<FuenteDeConsulta> fuentes = armado.pasajes().stream()
 				.map(p -> new FuenteDeConsulta(p.libroId(), p.titulo(), p.paginaDesde(), p.paginaHasta(),
 						p.texto().length() <= EXTRACTO_MAXIMO ? p.texto() : p.texto().substring(0, EXTRACTO_MAXIMO)))
 				.toList();
-		List<MensajeChat> mensajes = PresupuestoDeContexto.armar(promptConsulta, pasajes, historial, pregunta);
-		log.info("Consulta a la biblioteca con material: pasajes={}", pasajes.size());
-		return new PlanDeRespuesta(false, resultado.camino(), fuentes, mensajes);
+		log.info("Consulta a la biblioteca con material: pasajes={}", armado.pasajes().size());
+		return new PlanDeRespuesta(false, resultado.camino(), fuentes, armado.mensajes());
 	}
 
 	private String reescribir(List<TurnoDeConsulta> historial, String pregunta, Instant limite) {

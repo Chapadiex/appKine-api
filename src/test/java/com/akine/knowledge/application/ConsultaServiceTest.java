@@ -37,6 +37,7 @@ class ConsultaServiceTest {
 	private final ModeloDeLenguajeDePrueba modelo = new ModeloDeLenguajeDePrueba();
 	private final List<String> buscadas = new ArrayList<>();
 	private boolean alcanza = true;
+	private int largoPasaje = 0;
 	private BibliotecaAcceso acceso;
 
 	@BeforeEach
@@ -44,13 +45,14 @@ class ConsultaServiceTest {
 		acceso = mock(BibliotecaAcceso.class);
 		buscadas.clear();
 		alcanza = true;
+		largoPasaje = 0;
 	}
 
 	private ConsultaService servicio(boolean consultaHabilitada, ObjectProvider<ModeloDeLenguaje> proveedor) {
 		BibliotecaDirectory directory = (orgId, consulta, k) -> {
 			buscadas.add(consulta);
 			return new ResultadoBusqueda(CaminoBusqueda.VECTOR, 0.8, alcanza, List.of(
-					new PasajeRecuperado(1L, "Libro", 3, 4, "texto del pasaje", 0.9, true),
+					new PasajeRecuperado(1L, "Libro", 3, 4, largoPasaje > 0 ? "x".repeat(largoPasaje) : "texto del pasaje", 0.9, true),
 					new PasajeRecuperado(2L, "Otro", 5, 5, "sin corte", 0.1, false)));
 		};
 		return new ConsultaService(acceso, new BibliotecaAjustes(true, 1000, 2000, consultaHabilitada),
@@ -137,6 +139,18 @@ class ConsultaServiceTest {
 		servicio().validar(ACTOR, 1L, new ConsultaPedido("hola", List.of()));
 
 		verify(acceso).exigirConsulta(ACTOR, 1L);
+	}
+
+	@Test
+	void presupuestoQueSacaTodosLosPasajesEsSinMaterial() {
+		largoPasaje = PresupuestoDeContexto.PRESUPUESTO_CARACTERES + 1;
+		PlanDeRespuesta plan = servicio().preparar(1L, new ConsultaPedido("¿qué es X?", List.of()),
+				Instant.now().plusSeconds(90));
+
+		assertThat(plan.sinMaterial()).isTrue();
+		assertThat(plan.fuentes()).isEmpty();
+		assertThat(plan.mensajes()).isEmpty();
+		assertThat(modelo.llamadas()).isZero();
 	}
 
 	@Test

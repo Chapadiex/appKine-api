@@ -22,7 +22,11 @@ public final class PresupuestoDeContexto {
 	private PresupuestoDeContexto() {
 	}
 
-	public static List<MensajeChat> armar(
+	/** Mensajes para el modelo y los pasajes que realmente entraron en ellos. */
+	public record Armado(List<MensajeChat> mensajes, List<PasajeRecuperado> pasajes) {
+	}
+
+	public static Armado armar(
 			String system, List<PasajeRecuperado> pasajes, List<TurnoDeConsulta> historial, String pregunta) {
 		List<PasajeRecuperado> restantes = new ArrayList<>(pasajes);
 		restantes.sort(Comparator.comparingDouble(PasajeRecuperado::puntaje).reversed());
@@ -47,7 +51,7 @@ public final class PresupuestoDeContexto {
 			mensajes.add(new MensajeChat(Rol.USUARIO, bloqueDePasajes(restantes)));
 		}
 		mensajes.add(new MensajeChat(Rol.USUARIO, pregunta));
-		return mensajes;
+		return new Armado(mensajes, List.copyOf(restantes));
 	}
 
 	private static int tamano(String system, List<PasajeRecuperado> pasajes, List<TurnoDeConsulta> turnos,
