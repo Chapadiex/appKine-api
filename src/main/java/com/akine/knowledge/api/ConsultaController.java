@@ -78,7 +78,7 @@ public class ConsultaController implements DisposableBean {
 	private static final Logger log = LoggerFactory.getLogger(ConsultaController.class);
 
 	static final String SIN_MATERIAL = "No encontré material en la biblioteca para responder eso.";
-	static final OpcionesGeneracion OPCIONES = new OpcionesGeneracion(new BigDecimal("0.2"), 400);
+	static final OpcionesGeneracion OPCIONES = new OpcionesGeneracion(new BigDecimal("0.2"), 300);
 	static final Duration LIMITE = Duration.ofSeconds(90);
 	/**
 	 * Algo mas que el limite de una consulta. El emisor lo multiplica por la consulta en curso mas

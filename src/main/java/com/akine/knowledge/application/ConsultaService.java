@@ -36,6 +36,8 @@ public class ConsultaService {
 	public static final int HISTORIAL_MAXIMO = 6;
 	public static final int TURNO_MAXIMO = 2000;
 	public static final int K = 5;
+	/** Pasajes que llegan al modelo: menos texto que leer en CPU, menos tiempo hasta la primera palabra. */
+	public static final int PASAJES_AL_MODELO = 3;
 	public static final int EXTRACTO_MAXIMO = 300;
 
 	static final OpcionesGeneracion OPCIONES_REESCRITURA = new OpcionesGeneracion(java.math.BigDecimal.ZERO, 80);
@@ -101,7 +103,7 @@ public class ConsultaService {
 			return new PlanDeRespuesta(true, resultado.camino(), List.of(), List.of());
 		}
 		List<PasajeRecuperado> pasajes = resultado.pasajes().stream()
-				.filter(PasajeRecuperado::superaCorte).limit(K).toList();
+				.filter(PasajeRecuperado::superaCorte).limit(PASAJES_AL_MODELO).toList();
 		PresupuestoDeContexto.Armado armado = PresupuestoDeContexto.armar(promptConsulta, pasajes, historial, pregunta);
 		if (armado.pasajes().isEmpty()) {
 			log.info("Consulta a la biblioteca sin material: el presupuesto dejo fuera todos los pasajes");
