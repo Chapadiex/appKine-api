@@ -127,7 +127,9 @@ const filas = [];
 for (const caso of casos) {
   const r = await consultar(sesion, caso.consulta, caso.historial ?? []);
   const tipo = tipoDeSalida(r);
-  const fila = { caso, r, tipo, recall: tipo === 'texto' || caso.esperado === 'responder' ? acierto(caso, r) : null };
+  // Sólo cuenta el recall de una respuesta con texto: las fuentes de un "sin material" no son acierto
+  // (el "sin material" falso se cuenta aparte).
+  const fila = { caso, r, tipo, recall: caso.esperado === 'responder' ? (tipo === 'texto' && acierto(caso, r)) : null };
   filas.push(fila);
   console.log(`${caso.id} ${caso.esperado.padEnd(12)} -> ${tipo.padEnd(12)} primera ${seg(r.primeraPalabraMs)} s, total ${seg(r.totalMs)} s`
     + (fila.recall === null ? '' : `, recall ${fila.recall ? 'sí' : 'no'}`));

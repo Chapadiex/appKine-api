@@ -26,8 +26,8 @@ los ms hasta el primer evento, hasta la primera palabra (el primer `texto` no va
 el total. Agregados:
 
 - **Recall@5 de páginas**, sobre los casos `responder`: alguna página esperada, ±1, cae dentro de alguna de
-  las cinco primeras fuentes del libro esperado. Se mira la lista de fuentes aunque la salida haya sido
-  "sin material".
+  las cinco primeras fuentes del libro esperado, y la salida fue `texto`. Un "sin material" cuenta como
+  fallo de recall aunque haya mandado fuentes.
 - **Acierto de "repreguntar"**: casos `repreguntar` que terminaron en `aclaracion`. Sin v2 (sin eventos
   `aclaracion`/`etapa`) toda respuesta cuenta como "no repreguntó". También se informa cuántas claras **no**
   repreguntaron.
