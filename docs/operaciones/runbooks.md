@@ -535,3 +535,30 @@ docker logs --since 1h akine-api 2>&1 | jq -r 'select(.message|test("Lote de asi
   sólo corre el techo y deja menos holgura a la base.
 - No agrupar ítems en una transacción para "acelerar" el lote: DP-30 lo descartó (opción b), porque
   cambia la transacción independiente por participante de RF-M13-008.
+
+---
+
+## R-consulta. Consulta a la biblioteca: Ollama
+
+La consulta redacta sus respuestas con un modelo de lenguaje local (`qwen2.5:1.5b`) servido por
+Ollama. Esta apagada por defecto y exige ademas `akine.biblioteca.enabled`. No guarda preguntas ni
+respuestas: los logs llevan solo tiempos y cantidades.
+
+**Bajar el modelo** (una vez por volumen `akine-ollama-data`)
+
+```bash
+docker compose up -d ollama
+docker compose exec ollama ollama pull qwen2.5:1.5b
+```
+
+**Variables**
+
+| Variable | Que hace | Default |
+|---|---|---|
+| `AKINE_BIBLIOTECA_CONSULTA_ENABLED` | Enciende la consulta | `false` |
+| `AKINE_BIBLIOTECA_CONSULTA_URL` | Direccion de Ollama | `http://localhost:11434` |
+| `AKINE_BIBLIOTECA_CONSULTA_MODELO` | Modelo a usar | `qwen2.5:1.5b` |
+
+**Si Ollama esta caido o no tiene el modelo:** solo la consulta responde 503
+(`asistente-no-disponible`) o devuelve el error por el stream; la busqueda y el resto de la
+biblioteca siguen funcionando. Verificar con `curl http://localhost:11434/api/tags`.
