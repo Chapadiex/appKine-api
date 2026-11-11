@@ -248,7 +248,7 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						// `reporte:read` lo sumo G-1 (DP-15): la matriz da "Si" al ORG_ADMIN en Ver Reportes.
 						"reporte:read",
 						// M30: la biblioteca de libros, solo ORG_ADMIN.
-						"biblioteca:manage",
+						"biblioteca:manage", "biblioteca:consultar",
 						// Agenda de profesionales: horario habitual y excepciones, separados de
 						// consultorio:manage (docs/diseno/AKINE-agenda-roles.md).
 						"agenda:horario", "agenda:excepciones");
@@ -288,7 +288,9 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						// AKINE-08.06: sin producto:* ni pase:*. Vender un pack es trabajo del mostrador (RolePermissions).
 						// `reporte:read` lo sumo G-1 (DP-15) con alcance ACTIVIDAD_PROPIA: el profesional
 						// ve solo su propia actividad en los reportes.
-						"reporte:read");
+						"reporte:read",
+						// M30, RF-M30-012: consultar la biblioteca, por base.
+						"biblioteca:consultar");
 
 		membershipService.revoke(actorDe(tenant), tenant.organizationId(), membership, MOTIVO);
 

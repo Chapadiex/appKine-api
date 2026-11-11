@@ -490,6 +490,8 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 		// M30: la biblioteca es solo del ORG_ADMIN, nunca por grant.
 		rechazado(celdas, post(o + memberships.get(ADM) + "/grants", token, grant("biblioteca:manage")),
 				ADM, "biblioteca:manage");
+		rechazado(celdas, post(o + memberships.get(ADM) + "/grants", token, grant("biblioteca:consultar")),
+				ADM, "biblioteca:consultar");
 		rechazado(celdas, post(o + memberships.get(ADM) + "/grants", token, grant("producto:manage")),
 				ADM, "producto:manage");
 		rechazado(celdas, post(o + memberships.get(PROF) + "/grants", token, grant("pase:read")),

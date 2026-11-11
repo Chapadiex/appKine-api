@@ -624,7 +624,7 @@ class PermissionEvaluatorServiceTest {
 							// AKINE-G-1 (DP-15): "Si" en Ver Reportes.
 							"reporte:read",
 							// M30: la biblioteca de libros, solo ORG_ADMIN.
-							"biblioteca:manage");
+							"biblioteca:manage", "biblioteca:consultar");
 		}
 
 		@Test
@@ -713,7 +713,9 @@ class PermissionEvaluatorServiceTest {
 							"asistencia:manage",
 							// AKINE-G-1 (DP-15): aparece aunque sea ACTIVIDAD_PROPIA; el recorte
 							// lo hace el reporte, no la lista que oculta botones.
-							"reporte:read");
+							"reporte:read",
+							// M30, RF-M30-012: consultar la biblioteca, por base.
+							"biblioteca:consultar");
 		}
 	}
 
