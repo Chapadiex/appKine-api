@@ -313,6 +313,37 @@ class InterpretadorTest {
 	}
 
 	@Test
+	void aclaracionSinOpcionesNoArrastraTemaDeLaCharla() {
+		modelo.responderJson(json("kinesiofobia", true, "otra", "¿Qué es la kinesiofobia en la lumbalgia?"));
+
+		Interpretacion resultado = interpretador((orgId, consulta) -> 0.1)
+				.interpretar(ORG, "kinesiofobia", CHARLA_LUMBALGIA, limite());
+
+		assertThat(resultado).isEqualTo(new Buscar("kinesiofobia", Intencion.OTRA, "kinesiofobia",
+				List.of("kinesiofobia"), true, false));
+	}
+
+	@Test
+	void cadenaNoEsCadera() {
+		List<TurnoDeConsulta> charla = List.of(
+				new TurnoDeConsulta(TurnoDeConsulta.Rol.USUARIO, "ejercicios fractura cadera"));
+		modelo.responderJson(json("cadena", false, "ejercicios", "¿Qué ejercicios de cadena hay?"));
+
+		Buscar buscar = (Buscar) conEvidenciaEnTodo().interpretar(ORG, "ejercicios de cadena", charla, limite());
+
+		assertThat(buscar.independiente()).isTrue();
+		assertThat(buscar.consultas()).noneMatch(c -> c.contains("cadera"));
+
+		// Numero y genero al final si: "fracturas" sigue siendo la fractura de la charla.
+		modelo.responderJson(json("fracturas de cadera", false, "ejercicios", "¿Qué ejercicios hay para fracturas de cadera?"));
+
+		Buscar plural = (Buscar) conEvidenciaEnTodo().interpretar(
+				ORG, "¿y para las fracturas?", charla, limite());
+
+		assertThat(plural.independiente()).isFalse();
+	}
+
+	@Test
 	void noAgregaTemasQueNadieNombra() {
 		modelo.responderJson(json("lumbalgia y ACV", true, "ejercicios", "¿Qué ejercicios sirven para lumbalgia y ACV?"));
 

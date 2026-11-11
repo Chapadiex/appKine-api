@@ -192,13 +192,13 @@ public class Interpretador {
 		}
 		boolean independiente = leida.temaNuevo() || historial.isEmpty() || nombraOtroTema
 				|| !contenido(normalizar(leida.tema()), enCharla);
-		if (independiente && !historial.isEmpty() && ambigua) {
-			return aclararOBuscar(orgId, leida.tema(), leida.preguntaCompleta());
-		}
 		String completa = leida.preguntaCompleta();
 		if (independiente && !contenido(normalizar(completa), enConsulta)) {
 			// Independiente: la pregunta completa no suma temas que la consulta no nombra (ni los de la charla).
 			completa = consulta;
+		}
+		if (independiente && !historial.isEmpty() && ambigua) {
+			return aclararOBuscar(orgId, leida.tema(), completa);
 		}
 		return new Buscar(leida.tema(), leida.intencion(), completa,
 				consultas(completa, leida.intencion(), leida.tema()), independiente, profundo);
@@ -353,19 +353,28 @@ public class Interpretador {
 	}
 
 	/**
-	 * La palabra esta en el conjunto, comparando palabras enteras y tolerando plural, genero o
-	 * conjugacion: la misma raiz (todo menos las dos ultimas letras) y a lo sumo dos letras de
-	 * diferencia. "fractura" esta en "fracturas"; "dolor" no esta en "doloroso".
+	 * La palabra esta en el conjunto, comparando palabras enteras y tolerando solo numero y genero al
+	 * final: misma base despues de quitar -es, -as, -os, -s, -a u -o. "fractura" esta en
+	 * "fracturas" y "rotador" en "rotadores"; "cadera" no esta en "cadena" ni "dolor" en "doloroso".
 	 */
 	private static boolean estaEn(String palabra, Set<String> palabras) {
 		if (palabras.contains(palabra)) {
 			return true;
 		}
-		if (palabra.length() < 5) {
-			return false;
+		String base = base(palabra);
+		return palabras.stream().anyMatch(w -> base(w).equals(base));
+	}
+
+	private static final List<String> TERMINACIONES = List.of("es", "as", "os", "s", "a", "o");
+
+	/** La palabra sin su terminacion de numero o genero, si queda una base de 3 letras o mas. */
+	private static String base(String palabra) {
+		for (String fin : TERMINACIONES) {
+			if (palabra.endsWith(fin) && palabra.length() - fin.length() >= 3) {
+				return palabra.substring(0, palabra.length() - fin.length());
+			}
 		}
-		String raiz = palabra.substring(0, palabra.length() - 2);
-		return palabras.stream().anyMatch(w -> w.startsWith(raiz) && Math.abs(w.length() - palabra.length()) <= 2);
+		return palabra;
 	}
 
 	/** Palabras que pueden nombrar un tema: ni vacias, ni relleno, ni aspectos. */
