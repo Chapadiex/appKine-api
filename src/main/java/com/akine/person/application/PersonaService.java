@@ -2,6 +2,7 @@ package com.akine.person.application;
 
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.ZonaDeOrganizacion;
 import com.akine.person.domain.ClaveDeBusqueda;
 import com.akine.person.domain.PerfilPaciente;
 import com.akine.person.domain.Persona;
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -79,19 +81,22 @@ public class PersonaService {
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 	private final PersonSupportAccessAuditor supportAccessAuditor;
+	private final ZonaDeOrganizacion zonaDeOrganizacion;
 
 	public PersonaService(
 			PersonaRepositoryPort personas,
 			PerfilPacienteRepositoryPort perfiles,
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
-			PersonSupportAccessAuditor supportAccessAuditor) {
+			PersonSupportAccessAuditor supportAccessAuditor,
+			ZonaDeOrganizacion zonaDeOrganizacion) {
 
 		this.personas = personas;
 		this.perfiles = perfiles;
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
 		this.supportAccessAuditor = supportAccessAuditor;
+		this.zonaDeOrganizacion = zonaDeOrganizacion;
 	}
 
 	// =================================================================================
@@ -115,12 +120,20 @@ public class PersonaService {
 		long organizationId = AutorizacionDePadron.exigirLecturaDelPadron(
 				permissionGuard, actor, "Buscar personas");
 
+		// El dia de la organizacion solo hace falta para la vigencia de los pases: sin filtro por
+		// actividades no se pregunta, y la consulta recibe una fecha que no compara contra nada.
+		LocalDate hoy = filtros.actividadFiltro() == -1
+				? LocalDate.EPOCH
+				: zonaDeOrganizacion.hoy(organizationId);
+
 		List<Persona> encontradas = personas.buscar(
 				organizationId,
 				filtros.patronNombre(),
 				filtros.patronClave(),
 				filtros.activoFiltro(),
 				filtros.perfilFiltro(),
+				filtros.actividadFiltro(),
+				hoy,
 				filtros.ordenClave(),
 				page * size,
 				size);
@@ -135,7 +148,9 @@ public class PersonaService {
 				filtros.patronNombre(),
 				filtros.patronClave(),
 				filtros.activoFiltro(),
-				filtros.perfilFiltro());
+				filtros.perfilFiltro(),
+				filtros.actividadFiltro(),
+				hoy);
 
 		return new PersonaPagina(contenido, total);
 	}

@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.163.0
+  version: 0.164.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -21549,7 +21549,7 @@ paths:
 
         Sin q devuelve el padron completo, paginado y ordenado por apellido.
 
-        estado filtra por ciclo de vida y por defecto trae solo las ACTIVAS. perfil filtra por perfil clinico y por defecto no filtra: la busqueda del mostrador no sabe de antemano si quien busca es paciente.
+        estado filtra por ciclo de vida y por defecto trae solo las ACTIVAS. perfil filtra por perfil clinico y por defecto no filtra: la busqueda del mostrador no sabe de antemano si quien busca es paciente. actividad separa a quien hoy hace actividades del centro (clases, pases, abonos) y se combina con perfil.
 
         OJO: esPaciente es DERIVADO y de solo lectura. Una persona sin perfil clinico es una persona valida y completa —RN-M07-006—, no una ficha a medio cargar.
 
@@ -21582,6 +21582,18 @@ paths:
           enum:
           - CON_PERFIL
           - SIN_PERFIL
+          - TODOS
+      - description: "Filtro por actividades vigentes hoy: una inscripcion reservada\
+          \ o confirmada a una clase que no termino, o un pase o abono activo. Por\
+          \ defecto indistinto. Se combina con perfil"
+        in: query
+        name: actividad
+        required: false
+        schema:
+          type: string
+          enum:
+          - CON_ACTIVIDAD
+          - SIN_ACTIVIDAD
           - TODOS
       - description: "Pagina, base cero"
         in: query

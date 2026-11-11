@@ -3,6 +3,7 @@ package com.akine.person.application;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.organization.spi.ZonaDeOrganizacion;
 import com.akine.person.domain.PerfilPaciente;
 import com.akine.person.domain.Persona;
 import com.akine.person.domain.TipoDocumento;
@@ -86,6 +87,9 @@ class PersonaServiceTest {
 	@Mock
 	private PersonSupportAccessAuditor supportAccessAuditor;
 
+	@Mock
+	private ZonaDeOrganizacion zonaDeOrganizacion;
+
 	private PersonaService service;
 
 	/** Con contexto completo: organizacion y sede. Es el actor normal del mostrador. */
@@ -98,7 +102,8 @@ class PersonaServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new PersonaService(
-				personas, perfiles, permissionGuard, auditTrail, supportAccessAuditor);
+				personas, perfiles, permissionGuard, auditTrail, supportAccessAuditor,
+				zonaDeOrganizacion);
 		given(personas.saveAndFlush(any())).willAnswer(i -> conId(i.getArgument(0)));
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("ORGANIZACION", false));
@@ -147,8 +152,8 @@ class PersonaServiceTest {
 		void leer_exige_paciente_read() {
 			// Hasta DU-6 la lectura se autorizaba por pertenencia y una membership PACIENTE leia
 			// el padron entero. Ahora evalua paciente:read con la sede del contexto.
-			given(personas.buscar(anyLong(), anyString(), anyString(), anyInt(), anyInt(), anyString(),
-					anyInt(), anyInt())).willReturn(List.of());
+			given(personas.buscar(anyLong(), anyString(), anyString(), anyInt(), anyInt(), anyInt(),
+					any(), anyString(), anyInt(), anyInt())).willReturn(List.of());
 
 			service.buscar(delMostrador, busquedaVacia(), 0, 20);
 
@@ -351,11 +356,12 @@ class PersonaServiceTest {
 		// busqueda que anda bien con cien personas se cae con cincuenta mil.
 		Persona una = personaConId(1L);
 		Persona otra = personaConId(2L);
-		given(personas.buscar(anyLong(), anyString(), anyString(), anyInt(), anyInt(), anyString(), anyInt(),
-				anyInt())).willReturn(List.of(una, otra));
+		given(personas.buscar(anyLong(), anyString(), anyString(), anyInt(), anyInt(), anyInt(), any(),
+				anyString(), anyInt(), anyInt())).willReturn(List.of(una, otra));
 		given(perfiles.buscarVigentesDePersonas(ORG_ID, List.of(1L, 2L)))
 				.willReturn(List.of(new PerfilPaciente(ORG_ID, 2L, Instant.now(), ACCOUNT_ID, null)));
-		given(personas.contar(anyLong(), anyString(), anyString(), anyInt(), anyInt())).willReturn(2L);
+		given(personas.contar(anyLong(), anyString(), anyString(), anyInt(), anyInt(), anyInt(), any()))
+				.willReturn(2L);
 
 		PersonaPagina pagina = service.buscar(delMostrador, busquedaVacia(), 0, 20);
 
@@ -367,8 +373,8 @@ class PersonaServiceTest {
 	@Test
 	@DisplayName("Una pagina vacia no consulta perfiles: IN () es sintaxis invalida en MySQL")
 	void una_pagina_vacia_no_consulta_perfiles() {
-		given(personas.buscar(anyLong(), anyString(), anyString(), anyInt(), anyInt(), anyString(), anyInt(),
-				anyInt())).willReturn(List.of());
+		given(personas.buscar(anyLong(), anyString(), anyString(), anyInt(), anyInt(), anyInt(), any(),
+				anyString(), anyInt(), anyInt())).willReturn(List.of());
 
 		service.buscar(delMostrador, busquedaVacia(), 0, 20);
 
