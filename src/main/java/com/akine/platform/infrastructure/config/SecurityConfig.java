@@ -1,6 +1,7 @@
 package com.akine.platform.infrastructure.config;
 
 import com.akine.platform.spi.problem.ProblemType;
+import jakarta.servlet.DispatcherType;
 import java.net.URI;
 import java.util.List;
 
@@ -252,6 +253,13 @@ public class SecurityConfig {
 						// quien quiera atacarlo. El default es cerrar.
 						auth.requestMatchers(RUTAS_DE_DOCUMENTACION).denyAll();
 					}
+
+					// El despacho ASYNC con que termina una respuesta asincrona (el stream SSE de
+					// consultarBiblioteca) no es un pedido nuevo: el REQUEST que lo abrio ya paso
+					// autenticacion, contexto y permiso. El filtro del token no corre en ese despacho
+					// (OncePerRequestFilter), asi que sin esta regla llega anonimo, AuthorizationFilter
+					// lo rechaza sobre una respuesta ya enviada y el stream queda cortado.
+					auth.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll();
 
 					// Todo lo demas: autenticado. Sin excepciones implicitas.
 					auth.anyRequest().authenticated();

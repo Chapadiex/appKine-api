@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.164.0
+  version: 0.165.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -19274,6 +19274,94 @@ paths:
       summary: Buscar pasajes en la biblioteca
       tags:
       - Biblioteca
+  /api/v1/organizations/{orgId}/biblioteca/consultas:
+    post:
+      description: |-
+        Responde la pregunta con un modelo de lenguaje local, usando solo los pasajes de la biblioteca de la organizacion. Requiere `biblioteca:consultar` y los interruptores `akine.biblioteca.enabled` y `akine.biblioteca.consulta.enabled`. Nada se guarda.
+
+        La respuesta 200 es un stream `text/event-stream`. Cada evento lleva su nombre en `event:` y un JSON en `data:`:
+
+        - `espera` (`ConsultaEventoEspera`): la consulta esta en la cola; cada vez que cambia la posicion.
+        - `fuentes` (`ConsultaEventoFuentes`): una vez, antes del texto, solo con material.
+        - `texto` (`ConsultaEventoTexto`): fragmentos de la respuesta, en orden.
+        - `fin` (`ConsultaEventoFin`): la respuesta termino. Sin material, antes llega un unico `texto` con el aviso fijo y el modelo no se llama.
+        - `error` (`ConsultaEventoError`): el modelo fallo o se cumplieron los 90 s; el texto parcial queda. `type` es `asistente-no-disponible`.
+
+        Las lineas que empiezan con `:` son comentarios de latido y se ignoran.
+      operationId: consultarBiblioteca
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsultaRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: Stream de eventos de la respuesta
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Pregunta en blanco o de mas de 600 caracteres, historial de\
+            \ mas de 6 turnos, o un turno sin rol valido o con mas de 2000 caracteres"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:consultar` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: la organizacion de la ruta no es la\
+            \ del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`biblioteca-deshabilitada`: la biblioteca o la consulta estan\
+            \ apagadas"
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`consulta-ocupada`: la cola de la instancia esta llena (1\
+            \ en curso y 3 esperando); trae `Retry-After`"
+      summary: Preguntar a la biblioteca
+      tags:
+      - Biblioteca
   /api/v1/organizations/{orgId}/biblioteca/libros:
     get:
       description: "`q` busca en titulo y autores; `estado=INACTIVO` lista los dados\
@@ -30688,6 +30776,85 @@ components:
           format: int64
           description: Ausente si el turno es de otra sede
           example: 501
+    ConsultaEventoError:
+      type: object
+      description: "Evento `error` del stream de consultarBiblioteca: la respuesta\
+        \ se corto (modelo caido o limite de 90 s) y el stream se cierra; el texto\
+        \ que ya llego queda"
+      properties:
+        type:
+          type: string
+          format: uri
+          description: "problemType, hoy siempre .../asistente-no-disponible"
+      required:
+      - type
+    ConsultaEventoEspera:
+      type: object
+      description: "Evento `espera` del stream de consultarBiblioteca: la consulta\
+        \ espera en la cola de la instancia; se emite cada vez que cambia la posicion"
+      properties:
+        posicion:
+          type: integer
+          format: int32
+          description: 1 = la proxima en empezar
+          minimum: 1
+      required:
+      - posicion
+    ConsultaEventoFin:
+      type: object
+      description: "Evento `fin` del stream de consultarBiblioteca: la respuesta termino\
+        \ y el stream se cierra"
+      properties:
+        camino:
+          type: string
+          description: "Como se busco: por similitud o por palabras"
+          enum:
+          - VECTOR
+          - PALABRAS
+        sinMaterial:
+          type: boolean
+          description: "true si no hubo material: el texto es el aviso fijo y el modelo\
+            \ no se llamo"
+      required:
+      - camino
+      - sinMaterial
+    ConsultaEventoFuentes:
+      type: object
+      description: "Evento `fuentes` del stream de consultarBiblioteca: los pasajes\
+        \ que se le pasaron al modelo, una vez y antes del texto"
+      properties:
+        fuentes:
+          type: array
+          items:
+            $ref: "#/components/schemas/FuenteDeConsultaResponse"
+      required:
+      - fuentes
+    ConsultaEventoTexto:
+      type: object
+      description: "Evento `texto` del stream de consultarBiblioteca: un fragmento\
+        \ de la respuesta; se concatenan en el orden en que llegan"
+      properties:
+        texto:
+          type: string
+      required:
+      - texto
+    ConsultaRequest:
+      type: object
+      description: "Pregunta a la biblioteca. El servidor no guarda la conversacion:\
+        \ el historial lo manda el cliente en cada pregunta."
+      properties:
+        historial:
+          type: array
+          description: "Turnos previos, del mas viejo al mas nuevo; hasta 6"
+          items:
+            $ref: "#/components/schemas/TurnoDeConsultaRequest"
+          maxItems: 6
+        pregunta:
+          type: string
+          maxLength: 600
+          minLength: 1
+      required:
+      - pregunta
     ConsultorioPageResponse:
       type: object
       description: "Pagina de sedes de la organizacion, segun el filtro de estado\
@@ -35641,6 +35808,31 @@ components:
           description: Id de la fila que produjo la franja —el bloque o la excepcion
             de apertura— para que la pantalla pueda linkearla
           example: 501
+    FuenteDeConsultaResponse:
+      type: object
+      description: "Fuente de una respuesta de la biblioteca: libro, paginas y extracto\
+        \ del pasaje"
+      properties:
+        extracto:
+          type: string
+          maxLength: 300
+        libroId:
+          type: integer
+          format: int64
+        paginaDesde:
+          type: integer
+          format: int32
+        paginaHasta:
+          type: integer
+          format: int32
+        titulo:
+          type: string
+      required:
+      - extracto
+      - libroId
+      - paginaDesde
+      - paginaHasta
+      - titulo
     GrantPlatformRoleRequest:
       type: object
       description: Rol de plataforma a otorgar
@@ -40887,6 +41079,8 @@ components:
       - https://akine.app/problems/libro-duplicado
       - https://akine.app/problems/libro-archivo-no-aceptado
       - https://akine.app/problems/libro-en-proceso
+      - https://akine.app/problems/consulta-ocupada
+      - https://akine.app/problems/asistente-no-disponible
     Producto:
       type: object
       description: Producto de pack del catalogo de una sede (RF-M29-001).
@@ -44874,6 +45068,21 @@ components:
           $ref: "#/components/schemas/TurnoDelDia"
           description: "El turno, con paciente, oferta, espacio, recepcion, serie\
             \ y cobertura ya resueltos"
+    TurnoDeConsultaRequest:
+      type: object
+      description: Turno previo de la conversacion
+      properties:
+        rol:
+          type: string
+          enum:
+          - usuario
+          - asistente
+        texto:
+          type: string
+          maxLength: 2000
+      required:
+      - rol
+      - texto
     TurnoDelDia:
       type: object
       description: "Turno de la agenda del dia de una sede, con el paciente resuelto.\

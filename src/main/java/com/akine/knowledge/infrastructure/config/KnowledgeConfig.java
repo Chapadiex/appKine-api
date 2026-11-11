@@ -1,5 +1,6 @@
 package com.akine.knowledge.infrastructure.config;
 
+import com.akine.knowledge.application.ColaDeConsultas;
 import com.akine.knowledge.domain.BibliotecaAjustes;
 import com.akine.knowledge.domain.BusquedaAjustes;
 import com.akine.knowledge.domain.DetectorDeInstrucciones;
@@ -74,6 +75,12 @@ public class KnowledgeConfig {
 			throw new IllegalStateException("akine.biblioteca.consulta.tipo='" + consulta.tipo()
 					+ "' no es valido: tiene que ser ollama o prueba");
 		}
+	}
+
+	/** Cola de consultas de esta instancia: 1 en curso y {@code max-en-espera} esperando. */
+	@Bean
+	public ColaDeConsultas colaDeConsultas(BibliotecaProperties properties) {
+		return new ColaDeConsultas(properties.consulta().maxEnEspera());
 	}
 
 	@Bean

@@ -22,6 +22,9 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 	private final AtomicInteger llamadas = new AtomicInteger();
 	private volatile boolean fallarEnGenerar;
 	private volatile boolean fallarEnCompletar;
+	private volatile boolean sinFin;
+
+	static final long PAUSA_SIN_FIN_MS = 50;
 
 	@Override
 	public String completar(List<MensajeChat> mensajes, OpcionesGeneracion opciones, Duration plazo) {
@@ -46,6 +49,37 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 			}
 			alFragmento.accept(fragmento);
 		}
+		long vence = System.nanoTime() + plazo.toNanos();
+		while (sinFin) {
+			if (cancelado.getAsBoolean()) {
+				return;
+			}
+			if (System.nanoTime() - vence >= 0) {
+				throw new AsistenteNoDisponibleException();
+			}
+			try {
+				Thread.sleep(PAUSA_SIN_FIN_MS);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				throw new AsistenteNoDisponibleException(e);
+			}
+			alFragmento.accept(".");
+		}
+	}
+
+	/**
+	 * Con {@code true}, despues de los tres fragmentos sigue emitiendo "." cada 50 ms hasta que se
+	 * cancele o venza el plazo (como un modelo lento): para probar la desconexion del cliente.
+	 */
+	public void sinFin(boolean sinFin) {
+		this.sinFin = sinFin;
+	}
+
+	/** Vuelve al comportamiento de fabrica; el contador de llamadas sigue. */
+	public void reiniciar() {
+		this.fallarEnGenerar = false;
+		this.fallarEnCompletar = false;
+		this.sinFin = false;
 	}
 
 	public void fallarEnGenerar(boolean fallar) {
