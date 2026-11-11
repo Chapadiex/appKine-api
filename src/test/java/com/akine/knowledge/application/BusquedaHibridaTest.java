@@ -121,6 +121,48 @@ class BusquedaHibridaTest {
 	}
 
 	@Test
+	void evidenciaSoloCuentaLoQueSeDevuelve() {
+		Falso a = new Falso();
+		// 6 pasajes flojos arriba y dos con evidencia (coinciden por palabras) fuera del top 6.
+		List<Coincidencia> flojos = new ArrayList<>();
+		Map<Long, String> textos = new java.util.HashMap<>();
+		for (long i = 1; i <= 6; i++) {
+			flojos.add(c(i, "0.5"));
+			textos.put(i, "nada que ver");
+		}
+		a.vector = flojos;
+		List<Coincidencia> palabras = new ArrayList<>();
+		for (long i = 21; i <= 28; i++) {
+			palabras.add(c(i, "0.1"));
+			textos.put(i, i >= 27 ? "habla de lumbalgia" : "otra cosa");
+		}
+		a.palabras = palabras;
+		a.textos = textos;
+
+		ResultadoHibrido r = new BusquedaHibrida(a, proveedor(modeloOk()), AJUSTES)
+				.buscar(1, List.of("q"), "lumbalgia", Set.of());
+
+		assertThat(r.pasajes()).hasSize(6);
+		assertThat(r.pasajes()).noneMatch(p -> p.superaCorte() || p.coincidePalabra());
+		assertThat(r.hayEvidencia()).isFalse();
+	}
+
+	@Test
+	void coincidenciaEsPorPalabraCompleta() {
+		Falso a = new Falso();
+		a.palabras = List.of(c(1, "0.5"), c(2, "0.4"));
+		a.textos = Map.of(1L, "El manometro mide presion", 2L, "La mano, sana.");
+
+		ResultadoHibrido r = new BusquedaHibrida(a, proveedor(null), AJUSTES)
+				.buscar(1, List.of("q"), "mano dolor", Set.of());
+
+		assertThat(r.pasajes()).hasSize(2);
+		assertThat(r.pasajes().get(0).coincidePalabra()).isFalse();
+		assertThat(r.pasajes().get(1).coincidePalabra()).isTrue();
+		assertThat(r.hayEvidencia()).isFalse();
+	}
+
+	@Test
 	void sinNadaNoHayEvidencia() {
 		ResultadoHibrido r = new BusquedaHibrida(new Falso(), proveedor(modeloOk()), AJUSTES)
 				.buscar(1, List.of("q"), "lumbalgia", Set.of());

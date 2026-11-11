@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -71,15 +72,27 @@ public class BusquedaHibrida {
 		List<String> textos = consultas == null ? List.of() : consultas.stream()
 				.filter(c -> c != null && !c.isBlank()).map(String::strip).toList();
 		Map<Long, Acumulado> candidatos = new LinkedHashMap<>();
-		boolean hubVector = false;
+		boolean hayVector = false;
+		String fallaDelModelo = null;
 		ModeloEmbeddings m = modelo.getIfAvailable();
 		for (String texto : textos) {
-			List<Coincidencia> porVector = m == null ? List.of() : porVector(orgId, m, texto);
-			hubVector |= !porVector.isEmpty();
+			List<Coincidencia> porVector = List.of();
+			if (m != null) {
+				try {
+					porVector = porVector(orgId, m, texto);
+				} catch (RuntimeException falla) {
+					fallaDelModelo = falla.getClass().getSimpleName();
+				}
+			}
+			hayVector |= !porVector.isEmpty();
 			sumar(candidatos, porVector, true);
 			sumar(candidatos, almacen.porPalabras(orgId, texto, ajustes.topKPalabras()), false);
 		}
-		CaminoBusqueda camino = hubVector ? CaminoBusqueda.VECTOR : CaminoBusqueda.PALABRAS;
+		if (fallaDelModelo != null) {
+			// Solo la clase, y una vez por busqueda: el mensaje podria repetir la consulta.
+			log.warn("El modelo de embeddings fallo al calcular la consulta ({}); se busca por palabras", fallaDelModelo);
+		}
+		CaminoBusqueda camino = hayVector ? CaminoBusqueda.VECTOR : CaminoBusqueda.PALABRAS;
 		if (candidatos.isEmpty()) {
 			return new ResultadoHibrido(camino, List.of(), false);
 		}
@@ -106,24 +119,18 @@ public class BusquedaHibrida {
 		// Orden estable: a igual RRF queda primero el que llego antes.
 		fusionados.sort(Comparator.comparingDouble(PasajeFusionado::rrf).reversed());
 
-		long conEvidencia = fusionados.stream().filter(p -> p.superaCorte() || p.coincidePalabra()).count();
 		int tope = Math.max(ajustes.pasajesBreve(), ajustes.pasajesProfundo());
 		List<PasajeFusionado> devueltos = List.copyOf(fusionados.subList(0, Math.min(tope, fusionados.size())));
+		// La evidencia se mide sobre lo que se le manda al modelo, no sobre todos los candidatos.
+		long conEvidencia = devueltos.stream().filter(p -> p.superaCorte() || p.coincidePalabra()).count();
 		log.debug("Busqueda hibrida: {} consultas, {} candidatos, {} con evidencia, camino {}",
 				textos.size(), candidatos.size(), conEvidencia, camino);
 		return new ResultadoHibrido(camino, devueltos, conEvidencia >= ajustes.minimoPasajes());
 	}
 
-	/** Si el modelo falla no hay vector (al log solo la clase: el mensaje podria repetir la consulta). */
+	/** Deja subir la falla del modelo: la registra {@link #buscar} una sola vez por busqueda. */
 	private List<Coincidencia> porVector(long orgId, ModeloEmbeddings m, String texto) {
-		float[] vector;
-		try {
-			vector = m.consulta(texto);
-		} catch (RuntimeException falla) {
-			log.warn("El modelo de embeddings fallo al calcular la consulta ({}); se busca por palabras",
-					falla.getClass().getSimpleName());
-			return List.of();
-		}
+		float[] vector = m.consulta(texto);
 		return vector == null ? List.of() : almacen.porVector(orgId, m.id(), vector, ajustes.topKVector());
 	}
 
@@ -167,8 +174,8 @@ public class BusquedaHibrida {
 		if (palabras.isEmpty()) {
 			return false;
 		}
-		String normal = normalizar(texto);
-		return palabras.stream().anyMatch(normal::contains);
+		Set<String> delTexto = new HashSet<>(Arrays.asList(normalizar(texto).split("[^\\p{L}\\p{N}]+")));
+		return palabras.stream().anyMatch(delTexto::contains);
 	}
 
 	/** Sin tildes ni mayusculas. */
