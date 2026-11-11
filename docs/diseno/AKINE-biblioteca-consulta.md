@@ -243,7 +243,7 @@ Todas **[decisión del agente]**; ninguna cambia lo que el usuario pidió.
    `espera` con su posición, y la pantalla muestra "En cola, sos el N.º X". Si el cliente se
    desconecta, se cancela la llamada a Ollama y se libera el turno.
 5. **Contrato del stream.** La operación declara el `200` como `text/event-stream` con esquema
-   `string`, y los cuatro eventos (`fuentes`, `texto`, `espera`, `fin`, `error`) como componentes con
+   `string`, y los cinco eventos (`fuentes`, `texto`, `espera`, `fin`, `error`) como componentes con
    nombre propio en el contrato, referenciados desde la descripción. El cliente generado no expone la
    operación usable, pero sí los tipos; la pantalla usa esos tipos con su `fetch`. Se verifica que
    `OpenApiContractIT`, el chequeo de `operationId` y la generación del cliente pasen antes de cerrar.
