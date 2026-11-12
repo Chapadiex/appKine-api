@@ -72,8 +72,8 @@ class AnuladoEnElReporteIT {
 				                        oferta_id, snapshot_nombre, snapshot_precio, devengada_en,
 				                        anulada_en, anulada_por_cuenta_id, motivo_anulacion,
 				                        deleted_at, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'PACIENTE', ?, 0.00, 'ARS', 'ANULADA',
-				        ?, 'Sesion sintetica', ?, CURRENT_TIMESTAMP,
+				VALUES (?, ?, ?, ?, 'PACIENTE', CAST(? AS numeric), 0.00, 'ARS', 'ANULADA',
+				        ?, 'Sesion sintetica', CAST(? AS numeric), CURRENT_TIMESTAMP,
 				        CURRENT_TIMESTAMP, ?, 'Anulacion sintetica',
 				        CASE WHEN ? THEN CURRENT_TIMESTAMP END, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.sesionId(),

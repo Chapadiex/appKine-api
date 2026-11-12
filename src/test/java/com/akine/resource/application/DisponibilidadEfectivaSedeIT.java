@@ -317,7 +317,7 @@ class DisponibilidadEfectivaSedeIT {
 				INSERT INTO profesional_disponibilidad
 				    (organization_id, consultorio_id, membership_id, dia_semana, hora_desde,
 				     hora_hasta, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, '2020-01-01', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				VALUES (?, ?, ?, ?, CAST(? AS time), CAST(? AS time), '2020-01-01', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, membershipId, diaSemana, horaDesde, horaHasta);
 	}
 

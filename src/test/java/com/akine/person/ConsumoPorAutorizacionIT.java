@@ -390,7 +390,7 @@ class ConsumoPorAutorizacionIT {
 	private int consumosDeLaSesion(Fixture f, long sesionId) {
 		return jdbc.queryForObject("""
 				SELECT COUNT(*) FROM autorizacion_movimiento
-				 WHERE tipo = 'CONSUMO' AND tipo_origen = 'SESION' AND referencia_origen = ? AND organization_id = ?
+				 WHERE tipo = 'CONSUMO' AND tipo_origen = 'SESION' AND referencia_origen = CAST(? AS bigint) AND organization_id = ?
 				""", Integer.class, sesionId, f.organizationId());
 	}
 

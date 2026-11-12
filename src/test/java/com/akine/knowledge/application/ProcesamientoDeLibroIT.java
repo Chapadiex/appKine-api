@@ -117,7 +117,7 @@ class ProcesamientoDeLibroIT {
 		List<Map<String, Object>> frags = fragmentos(id);
 		assertThat(frags).isNotEmpty().allSatisfy(f -> {
 			assertThat(f.get("sospechoso")).isEqualTo(false);
-			assertThat((byte[]) f.get("vector")).hasSize(768 * 4);
+			assertThat(f.get("vector")).as("dimensiones del vector").isEqualTo(768);
 			assertThat(f.get("modelo_embeddings")).isEqualTo("prueba-hash-768");
 		});
 		assertThat(version.actual(orgId)).isGreaterThan(antes);
@@ -435,7 +435,7 @@ class ProcesamientoDeLibroIT {
 
 	private List<Map<String, Object>> fragmentos(long id) {
 		return jdbc.queryForList("""
-				SELECT orden, pagina_desde, pagina_hasta, sospechoso, vector, modelo_embeddings
+				SELECT orden, pagina_desde, pagina_hasta, sospechoso, vector_dims(vector) AS vector, modelo_embeddings
 				  FROM libro_fragmento WHERE libro_id = ? ORDER BY orden""", id);
 	}
 

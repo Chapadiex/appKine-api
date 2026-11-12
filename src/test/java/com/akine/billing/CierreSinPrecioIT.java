@@ -153,7 +153,7 @@ class CierreSinPrecioIT {
 	private int consumosDeLaSesion(long sesionId) {
 		return jdbc.queryForObject("""
 				SELECT COUNT(*) FROM autorizacion_movimiento
-				 WHERE tipo = 'CONSUMO' AND tipo_origen = 'SESION' AND referencia_origen = ?
+				 WHERE tipo = 'CONSUMO' AND tipo_origen = 'SESION' AND referencia_origen = CAST(? AS bigint)
 				""", Integer.class, String.valueOf(sesionId));
 	}
 

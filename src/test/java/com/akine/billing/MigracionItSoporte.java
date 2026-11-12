@@ -56,10 +56,24 @@ public final class MigracionItSoporte {
 		return fila;
 	}
 
-	/** INSERT directo; devuelve el id generado. */
+	/**
+	 * INSERT directo; devuelve el id generado. Cada marca se castea al tipo de su columna: los tests
+	 * pasan 1/0 para los booleanos y texto para fechas e instantes, que MySQL convertia solo y
+	 * PostgreSQL no.
+	 */
 	public long insertar(String tabla, Map<String, Object> valores) {
+		Map<String, String> tipos = new java.util.HashMap<>();
+		jdbc.query("SELECT column_name, udt_name FROM information_schema.columns"
+				+ " WHERE table_schema = current_schema() AND table_name = ?",
+				rs -> {
+					tipos.put(rs.getString(1), rs.getString(2));
+				}, tabla);
 		String columnas = String.join(", ", valores.keySet());
-		String marcas = valores.keySet().stream().map(c -> "?").collect(Collectors.joining(", "));
+		String marcas = valores.keySet().stream().map(c -> switch (tipos.getOrDefault(c, "")) {
+			case "bool" -> "CAST(CAST(? AS integer) AS boolean)";
+			case "date", "time", "timestamptz", "numeric", "jsonb" -> "CAST(? AS " + tipos.get(c) + ")";
+			default -> "?";
+		}).collect(Collectors.joining(", "));
 		return InsertarConId.insertar(jdbc, "INSERT INTO " + tabla + " (" + columnas + ") VALUES (" + marcas + ")",
 				valores.values().toArray());
 	}

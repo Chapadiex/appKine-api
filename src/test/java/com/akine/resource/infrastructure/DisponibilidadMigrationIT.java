@@ -378,7 +378,7 @@ class DisponibilidadMigrationIT {
 				INSERT INTO profesional_disponibilidad
 				    (organization_id, consultorio_id, membership_id, dia_semana, hora_desde,
 				     hora_hasta, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, CURRENT_DATE, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				VALUES (?, ?, ?, ?, CAST(? AS time), CAST(? AS time), CURRENT_DATE, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.membershipId(),
 				diaSemana, horaDesde, horaHasta);
 	}

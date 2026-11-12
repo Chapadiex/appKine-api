@@ -61,6 +61,7 @@ de commits, o directamente se revierte una decisión correcta por desconocer su 
 | [0023](0023-tablas-globales-sin-organization-id.md) | Qué tabla puede no llevar `organization_id`: criterio único y lista consolidada | Aceptado (la fila de `servicio`, superseded by ADR-0025) | AKINE-02.06 |
 | [0024](0024-encounter-es-duenio-de-la-sesion.md) | `encounter` es el módulo dueño de la Sesión (no `clinical`) | Aceptado | AKINE-06.01 |
 | [0025](0025-servicio-propio-de-la-organizacion.md) | `servicio` admite servicios propios del centro (`organization_id` nullable + `owner_key`) | Aceptado | Clases y servicios del centro (09/11/2026) |
+| [0026](0026-postgresql-unico-motor.md) | PostgreSQL + pgvector es el único motor; baseline Flyway V1–V13 | Aceptado | Migración a PostgreSQL (11/11/2026) |
 
 > **La lista de excepciones a [ADR-0004](0004-convenciones-de-persistencia-multi-tenant.md) vive
 > en [ADR-0023](0023-tablas-globales-sin-organization-id.md), y sólo ahí.** Ese ADR consolida las

@@ -692,7 +692,7 @@ class FlujoUnicoDeTurnosIT {
 		jdbc.update("""
 				INSERT INTO subscription (organization_id, plan_id, status, started_at, active,
 				                          version, created_at, updated_at)
-				SELECT ?, id, 'ACTIVA', CURRENT_TIMESTAMP, 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+				SELECT ?, id, 'ACTIVA', CURRENT_TIMESTAMP, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 				FROM plan WHERE code = 'BASICO'
 				""", fixture.organizationId());
 	}

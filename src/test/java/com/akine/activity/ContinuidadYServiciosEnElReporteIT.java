@@ -507,7 +507,7 @@ class ContinuidadYServiciosEnElReporteIT {
 				                        oferta_id, snapshot_nombre, snapshot_precio, devengada_en,
 				                        anulada_en, anulada_por_cuenta_id, motivo_anulacion,
 				                        version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'PACIENTE', ?, ?, 'ARS', ?, ?, 'Sesion sintetica', ?,
+				VALUES (?, ?, ?, ?, 'PACIENTE', CAST(? AS numeric), CAST(? AS numeric), 'ARS', ?, ?, 'Sesion sintetica', CAST(? AS numeric),
 				        CURRENT_TIMESTAMP, CAST(? AS timestamptz), ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", t.organizationId(), t.consultorioId(), sesion, persona,
 				new BigDecimal(importe), new BigDecimal(importe), estado, oferta, new BigDecimal(importe),

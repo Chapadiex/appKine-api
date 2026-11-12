@@ -105,7 +105,7 @@ class FeriadoMigrationIT {
 		for (int anio : new int[] {2026, 2027}) {
 			Integer inamovibles = jdbc().queryForObject("""
 					SELECT COUNT(*) FROM feriado
-					 WHERE pais = 'AR' AND tipo = 'INAMOVIBLE' AND YEAR(fecha) = ?
+					 WHERE pais = 'AR' AND tipo = 'INAMOVIBLE' AND EXTRACT(YEAR FROM fecha) = ?
 					""", Integer.class, anio);
 
 			assertThat(inamovibles)

@@ -460,7 +460,7 @@ class MedicionIT {
 				        definicion_unidad, definicion_tipo, definicion_version, lateralidad,
 				        valor_numerico, valor_texto, registrada_en, registrada_por_cuenta_id,
 				        version, created_at, updated_at)
-				VALUES (?, ?, ?, 'ROM', 'Rango', 'grados', ?, 0, ?, ?, ?, CURRENT_TIMESTAMP, ?, 0,
+				VALUES (?, ?, ?, 'ROM', 'Rango', 'grados', ?, 0, ?, CAST(? AS numeric), ?, CURRENT_TIMESTAMP, ?, 0,
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", mundo.organizationId(), sesionId, mundo.medicionDefinicionId(), tipo, lateralidad,
 				numerico, texto, mundo.profesional().cuentaId());

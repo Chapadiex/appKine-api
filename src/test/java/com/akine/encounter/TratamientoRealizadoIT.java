@@ -571,7 +571,7 @@ class TratamientoRealizadoIT {
 				INSERT INTO tratamiento_parametro
 				       (organization_id, tratamiento_realizado_id, clave, tipo_dato, valor_numerico,
 				        valor_texto, valor_booleano, unidad, orden, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, CAST(? AS boolean), ?, 0, CURRENT_TIMESTAMP)
+				VALUES (?, ?, ?, ?, CAST(? AS numeric), ?, CAST(? AS boolean), ?, 0, CURRENT_TIMESTAMP)
 				""", organizacionDelUltimo, tratamientoId, clave, tipo, numerico, texto, booleano, unidad);
 	}
 

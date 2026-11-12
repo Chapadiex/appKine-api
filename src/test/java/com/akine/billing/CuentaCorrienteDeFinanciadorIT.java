@@ -76,8 +76,8 @@ class CuentaCorrienteDeFinanciadorIT {
 				UPDATE presentacion
 				   SET estado = 'ANULADA', anulada_en = CURRENT_TIMESTAMP, anulada_por_cuenta_id = ?,
 				       motivo_anulacion = 'Periodo mal elegido'
-				 WHERE organization_id = ? AND financiador_id = ?
-				 ORDER BY id LIMIT 1
+				 WHERE id = (SELECT id FROM presentacion WHERE organization_id = ? AND financiador_id = ?
+				              ORDER BY id LIMIT 1)
 				""", cuentaId, organizationId, financiadorId);
 
 		TotalesDeCuentaCorriente totales =

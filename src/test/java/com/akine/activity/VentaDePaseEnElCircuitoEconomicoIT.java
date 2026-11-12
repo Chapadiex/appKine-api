@@ -111,7 +111,7 @@ class VentaDePaseEnElCircuitoEconomicoIT {
 		assertThat(saldoDeCaja(tenant)).isEqualByComparingTo(MITAD);
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM movimiento_caja
-				 WHERE organization_id = ? AND tipo_origen = 'COBRO' AND referencia_origen = ? AND tipo = 'INGRESO'
+				 WHERE organization_id = ? AND tipo_origen = 'COBRO' AND referencia_origen = CAST(? AS bigint) AND tipo = 'INGRESO'
 				""", Integer.class, tenant.organizationId(), cobro.id())).isEqualTo(1);
 
 		// Con cobros la venta no se anula, y lo que se lee por el pase dice cuanto se cobro.

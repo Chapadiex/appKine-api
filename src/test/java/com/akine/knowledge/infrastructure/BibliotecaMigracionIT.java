@@ -142,8 +142,14 @@ class BibliotecaMigracionIT {
 		assertThat(v1).doesNotContain(id);
 		List<Long> v2 = tx.execute(s -> fragmentos.reclamarSinVector("modelo-v2", 1000));
 		assertThat(v2).contains(id);
-		byte[] leido = jdbc.queryForObject("SELECT vector FROM libro_fragmento WHERE id = ?", byte[].class, id);
-		assertThat(leido).hasSize(3072).startsWith((byte) 7);
+		// vector(768): se lee como texto y vuelve a float32 little-endian; tiene que ser el mismo vector.
+		String leido = jdbc.queryForObject("SELECT CAST(vector AS text) FROM libro_fragmento WHERE id = ?", String.class, id);
+		String[] componentes = leido.substring(1, leido.length() - 1).split(",");
+		float[] floats = new float[componentes.length];
+		for (int i = 0; i < componentes.length; i++) {
+			floats[i] = Float.parseFloat(componentes[i]);
+		}
+		assertThat(com.akine.knowledge.domain.Vectores.aBytes(floats)).hasSize(3072).isEqualTo(vector);
 	}
 
 	@Test

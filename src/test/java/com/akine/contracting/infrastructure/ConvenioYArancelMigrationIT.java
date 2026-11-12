@@ -314,7 +314,7 @@ class ConvenioYArancelMigrationIT {
 				                              practica_id, importe_total, importe_financiador,
 				                              coseguro, moneda, vigencia_desde, vigencia_hasta,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, 0.00, 'ARS', CAST(? AS date), CAST(? AS date), true, 0,
+				VALUES (?, ?, ?, ?, CAST(? AS numeric), CAST(? AS numeric), 0.00, 'ARS', CAST(? AS date), CAST(? AS date), true, 0,
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", escenario.organizationId(), escenario.consultorioId(), convenioId,
 				escenario.practicaId(), importe, importe, desde, hasta);
@@ -329,7 +329,7 @@ class ConvenioYArancelMigrationIT {
 				                              practica_id, importe_total, importe_financiador,
 				                              coseguro, moneda, vigencia_desde, active, version,
 				                              created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, 'ARS', CAST(? AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				VALUES (?, ?, ?, ?, CAST(? AS numeric), CAST(? AS numeric), CAST(? AS numeric), 'ARS', CAST(? AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", escenario.organizationId(), escenario.consultorioId(), convenioId,
 				escenario.practicaId(), total, financiador, coseguro, desde);
 	}

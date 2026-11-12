@@ -61,6 +61,10 @@ class ImpactoPrevioDeDisponibilidadIT extends BaseEscenarioDiferido {
 		ZoneId zona = ZoneId.of(jdbc.queryForObject(
 				"SELECT timezone FROM consultorio WHERE id = ?", String.class, sesion.consultorioId()));
 		LocalDate lunes = LocalDate.now(zona).with(TemporalAdjusters.next(DayOfWeek.MONDAY)).plusWeeks(1);
+		// Un lunes o martes feriado (el 23/11/2026, por ejemplo) cierra la sede y la reserva no entra.
+		while (esFeriado(lunes) || esFeriado(lunes.plusDays(1))) {
+			lunes = lunes.plusWeeks(1);
+		}
 		TurnoView turnoLunes = reservar(fixture, fixture.personaA(), lunes, zona);
 		reservar(fixture, fixture.personaB(), lunes.plusDays(1), zona);
 
@@ -112,6 +116,11 @@ class ImpactoPrevioDeDisponibilidadIT extends BaseEscenarioDiferido {
 		Respuesta cruzada = get(rutaBloque + "/impacto-de-baja", ajena.token());
 		assertThat(cruzada.status()).as("cruzada: %s", cruzada.body()).isIn(403, 404);
 		assertThat(cruzada.body()).doesNotContain("turnosAfectados");
+	}
+
+	private boolean esFeriado(LocalDate fecha) {
+		Integer cuantos = jdbc.queryForObject("SELECT COUNT(*) FROM feriado WHERE fecha = ?", Integer.class, fecha);
+		return cuantos != null && cuantos > 0;
 	}
 
 	private TurnoView reservar(Fixture fixture, long personaId, LocalDate fecha, ZoneId zona) {

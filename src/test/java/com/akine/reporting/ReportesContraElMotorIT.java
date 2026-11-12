@@ -427,8 +427,8 @@ class ReportesContraElMotorIT {
 				                        responsable, importe_original, saldo, moneda, estado,
 				                        oferta_id, snapshot_nombre, snapshot_precio, devengada_en,
 				                        version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'PACIENTE', ?, ?, 'ARS', 'PENDIENTE',
-				        ?, 'Sesion sintetica', ?, CURRENT_TIMESTAMP, 0,
+				VALUES (?, ?, ?, ?, 'PACIENTE', CAST(? AS numeric), CAST(? AS numeric), 'ARS', 'PENDIENTE',
+				        ?, 'Sesion sintetica', CAST(? AS numeric), CURRENT_TIMESTAMP, 0,
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", centro.organizationId(), centro.consultorioId(), sesionId, centro.personaId(),
 				importe, importe, centro.ofertaId(), importe);

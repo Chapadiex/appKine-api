@@ -51,7 +51,7 @@ class AkineApiApplicationIT {
 		JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
 		Integer migracionesExitosas = jdbc.queryForObject(
-				"SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1", Integer.class);
+				"SELECT COUNT(*) FROM flyway_schema_history WHERE success", Integer.class);
 		assertThat(migracionesExitosas)
 				.as("flyway debe haber aplicado al menos la migracion V1")
 				.isNotNull()

@@ -193,7 +193,7 @@ class AtencionClinicaDp43IT {
 					String.class, sesion.id())).isEqualTo(MOTIVO);
 
 			String detalles = jdbc.queryForObject("""
-					SELECT CAST(details AS CHAR) FROM audit_event
+					SELECT CAST(details AS text) FROM audit_event
 					 WHERE event_type = 'SESION_INICIADA' AND entity_id = ?
 					""", String.class, sesion.id());
 			assertThat(detalles).contains("sinTurno").doesNotContain(MOTIVO);
@@ -343,7 +343,7 @@ class AtencionClinicaDp43IT {
 					.containsEntry("motivo", "Licencia por enfermedad")
 					.containsEntry("por", admin.cuentaId());
 			String detalles = jdbc.queryForObject("""
-					SELECT CAST(details AS CHAR) FROM audit_event
+					SELECT CAST(details AS text) FROM audit_event
 					 WHERE event_type = 'SESION_PROFESIONAL_REEMPLAZADO' AND entity_id = ?
 					""", String.class, sesionId);
 			assertThat(detalles).doesNotContain("Licencia");

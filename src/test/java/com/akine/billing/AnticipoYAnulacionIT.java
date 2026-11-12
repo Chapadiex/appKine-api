@@ -325,7 +325,7 @@ class AnticipoYAnulacionIT {
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM movimiento_caja
 				 WHERE organization_id = ? AND tipo = 'EGRESO' AND tipo_origen = 'REINTEGRO'
-				   AND referencia_origen = ?
+				   AND referencia_origen = CAST(? AS bigint)
 				""", Integer.class, fixture.organizationId(), reintegro.id())).isEqualTo(1);
 
 		assertThatThrownBy(() -> posteriorService.reintegrar(fixture.actor(), fixture.consultorioId(), anticipo.id(),

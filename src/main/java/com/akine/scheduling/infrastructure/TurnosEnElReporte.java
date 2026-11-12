@@ -179,7 +179,10 @@ public class TurnosEnElReporte implements ReporteContributor {
 		for (ConsultaDeReporte.TramoHorario tramo : consulta.tramosHorarios()) {
 			for (Object[] fila : turnos.contarPorDiaYEstadoEnElReporte(
 					consulta.organizationId(), consulta.consultorioId(),
-					tramo.desde(), tramo.hasta(), tramo.desfase(), LIMITE_FILAS_SERIE,
+					// La zona IANA y no el desfase del tramo: la consulta usa AT TIME ZONE, que con un
+					// texto como '-03:00' aplica el signo POSIX (al reves). Dentro del tramo el desfase de
+					// la zona es constante, asi que el dia que sale es el mismo.
+					tramo.desde(), tramo.hasta(), consulta.zona().getId(), LIMITE_FILAS_SERIE,
 					consulta.recortadaAActividadPropia(), consulta.membershipsDelRecorte())) {
 
 				String estado = String.valueOf(fila[1]);

@@ -165,9 +165,9 @@ final class PresentacionItFixture {
 				                        snapshot_credencial_vencida, snapshot_vigente_el,
 				                        snapshot_capturado_en,
 				                        devengada_en, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'FINANCIADOR', ?, 'FINANCIADOR', 1, 1, ?, ?, 'ARS', 'PENDIENTE',
-				        ?, 'Sesion sintetica', ?,
-				        1, 1, 1, 'CONV-SINT', 'Convenio sintetico', ?, ?, 0.00, false, false, false, false,
+				VALUES (?, ?, ?, ?, 'FINANCIADOR', ?, 'FINANCIADOR', 1, 1, CAST(? AS numeric), CAST(? AS numeric), 'ARS', 'PENDIENTE',
+				        ?, 'Sesion sintetica', CAST(? AS numeric),
+				        1, 1, 1, 'CONV-SINT', 'Convenio sintetico', CAST(? AS numeric), CAST(? AS numeric), 0.00, false, false, false, false,
 				        CURRENT_DATE, CURRENT_TIMESTAMP,
 				        CURRENT_TIMESTAMP, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), tenant.consultorioId(), sesionId, tenant.personaId(),
@@ -199,7 +199,7 @@ final class PresentacionItFixture {
 				INSERT INTO jornada_caja (organization_id, consultorio_id, fecha_negocio, moneda,
 				                          estado, saldo_inicial, saldo_arqueo, abierta_en,
 				                          abierta_por_cuenta_id, created_at, updated_at)
-				VALUES (?, ?, CAST(? AS date), 'ARS', 'ABIERTA', ?, ?, CURRENT_TIMESTAMP, ?,
+				VALUES (?, ?, CAST(? AS date), 'ARS', 'ABIERTA', CAST(? AS numeric), CAST(? AS numeric), CURRENT_TIMESTAMP, ?,
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), tenant.consultorioId(),
 				Date.valueOf(LocalDate.now(ZoneId.of(ZONA))), new BigDecimal(saldoInicial),

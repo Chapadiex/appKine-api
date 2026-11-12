@@ -889,7 +889,7 @@ class DisponibilidadIT {
 	/** La columna tal cual la tiene MySQL, sin pasar por el converter. */
 	private String horaHastaCruda(long bloqueId) {
 		return jdbc.queryForObject(
-				"SELECT CAST(hora_hasta AS CHAR) FROM profesional_disponibilidad WHERE id = ?",
+				"SELECT CAST(hora_hasta AS text) FROM profesional_disponibilidad WHERE id = ?",
 				String.class, bloqueId);
 	}
 

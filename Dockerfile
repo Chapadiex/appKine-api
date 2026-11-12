@@ -102,7 +102,7 @@ EXPOSE 8080
 
 # Liveness del actuator (spring-boot-starter-actuator, probes habilitadas en application.yml y
 # /actuator/health/** abierto en SecurityConfig). Se usa liveness y no /actuator/health a secas:
-# este ultimo incluye la base, y un corte de MySQL no se arregla reiniciando el backend.
+# este ultimo incluye la base, y un corte de PostgreSQL no se arregla reiniciando el backend.
 # start-period de 10 minutos: el primer arranque contra una base vacia aplica todas las migraciones
 # de Flyway. Medido: 3 min 9 s el 11/10/2026 (4 CPU, 2 GB, 72 migraciones) y 8 min 23 s en la
 # corrida de G-10 del 09/10 (docs/carga.md §6.7). Con 120 s el contenedor quedaba unhealthy a mitad

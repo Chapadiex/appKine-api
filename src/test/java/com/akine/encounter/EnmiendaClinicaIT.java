@@ -91,9 +91,11 @@ class EnmiendaClinicaIT {
 				   AND table_name LIKE 'sesion_version_%'
 				""", String.class))
 				.contains("ck_svt_lateralidad", "ck_svtp_valor", "ck_svm_valor_tipado");
+		// Desde el baseline PostgreSQL (11/11/2026) lo que creaba V71 lo crea V7, la migracion de
+		// clinica y atencion.
 		assertThat(jdbc.queryForObject("""
-				SELECT version FROM flyway_schema_history WHERE version = '71' AND success = 1
-				""", String.class)).isEqualTo("71");
+				SELECT version FROM flyway_schema_history WHERE version = '7' AND success
+				""", String.class)).isEqualTo("7");
 	}
 
 	@Test

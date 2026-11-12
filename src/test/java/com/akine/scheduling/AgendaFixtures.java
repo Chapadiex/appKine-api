@@ -354,7 +354,7 @@ public final class AgendaFixtures {
 				       (organization_id, consultorio_id, membership_id, dia_semana,
 				        hora_desde, hora_hasta, vigencia_desde, active, version,
 				        created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0,
+				VALUES (?, ?, ?, ?, CAST(? AS time), CAST(? AS time), CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0,
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, membershipId,
 				DayOfWeek.MONDAY.getValue(), LocalTime.of(9, 0), LocalTime.of(13, 0));

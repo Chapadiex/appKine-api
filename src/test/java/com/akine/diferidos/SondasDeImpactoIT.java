@@ -201,7 +201,7 @@ class SondasDeImpactoIT extends BaseEscenarioDiferido {
 				.as("informa, no bloquea (RN-M05-004): %s", revocacion.body()).isEqualTo(200);
 
 		String detalles = jdbc.queryForObject("""
-				SELECT CAST(details AS CHAR) FROM audit_event
+				SELECT CAST(details AS text) FROM audit_event
 				 WHERE event_type = 'MEMBERSHIP_REVOKED' AND entity_id = ?
 				 ORDER BY id DESC LIMIT 1
 				""", String.class, fixture.profesionalMembershipId());
@@ -335,8 +335,13 @@ class SondasDeImpactoIT extends BaseEscenarioDiferido {
 		return proximoLunes(zona).atTime(horaLocal, 0).atZone(zona).toInstant();
 	}
 
-	private static LocalDate proximoLunes(ZoneId zona) {
-		return LocalDate.now(zona).with(TemporalAdjusters.next(DayOfWeek.MONDAY)).plusWeeks(1);
+	/** Un lunes feriado (el 23/11/2026, por ejemplo) cierra la sede y ninguna reserva entra. */
+	private LocalDate proximoLunes(ZoneId zona) {
+		LocalDate lunes = LocalDate.now(zona).with(TemporalAdjusters.next(DayOfWeek.MONDAY)).plusWeeks(1);
+		while (jdbc.queryForObject("SELECT COUNT(*) FROM feriado WHERE fecha = ?", Integer.class, lunes) > 0) {
+			lunes = lunes.plusWeeks(1);
+		}
+		return lunes;
 	}
 
 	private void habilitarMasDeUnaSede(Sesion sesion) {

@@ -37,6 +37,48 @@ function castear(sql) {
 	});
 }
 
+const tipoDe = {};
+for (const c of j.columns) tipoDe[`${c.t}.${c.c}`] = tipoPg(c);
+
+/** Corta por comas de primer nivel. */
+function partir(s) {
+	const r = [];
+	let prof = 0, act = '';
+	for (const ch of s) {
+		if (ch === '(') prof++;
+		if (ch === ')') prof--;
+		if (ch === ',' && prof === 0) { r.push(act); act = ''; continue; }
+		act += ch;
+	}
+	r.push(act);
+	return r;
+}
+
+/** INSERT INTO t (cols) VALUES (...): castea cada "?" al tipo de su columna. */
+function castearInsert(sql) {
+	let out = '', ultimo = 0;
+	for (const m of sql.matchAll(/INSERT\s+INTO\s+(\w+)\s*\(([^)]*)\)\s*VALUES\s*\(/gi)) {
+		const cols = m[2].split(',').map((x) => x.trim());
+		const ini = m.index + m[0].length;
+		let prof = 1, i = ini;
+		for (; i < sql.length && prof > 0; i++) {
+			if (sql[i] === '(') prof++;
+			if (sql[i] === ')') prof--;
+		}
+		const vals = partir(sql.slice(ini, i - 1));
+		if (vals.length !== cols.length) continue;
+		const nuevos = vals.map((v, k) => {
+			const t = tipoDe[`${m[1]}.${cols[k]}`];
+			return t && v.trim() === '?' ? v.replace('?', `CAST(? AS ${t})`) : v;
+		});
+		out += sql.slice(ultimo, ini) + nuevos.join(',');
+		ultimo = i - 1;
+	}
+	return out + sql.slice(ultimo);
+}
+
+const castearTodo = (sql) => castear(castearInsert(sql));
+
 const esSql = (s) => /\b(SELECT|INSERT|UPDATE|DELETE)\b/i.test(s);
 let cambios = 0;
 (function rec(d) {
@@ -45,8 +87,8 @@ let cambios = 0;
 		if (e.isDirectory()) { rec(p); continue; }
 		if (!e.name.endsWith('.java')) continue;
 		const original = fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
-		let src = original.replace(/"""\n([\s\S]*?)"""/g, (m, cuerpo) => esSql(cuerpo) ? `"""\n${castear(cuerpo)}"""` : m);
-		src = src.replace(/"((?:[^"\\\n]|\\.)*)"/g, (m, cuerpo) => esSql(cuerpo) ? `"${castear(cuerpo)}"` : m);
+		let src = original.replace(/"""\n([\s\S]*?)"""/g, (m, cuerpo) => esSql(cuerpo) ? `"""\n${castearTodo(cuerpo)}"""` : m);
+		src = src.replace(/"((?:[^"\\\n]|\\.)*)"/g, (m, cuerpo) => esSql(cuerpo) ? `"${castearTodo(cuerpo)}"` : m);
 		if (src !== original) {
 			cambios += (src.match(/CAST\(\? AS/g) || []).length - (original.match(/CAST\(\? AS/g) || []).length;
 			fs.writeFileSync(p, src);

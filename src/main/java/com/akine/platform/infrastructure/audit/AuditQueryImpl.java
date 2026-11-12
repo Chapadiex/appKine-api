@@ -18,6 +18,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -127,7 +128,11 @@ public class AuditQueryImpl implements AuditQuery {
 						unificar ? traslados.visible() : NINGUNO,
 						unificar ? traslados.cancelacion() : NINGUNO,
 						unificar ? traslados.reserva() : NINGUNO,
-						filtro.desde(), filtro.hasta(), TextoDeBusqueda.patronLike(filtro.texto()),
+						// Sin fecha, el rango queda abierto con centinelas: un (:desde is null or ...) le
+						// llega a PostgreSQL como un parametro sin tipo que no puede resolver.
+						filtro.desde() == null ? DESDE_SIN_LIMITE : filtro.desde(),
+						filtro.hasta() == null ? HASTA_SIN_LIMITE : filtro.hasta(),
+						TextoDeBusqueda.patronLike(filtro.texto()),
 						conOrden(pageable))
 				.map(this::resumir);
 	}
@@ -148,6 +153,10 @@ public class AuditQueryImpl implements AuditQuery {
 
 	/** Valor de relleno para un parametro de texto que no aplica: ningun tipo de evento se llama asi. */
 	private static final String NINGUNO = "-";
+
+	/** Extremos del rango de fechas cuando el historial no pide uno. */
+	private static final Instant DESDE_SIN_LIMITE = Instant.parse("1970-01-01T00:00:00Z");
+	private static final Instant HASTA_SIN_LIMITE = Instant.parse("9999-12-31T00:00:00Z");
 
 	/**
 	 * El orden de siempre —del hecho mas nuevo al mas viejo— cuando el llamador no pide otro.

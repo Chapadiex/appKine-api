@@ -306,8 +306,9 @@ class MigracionesF9IT {
 				  JOIN information_schema.check_constraints cc
 				    ON cc.constraint_schema = tc.constraint_schema AND cc.constraint_name = tc.constraint_name
 				 WHERE tc.table_schema = current_schema() AND tc.table_name = 'clase_programada'
-				   AND tc.constraint_type = 'CHECK'
+				   AND tc.constraint_type = 'CHECK' AND cc.check_clause NOT LIKE '% IS NOT NULL'
 				""", String.class);
+		// PostgreSQL publica cada NOT NULL como un CHECK en information_schema: se dejan afuera.
 		assertThat(clausulas).as("los CHECK de la clase que dejaron V58, V60 y V61").hasSize(5)
 				.noneMatch(clausula -> clausula.contains("`estado`"));
 	}

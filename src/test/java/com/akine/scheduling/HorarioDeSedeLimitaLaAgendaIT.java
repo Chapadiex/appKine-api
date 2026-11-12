@@ -49,8 +49,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class HorarioDeSedeLimitaLaAgendaIT {
 
 	private static final ZoneId ZONA = ZoneId.of(AgendaFixtures.ZONA);
-	private static final LocalDate LUNES = LocalDate.now(ZONA).plusDays(7)
-			.with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
+	/** El lunes de la semana que viene que no es feriado (un feriado cierra la sede: el 23/11/2026). */
+	private LocalDate lunes;
 
 	@Autowired private AgendaService agendaService;
 	@Autowired private TurnoService turnoService;
@@ -61,6 +61,10 @@ class HorarioDeSedeLimitaLaAgendaIT {
 
 	@BeforeEach
 	void setUp() {
+		lunes = LocalDate.now(ZONA).plusDays(7).with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
+		while (jdbc.queryForObject("SELECT COUNT(*) FROM feriado WHERE fecha = ?", Integer.class, lunes) > 0) {
+			lunes = lunes.plusWeeks(1);
+		}
 		fixtures = new AgendaFixtures(jdbc);
 	}
 
@@ -145,7 +149,7 @@ class HorarioDeSedeLimitaLaAgendaIT {
 
 	private DiaDeAgenda elLunes(Fixture fixture) {
 		return agendaService.buscar(fixture.actor(), fixture.consultorioId(), fixture.ofertaId(),
-				LUNES, LUNES.plusDays(1), null).dias().get(0);
+				lunes, lunes.plusDays(1), null).dias().get(0);
 	}
 
 	private TurnoView reservar(Fixture fixture, Instant inicio) {
@@ -160,8 +164,8 @@ class HorarioDeSedeLimitaLaAgendaIT {
 		return dia.slots().stream().map(SlotDisponible::desde).toList();
 	}
 
-	private static Instant hora(int horaLocal) {
-		return LUNES.atTime(horaLocal, 0).atZone(ZONA).toInstant();
+	private Instant hora(int horaLocal) {
+		return lunes.atTime(horaLocal, 0).atZone(ZONA).toInstant();
 	}
 
 	private static Franja franja(DayOfWeek dia, int desde, int hasta) {

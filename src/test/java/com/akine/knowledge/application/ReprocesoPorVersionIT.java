@@ -108,8 +108,8 @@ class ReprocesoPorVersionIT {
 				  FROM libro n JOIN libro v ON v.id = n.reemplaza_libro_id WHERE n.id = ?""", nuevo);
 		assertThat(fila.get("estado")).isEqualTo("PENDIENTE");
 		assertThat(fila.get("version_procesamiento")).isEqualTo(2);
-		assertThat(((Number) fila.get("mismo_hash")).intValue()).isEqualTo(1);
-		assertThat(((Number) fila.get("otra_clave")).intValue()).isEqualTo(1);
+		assertThat(fila.get("mismo_hash")).isEqualTo(true);
+		assertThat(fila.get("otra_clave")).isEqualTo(true);
 		assertThat(almacen.leer(LibroService.ESPACIO, (String) fila.get("storage_key"))).isPresent();
 		// Ya hay un reemplazo en curso: no se encola otro.
 		assertThat(reproceso.encolarSiguiente()).isFalse();

@@ -64,8 +64,9 @@ class OfertaPracticaIT {
 				"ck_oferta_practica_baja_coherente", "ck_oferta_practica_principal_vigente",
 				"fk_oferta_practica_organization", "fk_oferta_practica_consultorio",
 				"fk_oferta_practica_oferta", "fk_oferta_practica_practica");
+		// Desde el baseline PostgreSQL (11/11/2026) lo que creaba V75 lo crea V4 (recursos y ofertas).
 		assertThat(jdbc.queryForObject(
-				"SELECT success FROM flyway_schema_history WHERE version = '75'", Boolean.class))
+				"SELECT success FROM flyway_schema_history WHERE version = '4'", Boolean.class))
 				.isTrue();
 	}
 
@@ -283,7 +284,7 @@ class OfertaPracticaIT {
 		jdbc.update("""
 				INSERT INTO subscription (organization_id, plan_id, status, started_at, active,
 				                          version, created_at, updated_at)
-				SELECT ?, id, 'ACTIVA', CURRENT_TIMESTAMP, 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+				SELECT ?, id, 'ACTIVA', CURRENT_TIMESTAMP, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 				FROM plan WHERE code = 'BASICO'
 				""", f.organizationId());
 		OperatingActor admin = new OperatingActor(

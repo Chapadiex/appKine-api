@@ -19,7 +19,7 @@
 source "$(dirname "$0")/lib.sh"
 db_init
 
-filas="$(mysql_query "
+filas="$(db_query "
 	SELECT 'adjuntos', id, storage_key, checksum_sha256, estado FROM adjunto_administrativo
 	UNION ALL
 	SELECT 'adjuntos-clinicos', id, storage_key, checksum_sha256, estado FROM adjunto_clinico")"

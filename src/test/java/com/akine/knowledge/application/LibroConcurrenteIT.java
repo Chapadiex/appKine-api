@@ -196,7 +196,7 @@ class LibroConcurrenteIT {
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM libro WHERE id = ?", Integer.class,
 				fallido.id())).isZero();
 		String detalles = jdbc.queryForObject("""
-				SELECT CAST(details AS CHAR) FROM audit_event
+				SELECT CAST(details AS text) FROM audit_event
 				 WHERE event_type = 'LIBRO_ELIMINADO' AND entity_id = ?
 				""", String.class, fallido.id());
 		assertThat(detalles).contains("titulo").contains("hashSha256").contains("reemplazo-fallido");

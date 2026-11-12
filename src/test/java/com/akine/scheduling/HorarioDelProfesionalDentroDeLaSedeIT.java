@@ -59,8 +59,8 @@ import static org.assertj.core.api.Assertions.tuple;
 class HorarioDelProfesionalDentroDeLaSedeIT {
 
 	private static final ZoneId ZONA = ZoneId.of(AgendaFixtures.ZONA);
-	private static final LocalDate LUNES = LocalDate.now(ZONA).plusDays(7)
-			.with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
+	/** El lunes de la semana que viene que no es feriado (un feriado cierra la sede: el 23/11/2026). */
+	private LocalDate lunes;
 
 	@Autowired private CalendarioService calendarioService;
 	@Autowired private DisponibilidadService disponibilidadService;
@@ -71,6 +71,10 @@ class HorarioDelProfesionalDentroDeLaSedeIT {
 
 	@BeforeEach
 	void setUp() {
+		lunes = LocalDate.now(ZONA).plusDays(7).with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
+		while (jdbc.queryForObject("SELECT COUNT(*) FROM feriado WHERE fecha = ?", Integer.class, lunes) > 0) {
+			lunes = lunes.plusWeeks(1);
+		}
 		fixtures = new AgendaFixtures(jdbc);
 	}
 
@@ -167,7 +171,7 @@ class HorarioDelProfesionalDentroDeLaSedeIT {
 	void recortar_parte_la_franja_e_informa_turnos() {
 		Fixture fixture = fixtures.crear(1);
 		TurnoView once = turnoService.reservar(fixture.actor(), fixture.consultorioId(), fixture.ofertaId(),
-				new ReservaCommand(fixture.personaA(), LUNES.atTime(11, 0).atZone(ZONA).toInstant(),
+				new ReservaCommand(fixture.personaA(), lunes.atTime(11, 0).atZone(ZONA).toInstant(),
 						fixture.profesionalMembershipId(), null)).turno();
 
 		CalendarioView vista = fijarHorario(fixture,

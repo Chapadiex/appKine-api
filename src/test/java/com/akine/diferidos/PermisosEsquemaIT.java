@@ -361,7 +361,7 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 
 	private long contarGrants(long membershipId, Boolean activo) {
 		String sql = "SELECT COUNT(*) FROM membership_grant WHERE membership_id = ?"
-				+ (activo == null ? "" : " AND active = " + (activo ? 1 : 0));
+				+ (activo == null ? "" : " AND active = " + activo);
 		Long total = jdbc.queryForObject(sql, Long.class, membershipId);
 		return total == null ? 0L : total;
 	}

@@ -54,44 +54,28 @@ class ServicioYOfertaMigrationIT {
 	}
 
 	// =================================================================================
-	// servicio — global, sin organization_id y sin owner_key
+	// servicio — catalogo global y servicios propios del centro (ADR-0025, V143)
 	// =================================================================================
 
 	@Test
-	@DisplayName("servicio no tiene organization_id")
-	void servicio_no_tiene_organization_id() {
-		// La quinta excepcion a ADR-0004, declarada en ADR-0023: un Servicio es catalogo global
-		// (RN-M27-001) y la seccion 30.6 no lista organizationId entre sus campos. Lo que si es de
-		// un centro concreto —como lo presta— vive en oferta_servicio_consultorio.
-		assertThat(columnasDe("servicio"))
-				.as("servicio no puede llevar organization_id: es global, y agregarlo reintroduce "
-						+ "en el catalogo la configuracion por centro que ya vive en la Oferta")
-				.doesNotContain("organization_id");
-
-		// El contrapeso, para que este test no pase por el motivo equivocado: la tabla existe y
-		// tiene las columnas que la hacen un catalogo. Sin esto, un `servicio` que nunca se creo
-		// tambien "no tiene organization_id".
+	@DisplayName("servicio admite organization_id nulo: global o propio del centro")
+	void servicio_tiene_organization_id_nullable() {
+		// ADR-0025 supersede la fila de servicio de ADR-0023: NULL es el catalogo global, un valor es
+		// un servicio propio de esa organizacion.
+		assertThat(jdbc().queryForObject("""
+				SELECT is_nullable FROM information_schema.columns
+				 WHERE table_schema = current_schema() AND table_name = 'servicio' AND column_name = 'organization_id'
+				""", String.class)).isEqualTo("YES");
 		assertThat(columnasDe("servicio"))
 				.contains("codigo", "nombre", "naturaleza", "modalidad_default", "active");
 	}
 
 	@Test
-	@DisplayName("servicio no tiene owner_key, pero si deleted_key")
-	void servicio_no_tiene_owner_key() {
-		// La parte facil de copiar mal de ADR-0021: `owner_key` NO es "la forma de las tablas
-		// globales", es la forma de las tablas con DOS poblaciones. especialidad y practica (V20)
-		// lo llevan porque conviven filas globales y filas de tenant, y en MySQL varios NULL no
-		// colisionan en un unique. servicio tiene una sola poblacion: el centinela no distinguiria
-		// nada y seria una columna generada decorativa.
-		assertThat(columnasDe("servicio"))
-				.as("servicio no lleva owner_key: sin segunda poblacion el centinela no protege nada")
-				.doesNotContain("owner_key");
-
-		// deleted_key es un asunto INDEPENDIENTE y si hace falta: RF-M27-002 prohibe el borrado
-		// fisico, asi que un codigo dado de baja tiene que poder reusarse (V18/V19/V20).
-		assertThat(columnasDe("servicio"))
-				.as("servicio si lleva deleted_key: la baja es logica y el codigo se debe poder reusar")
-				.contains("deleted_key");
+	@DisplayName("servicio lleva owner_key y deleted_key")
+	void servicio_tiene_owner_key_y_deleted_key() {
+		// Con dos poblaciones (global y por centro) el unique necesita owner_key, como especialidad y
+		// practica (ADR-0021); deleted_key deja reusar un codigo dado de baja (RF-M27-002).
+		assertThat(columnasDe("servicio")).contains("owner_key", "deleted_key");
 	}
 
 	// =================================================================================
@@ -411,7 +395,7 @@ class ServicioYOfertaMigrationIT {
 				     duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				     requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				     requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 45, 1, ?, ?, false, true, true, true, true, CURRENT_DATE, true, 0,
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 45, 1, CAST(? AS numeric), ?, false, true, true, true, true, CURRENT_DATE, true, 0,
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.servicioId(),
 				nombreComercial, precioBase, moneda);

@@ -124,7 +124,7 @@ class DisponibilidadCentralIT {
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM audit_event
 				 WHERE consultorio_id = ? AND event_type = 'DISPONIBILIDAD_EXCEPCION_CREATED'
-				   AND details LIKE '%SUSTITUCION_POR_APERTURA%'
+				   AND CAST(details AS text) LIKE '%SUSTITUCION_POR_APERTURA%'
 				""", Long.class, centro.consultorioId())).isEqualTo(1);
 		// Y Centro deja de ofrecer las 10:00: el cierre recorta su franja.
 		assertThatThrownBy(() -> reservar(centro, a(10, 0)))
