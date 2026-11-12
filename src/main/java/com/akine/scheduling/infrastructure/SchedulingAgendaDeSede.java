@@ -50,7 +50,7 @@ public class SchedulingAgendaDeSede implements AgendaDeSede {
 	/**
 	 * Delega en {@link AgendaSedeIniciador}, que es quien abre la transaccion propia.
 	 *
-	 * <p>No se reimplementa el {@code INSERT ... ON DUPLICATE KEY UPDATE} aca: una segunda copia
+	 * <p>No se reimplementa el {@code INSERT ... ON CONFLICT DO NOTHING} aca: una segunda copia
 	 * de ese patron es una segunda copia que envejece, y el defecto que evita —deadlock entre las
 	 * primeras N escrituras de una sede— no se manifiesta en ningun test unitario.
 	 */

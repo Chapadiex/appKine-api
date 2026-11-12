@@ -14,7 +14,7 @@ import java.util.function.BooleanSupplier;
  * <h2>Por que existe: el pool de conexiones se trababa (G-10, docs/carga.md §6.1)</h2>
  *
  * <p>La regla del proyecto dice que toda fila-lock se crea en una transaccion aparte, con
- * {@code INSERT ... ON DUPLICATE KEY UPDATE}: crearla perezosamente dentro de la transaccion que la
+ * {@code INSERT ... ON CONFLICT DO NOTHING}: crearla perezosamente dentro de la transaccion que la
  * bloquea produce deadlock en InnoDB. Hasta el 11/10/2026 esa transaccion aparte era un
  * {@code @Transactional(propagation = REQUIRES_NEW)} llamado <b>desde adentro</b> de la de negocio.
  * {@code REQUIRES_NEW} suspende la transaccion de afuera pero <b>no devuelve su conexion</b>: el
@@ -35,9 +35,11 @@ import java.util.function.BooleanSupplier;
  *
  * <p>Antes de insertar se pregunta, con una lectura sin lock, si la fila ya esta. Es el caso del
  * 99,9 % de los pedidos: la fila se crea una vez por sede, persona o historia y despues solo se
- * bloquea. El {@code ON DUPLICATE KEY UPDATE} sobre una fila existente toma lock exclusivo, asi
- * que sin esta pregunta el iniciador esperaba a la transaccion que en ese momento tenia la fila
- * —en el cobro, ~340 ms de promedio con carga (§6.2)— para no crear nada. Si la lectura llega
+ * bloquea. En MySQL el {@code ON DUPLICATE KEY UPDATE} sobre una fila existente tomaba lock
+ * exclusivo, y sin esta pregunta el iniciador esperaba a la transaccion que en ese momento tenia la
+ * fila —en el cobro, ~340 ms de promedio con carga (§6.2)— para no crear nada. En PostgreSQL el
+ * {@code ON CONFLICT DO NOTHING} no bloquea la fila existente; la pregunta igual ahorra la
+ * transaccion y la conexion. Si la lectura llega
  * tarde y otra transaccion la crea en el medio, el {@code INSERT} idempotente resuelve igual.
  */
 public final class FilaLockPrevia {
@@ -59,7 +61,7 @@ public final class FilaLockPrevia {
 	 * Crea la fila si falta, en su propia transaccion, y la commitea.
 	 *
 	 * @param existe lectura SIN lock de la fila
-	 * @param crear  el {@code INSERT ... ON DUPLICATE KEY UPDATE}, idempotente
+	 * @param crear  el {@code INSERT ... ON CONFLICT DO NOTHING}, idempotente
 	 * @throws IllegalStateException si la fila falta y hay una transaccion activa: crearla pediria
 	 *                               una segunda conexion mientras la de afuera sigue tomada
 	 */

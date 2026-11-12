@@ -51,6 +51,35 @@ COPY --from=build /build/extracted/spring-boot-loader/ ./
 COPY --from=build /build/extracted/snapshot-dependencies/ ./
 COPY --from=build /build/extracted/application/ ./
 
+# Modelo de embeddings de la biblioteca (M30), OPCIONAL: sólo si al construir se pasan las dos URL
+#   docker build --build-arg AKINE_BIBLIOTECA_MODELO_URL=... --build-arg AKINE_BIBLIOTECA_TOKENIZER_URL=... .
+# Sin ellas la imagen queda exactamente como antes y la biblioteca sigue apagada. Con ellas, el
+# modelo ONNX cuantizado y su tokenizer.json quedan en /opt/akine/modelos/e5-base/ y se activan con
+# AKINE_BIBLIOTECA_ENABLED=true, AKINE_BIBLIOTECA_MODELO_RUTAMODELO=/opt/akine/modelos/e5-base/model.onnx
+# y AKINE_BIBLIOTECA_MODELO_RUTATOKENIZER=/opt/akine/modelos/e5-base/tokenizer.json.
+# Pasar una sola de las dos URL corta el build: antes se salteaba en silencio y la imagen salia sin
+# modelo. Opcionalmente, AKINE_BIBLIOTECA_MODELO_SHA256 y AKINE_BIBLIOTECA_TOKENIZER_SHA256 fijan el
+# hash esperado de cada archivo y el build falla si no coincide (sha256sum -c).
+ARG AKINE_BIBLIOTECA_MODELO_URL=""
+ARG AKINE_BIBLIOTECA_TOKENIZER_URL=""
+ARG AKINE_BIBLIOTECA_MODELO_SHA256=""
+ARG AKINE_BIBLIOTECA_TOKENIZER_SHA256=""
+RUN if [ -n "$AKINE_BIBLIOTECA_MODELO_URL" ] && [ -n "$AKINE_BIBLIOTECA_TOKENIZER_URL" ]; then \
+		mkdir -p /opt/akine/modelos/e5-base \
+		&& curl -fsSL "$AKINE_BIBLIOTECA_MODELO_URL" -o /opt/akine/modelos/e5-base/model.onnx \
+		&& curl -fsSL "$AKINE_BIBLIOTECA_TOKENIZER_URL" -o /opt/akine/modelos/e5-base/tokenizer.json \
+		&& if [ -n "$AKINE_BIBLIOTECA_MODELO_SHA256" ]; then \
+			echo "$AKINE_BIBLIOTECA_MODELO_SHA256  /opt/akine/modelos/e5-base/model.onnx" | sha256sum -c -; \
+		fi \
+		&& if [ -n "$AKINE_BIBLIOTECA_TOKENIZER_SHA256" ]; then \
+			echo "$AKINE_BIBLIOTECA_TOKENIZER_SHA256  /opt/akine/modelos/e5-base/tokenizer.json" | sha256sum -c -; \
+		fi \
+		&& chmod -R a+rX /opt/akine/modelos; \
+	elif [ -n "$AKINE_BIBLIOTECA_MODELO_URL" ] || [ -n "$AKINE_BIBLIOTECA_TOKENIZER_URL" ]; then \
+		echo "Faltan datos del modelo de la biblioteca: hay que pasar AKINE_BIBLIOTECA_MODELO_URL y AKINE_BIBLIOTECA_TOKENIZER_URL juntas" >&2; \
+		exit 1; \
+	fi
+
 # Raiz de los adjuntos administrativos (./var/adjuntos) y clinicos (./var/adjuntos-clinicos).
 # Es lo unico en lo que la aplicacion escribe. En un despliegue real se monta un volumen sobre
 # /app/var —o uno por raiz, que es para lo que estan separadas—: sin volumen, los binarios se
@@ -73,7 +102,7 @@ EXPOSE 8080
 
 # Liveness del actuator (spring-boot-starter-actuator, probes habilitadas en application.yml y
 # /actuator/health/** abierto en SecurityConfig). Se usa liveness y no /actuator/health a secas:
-# este ultimo incluye la base, y un corte de MySQL no se arregla reiniciando el backend.
+# este ultimo incluye la base, y un corte de PostgreSQL no se arregla reiniciando el backend.
 # start-period de 10 minutos: el primer arranque contra una base vacia aplica todas las migraciones
 # de Flyway. Medido: 3 min 9 s el 11/10/2026 (4 CPU, 2 GB, 72 migraciones) y 8 min 23 s en la
 # corrida de G-10 del 09/10 (docs/carga.md §6.7). Con 120 s el contenedor quedaba unhealthy a mitad

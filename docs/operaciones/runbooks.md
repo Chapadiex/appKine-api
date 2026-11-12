@@ -6,7 +6,7 @@ las de G-4 (`docs/observabilidad.md`): log JSON por stdout con `requestId`, `tra
 encendidas.
 
 Convenciones de los comandos: el backend corre como contenedor `akine-api`, la base es accesible
-con un cliente `mysql` (o `docker exec akine-mysql mysql ...`), y `jq` está disponible donde se
+con un cliente `psql` (o `docker exec -it akine-postgres psql -U akine -d akine_local`), y `jq` está disponible donde se
 leen logs. Nunca pegar en un ticket una línea de log o una fila con datos de un paciente: ids y
 `requestId`, sí; nombres, documentos o contenido clínico, no.
 
@@ -14,7 +14,7 @@ leen logs. Nunca pegar en un ticket una línea de log o una fila con datos de un
 |---|---|---|
 | [R1](#r1-el-backend-no-arranca-por-flyway) | El backend no arranca por Flyway | Caída total |
 | [R2](#r2-outbox-de-correo-clavado) | Outbox de correo clavado | Nadie recibe activaciones ni recuperaciones |
-| [R3](#r3-mysql-lleno) | MySQL lleno | Escrituras fallan, luego caída |
+| [R3](#r3-postgresql-lleno) | PostgreSQL lleno | Escrituras fallan, luego caída |
 | [R4](#r4-429-masivos) | 429 masivos | Nadie puede entrar |
 | [R5](#r5-error-500-correlacion-por-x-request-id--traceid) | Error 500: correlación por `X-Request-Id` / `traceId` | Un flujo roto |
 | [R6](#r6-restauracion-de-adjuntos) | Restauración de adjuntos | Documentos que no se descargan |
@@ -47,26 +47,28 @@ SELECT installed_rank, version, description, success, installed_on
 |---|---|---|
 | `Validate failed: ... Detected applied migration not resolved locally: 85` | La imagen es más vieja que el esquema **y** alguien sobreescribió `SPRING_FLYWAY_IGNORE_MIGRATION_PATTERNS` (el default `*:future` lo tolera: `rollback.md` §1) | Quitar la variable. Si no era un rollback, arrancar la imagen correcta |
 | `Migration checksum mismatch for migration version 57` | Alguien **editó** una migración ya aplicada | Nunca reparar en producción "para que arranque". Volver la migración a su contenido original en el código. `flyway repair` sólo con la causa entendida y decidida |
-| `Detected failed migration to version 14` (fila con `success = 0`) | Una migración **murió a mitad**. En MySQL el DDL no hace rollback: lo que alcanzó a crear quedó | Ver abajo |
-| `Access denied; you need (at least one of) the SUPER ... privilege(s)` al crear un trigger | El servidor tiene binlog y `log_bin_trust_function_creators=0`. Es `V14` | Arrancar MySQL con `--log-bin-trust-function-creators=1` y seguir "migración fallida" |
-| `Duplicate key name` / `Duplicate foreign key constraint name` | Reintento sobre lo que dejó una migración fallida, o nombre de constraint repetido entre tablas (únicos **por esquema** en MySQL) | Ver abajo / corregir el nombre en una migración nueva |
-| `Communications link failure` | No hay base, no la alcanza, o credenciales | R3 si el disco está lleno; si no, red y `AKINE_DB_*` |
+| `Detected failed migration to version 7` (fila con `success = false`) | Una migración **murió a mitad**. En PostgreSQL Flyway corre cada migración en una transacción y el DDL hace rollback, así que normalmente no queda nada a medias; sí puede quedar si la migración tiene sentencias que no corren en transacción (`CREATE INDEX CONCURRENTLY`, `ALTER TYPE ... ADD VALUE` en algunos casos) | Ver abajo |
+| `permission denied to create extension "vector"` / `Must be superuser to create this extension` | La base no tiene `vector` y el rol de la aplicación no puede crearla: `V1` la pide con `IF NOT EXISTS`, que sólo pasa si ya existe | El DBA corre `CREATE EXTENSION vector;` en la base (es lo que hace `ops/postgres/init` en desarrollo) y se arranca de nuevo |
+| `relation "..." already exists` / `constraint "..." for relation "..." already exists` | Reintento sobre lo que dejó una migración fallida no transaccional, o nombre de índice repetido (en PostgreSQL los nombres de índice son únicos **por esquema**; los de constraint, por tabla) | Ver abajo / corregir el nombre en una migración nueva |
+| `Connection to ... refused` / `The connection attempt failed` | No hay base, no la alcanza, o credenciales (`password authentication failed`) | R3 si el disco está lleno; si no, red y `AKINE_DB_*` |
 
 **Acciones — migración fallida a mitad**
 
 1. **Detener** el backend (no dejar que reintente en bucle).
 2. Backup del estado actual (`ops/backup.sh` se niega con migraciones fallidas: usar
-   `mysqldump` a mano o un snapshot del volumen). Sirve para el post-mortem.
-3. Leer la migración y ver qué alcanzó a aplicar: `SHOW CREATE TABLE`, `SHOW INDEX FROM`,
-   `SHOW TRIGGERS`. Deshacer **a mano sólo eso**. Ejemplo real con `V14` (25/08/2026): había creado
-   los dos índices y muerto en el trigger:
+   `pg_dump --format=plain --no-owner --no-privileges` a mano o un snapshot del volumen). Sirve
+   para el post-mortem.
+3. Leer la migración y ver qué alcanzó a aplicar: en `psql`, `\d+ <tabla>` (columnas, índices,
+   constraints y triggers) y `\df` (funciones). Deshacer **a mano sólo eso**. Ejemplo (el de
+   MySQL del 25/08/2026, con la migración de entonces, `V14`): había creado los dos índices y
+   muerto en el trigger:
 
    ```sql
-   ALTER TABLE audit_event DROP INDEX ix_audit_event_org_time;
-   ALTER TABLE audit_event DROP INDEX ix_audit_event_org_loc_time;
-   DELETE FROM flyway_schema_history WHERE version = '14' AND success = 0;
+   DROP INDEX ix_audit_event_org_time;
+   DROP INDEX ix_audit_event_org_loc_time;
+   DELETE FROM flyway_schema_history WHERE version = '14' AND NOT success;
    ```
-4. Corregir la causa (la flag, el nombre repetido) y arrancar: Flyway reintenta la migración
+4. Corregir la causa (la extensión, el nombre repetido) y arrancar: Flyway reintenta la migración
    completa.
 5. Si no se entiende qué dejó a medias: **restore** del backup previo al deploy (`rollback.md` §3).
 
@@ -125,47 +127,56 @@ docker logs --since 30m akine-api 2>&1 | jq -r 'select(.logger_name|test("notifi
 
 ---
 
-## R3. MySQL lleno
+## R3. PostgreSQL lleno
 
 **Síntomas**
-- 500 en escrituras con `The table '...' is full`, `Error writing file ... (Errcode: 28 - No space
-  left on device)` o `Disk full` en el log del backend.
-- Después: `readiness` en `DOWN`, Hikari sin conexiones, MySQL que no arranca.
-- El binlog crece aunque las tablas no: es la causa más común en MySQL 8.4 con binlog activo.
+- 500 en escrituras con `could not extend file ...: No space left on device` o
+  `could not write to file "pg_wal/..."` en el log del backend.
+- Después: `readiness` en `DOWN`, Hikari sin conexiones, PostgreSQL que se apaga (`PANIC` al no
+  poder escribir WAL) y no arranca hasta liberar espacio.
+- El WAL (`pg_wal/`) crece aunque las tablas no: es la causa más común. Las culpables habituales
+  son un **slot de replicación** abandonado (retiene WAL para siempre), un `archive_command` que
+  falla (el WAL no se recicla hasta archivarse) o un `max_wal_size` muy alto.
 
 **Diagnóstico**
 
 ```bash
-docker exec akine-mysql df -h /var/lib/mysql
-docker exec akine-mysql du -sh /var/lib/mysql/* | sort -h | tail
+docker exec akine-postgres df -h /var/lib/postgresql
+docker exec akine-postgres sh -c 'du -sh "$PGDATA"/* | sort -h | tail'
 ```
 
 ```sql
-SHOW BINARY LOGS;                     -- tamaño y cantidad de binlogs
-SELECT @@binlog_expire_logs_seconds;  -- default 30 días
-SELECT table_name, ROUND((data_length + index_length)/1024/1024) AS mb
-  FROM information_schema.TABLES WHERE table_schema = DATABASE()
- ORDER BY mb DESC LIMIT 10;
+SELECT pg_size_pretty(sum(size)) AS wal, count(*) AS archivos FROM pg_ls_waldir();  -- tamaño del WAL
+SELECT slot_name, active, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS retenido
+  FROM pg_replication_slots;                                                      -- slots que retienen WAL
+SELECT archived_count, failed_count, last_failed_wal, last_failed_time FROM pg_stat_archiver;
+SELECT relname, pg_size_pretty(pg_total_relation_size(relid)) AS total, n_dead_tup
+  FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 10;
 ```
+
+(`pg_ls_waldir()` y `pg_stat_archiver` piden superusuario o el rol `pg_monitor`.)
 
 En Prometheus: `hikaricp_connections_pending` sube, `http_server_requests_seconds_count{status="500"}`
 sube en endpoints de escritura.
 
 **Acciones**
-1. **Liberar binlog** si es la causa: `PURGE BINARY LOGS BEFORE NOW() - INTERVAL 3 DAY;` —**sólo**
-   si no hay réplicas que los necesiten y el último backup es posterior— y bajar
-   `binlog_expire_logs_seconds` en la configuración del servidor.
+1. **WAL retenido** si es la causa: borrar el slot abandonado (`SELECT pg_drop_replication_slot('<slot>');`
+   —**sólo** si no hay una réplica o un consumidor que lo necesite—), o arreglar el
+   `archive_command` que falla. **Nunca** borrar archivos de `pg_wal/` a mano: el cluster queda
+   irrecuperable. Con el espacio liberado, un `CHECKPOINT;` recicla el WAL sobrante.
 2. Si son datos: **agrandar el volumen**. No hay purga posible en AKINE: la información histórica
    relevante no se borra (baja lógica, ADR-0004), `audit_event` es append-only por trigger y las
    filas `ENVIADA` del outbox se conservan como registro. Las tablas que más crecen son
-   `audit_event` y `notification_outbox`: vigilarlas.
+   `audit_event` y `notification_outbox`: vigilarlas. Si `n_dead_tup` es alto, revisar que el
+   autovacuum esté corriendo (`pg_stat_user_tables.last_autovacuum`) antes de culpar al volumen.
 3. Si el volumen de backups comparte disco con la base, moverlo: es una mala ubicación por partida
    doble (R3 y desastre).
 4. Al recuperar espacio, el backend se recupera solo (Hikari reconecta); si quedó `DOWN`,
    reiniciarlo. Verificar con el smoke.
 5. Revisar que no haya quedado una migración a medias si el disco se llenó durante un deploy (R1).
 
-**Prevención:** alerta al 80 % del disco de datos y sobre el crecimiento diario de binlog.
+**Prevención:** alerta al 80 % del disco de datos, sobre el tamaño de `pg_wal/` y sobre cualquier
+slot de replicación inactivo.
 
 ---
 
@@ -339,7 +350,7 @@ falla no frena a los demás y se reintenta en el tick siguiente.
 | Job | Qué hace | Cada | Arranca a los | Lote |
 |---|---|---|---|---|
 | `VencimientoDePasesWorker` | Pasa a `VENCIDO` los pases `ACTIVO` cuya `vigencia_hasta` ya pasó **en el día de su sede**, pone el saldo en cero y deja un movimiento `VENCIMIENTO` con los créditos descartados (RF-M29-006). Audita `PASE_VENCIDO` | 1 h | 2 min | 200 por vuelta, hasta 10 vueltas por tick |
-| `RenovacionDeAbonosWorker` | Vende el período siguiente de los abonos con `renovacion_automatica = 1` cuando faltan `anticipacion-dias` o menos para el fin: snapshot del producto **de ese día**, movimiento `COMPRA` y **una** obligación `VENTA_ABONO` a nombre de quien autorizó la renovación. **No cobra** (DP-06). El período se **ancla al día de la primera venta** (DP-40): termina el día anterior al mismo día del mes siguiente, o al último si ese mes no lo tiene. Si quien autorizó ya no tiene `pase:manage` en la sede, **no vende**: apaga la renovación y avisa al administrador. Audita `ABONO_RENOVADO` (con `diaAncla`), `ABONO_RENOVACION_OMITIDA` cuando no puede y `ABONO_RENOVACION_APAGADA` cuando el autorizante ya no puede vender | 1 h | 3 min | 200 por vuelta, hasta 10 vueltas por tick |
+| `RenovacionDeAbonosWorker` | Vende el período siguiente de los abonos con `renovacion_automatica = true` cuando faltan `anticipacion-dias` o menos para el fin: snapshot del producto **de ese día**, movimiento `COMPRA` y **una** obligación `VENTA_ABONO` a nombre de quien autorizó la renovación. **No cobra** (DP-06). El período se **ancla al día de la primera venta** (DP-40): termina el día anterior al mismo día del mes siguiente, o al último si ese mes no lo tiene. Si quien autorizó ya no tiene `pase:manage` en la sede, **no vende**: apaga la renovación y avisa al administrador. Audita `ABONO_RENOVADO` (con `diaAncla`), `ABONO_RENOVACION_OMITIDA` cuando no puede y `ABONO_RENOVACION_APAGADA` cuando el autorizante ya no puede vender | 1 h | 3 min | 200 por vuelta, hasta 10 vueltas por tick |
 | `AvisosDePasesWorker` | Encola por el outbox, una sola vez por pase y por tipo, el aviso `PASE_POR_VENCER` (vigencia que termina dentro de `dias-antes-del-vencimiento`) y el `PASE_SALDO_BAJO` (saldo entre 1 y `saldo-bajo`, con créditos ya usados). Audita `PASE_AVISO_DE_VENCIMIENTO` / `PASE_AVISO_DE_SALDO_BAJO`. **No toca saldo, estado ni renovación** | 1 h | 4 min | 200 por tipo y por tick |
 
 **Configuración.** Ninguna propiedad está en `application.yml`: los valores de la tabla son los
@@ -361,7 +372,7 @@ Los umbrales son **por despliegue**, iguales para todos los centros (decisión a
 `docs/fases/decisiones-pendientes.md`).
 
 **Más de una instancia.** No hay lock distribuido (ShedLock ni similar): con dos backends, los
-tres jobs corren en los dos. Es seguro por diseño y está probado contra MySQL
+tres jobs corren en los dos. Es seguro por diseño y está probado contra la base real
 (`AbonoRenovacionYAvisosIT.renovacion_concurrente`, tres instancias sobre tres abonos): el
 vencimiento bloquea el pase y su `UPDATE` exige `ACTIVO` y fecha pasada; la renovación bloquea
 `producto_servicio → pase_servicio`, relee y tiene `uk_pase_servicio_renovacion` de cinturón; el
@@ -394,7 +405,7 @@ docker logs --since 3h akine-api 2>&1 | jq -r 'select(.logger_name|test("activit
 -- el margen de un día cubre las sedes al oeste de UTC)
 SELECT id, organization_id, consultorio_id, vigencia_hasta, creditos_disponibles, version
   FROM pase_servicio
- WHERE estado = 'ACTIVO' AND vigencia_hasta < CURRENT_DATE - INTERVAL 1 DAY
+ WHERE estado = 'ACTIVO' AND vigencia_hasta < CURRENT_DATE - INTERVAL '1 day'
  ORDER BY vigencia_hasta LIMIT 50;
 
 -- El ledger explica el saldo (RF-M29-009): toda fila que salga es un defecto, no un atraso del job
@@ -403,12 +414,12 @@ SELECT p.id, p.creditos_disponibles, COALESCE(SUM(m.cantidad), 0) AS suma_ledger
     ON m.pase_id = p.id AND m.organization_id = p.organization_id
  WHERE p.organization_id = :org
  GROUP BY p.id, p.creditos_disponibles
-HAVING p.creditos_disponibles <> suma_ledger;
+HAVING p.creditos_disponibles <> COALESCE(SUM(m.cantidad), 0);  -- PostgreSQL no acepta el alias en HAVING
 
 -- Renovación: abonos con la renovación prendida que ya pasaron su fin sin período siguiente
 SELECT a.id, a.organization_id, a.vigencia_hasta, a.renovacion_omitida_motivo
   FROM pase_servicio a
- WHERE a.tipo = 'ABONO' AND a.renovacion_automatica = 1 AND a.estado <> 'ANULADO'
+ WHERE a.tipo = 'ABONO' AND a.renovacion_automatica AND a.estado <> 'ANULADO'
    AND a.vigencia_hasta < CURRENT_DATE
    AND NOT EXISTS (SELECT 1 FROM pase_servicio n
                     WHERE n.organization_id = a.organization_id AND n.renueva_pase_id = a.id);
@@ -442,7 +453,7 @@ WITH RECURSIVE cadena (id, renueva_pase_id, vigencia_desde, nivel) AS (
     SELECT p.id, p.renueva_pase_id, p.vigencia_desde, c.nivel + 1
       FROM pase_servicio p JOIN cadena c ON p.id = c.renueva_pase_id
      WHERE p.organization_id = :org)
-SELECT id, vigencia_desde, DAY(vigencia_desde) AS dia FROM cadena ORDER BY nivel DESC;
+SELECT id, vigencia_desde, EXTRACT(DAY FROM vigencia_desde) AS dia FROM cadena ORDER BY nivel DESC;
 
 -- La huella en la auditoría
 SELECT event_type, entity_id, previous_state, new_state, occurred_at
@@ -461,7 +472,7 @@ SELECT event_type, entity_id, previous_state, new_state, occurred_at
 | Pases `ACTIVO` vencidos hace días, sin errores en el log | Más de 2.000 candidatos por tick, o una sede cuya zona no resuelve (cae a UTC, con WARN de `ZonaDeSede`) | Dejar correr: cada tick toma 2.000. Si no baja, revisar la zona de la sede (`docs/zonas-horarias.md`) |
 | La consulta del ledger devuelve filas | Un `UPDATE` de saldo sin su movimiento: **defecto**, no atraso | Abrir defecto con los ids. No ajustar el saldo a mano: el ajuste se hace desde la aplicación (`ajustarSaldoDePase`, permiso `pase:adjust`), que deja `AJUSTE` con motivo |
 | Abono sin renovar y `renovacion_omitida_motivo` lleno | El job no pudo: producto de baja o fuera de venta, persona de baja, período ocupado por una venta manual, o período siguiente ya terminado (job caído más de un período entero: **no vende el pasado**) | Es el comportamiento esperado. Si corresponde, vender el período a mano desde la pantalla y volver a prender la renovación sobre el período nuevo |
-| Abono sin renovar con motivo *quien autorizó la renovación ya no puede vender en la sede* | DP-40 (U-43): la cuenta que la prendió fue revocada, cambió de rol o de sede, perdió un permiso adicional o está suspendida. Lo apagó la desvinculación (actor = quien desvinculó) o el job (actor nulo, causa `AUTORIZANTE_SIN_PERMISO`), y se avisó a los `ORG_ADMIN` de la sede | Es lo esperado. Si el abono tiene que seguir, alguien con `pase:manage` en la sede vuelve a prender la renovación (`configurarRenovacionDeAbono`): desde ahí se vende a su nombre. **No** poner `renovacion_automatica = 1` a mano: seguiría a nombre de quien ya no está |
+| Abono sin renovar con motivo *quien autorizó la renovación ya no puede vender en la sede* | DP-40 (U-43): la cuenta que la prendió fue revocada, cambió de rol o de sede, perdió un permiso adicional o está suspendida. Lo apagó la desvinculación (actor = quien desvinculó) o el job (actor nulo, causa `AUTORIZANTE_SIN_PERMISO`), y se avisó a los `ORG_ADMIN` de la sede | Es lo esperado. Si el abono tiene que seguir, alguien con `pase:manage` en la sede vuelve a prender la renovación (`configurarRenovacionDeAbono`): desde ahí se vende a su nombre. **No** poner `renovacion_automatica = true` a mano: seguiría a nombre de quien ya no está |
 | Se apagó la renovación y el administrador no recibió el correo | Sin `ORG_ADMIN` vigente con correo en la sede (WARN `sin administrador a quien avisar`), o el envío | La renovación queda apagada igual. Si hay fila en el outbox y no sale, R2 |
 | Un período renovado no dura lo mismo que el anterior (28/02–30/03, 05/02–04/03) | DP-40 (U-45): el período se ancla al día del mes del **primer** período de la cadena; si ese día no existe en el mes, al último. Un producto que no cubre el período anclado (`vigenciaDias` menor) sigue durando `vigenciaDias` | Es lo esperado. La consulta de la cadena de arriba muestra el ancla |
 | Abono sin renovar, sin motivo y con la renovación prendida | Todavía no entró en la ventana (`anticipacion-dias`), o el job no corre | Primera fila de esta tabla |
@@ -535,3 +546,52 @@ docker logs --since 1h akine-api 2>&1 | jq -r 'select(.message|test("Lote de asi
   sólo corre el techo y deja menos holgura a la base.
 - No agrupar ítems en una transacción para "acelerar" el lote: DP-30 lo descartó (opción b), porque
   cambia la transacción independiente por participante de RF-M13-008.
+
+---
+
+## R-consulta. Consulta a la biblioteca: Ollama
+
+La consulta interpreta las preguntas y redacta sus respuestas con un modelo de lenguaje local
+(`qwen3:4b-instruct`, desde la consulta v2) servido por
+Ollama. Esta apagada por defecto y exige ademas `akine.biblioteca.enabled`. No guarda preguntas ni
+respuestas: los logs llevan solo tiempos y cantidades.
+
+**Bajar el modelo** (una vez por volumen `akine-ollama-data`)
+
+```bash
+docker compose up -d ollama
+docker compose exec ollama ollama pull qwen3:4b-instruct
+```
+
+**Con GPU NVIDIA** (recomendado: con `qwen2.5:3b`, ~1,5 s por respuesta contra ~24 s en CPU; con
+`qwen3:4b-instruct`, ~8 s por respuesta completa en una RTX 4050; medido el 11/11/2026)
+
+```bash
+docker compose -f compose.yaml -f compose.gpu.yaml up -d ollama
+docker compose exec ollama ollama ps   # PROCESSOR tiene que decir "100% GPU"
+```
+
+Al arrancar con la consulta prendida, el backend le pide a Ollama que cargue el modelo en segundo
+plano (`PrecargaDelModelo`; si Ollama no responde, solo deja un `warn`). Sin esa precarga, la primera
+consulta despues de arrancar el contenedor tarda entre uno y tres minutos: carga el
+modelo en la placa. Despues queda cargado 2 horas desde la ultima consulta.
+
+**Que mirar en el log y en las metricas** (nunca texto de la consulta): una linea INFO por consulta,
+`Consulta a la biblioteca terminada`, con `resultado`, `ms_cola`, `ms_interpretar`, `ms_buscar`,
+`ms_primera_palabra`, `ms_total`, `pasajes`, `tokens_entrada`, `tokens_salida` y `tokens_por_segundo`
+(`-` = la etapa no ocurrio). Los mismos tiempos van al timer `akine_consultas_etapa_seconds{etapa}`
+(`cola`, `interpretar`, `buscar`, `primera_palabra`, `total`). Objetivo en GPU: primera palabra < 5 s y
+repregunta < 3 s.
+
+**Variables**
+
+| Variable | Que hace | Default |
+|---|---|---|
+| `AKINE_BIBLIOTECA_CONSULTA_ENABLED` | Enciende la consulta | `false` |
+| `AKINE_BIBLIOTECA_CONSULTA_URL` | Direccion de Ollama | `http://localhost:11434` |
+| `AKINE_BIBLIOTECA_CONSULTA_MODELO` | Modelo a usar (`qwen2.5:3b` sigue como alternativa mas liviana) | `qwen3:4b-instruct` |
+| `AKINE_BIBLIOTECA_CONSULTA_KEEPALIVE` | Cuanto queda cargado el modelo despues de la ultima consulta | `2h` |
+
+**Si Ollama esta caido o no tiene el modelo:** solo la consulta responde 503
+(`asistente-no-disponible`) o devuelve el error por el stream; la busqueda y el resto de la
+biblioteca siguen funcionando. Verificar con `curl http://localhost:11434/api/tags`.

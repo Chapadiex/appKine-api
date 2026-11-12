@@ -28,10 +28,10 @@ public interface AccountActiveContextRepository extends JpaRepository<AccountAct
 	@Query(value = """
 			INSERT INTO account_active_context (account_id, organization_id, consultorio_id,
 			                                    updated_at)
-			VALUES (:accountId, :organizationId, :consultorioId, UTC_TIMESTAMP(6))
-			ON DUPLICATE KEY UPDATE organization_id = VALUES(organization_id),
-			                        consultorio_id = VALUES(consultorio_id),
-			                        updated_at = VALUES(updated_at)
+			VALUES (:accountId, :organizationId, :consultorioId, CURRENT_TIMESTAMP)
+			ON CONFLICT (account_id) DO UPDATE SET organization_id = EXCLUDED.organization_id,
+			                        consultorio_id = EXCLUDED.consultorio_id,
+			                        updated_at = EXCLUDED.updated_at
 			""", nativeQuery = true)
 	@Override
 	void apuntar(

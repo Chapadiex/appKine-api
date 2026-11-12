@@ -71,14 +71,14 @@ public final class ActividadItFixture {
 
 		long organizationId = insertar("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM organization WHERE slug = ?",
 				new Object[]{"Centro " + sufijo, "clase-it-" + sufijo, ZONA},
 				new Object[]{"clase-it-" + sufijo});
 
 		long consultorioId = insertar("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
 				new Object[]{organizationId, "Sede " + sufijo, ZONA},
 				new Object[]{organizationId, "Sede " + sufijo});
@@ -87,7 +87,7 @@ public final class ActividadItFixture {
 		long cuentaId = insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM cuenta WHERE email_normalizado = ?",
 				new Object[]{email, email}, new Object[]{email});
 
@@ -95,15 +95,15 @@ public final class ActividadItFixture {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, 'ORG_ADMIN', 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'ORG_ADMIN', false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, cuentaId);
 
 		long servicioId = insertar("""
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'GRUPAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'GRUPAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM servicio WHERE codigo = ?",
 				new Object[]{"CLASE-" + sufijo.toUpperCase(), "Servicio " + sufijo},
 				new Object[]{"CLASE-" + sufijo.toUpperCase()});
@@ -116,8 +116,8 @@ public final class ActividadItFixture {
 				        duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				        genera_registro_clinico, requiere_profesional, requiere_espacio,
 				        vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'GRUPAL', 60, ?, 0, 0, 0, 0, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'GRUPAL', 60, ?, false, false, false, false, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", """
 				SELECT id FROM oferta_servicio_consultorio
 				 WHERE organization_id = ? AND nombre_comercial = ?
@@ -130,7 +130,7 @@ public final class ActividadItFixture {
 			personas.add(insertar("""
 					INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 					                     active, version, created_at, updated_at)
-					VALUES (?, ?, 'Sintetica', ?, 'SINTETICA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+					VALUES (?, ?, 'Sintetica', ?, 'SINTETICA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 					""", "SELECT id FROM persona WHERE organization_id = ? AND apellido = ?",
 					new Object[]{organizationId, apellido, apellido.toUpperCase()},
 					new Object[]{organizationId, apellido}));
@@ -153,9 +153,9 @@ public final class ActividadItFixture {
 				                              inicio, fin, capacidad, estado,
 				                              programado_por_cuenta_id, programado_en, version)
 				VALUES (?, ?, ?, 'Clase sintetica',
-				        DATE_ADD(UTC_TIMESTAMP(6), INTERVAL ? DAY),
-				        DATE_ADD(DATE_ADD(UTC_TIMESTAMP(6), INTERVAL ? DAY), INTERVAL 1 HOUR),
-				        ?, 'PROGRAMADA', ?, UTC_TIMESTAMP(6), 0)
+				        (CURRENT_TIMESTAMP + make_interval(days => ?)),
+				        ((CURRENT_TIMESTAMP + make_interval(days => ?)) + INTERVAL '1 hours'),
+				        ?, 'PROGRAMADA', ?, CURRENT_TIMESTAMP, 0)
 				""", tenant.organizationId(), tenant.consultorioId(), tenant.ofertaId(),
 				diasAdelante, diasAdelante, capacidad, tenant.actor().accountId());
 	}

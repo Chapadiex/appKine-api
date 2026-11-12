@@ -29,8 +29,8 @@ public interface CasoNumeradorRepository
 	@Query(value = """
 			INSERT INTO caso_numerador (organization_id, historia_clinica_id, ultimo_numero,
 			                            created_at, updated_at)
-			VALUES (:organizationId, :historiaClinicaId, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-			ON DUPLICATE KEY UPDATE id = id
+			VALUES (:organizationId, :historiaClinicaId, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			ON CONFLICT DO NOTHING
 			""", nativeQuery = true)
 	@Override
 	void crearSiFalta(

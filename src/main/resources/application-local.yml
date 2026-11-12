@@ -8,7 +8,7 @@
 
 spring:
   datasource:
-    url: ${AKINE_DB_URL:jdbc:mysql://localhost:3306/akine_local?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC}
+    url: ${AKINE_DB_URL:jdbc:postgresql://localhost:5432/akine_local}
     username: ${AKINE_DB_USER:akine}
     password: ${AKINE_DB_PASSWORD:akine}
 

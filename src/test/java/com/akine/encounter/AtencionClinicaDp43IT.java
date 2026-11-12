@@ -193,7 +193,7 @@ class AtencionClinicaDp43IT {
 					String.class, sesion.id())).isEqualTo(MOTIVO);
 
 			String detalles = jdbc.queryForObject("""
-					SELECT CAST(details AS CHAR) FROM audit_event
+					SELECT CAST(details AS text) FROM audit_event
 					 WHERE event_type = 'SESION_INICIADA' AND entity_id = ?
 					""", String.class, sesion.id());
 			assertThat(detalles).contains("sinTurno").doesNotContain(MOTIVO);
@@ -343,7 +343,7 @@ class AtencionClinicaDp43IT {
 					.containsEntry("motivo", "Licencia por enfermedad")
 					.containsEntry("por", admin.cuentaId());
 			String detalles = jdbc.queryForObject("""
-					SELECT CAST(details AS CHAR) FROM audit_event
+					SELECT CAST(details AS text) FROM audit_event
 					 WHERE event_type = 'SESION_PROFESIONAL_REEMPLAZADO' AND entity_id = ?
 					""", String.class, sesionId);
 			assertThat(detalles).doesNotContain("Licencia");
@@ -417,7 +417,7 @@ class AtencionClinicaDp43IT {
 			Mundo mundo = fixtures.crearMundo();
 			long sesionId = cerrada(mundo);
 			Instant cerradaEn = Instant.now().minus(Duration.ofDays(31));
-			jdbc.update("UPDATE sesion SET cerrada_en = ? WHERE id = ?",
+			jdbc.update("UPDATE sesion SET cerrada_en = CAST(? AS timestamptz) WHERE id = ?",
 					java.sql.Timestamp.from(cerradaEn), sesionId);
 
 			assertThat(sesionService.ver(mundo.actor(), mundo.consultorioId(), sesionId).enmendableHasta())
@@ -474,7 +474,7 @@ class AtencionClinicaDp43IT {
 	// =================================================================================
 
 	private void exigirCaso(Mundo mundo) {
-		jdbc.update("UPDATE oferta_servicio_consultorio SET requiere_caso_clinico = 1 WHERE id = ?",
+		jdbc.update("UPDATE oferta_servicio_consultorio SET requiere_caso_clinico = true WHERE id = ?",
 				mundo.ofertaId());
 	}
 
@@ -494,8 +494,8 @@ class AtencionClinicaDp43IT {
 				                   reservado_por_cuenta_id, reservado_en, version,
 				                   created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?,
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 HOUR), UTC_TIMESTAMP(6),
-				        'RESERVADO', ?, UTC_TIMESTAMP(6), 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        (CURRENT_TIMESTAMP - INTERVAL '1 hours'), CURRENT_TIMESTAMP,
+				        'RESERVADO', ?, CURRENT_TIMESTAMP, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", mundo.organizationId(), mundo.consultorioId(), mundo.ofertaId(), persona(mundo),
 				mundo.profesional().membershipId(), mundo.profesional().cuentaId());
 	}
@@ -505,8 +505,8 @@ class AtencionClinicaDp43IT {
 				INSERT INTO oferta_profesional_habilitado
 				    (organization_id, consultorio_id, oferta_id, membership_id,
 				     valid_from, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 DAY), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, (CURRENT_TIMESTAMP - INTERVAL '1 days'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", mundo.organizationId(), mundo.consultorioId(), mundo.ofertaId(), membershipId);
 	}
 

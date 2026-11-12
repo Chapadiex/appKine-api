@@ -3,7 +3,7 @@ package com.akine;
 import org.springframework.boot.jdbc.autoconfigure.JdbcConnectionDetails;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.testcontainers.mysql.MySQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import java.sql.Connection;
@@ -11,14 +11,15 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Base real para los tests de integracion: un servidor por JVM y una base por contexto de Spring.
  *
- * <p>La imagen esta fijada en 8.4 —la misma del compose.yaml y la aprobada por el plan— y
- * no en "latest": un test que corre contra una version distinta de la de produccion no
- * prueba lo que dice probar.
+ * <p>La imagen es la misma del compose.yaml —PostgreSQL 18 con pgvector 0.8.1— y no "latest": un
+ * test que corre contra una version distinta de la del despliegue no prueba lo que dice probar.
+ * Se declara compatible con {@code postgres} porque es la imagen oficial con la extension agregada.
  *
  * <p><b>Por que un solo servidor.</b> Cuando el contenedor era un {@code @Bean} cada contexto
  * distinto levantaba el suyo: 17 en una corrida del CI, ~2,5 min de arranques, y todos vivos a la
@@ -30,51 +31,34 @@ import java.util.concurrent.atomic.AtomicInteger;
  * {@code PlatformAdminSinBootstrapIT}. Asi el aislamiento es el mismo que con un contenedor por
  * contexto.
  *
+ * <p>{@code max_connections} difiere del despliegue por este diseño: la cache de Spring guarda
+ * hasta 32 contextos con su pool abierto contra este unico servidor. El directorio en memoria y
+ * {@code fsync}/{@code synchronous_commit} apagados tampoco son los del despliegue: sobrevivir a un
+ * corte de luz no le importa a un test y no cambia locks, aislamiento ni SQL.
+ *
  * <p>Requiere Docker corriendo.
  */
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfiguration {
 
-	private static final String USUARIO = "test";
+	static {
+		// Igual que AkineApiApplication: el driver manda la zona de la JVM al conectar, y el alias
+		// legado que elige Windows (America/Buenos_Aires) no existe en el tzdata de la imagen.
+		TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+	}
 
-	/**
-	 * El servidor, con la misma configuracion que {@code compose.yaml}. No es un bean: si lo fuera,
-	 * cerrar un contexto lo apagaria para los demas. Lo baja Ryuk al terminar la JVM.
-	 *
-	 * <p><b>{@code --log-bin-trust-function-creators=1} no es un ajuste de comodidad.</b> La
-	 * migracion V14 crea los dos triggers que hacen {@code audit_event} append-only en la BASE
-	 * (RN-M24-001, AKINE-01.03). Con el log binario activo —el default de MySQL 8.4— crear un
-	 * trigger exige {@code SUPER}, y el usuario que Testcontainers crea no lo tiene.
-	 * Sin esta bandera, V14 falla con
-	 * <i>"You do not have the SUPER privilege and binary logging is enabled"</i> y no arranca
-	 * ningun test de integracion.
-	 *
-	 * <p>Tiene que estar tambien en el servidor real, y por eso esta en {@code compose.yaml} con
-	 * la explicacion de lo que implica. Un test que corre con una configuracion de servidor
-	 * distinta de la de produccion no prueba lo que dice probar — que es el mismo motivo por el
-	 * que la imagen esta fijada en 8.4.
-	 *
-	 * <p>{@code --max-connections} si difiere, y es por este diseño: la cache de Spring guarda hasta
-	 * 32 contextos con su pool abierto contra este unico servidor, y el default de 151 no alcanza.
-	 *
-	 * <p>El directorio en memoria y las tres banderas de durabilidad tampoco son las de produccion:
-	 * sobrevivir a un corte de luz no le importa a un test y no cambia locks, aislamiento ni SQL. Las
-	 * migraciones son casi todas DDL, que fuerza el disco en cada sentencia.
-	 *
-	 * <p>{@code withCommand} reemplaza el CMD de la imagen, asi que {@code mysqld} tiene que ir
-	 * explicito: sin el, el contenedor arrancaria la bandera como si fuera el ejecutable.
-	 */
-	private static final MySQLContainer MYSQL = new MySQLContainer(DockerImageName.parse("mysql:8.4"))
-			.withUsername(USUARIO)
-			.withTmpFs(Map.of("/var/lib/mysql", "rw"))
-			.withCommand("mysqld", "--log-bin-trust-function-creators=1", "--max-connections=1000",
-					"--innodb-flush-log-at-trx-commit=0", "--sync-binlog=0", "--innodb-doublewrite=0");
+	private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(
+			DockerImageName.parse("pgvector/pgvector:0.8.1-pg18-trixie").asCompatibleSubstituteFor("postgres"))
+			.withUsername("test")
+			.withTmpFs(Map.of("/var/lib/postgresql", "rw"))
+			.withCommand("postgres", "-c", "max_connections=1000", "-c", "fsync=off",
+					"-c", "synchronous_commit=off", "-c", "full_page_writes=off", "-c", "timezone=UTC");
 
 	private static final AtomicInteger BASES = new AtomicInteger();
 
-	/** Para el test que crea sus propias bases descartables, con el usuario root. */
-	public static MySQLContainer servidor() {
-		return MYSQL;
+	/** Para el test que crea sus propias bases descartables, con el superusuario del contenedor. */
+	public static PostgreSQLContainer servidor() {
+		return POSTGRES;
 	}
 
 	/**
@@ -88,19 +72,19 @@ public class TestcontainersConfiguration {
 	 */
 	@Bean
 	JdbcConnectionDetails baseDelContexto() {
-		MYSQL.start();
-		int numero = BASES.incrementAndGet();
-		crearBase(numero);
-		String url = MYSQL.getJdbcUrl().replace("/" + MYSQL.getDatabaseName(), "/akine_it_" + numero);
+		POSTGRES.start();
+		String base = "akine_it_" + BASES.incrementAndGet();
+		crearBase(base);
+		String url = POSTGRES.getJdbcUrl().replace("/" + POSTGRES.getDatabaseName(), "/" + base);
 		return new JdbcConnectionDetails() {
 			@Override
 			public String getUsername() {
-				return MYSQL.getUsername();
+				return POSTGRES.getUsername();
 			}
 
 			@Override
 			public String getPassword() {
-				return MYSQL.getPassword();
+				return POSTGRES.getPassword();
 			}
 
 			@Override
@@ -110,13 +94,17 @@ public class TestcontainersConfiguration {
 		};
 	}
 
-	private static void crearBase(int numero) {
-		try (Connection root = DriverManager.getConnection(MYSQL.getJdbcUrl(), "root", MYSQL.getPassword());
-				Statement sql = root.createStatement()) {
-			sql.execute("CREATE DATABASE akine_it_" + numero);
-			sql.execute("GRANT ALL ON akine_it_" + numero + ".* TO '" + USUARIO + "'@'%'");
+	/**
+	 * El usuario del contenedor es superusuario, asi que la base queda suya y la extension vector se
+	 * puede crear desde la migracion, como en un servidor recien inicializado por ops/postgres/init.
+	 */
+	private static void crearBase(String base) {
+		try (Connection admin = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
+				POSTGRES.getPassword());
+				Statement sql = admin.createStatement()) {
+			sql.execute("CREATE DATABASE " + base);
 		} catch (SQLException e) {
-			throw new IllegalStateException("No se pudo crear la base akine_it_" + numero, e);
+			throw new IllegalStateException("No se pudo crear la base " + base, e);
 		}
 	}
 }

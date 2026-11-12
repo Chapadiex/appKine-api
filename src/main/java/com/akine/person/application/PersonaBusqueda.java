@@ -17,9 +17,13 @@ import com.akine.person.domain.ClaveDeBusqueda;
  * @param perfil  filtro por perfil de paciente. {@code null} es indistinto, que es lo correcto
  *                por defecto: la busqueda del mostrador no sabe todavia si la persona que busca
  *                es paciente
+ * @param actividad filtro por actividades vigentes (clases, pases, abonos). {@code null} es
+ *                indistinto; se combina con {@code perfil} para separar a los pacientes de
+ *                kinesiologia de quienes van a actividades
  */
 public record PersonaBusqueda(
-		String texto, PersonaEstadoFiltro estado, PerfilFiltro perfil, String orden) {
+		String texto, PersonaEstadoFiltro estado, PerfilFiltro perfil, String orden,
+		ActividadFiltro actividad) {
 
 	/** DP-45: los campos por los que se ordena el padron. */
 	public static final java.util.Set<String> CAMPOS_DE_ORDEN =
@@ -27,7 +31,13 @@ public record PersonaBusqueda(
 
 	/** Sin orden pedido: el de siempre, apellido, nombre e id. */
 	public PersonaBusqueda(String texto, PersonaEstadoFiltro estado, PerfilFiltro perfil) {
-		this(texto, estado, perfil, "");
+		this(texto, estado, perfil, "", null);
+	}
+
+	/** Sin filtro por actividades. */
+	public PersonaBusqueda(
+			String texto, PersonaEstadoFiltro estado, PerfilFiltro perfil, String orden) {
+		this(texto, estado, perfil, orden, null);
 	}
 
 	/** La clave {@code campo,dir} para el {@code CASE} de la consulta, o vacio. */
@@ -88,6 +98,16 @@ public record PersonaBusqueda(
 		return switch (efectivo) {
 			case CON_PERFIL -> 1;
 			case SIN_PERFIL -> 0;
+			case TODOS -> SIN_FILTRO;
+		};
+	}
+
+	/** {@code 1} con actividad vigente, {@code 0} sin ella, {@code -1} indistinto. */
+	public int actividadFiltro() {
+		ActividadFiltro efectivo = actividad == null ? ActividadFiltro.TODOS : actividad;
+		return switch (efectivo) {
+			case CON_ACTIVIDAD -> 1;
+			case SIN_ACTIVIDAD -> 0;
 			case TODOS -> SIN_FILTRO;
 		};
 	}

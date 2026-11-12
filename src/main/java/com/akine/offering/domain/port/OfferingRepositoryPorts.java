@@ -38,34 +38,21 @@ public final class OfferingRepositoryPorts {
 	}
 
 	/**
-	 * Acceso al catalogo GLOBAL de Servicios (M27/M06).
+	 * Acceso a los Servicios (M27/M06): el catalogo global de la plataforma y los servicios propios
+	 * de cada centro, en la misma tabla.
 	 *
-	 * <h2>{@code organizationId} NO es un parametro de este puerto, y NO es un olvido</h2>
+	 * <h2>Dos poblaciones desde V143 (ADR-0025)</h2>
 	 *
-	 * <p>La tabla {@code servicio} es la quinta excepcion declarada a ADR-0004, consolidada junto
-	 * a las cuatro anteriores en <b>ADR-0023</b>. RN-M27-001 lo dice sin lugar a dudas: "un
-	 * Servicio es catalogo global/conceptual". No hay dos poblaciones que discriminar como en
-	 * {@code especialidad} o {@code practica} (ADR-0021, {@code owner_key}): con una sola
-	 * poblacion, un centinela no distinguiria nada. Es exactamente el razonamiento que
-	 * {@code FeriadoRepositoryPort} ya declaro para {@code feriado} (ADR-0022) — <b>leer ese
-	 * javadoc antes de tocar este</b>.
+	 * <p>Hasta V143 la tabla era global pura (ADR-0023, RN-M27-001). Desde el 09/11/2026 un centro
+	 * tambien da de alta servicios que ve solo el: {@code organization_id} nullable y
+	 * {@code owner_key = IFNULL(organization_id, 0)}, igual que {@code especialidad} (ADR-0021).
+	 * <b>Toda lectura acotada filtra por {@code owner_key}</b> ({@link #buscarVisibles},
+	 * {@link #findVisible}), nunca por {@code organization_id}: eso esconde el catalogo global. Lo que
+	 * cambia por sede sigue viviendo en {@link OfertaServicioConsultorio} (regla maestra 14).
 	 *
-	 * <p><b>Si alguien le agrega {@code organizationId} a esta firma, a una consulta de
-	 * {@code ServicioRepository} o al {@code WHERE} de una nativa</b>, es que entendio mal el
-	 * alcance: la configuracion propia de cada centro no vive en {@code servicio}, vive en
-	 * {@link OfertaServicioConsultorio} — esa es la regla maestra 14 y el objetivo entero de esta
-	 * etapa. Duplicar el filtro contextual aca seria construir, sin necesidad, la segunda
-	 * poblacion que el diseno de la etapa descarto explicitamente (docs/diseno,
-	 * "Por que Servicio es puramente global").
-	 *
-	 * <h2>Para que lo usa la Tarea 5, sin inyectar {@code ServicioService}</h2>
-	 *
-	 * <p>{@code OfertaService} tiene que rechazar crear una Oferta sobre un Servicio dado de baja
-	 * (RF-M27-002, {@code ServicioInactivoException}). Ese chequeo se resuelve leyendo este puerto
-	 * directamente y preguntando {@link Servicio#isOperable()} sobre el resultado de
-	 * {@link #findById(Long)} — <b>nunca</b> inyectando {@code ServicioService}: un servicio de
-	 * aplicacion llamando a otro arrastra su autorizacion, su transaccion y su auditoria a un
-	 * camino que no las pidio (ruling R1 de la Tarea 2).
+	 * <p>{@code OfertaService} rechaza una Oferta sobre un Servicio dado de baja leyendo este puerto
+	 * directamente, <b>nunca</b> inyectando {@code ServicioService}, que arrastraria su autorizacion,
+	 * su transaccion y su auditoria a un camino que no las pidio (ruling R1 de la Tarea 2).
 	 */
 	public interface ServicioRepositoryPort {
 
@@ -86,13 +73,13 @@ public final class OfferingRepositoryPorts {
 		Servicio saveAndFlush(Servicio servicio);
 
 		/**
-		 * Un servicio por id, activo o no. Sin acotar por tenant: es global, lo ve cualquiera con
-		 * sesion (contrato §5, {@code GET /servicios} solo exige autenticado).
+		 * Un servicio por id, activo o no, SIN acotar por duenio. Solo para quien ya decidio la
+		 * visibilidad: la directory de ofertas lee el servicio de una oferta ya acotada a su sede.
 		 */
 		Optional<Servicio> findById(Long id);
 
 		/**
-		 * Busqueda del catalogo global, ordenada por nombre.
+		 * Busqueda de los servicios de los duenios visibles (V143), ordenada por nombre.
 		 *
 		 * <p>{@code patron} llega ya listo para {@code LIKE} (con sus {@code %} puestos por quien
 		 * llama, igual que {@code CatalogoBusqueda.patron()} en {@code resource}) y se compara
@@ -100,9 +87,13 @@ public final class OfferingRepositoryPorts {
 		 * selector se puede tipear cualquiera de los dos. {@code activoFiltro = -1} significa "no
 		 * filtres por estado" — mismo centinela que {@code CatalogoRepositoryPorts}, documentado
 		 * ahi con el motivo completo (evitar el "could not determine type" de un parametro nulo en
-		 * consulta nativa).
+		 * consulta nativa). <b>Se filtra por {@code owner_key}, nunca por {@code organization_id}</b>: un
+		 * {@code WHERE organization_id = ?} esconde en silencio todo el catalogo global (trampa de 02.05).
 		 */
-		List<Servicio> buscar(String patron, int activoFiltro);
+		List<Servicio> buscarVisibles(List<Long> owners, String patron, int activoFiltro);
+
+		/** Un servicio por id solo si su duenio esta entre {@code owners}; si no, vacio (404). */
+		Optional<Servicio> findVisible(Long id, List<Long> owners);
 	}
 
 	/**

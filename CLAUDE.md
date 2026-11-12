@@ -174,7 +174,7 @@ Un test de integración (necesita Docker):
 ./mvnw -o verify -Dtest=none -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=CobroConcurrenteIT -Djacoco.skip=true
 ```
 
-Los tests de integración corren en 2 procesos, cada uno con su MySQL en memoria. Cambiar la API exige además regenerar el contrato: `./mvnw verify -Dakine.contract.update=true`.
+Los tests de integración corren en 2 procesos, cada uno con su PostgreSQL (pgvector) en memoria. Cambiar la API exige además regenerar el contrato: `./mvnw verify -Dakine.contract.update=true`.
 
 **Sin TDD obligatorio:** código primero, tests después y pocos. Van tests para reglas de negocio,
 concurrencia y lo que reproduce un defecto; no para comportamiento del framework ni para subir un
@@ -247,14 +247,15 @@ Reglas innegociables del QA:
 
 Remote: `https://github.com/Chapadiex/appKine-api.git`
 
-Stack fijado: Java 21 · Spring Boot **4.1.1** · Maven 3.9 · MySQL 8.4 · Flyway · springdoc ·
+Stack fijado: Java 21 · Spring Boot **4.1.x** · Maven 3.9 · **PostgreSQL 18 + pgvector** (desde el
+12/11/2026; antes MySQL 8.4, ver ADR-0026) · Flyway · springdoc ·
 ArchUnit · Testcontainers.
 
 > **Ojo con Spring Boot 4.** Rompe cosas respecto de 3.x y ya nos costó tiempo:
 > starters partidos (`spring-boot-starter-webmvc`, no `-web`; un `-test` por starter),
 > `@WebMvcTest` en `org.springframework.boot.webmvc.test.autoconfigure`,
 > `TestRestTemplate` movido a `spring-boot-resttestclient` y **sin autoconfigurar**
-> (usar `RestTestClient` + `@AutoConfigureRestTestClient`), `MySQLContainer` no genérico
+> (usar `RestTestClient` + `@AutoConfigureRestTestClient`), `PostgreSQLContainer` no genérico
 > en Testcontainers 2.x, y **Jackson 3**: `WRITE_DATES_AS_TIMESTAMPS` pasó de
 > `SerializationFeature` a `DateTimeFeature`, o sea `spring.jackson.datatype.datetime.*`.
 > Ante una duda de API, inspeccionar el jar antes de asumir la forma de 3.x.

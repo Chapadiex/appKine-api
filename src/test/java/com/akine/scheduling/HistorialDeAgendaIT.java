@@ -142,7 +142,7 @@ class HistorialDeAgendaIT {
 		// El id de operacion une las tres filas de auditoria, que siguen todas ahi.
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM audit_event
-				 WHERE organization_id = ? AND JSON_UNQUOTE(JSON_EXTRACT(details, '$.operacionId')) = ?
+				 WHERE organization_id = ? AND details ->> 'operacionId' = ?
 				""", Integer.class, sedeA.organizationId(), cambioDeSede.operacionId())).isEqualTo(3);
 
 		// El profesional ve lo suyo; el de al lado, no.

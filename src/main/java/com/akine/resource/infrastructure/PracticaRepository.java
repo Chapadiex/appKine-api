@@ -37,7 +37,7 @@ public interface PracticaRepository
 	@Query(value = """
 			SELECT * FROM practica
 			 WHERE owner_key IN (:owners)
-			   AND (:activoFiltro = -1 OR active = :activoFiltro)
+			   AND (:activoFiltro = -1 OR active = (:activoFiltro = 1))
 			   AND (:especialidadId = -1 OR especialidad_id = :especialidadId)
 			   AND (name LIKE :patron OR codigo LIKE :patron)
 			 ORDER BY name ASC
@@ -52,7 +52,7 @@ public interface PracticaRepository
 	@Query(value = """
 			SELECT COUNT(*) FROM practica
 			 WHERE especialidad_id = :especialidadId
-			   AND active = 1
+			   AND active = true
 			""", nativeQuery = true)
 	long contarVigentesPorEspecialidad(@Param("especialidadId") Long especialidadId);
 }

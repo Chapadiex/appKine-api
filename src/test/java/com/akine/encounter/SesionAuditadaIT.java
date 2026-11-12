@@ -106,7 +106,7 @@ class SesionAuditadaIT {
 	private Map<String, Object> fila(String evento, long sesionId) {
 		return jdbc.queryForMap("""
 				SELECT organization_id, consultorio_id, actor_account_id, entity_type,
-				       previous_state, new_state, CAST(details AS CHAR) AS details
+				       previous_state, new_state, CAST(details AS text) AS details
 				  FROM audit_event WHERE event_type = ? AND entity_id = ?
 				""", evento, sesionId);
 	}

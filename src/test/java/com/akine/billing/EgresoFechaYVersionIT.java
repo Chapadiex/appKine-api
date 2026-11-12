@@ -63,10 +63,10 @@ class EgresoFechaYVersionIT {
 		LocalDate dia = LocalDate.of(2026, 10, 9);
 		Instant nocheDeCordoba = dia.atTime(22, 30).atZone(ZoneId.of(EgresoItFixture.ZONA)).toInstant();
 		// Como texto UTC y no como Timestamp: sin depender de la zona de la JVM ni del driver.
-		jdbc.update("UPDATE egreso SET registrado_en = ? WHERE id = ?",
+		jdbc.update("UPDATE egreso SET registrado_en = CAST(? AS timestamptz) WHERE id = ?",
 				nocheDeCordoba.toString().replace("T", " ").replace("Z", ""), egreso.id());
 		assertThat(jdbc.queryForObject(
-				"SELECT DATE_FORMAT(registrado_en, '%Y-%m-%d %H:%i') FROM egreso WHERE id = ?",
+				"SELECT to_char(registrado_en AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI') FROM egreso WHERE id = ?",
 				String.class, egreso.id()))
 				.as("la columna guarda UTC: el dia UTC ya es el siguiente")
 				.isEqualTo("2026-10-10 01:30");

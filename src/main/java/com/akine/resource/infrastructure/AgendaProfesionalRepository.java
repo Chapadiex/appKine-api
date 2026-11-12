@@ -25,8 +25,8 @@ public interface AgendaProfesionalRepository
 	@Modifying
 	@Query(value = """
 			INSERT INTO agenda_profesional (organization_id, account_id, created_at)
-			VALUES (:organizationId, :accountId, UTC_TIMESTAMP(6))
-			ON DUPLICATE KEY UPDATE id = id
+			VALUES (:organizationId, :accountId, CURRENT_TIMESTAMP)
+			ON CONFLICT DO NOTHING
 			""", nativeQuery = true)
 	@Override
 	void crearSiFalta(

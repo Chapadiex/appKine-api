@@ -4,9 +4,12 @@ import com.akine.activity.api.dto.CancelarClaseRequest;
 import com.akine.activity.api.dto.ClaseResponse;
 import com.akine.activity.api.dto.EventoDeClaseResponse;
 import com.akine.activity.api.dto.ProgramarClaseRequest;
+import com.akine.activity.api.dto.ProgramarSerieDeClasesRequest;
 import com.akine.activity.api.dto.ReprogramarClaseRequest;
+import com.akine.activity.api.dto.SerieDeClasesResponse;
 import com.akine.activity.application.ClaseService;
 import com.akine.activity.application.ProgramarClaseCommand;
+import com.akine.activity.application.ProgramarSerieDeClasesCommand;
 import com.akine.activity.application.ReprogramarClaseCommand;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -29,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -128,6 +132,64 @@ public class ClaseController {
 				.created(URI.create("/api/v1/consultorios/" + consultorioId + "/clases/"
 						+ resultado.clase().id()))
 				.body(cuerpo);
+	}
+
+	@PostMapping("/ofertas/{ofertaId}/serie")
+	@Operation(
+			operationId = "programarSerieDeClases",
+			summary = "Programar clases semanales",
+			description = """
+					Programa una clase en cada fecha del rango (desde y hasta inclusive) que cae en \
+					uno de los `diasSemana`, con el mismo horario, profesional, box y cupo.
+
+					**Cada fecha es una clase suelta**: se valida exactamente igual que \
+					`POST .../clases/ofertas/{ofertaId}` y en su propia transaccion.
+
+					**No es todo o nada.** Una fecha que no se puede programar (feriado, box o \
+					profesional ocupado, fuera del horario del profesional, oferta no vigente, \
+					cupo) va a `omitidas` con su motivo y las demas se programan. Responde 200 \
+					aunque no se haya programado ninguna: el detalle esta en el cuerpo.
+
+					Lo que si rechaza la serie entera es lo que fallaria en todas las fechas: sede u \
+					oferta ajenas (404), oferta no grupal (409), sin permiso (403) o un pedido mal \
+					formado (400; por ejemplo, un rango de mas de un anio).""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Serie procesada: programadas y omitidas"),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Pedido invalido: rango, dias, horas o cupo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin `clase:manage` en esa sede, o sin contexto de trabajo activo",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sede o la oferta no existen, o son de otro tenant",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "La oferta no es grupal",
+					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<SerieDeClasesResponse> programarSerie(
+			@PathVariable long consultorioId,
+			@PathVariable long ofertaId,
+			@RequestBody @Valid ProgramarSerieDeClasesRequest request) {
+
+		var resultado = claseService.programarSerie(
+				apiActor.current(), consultorioId, ofertaId,
+				new ProgramarSerieDeClasesCommand(
+						request.desde(),
+						request.hasta(),
+						new HashSet<>(request.diasSemana()),
+						request.horaInicio(),
+						request.horaFin(),
+						request.profesionalId(),
+						request.capacidad(),
+						request.titulo(),
+						request.idempotencyKey(),
+						request.espacioId()));
+		return ResponseEntity.ok(SerieDeClasesResponse.de(resultado));
 	}
 
 	@PostMapping("/{claseId}/reprogramacion")

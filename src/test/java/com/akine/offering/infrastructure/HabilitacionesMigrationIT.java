@@ -11,7 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -64,7 +63,7 @@ class HabilitacionesMigrationIT {
 		for (String tabla : List.of("oferta_profesional_habilitado", "oferta_espacio_habilitado")) {
 			String nullable = jdbc().queryForObject("""
 					SELECT is_nullable FROM information_schema.columns
-					 WHERE table_schema = DATABASE() AND table_name = ?
+					 WHERE table_schema = current_schema() AND table_name = ?
 					   AND column_name = 'organization_id'
 					""", String.class, tabla);
 
@@ -85,8 +84,8 @@ class HabilitacionesMigrationIT {
 			// de nosotros. Mismo filtro que ServicioYOfertaMigrationIT.
 			List<String> primeras = jdbc().queryForList("""
 					SELECT DISTINCT s.column_name
-					  FROM information_schema.statistics s
-					 WHERE s.table_schema = DATABASE() AND s.table_name = ?
+					  FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) s
+					 WHERE s.table_schema = current_schema() AND s.table_name = ?
 					   AND s.seq_in_index = 1 AND s.index_name <> 'PRIMARY'
 					   AND NOT EXISTS (
 					       SELECT 1 FROM information_schema.table_constraints tc
@@ -133,7 +132,7 @@ class HabilitacionesMigrationIT {
 		habilitarProfesional(fixture);
 		jdbc().update("""
 				UPDATE oferta_profesional_habilitado
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6),
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP,
 				       deactivation_reason = 'dejo de atender esto'
 				 WHERE oferta_id = ? AND membership_id = ?
 				""", fixture.ofertaId(), fixture.membershipId());
@@ -164,13 +163,12 @@ class HabilitacionesMigrationIT {
 
 		assertThatThrownBy(() -> jdbc().update("""
 				UPDATE oferta_profesional_habilitado
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6)
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP
 				 WHERE oferta_id = ? AND membership_id = ?
 				""", fixture.ofertaId(), fixture.membershipId()))
-				.as("una baja sin motivo tiene que violar ck_oph_baja_coherente. El CHECK de "
-						+ "MySQL llega como UncategorizedSQLException y no como violacion de "
-						+ "integridad, al reves que el UNIQUE")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.as("una baja sin motivo tiene que violar ck_oph_baja_coherente: en PostgreSQL un CHECK "
+						+ "llega como DataIntegrityViolationException, igual que el UNIQUE")
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -184,12 +182,12 @@ class HabilitacionesMigrationIT {
 				INSERT INTO oferta_espacio_habilitado
 				    (organization_id, consultorio_id, oferta_id, espacio_id,
 				     valid_from, valid_until, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.ofertaId(),
 				fixture.espacioId()))
 				.as("una ventana de largo cero tiene que violar ck_oeh_vigencia_coherente")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	// =================================================================================
@@ -206,7 +204,7 @@ class HabilitacionesMigrationIT {
 				INSERT INTO oferta_profesional_habilitado
 				    (organization_id, consultorio_id, oferta_id, membership_id,
 				     valid_from, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.ofertaId(),
 				fixture.membershipId());
 	}
@@ -216,7 +214,7 @@ class HabilitacionesMigrationIT {
 				INSERT INTO oferta_espacio_habilitado
 				    (organization_id, consultorio_id, oferta_id, espacio_id,
 				     valid_from, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.ofertaId(),
 				fixture.espacioId());
 	}
@@ -241,7 +239,7 @@ class HabilitacionesMigrationIT {
 		jdbc().update("""
 				INSERT INTO organization (name, slug, timezone, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Habilitacion Sintetica " + sufijo, slug);
 		return jdbc().queryForObject(
 				"SELECT id FROM organization WHERE slug = ?", Long.class, slug);
@@ -252,7 +250,7 @@ class HabilitacionesMigrationIT {
 		jdbc().update("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, name);
 		return jdbc().queryForObject(
 				"SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
@@ -266,8 +264,8 @@ class HabilitacionesMigrationIT {
 				                      requiere_caso_clinico_default,
 				                      genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'GRUPAL', 1, 1, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'GRUPAL', true, true, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", codigo, "Servicio Sintetico " + sufijo);
 		return jdbc().queryForObject(
 				"SELECT id FROM servicio WHERE codigo = ?", Long.class, codigo);
@@ -283,8 +281,8 @@ class HabilitacionesMigrationIT {
 				     duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				     genera_registro_clinico, requiere_profesional, requiere_espacio,
 				     vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'GRUPAL', 45, 8, 0, 1, 1, 1, 1, CURRENT_DATE(), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'GRUPAL', 45, 8, false, true, true, true, true, CURRENT_DATE, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, servicioId, nombre);
 		return jdbc().queryForObject("""
 				SELECT id FROM oferta_servicio_consultorio
@@ -297,8 +295,8 @@ class HabilitacionesMigrationIT {
 		jdbc().update("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado,
 				                    active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetica', 'De Prueba', 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetica', 'De Prueba', 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 		return jdbc().queryForObject("SELECT id FROM cuenta WHERE email = ?", Long.class, email);
 	}
@@ -307,8 +305,8 @@ class HabilitacionesMigrationIT {
 		jdbc().update("""
 				INSERT INTO membership (organization_id, account_id, role_code, estado,
 				                        valid_from, active, version, created_at, updated_at)
-				VALUES (?, ?, 'PROFESIONAL', 'ACTIVA', UTC_TIMESTAMP(6), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'PROFESIONAL', 'ACTIVA', CURRENT_TIMESTAMP, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, accountId);
 		return jdbc().queryForObject("""
 				SELECT id FROM membership WHERE organization_id = ? AND account_id = ?
@@ -320,8 +318,8 @@ class HabilitacionesMigrationIT {
 		jdbc().update("""
 				INSERT INTO espacio (organization_id, consultorio_id, name, tipo, capacidad,
 				                     valid_from, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 'SALA_GRUPAL', 6, UTC_TIMESTAMP(6), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'SALA_GRUPAL', 6, CURRENT_TIMESTAMP, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, name);
 		return jdbc().queryForObject("""
 				SELECT id FROM espacio WHERE organization_id = ? AND name = ?

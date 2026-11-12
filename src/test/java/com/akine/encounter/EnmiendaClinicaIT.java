@@ -82,18 +82,20 @@ class EnmiendaClinicaIT {
 				"sesion_version_tratamiento_parametro", "sesion_version_medicion")) {
 			assertThat(jdbc.queryForObject("""
 					SELECT is_nullable FROM information_schema.columns
-					 WHERE table_schema = DATABASE() AND table_name = ? AND column_name = 'organization_id'
+					 WHERE table_schema = current_schema() AND table_name = ? AND column_name = 'organization_id'
 					""", String.class, tabla)).as(tabla).isEqualTo("NO");
 		}
 		assertThat(jdbc.queryForList("""
 				SELECT constraint_name FROM information_schema.table_constraints
-				 WHERE table_schema = DATABASE() AND constraint_type = 'CHECK'
+				 WHERE table_schema = current_schema() AND constraint_type = 'CHECK'
 				   AND table_name LIKE 'sesion_version_%'
 				""", String.class))
 				.contains("ck_svt_lateralidad", "ck_svtp_valor", "ck_svm_valor_tipado");
+		// Desde el baseline PostgreSQL (11/11/2026) lo que creaba V71 lo crea V7, la migracion de
+		// clinica y atencion.
 		assertThat(jdbc.queryForObject("""
-				SELECT version FROM flyway_schema_history WHERE version = '71' AND success = 1
-				""", String.class)).isEqualTo("71");
+				SELECT version FROM flyway_schema_history WHERE version = '7' AND success
+				""", String.class)).isEqualTo("7");
 	}
 
 	@Test

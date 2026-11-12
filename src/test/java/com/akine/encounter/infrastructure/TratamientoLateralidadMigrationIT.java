@@ -81,7 +81,7 @@ class TratamientoLateralidadMigrationIT {
 		try (Connection c = dataSource.getConnection();
 		     PreparedStatement ps = c.prepareStatement("""
 				SELECT constraint_name FROM information_schema.table_constraints
-				 WHERE table_schema = DATABASE() AND table_name = 'tratamiento_realizado'
+				 WHERE table_schema = current_schema() AND table_name = 'tratamiento_realizado'
 				   AND constraint_type = 'CHECK' AND constraint_name = 'ck_tratamiento_lateralidad'
 				""");
 		     var rs = ps.executeQuery()) {
@@ -93,7 +93,7 @@ class TratamientoLateralidadMigrationIT {
 		long orden = SECUENCIA.getAndIncrement();
 		try (Connection c = dataSource.getConnection()) {
 			try (Statement s = c.createStatement()) {
-				s.execute("SET FOREIGN_KEY_CHECKS = 0");
+				s.execute("SET session_replication_role = replica");
 			}
 			try {
 				int filas;
@@ -104,7 +104,7 @@ class TratamientoLateralidadMigrationIT {
 						        profesional_membership_id, registrado_en, registrado_por_cuenta_id,
 						        version, created_at, updated_at)
 						 VALUES (?, 1, 1, ?, 1, 'P-LAT', 'Practica sintetica', ?, ?, 1,
-						         UTC_TIMESTAMP(6), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+						         CURRENT_TIMESTAMP, 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 						""")) {
 					ps.setLong(1, ORG);
 					ps.setLong(2, orden);
@@ -120,7 +120,7 @@ class TratamientoLateralidadMigrationIT {
 					del.executeUpdate();
 				}
 				try (Statement s = c.createStatement()) {
-					s.execute("SET FOREIGN_KEY_CHECKS = 1");
+					s.execute("SET session_replication_role = origin");
 				}
 			}
 		}

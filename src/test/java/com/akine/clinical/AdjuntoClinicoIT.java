@@ -438,29 +438,29 @@ class AdjuntoClinicoIT {
 		long organizationId = insertar("""
 				INSERT INTO organization (name, slug, timezone, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{"Centro Sintetico " + sufijo, "adjcli-it-" + sufijo, ZONA});
 
 		long consultorioId = insertar("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{organizationId, "Sede Sintetica " + sufijo, ZONA});
 
 		String email = "adjcli-it-" + sufijo + "@ejemplo.test";
 		long cuentaId = insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{email, email});
 
 		insertar("""
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, 'PROFESIONAL', 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'PROFESIONAL', false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{organizationId, consultorioId, cuentaId});
 
 		long personaId = insertarPersona(organizationId, "Paciente" + sufijo);
@@ -481,8 +481,8 @@ class AdjuntoClinicoIT {
 		return insertar("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave,
 				                     nombre_clave, active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{organizationId, apellido, apellido.toUpperCase()});
 	}
 
@@ -490,13 +490,13 @@ class AdjuntoClinicoIT {
 		insertar("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{organizationId, personaId, cuentaId});
 
 		return insertar("""
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{organizationId, personaId, cuentaId});
 	}
 
@@ -506,8 +506,8 @@ class AdjuntoClinicoIT {
 				INSERT INTO entrada_clinica (organization_id, historia_clinica_id, tipo, ocurrio_en,
 				                             origen, ultimo_numero_version, registrada_en,
 				                             registrada_por, active, version, created_at, updated_at)
-				VALUES (?, ?, 'EVOLUCION', UTC_TIMESTAMP(6), 'MANUAL', 1, UTC_TIMESTAMP(6), 1, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'EVOLUCION', CURRENT_TIMESTAMP, 'MANUAL', 1, CURRENT_TIMESTAMP, 1, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{organizationId, historiaClinicaId});
 	}
 

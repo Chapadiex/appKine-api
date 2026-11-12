@@ -307,7 +307,7 @@ public class OfertaService {
 		exigirSedeOperable(sede);
 
 		// 4.
-		Servicio servicio = exigirServicioOfertable(command.servicioId());
+		Servicio servicio = exigirServicioOfertable(command.servicioId(), organizationId);
 
 		LocalDate hoy = hoyEn(sede);
 		String nombreComercial = normalizar(
@@ -696,16 +696,16 @@ public class OfertaService {
 	 * El servicio existe y admite ofertas nuevas (RF-M27-002).
 	 *
 	 * <p>Se lee por el PUERTO —ruling R1— y se pregunta {@link Servicio#isOperable()}. Los dos
-	 * rechazos son distintos a proposito: 404 si no existe, porque el catalogo es global y ahi 404
-	 * significa literalmente eso; 409 si existe pero esta dado de baja, porque el servicio es
+	 * rechazos son distintos a proposito: 404 si no existe o es un servicio propio de OTRO centro
+	 * (V143: no se confirma que exista); 409 si existe pero esta dado de baja, porque el servicio es
 	 * perfectamente visible y lo que no admite es la operacion.
 	 */
-	private Servicio exigirServicioOfertable(Long servicioId) {
+	private Servicio exigirServicioOfertable(Long servicioId, long organizationId) {
 		if (servicioId == null) {
 			throw new IllegalArgumentException(
-					"Una oferta tiene que declarar que servicio del catalogo global materializa");
+					"Una oferta tiene que declarar que servicio del catalogo materializa");
 		}
-		Servicio servicio = servicios.findById(servicioId)
+		Servicio servicio = servicios.findVisible(servicioId, List.of(ServicioService.OWNER_PLATAFORMA, organizationId))
 				.orElseThrow(() -> new ServicioNotAccessibleException(servicioId));
 		if (!servicio.isOperable()) {
 			log.info("Alta de oferta rechazada: el servicio esta dado de baja. servicioId={}",

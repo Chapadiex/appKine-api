@@ -155,7 +155,7 @@ class PlatformAdminBootstrapIT {
 	private long cuentaId() {
 		return jdbc.queryForObject("""
 				SELECT c.id FROM cuenta c JOIN platform_role p ON p.account_id = c.id
-				 WHERE p.active = 1 AND p.reason LIKE 'Bootstrap de plataforma%'
+				 WHERE p.active = true AND p.reason LIKE 'Bootstrap de plataforma%'
 				""", Long.class);
 	}
 
@@ -169,7 +169,7 @@ class PlatformAdminBootstrapIT {
 		return jdbc.queryForObject("""
 				SELECT id FROM token_verificacion
 				 WHERE cuenta_id = ? AND tipo = 'ACTIVACION' AND usado_en IS NULL
-				   AND invalidado_en IS NULL AND expira_en > UTC_TIMESTAMP(6)
+				   AND invalidado_en IS NULL AND expira_en > CURRENT_TIMESTAMP
 				""", Long.class, cuentaId());
 	}
 

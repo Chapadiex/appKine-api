@@ -550,7 +550,7 @@ class RecepcionIT {
 
 		// V120: ck_recepcion_retirado_con_motivo y ck_recepcion_cierre, contra el motor.
 		assertThatThrownBy(() -> jdbc.update("""
-				UPDATE recepcion SET estado = 'RETIRADO', cerrada_en = UTC_TIMESTAMP(6), motivo_cierre = NULL
+				UPDATE recepcion SET estado = 'RETIRADO', cerrada_en = CURRENT_TIMESTAMP, motivo_cierre = NULL
 				 WHERE turno_id = ?""", turno.id()))
 				.isInstanceOf(DataAccessException.class).hasMessageContaining("ck_recepcion_retirado_con_motivo");
 		assertThatThrownBy(() -> jdbc.update("""
@@ -704,7 +704,7 @@ class RecepcionIT {
 					INSERT INTO turno_evento (organization_id, consultorio_id, turno_id, tipo,
 					                          estado_anterior, estado_nuevo, actor_cuenta_id, ocurrido_en)
 					SELECT organization_id, consultorio_id, turno_id, ?, ?, ?, actor_cuenta_id,
-					       ocurrido_en + INTERVAL ? MINUTE
+					       ocurrido_en + make_interval(mins => ?)
 					  FROM turno_evento
 					 WHERE turno_id = ? AND tipo = 'RESERVA'
 					""", evento[0], evento[1], evento[2], Integer.parseInt(evento[3]), turno.id());

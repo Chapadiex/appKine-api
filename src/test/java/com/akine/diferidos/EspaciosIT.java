@@ -332,7 +332,7 @@ class EspaciosIT extends BaseEscenarioDiferido {
 
 	private boolean sigueActivo(long espacioId) {
 		Long activo = jdbc.queryForObject(
-				"SELECT active FROM espacio WHERE id = ?", Long.class, espacioId);
+				"SELECT CAST(active AS integer) FROM espacio WHERE id = ?", Long.class, espacioId);
 		return activo != null && activo == 1L;
 	}
 

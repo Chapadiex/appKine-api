@@ -63,9 +63,9 @@ public interface AdjuntoClinicoRepository
 			SELECT * FROM adjunto_clinico a
 			 WHERE a.organization_id = :organizationId
 			   AND a.historia_clinica_id = :historiaClinicaId
-			   AND (:categoria IS NULL OR a.categoria = :categoria)
-			   AND (:entradaId IS NULL OR a.entrada_clinica_id = :entradaId)
-			   AND (:activoFiltro = -1 OR a.active = :activoFiltro)
+			   AND (CAST(:categoria AS varchar) IS NULL OR a.categoria = :categoria)
+			   AND (CAST(:entradaId AS bigint) IS NULL OR a.entrada_clinica_id = :entradaId)
+			   AND (:activoFiltro = -1 OR a.active = (:activoFiltro = 1))
 			 ORDER BY
 			   CASE WHEN :orden = 'subidoEn,asc' THEN a.subido_en END ASC,
 			   CASE WHEN :orden = 'titulo,asc' THEN a.titulo END ASC,
@@ -99,7 +99,7 @@ public interface AdjuntoClinicoRepository
 			SELECT * FROM adjunto_clinico a
 			 WHERE a.organization_id = :organizationId
 			   AND a.historia_clinica_id = :historiaClinicaId
-			   AND a.active = 1
+			   AND a.active = true
 			   AND a.subido_en <= :hasta
 			 ORDER BY a.subido_en DESC, a.id DESC
 			 LIMIT :limite
@@ -115,9 +115,9 @@ public interface AdjuntoClinicoRepository
 			SELECT COUNT(*) FROM adjunto_clinico a
 			 WHERE a.organization_id = :organizationId
 			   AND a.historia_clinica_id = :historiaClinicaId
-			   AND (:categoria IS NULL OR a.categoria = :categoria)
-			   AND (:entradaId IS NULL OR a.entrada_clinica_id = :entradaId)
-			   AND (:activoFiltro = -1 OR a.active = :activoFiltro)
+			   AND (CAST(:categoria AS varchar) IS NULL OR a.categoria = :categoria)
+			   AND (CAST(:entradaId AS bigint) IS NULL OR a.entrada_clinica_id = :entradaId)
+			   AND (:activoFiltro = -1 OR a.active = (:activoFiltro = 1))
 			""", nativeQuery = true)
 	long contar(
 			@Param("organizationId") Long organizationId,

@@ -8,57 +8,55 @@
 #   docker compose down          # conserva los datos
 #   docker compose down -v       # borra el volumen: base vacia otra vez
 #
-# Consultas de validacion durante el QA, sin instalar cliente MySQL en la maquina:
-#   docker compose exec mysql mysql -u akine -pakine akine_local -e "SELECT 1;"
+# Consultas de validacion durante el QA, sin instalar cliente PostgreSQL en la maquina:
+#   docker compose exec postgres psql -U akine -d akine_local -c "SELECT 1;"
 #
 # Las credenciales de abajo son de una base LOCAL y efimera, con datos exclusivamente
 # sinteticos. No son secretos y no existen fuera de tu maquina. Los entornos reales
 # reciben sus credenciales por variable de entorno, nunca por archivo versionado.
 
 services:
-  mysql:
-    # Version fijada, no "latest": el build tiene que ser reproducible (plan, AKINE-00.01).
-    image: mysql:8.4
-    container_name: akine-mysql
+  postgres:
+    # PostgreSQL 18 con pgvector 0.8.1. Version fijada, no "latest": el build tiene que ser
+    # reproducible (plan, AKINE-00.01). La misma imagen usan los tests de integracion.
+    # PostgreSQL 18 y no 17: LIKE sobre la collation no determinista akine_ci (sin mayusculas ni
+    # tildes, la semantica de utf8mb4_0900_ai_ci que tenia MySQL) recien existe desde 18.
+    image: pgvector/pgvector:0.8.1-pg18-trixie
+    container_name: akine-postgres
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: akine_local
-      MYSQL_USER: akine
-      MYSQL_PASSWORD: akine
-      MYSQL_ROOT_PASSWORD: root
+      # Superusuario del contenedor: solo crea el rol y la base de la aplicacion (ops/postgres/init).
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      # Rol y base de la aplicacion, que crea el script de inicializacion.
+      AKINE_DB_NAME: akine_local
+      AKINE_DB_USER: akine
+      AKINE_DB_PASSWORD: akine
       TZ: UTC
+      PGTZ: UTC
     command:
-      # utf8mb4 desde el server: evita que una tabla sin charset explicito herede latin1.
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_0900_ai_ci
       # La base guarda instantes UTC. La zona local se aplica en el dominio.
-      - --default-time-zone=+00:00
-      # AKINE-01.03: la migracion V14 crea dos triggers que hacen append-only a audit_event
-      # (RN-M24-001). Con el log binario activo —el default de MySQL 8.4— crear un trigger
-      # exige SUPER, y el usuario de la aplicacion no lo tiene ni debe tenerlo. Esta variable
-      # es la forma estandar de permitirlo sin dar SUPER.
-      #
-      # Que implica, dicho de frente: MySQL deja de exigir SUPER para crear triggers y funciones
-      # almacenadas, con lo que quien pueda ejecutar DDL en esta base puede crear un trigger que
-      # se replique a los esclavos. En un entorno real eso se compensa con lo de siempre: el
-      # usuario de la aplicacion no tiene DDL, y las migraciones las aplica un usuario dedicado.
-      # La alternativa —no crear los triggers— deja la inmutabilidad de la auditoria dependiendo
-      # de que ningun codigo llame a un DELETE, que es justamente lo que RN-M24-001 no acepta.
-      - --log-bin-trust-function-creators=1
+      - postgres
+      - -c
+      - timezone=UTC
+      - -c
+      - max_connections=200
     ports:
-      # Puerto del host parametrizable: si otro proyecto ya ocupa 3306, se levanta con
-      #   AKINE_DB_PORT=3307 docker compose up -d
-      # y se ajusta AKINE_DB_URL en consecuencia. Dentro del contenedor sigue siendo 3306.
-      - "${AKINE_DB_PORT:-3306}:3306"
+      # Puerto del host parametrizable: si otro proyecto ya ocupa 5432, se levanta con
+      #   AKINE_DB_PORT=5433 docker compose up -d
+      # y se ajusta AKINE_DB_URL en consecuencia. Dentro del contenedor sigue siendo 5432.
+      - "${AKINE_DB_PORT:-5432}:5432"
     volumes:
-      - akine-mysql-data:/var/lib/mysql
+      - akine-postgres-data:/var/lib/postgresql
+      # Corre una sola vez, con el volumen vacio: crea el rol akine, la base y las extensiones.
+      - ./ops/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       # El backend no debe arrancar contra una base que todavia no acepta conexiones.
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d akine_local"]
       interval: 5s
       timeout: 5s
       retries: 20
-      start_period: 30s
+      start_period: 20s
 
   # Servidor SMTP de desarrollo (AKINE-01.02b).
   #
@@ -76,7 +74,7 @@ services:
   # recibe datos sinteticos. No hay nada que versionar. Los entornos reales usan un relay de
   # verdad y reciben host, usuario y contrasena por variable de entorno.
   mailpit:
-    # Version fijada, no "latest": misma regla que MySQL.
+    # Version fijada, no "latest": misma regla que PostgreSQL.
     image: axllent/mailpit:v1.32.0
     container_name: akine-mailpit
     restart: unless-stopped
@@ -100,6 +98,21 @@ services:
       retries: 10
       start_period: 10s
 
+  # Modelo de lenguaje local de la consulta a la biblioteca (qwen3:4b-instruct). Opcional: sin el, solo
+  # la consulta responde 503. Bajar el modelo: docker compose exec ollama ollama pull qwen3:4b-instruct
+  ollama:
+    # Fijada por digest (Ollama 0.40.16), no por tag.
+    image: ollama/ollama@sha256:910d0d8107b538fb0894e63163eb195de0cc7aefcbc666dc62d3b18f71124592
+    container_name: akine-ollama
+    restart: unless-stopped
+    ports:
+      # Solo en la maquina local: Ollama no tiene autenticacion.
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - akine-ollama-data:/root/.ollama
+
 volumes:
-  akine-mysql-data:
-    name: akine-mysql-data
+  akine-postgres-data:
+    name: akine-postgres-data
+  akine-ollama-data:
+    name: akine-ollama-data

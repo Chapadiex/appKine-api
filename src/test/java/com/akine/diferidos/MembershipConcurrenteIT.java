@@ -239,7 +239,7 @@ class MembershipConcurrenteIT extends BaseEscenarioDiferido {
 
 		// El unique con columna generada decide, no un chequeo previo.
 		Long activos = jdbc.queryForObject(
-				"SELECT COUNT(*) FROM membership_grant WHERE membership_id = ? AND active = 1",
+				"SELECT COUNT(*) FROM membership_grant WHERE membership_id = ? AND active = true",
 				Long.class, objetivo);
 		assertThat(activos).as("un solo grant activo por permiso y por membership").isEqualTo(1L);
 
@@ -429,9 +429,9 @@ class MembershipConcurrenteIT extends BaseEscenarioDiferido {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, estado, valid_from, active, version,
 				                        created_at, updated_at)
-				VALUES (?, NULL, ?, ?, 0, 'ACTIVA',
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, NULL, ?, ?, false, 'ACTIVA',
+				        (CURRENT_TIMESTAMP - INTERVAL '1 minutes'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, accountId, rol);
 		Long id = jdbc.queryForObject(
 				"SELECT id FROM membership WHERE organization_id = ? AND account_id = ?",
@@ -459,9 +459,9 @@ class MembershipConcurrenteIT extends BaseEscenarioDiferido {
 		Long total = jdbc.queryForObject("""
 				SELECT COUNT(*) FROM membership
 				 WHERE organization_id = ? AND role_code = 'ORG_ADMIN'
-				   AND estado = 'ACTIVA' AND active = 1
-				   AND valid_from <= UTC_TIMESTAMP(6)
-				   AND (valid_until IS NULL OR valid_until > UTC_TIMESTAMP(6))
+				   AND estado = 'ACTIVA' AND active = true
+				   AND valid_from <= CURRENT_TIMESTAMP
+				   AND (valid_until IS NULL OR valid_until > CURRENT_TIMESTAMP)
 				""", Long.class, organizationId);
 		return total == null ? 0L : total;
 	}
@@ -565,7 +565,7 @@ class MembershipConcurrenteIT extends BaseEscenarioDiferido {
 
 		StringBuilder sb = new StringBuilder("\n  [estado final]");
 		sb.append("\n    reloj jvm=").append(Instant.now())
-				.append(" mysql=").append(jdbc.queryForObject("SELECT UTC_TIMESTAMP(6)", String.class))
+				.append(" mysql=").append(jdbc.queryForObject("SELECT CURRENT_TIMESTAMP", String.class))
 				.append(" jvm=").append(Instant.now());
 		for (Map<String, Object> fila : jdbc.queryForList("""
 				SELECT id, account_id, role_code, estado, active, is_founder,

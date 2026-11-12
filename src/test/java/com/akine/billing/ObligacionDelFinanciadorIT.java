@@ -147,7 +147,7 @@ class ObligacionDelFinanciadorIT {
 	@DisplayName("sin cobertura vigente: una sola obligacion particular por el precio de la oferta")
 	void sin_cobertura_particular() {
 		Fixture f = crearFixture(true);
-		jdbc.update("UPDATE cobertura_paciente SET vigencia_hasta = ? WHERE id = ?",
+		jdbc.update("UPDATE cobertura_paciente SET vigencia_hasta = CAST(? AS date) WHERE id = ?",
 				hoy().minusDays(1), f.cobertura());
 		long sesion = insertarSesion(f);
 		tratar(f, sesion, f.kine());
@@ -274,7 +274,7 @@ class ObligacionDelFinanciadorIT {
 				INSERT INTO orden_medica (organization_id, persona_id, consultorio_id,
 				                          profesional_emisor, fecha_emision, vigencia_desde,
 				                          active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 'Dra. Sintetica', ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'Dra. Sintetica', CAST(? AS date), CAST(? AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", f.organizationId(), f.personaId(), f.consultorioId(),
 				java.sql.Date.valueOf(hoy().minusDays(10)), java.sql.Date.valueOf(hoy().minusDays(10)));
 		ValidacionDePresentacion validacion = presentacionService.validar(
@@ -310,10 +310,10 @@ class ObligacionDelFinanciadorIT {
 		LocalDate dia = LocalDate.of(2026, 10, 9);
 		Instant nocheDeCordoba = dia.atTime(22, 30).atZone(ZoneId.of(ZONA)).toInstant();
 		// Como texto UTC y no como Timestamp: sin depender de la zona de la JVM ni del driver.
-		jdbc.update("UPDATE obligacion SET devengada_en = ? WHERE id = ?",
+		jdbc.update("UPDATE obligacion SET devengada_en = CAST(? AS timestamptz) WHERE id = ?",
 				nocheDeCordoba.toString().replace("T", " ").replace("Z", ""), financiadorObligacion);
 		assertThat(jdbc.queryForObject(
-				"SELECT DATE_FORMAT(devengada_en, '%Y-%m-%d %H:%i') FROM obligacion WHERE id = ?",
+				"SELECT to_char(devengada_en AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI') FROM obligacion WHERE id = ?",
 				String.class, financiadorObligacion))
 				.as("la columna guarda UTC: el dia UTC ya es el siguiente")
 				.isEqualTo("2026-10-10 01:30");
@@ -392,11 +392,11 @@ class ObligacionDelFinanciadorIT {
 				                        snapshot_precio, devengada_en, version, created_at,
 				                        updated_at)
 				VALUES (?, ?, ?, ?, 'FINANCIADOR', ?, 'FINANCIADOR', 100.00, 100.00, 'ARS',
-				        'PENDIENTE', ?, 'Sesion', 100.00, UTC_TIMESTAMP(6), 0, UTC_TIMESTAMP(6),
-				        UTC_TIMESTAMP(6))
+				        'PENDIENTE', ?, 'Sesion', 100.00, CURRENT_TIMESTAMP, 0, CURRENT_TIMESTAMP,
+				        CURRENT_TIMESTAMP)
 				""", f.organizationId(), f.consultorioId(), sesion, f.personaId(),
 				f.financiador(), f.ofertaId()))
-				// Un CHECK violado (error 3819 de MySQL) llega como UncategorizedSQLException, no como
+				// Un CHECK violado (error 3819 de MySQL) llega como DataIntegrityViolationException, no como
 				// DataIntegrityViolationException: lo que identifica la regla es el nombre.
 				.isInstanceOf(DataAccessException.class)
 				.hasMessageContaining("ck_obligacion_snapshot_convenio_coherente");
@@ -484,11 +484,11 @@ class ObligacionDelFinanciadorIT {
 
 		long org = insertar("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro " + s, "f4-it-" + s, ZONA);
 		long sede = insertar("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, "Sede " + s, ZONA);
 
 		long profesional = cuenta("f4-pro-" + s);
@@ -501,24 +501,24 @@ class ObligacionDelFinanciadorIT {
 		long persona = insertar("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, apellido, apellido.toUpperCase());
 		jdbc.update("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, persona, admin);
 		long historia = insertar("""
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, persona, profesional);
 
 		long servicio = insertar("""
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "F4-" + s.toUpperCase(), "Servicio " + s);
 		long oferta = insertar("""
 				INSERT INTO oferta_servicio_consultorio
@@ -526,21 +526,21 @@ class ObligacionDelFinanciadorIT {
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', ?, 0, 0, 1, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', CAST(? AS boolean), false, false, true, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, servicio, "Oferta " + s, admiteObraSocial ? 1 : 0);
 
 		long financiador = insertar("""
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 'OBRA_SOCIAL', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'OBRA_SOCIAL', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, "OS-" + s, "Financiador " + s);
 		long plan = insertar("""
 				INSERT INTO plan_cobertura (organization_id, financiador_id, codigo, nombre,
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, active, version,
 				                            created_at, updated_at)
-				VALUES (?, ?, ?, ?, '2020-01-01', 0, 1, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, '2020-01-01', false, true, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, financiador, "P-" + s, "Plan " + s);
 		// La credencial vencio ayer: B-2 la informa como alerta y no excluye la cobertura.
 		long cobertura = insertar("""
@@ -551,9 +551,9 @@ class ObligacionDelFinanciadorIT {
 				        requeria_autorizacion, requeria_credencial, referencia_capturada_el,
 				        numero_afiliado, credencial_vigencia_hasta, vigencia_desde, principal,
 				        active, version, created_at, updated_at)
-				VALUES (?, ?, 'FINANCIADA', ?, ?, ?, 'OBRA_SOCIAL', ?, ?, ?, 0, 1, UTC_TIMESTAMP(6),
-				        ?, ?, '2020-01-01', 1, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'FINANCIADA', ?, ?, ?, 'OBRA_SOCIAL', ?, ?, ?, false, true, CURRENT_TIMESTAMP,
+				        ?, CAST(? AS date), '2020-01-01', true, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, persona, financiador, "OS-" + s, "Financiador " + s, plan, "P-" + s,
 				"Plan " + s, "AF-" + s,
 				// La credencial vence AYER en la zona de la sede, que es como la mira el backend: con
@@ -564,19 +564,19 @@ class ObligacionDelFinanciadorIT {
 		long especialidad = insertar("""
 				INSERT INTO especialidad (organization_id, codigo, name, valid_from, active,
 				                          version, created_at, updated_at)
-				VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, "E-" + s, "Especialidad " + s);
 		long kine = insertar("""
 				INSERT INTO practica (organization_id, especialidad_id, codigo, name, valid_from,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, especialidad, "K-" + s, "Kinesiologia " + s);
 		jdbc.update("""
 				INSERT INTO oferta_practica (organization_id, consultorio_id, oferta_id, practica_id,
 				                             principal, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 1, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, true, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, oferta, kine);
 
 		String codigo = "CONV-" + s;
@@ -585,16 +585,16 @@ class ObligacionDelFinanciadorIT {
 				                      codigo, nombre, modalidad, vigencia_desde, moneda,
 				                      requiere_orden, requiere_autorizacion, requiere_credencial,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, 'POR_PRESTACION', '2020-01-01', 'ARS', 1, 0, 1, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, ?, 'POR_PRESTACION', '2020-01-01', 'ARS', true, false, true, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, financiador, plan, codigo, "Convenio " + s);
 		long arancel = insertar("""
 				INSERT INTO convenio_arancel (organization_id, consultorio_id, convenio_id,
 				                              practica_id, importe_total, importe_financiador,
 				                              coseguro, moneda, vigencia_desde, active, version,
 				                              created_at, updated_at)
-				VALUES (?, ?, ?, ?, 12000.00, 10500.00, 1500.00, 'ARS', '2020-01-01', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 12000.00, 10500.00, 1500.00, 'ARS', '2020-01-01', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, convenio, kine);
 
 		return new Fixture(org, sede, profesional, membership, admin, persona, historia, oferta,
@@ -606,7 +606,7 @@ class ObligacionDelFinanciadorIT {
 		return insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 	}
 
@@ -615,8 +615,8 @@ class ObligacionDelFinanciadorIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, cuenta, rol);
 	}
 
@@ -625,8 +625,8 @@ class ObligacionDelFinanciadorIT {
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'BORRADOR', UTC_TIMESTAMP(6), ?, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 'BORRADOR', CURRENT_TIMESTAMP, ?, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", f.organizationId(), f.consultorioId(), f.historiaClinicaId(), f.ofertaId(),
 				f.profesionalMembershipId(), f.profesionalCuentaId());
 	}
@@ -640,8 +640,8 @@ class ObligacionDelFinanciadorIT {
 				        practica_id, practica_codigo, practica_nombre, profesional_membership_id,
 				        registrado_en, registrado_por_cuenta_id, active, version,
 				        created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'COD', 'Practica sintetica', ?, UTC_TIMESTAMP(6), ?, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 'COD', 'Practica sintetica', ?, CURRENT_TIMESTAMP, ?, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", f.organizationId(), f.consultorioId(), sesionId, orden, practicaId,
 				f.profesionalMembershipId(), f.profesionalCuentaId());
 	}

@@ -21,21 +21,19 @@ spring:
     url: ${AKINE_DB_URL}
     username: ${AKINE_DB_USER}
     password: ${AKINE_DB_PASSWORD}
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    driver-class-name: org.postgresql.Driver
     hikari:
-      # Propiedades de Connector/J (docs/carga.md §9). Medido con JFR a 500 usuarios:
       data-source-properties:
-        # Sin cache, el driver vuelve a analizar el texto de cada sentencia en cada
-        # prepareStatement (QueryInfo): ~10 % de la CPU del backend. La cache es por conexion y
-        # guarda el analisis, no resultados. El tamano cubre las consultas distintas del sistema.
-        cachePrepStmts: true
-        prepStmtCacheSize: 500
-        prepStmtCacheSqlLimit: 4096
-        # Connector/J 9 abre un span de OpenTelemetry por sentencia en cuanto encuentra la API en
-        # el classpath (PREFERRED): ~5 % de la CPU, para spans que no se exportan (el muestreo es
-        # 0,1 y por default no hay collector). El span del pedido HTTP sigue existiendo.
-        # AKINE_JDBC_OTEL=PREFERRED los vuelve a encender, p. ej. para diagnosticar con collector.
-        openTelemetry: ${AKINE_JDBC_OTEL:DISABLED}
+        # La sesion JDBC en UTC: los instantes viajan como timestamptz y las fechas y horas locales
+        # (agenda, horarios de sede) como timestamp/time sin zona, que el driver no convierte.
+        options: -c timezone=UTC
+        # Sentencias preparadas del lado del servidor desde el tercer uso (default del driver,
+        # explicito). La cache del driver es por conexion y guarda el plan, no resultados.
+        prepareThreshold: 3
+        preparedStatementCacheQueries: 512
+        # Las inserciones en lote de saveAll (fragmentos de la biblioteca, lotes de asistencia)
+        # viajan como un solo INSERT multi-fila: es el equivalente de rewriteBatchedStatements.
+        reWriteBatchedInserts: true
 
   jpa:
     # Flyway es la unica autoridad sobre el esquema. Hibernate no crea ni altera tablas:
@@ -57,7 +55,9 @@ spring:
 
   servlet:
     multipart:
-      # Adjuntos administrativos (M25, AKINE-03.02).
+      # Adjuntos administrativos (M25, AKINE-03.02) y biblioteca de libros (M30): el tope del
+      # contenedor es el del PDF mas grande (100 MB + margen). Los limites propios de person y
+      # clinical siguen en 10 MB y se aplican en su capa de aplicacion.
       #
       # ESTOS TOPES SON DEL CONTENEDOR Y TIENEN QUE QUEDAR POR ENCIMA del tope de la aplicacion
       # (akine.person.adjuntos.max-bytes, 10 MB por defecto). Si el mas chico fuera el de aca, el
@@ -65,8 +65,8 @@ spring:
       # operador recibiria un 500 generico en vez del 400 archivo-no-aceptado que le explica que
       # su archivo pesa demasiado. El margen tambien cubre el overhead del propio multipart:
       # cabeceras de parte y los campos de categoria y titulo.
-      max-file-size: 15MB
-      max-request-size: 16MB
+      max-file-size: 101MB
+      max-request-size: 102MB
 
   jackson:
     default-property-inclusion: non_null
@@ -175,7 +175,7 @@ akine:
   # Version SemVer del contrato OpenAPI publicado. Debe coincidir con la propiedad
   # akine.contract.version del pom.xml.
   contract:
-    version: 0.162.0
+    version: 0.167.0
   security:
     cors:
       # Nunca comodin: allowCredentials(true) lo prohibe y el frontend necesita credentials
@@ -224,6 +224,14 @@ akine:
       # Detras del nginx del frontend (G-3) HAY QUE declararlo: si no, todas las requests traen
       # la IP del nginx y los cupos de arriba pasan a ser globales para todo el sistema.
       trusted-proxies: ${AKINE_TRUSTED_PROXIES:}
+
+  # Biblioteca de libros PDF con busqueda vectorial (M30). Apagada por defecto: apagada no crea
+  # workers ni modelo y toda operacion responde 409 biblioteca-deshabilitada.
+  biblioteca:
+    enabled: ${AKINE_BIBLIOTECA_ENABLED:false}
+    # Consulta con un modelo de lenguaje local (RF-M30-012). Exige tambien biblioteca.enabled.
+    consulta:
+      enabled: ${AKINE_BIBLIOTECA_CONSULTA_ENABLED:false}
 
   notification:
     email:

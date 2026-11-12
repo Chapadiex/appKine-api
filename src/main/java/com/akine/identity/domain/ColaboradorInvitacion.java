@@ -104,7 +104,7 @@ public class ColaboradorInvitacion {
 
 	/** Foto del alta manual, si se uso ese camino. No contiene credenciales. */
 	@JdbcTypeCode(SqlTypes.JSON)
-	@Column(name = "datos_alta_manual", columnDefinition = "json")
+	@Column(name = "datos_alta_manual", columnDefinition = "jsonb")
 	private String datosAltaManual;
 
 	@Version

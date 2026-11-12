@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.162.0
+  version: 0.167.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -60,6 +60,8 @@ tags:
   name: Registro y activacion
 - description: "Que horarios se pueden reservar, y si uno puntual se puede"
   name: Disponibilidad
+- description: Libros PDF de la organizacion
+  name: Biblioteca
 - description: "Estudios, informes y documentos de una Historia Clinica (M09/M25)"
   name: Adjuntos clinicos
 - description: Documentos administrativos de una persona (M07/M25)
@@ -3485,6 +3487,86 @@ paths:
             \ un turno o por otra clase, o la clave de idempotencia se reuso con otro\
             \ pedido"
       summary: Programar una clase
+      tags:
+      - Clases
+  /api/v1/consultorios/{consultorioId}/clases/ofertas/{ofertaId}/serie:
+    post:
+      description: |-
+        Programa una clase en cada fecha del rango (desde y hasta inclusive) que cae en uno de los `diasSemana`, con el mismo horario, profesional, box y cupo.
+
+        **Cada fecha es una clase suelta**: se valida exactamente igual que `POST .../clases/ofertas/{ofertaId}` y en su propia transaccion.
+
+        **No es todo o nada.** Una fecha que no se puede programar (feriado, box o profesional ocupado, fuera del horario del profesional, oferta no vigente, cupo) va a `omitidas` con su motivo y las demas se programan. Responde 200 aunque no se haya programado ninguna: el detalle esta en el cuerpo.
+
+        Lo que si rechaza la serie entera es lo que fallaria en todas las fechas: sede u oferta ajenas (404), oferta no grupal (409), sin permiso (403) o un pedido mal formado (400; por ejemplo, un rango de mas de un anio).
+      operationId: programarSerieDeClases
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: ofertaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProgramarSerieDeClases"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SerieDeClases"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/SerieDeClases"
+          description: "Serie procesada: programadas y omitidas"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Pedido invalido: rango, dias, horas o cupo"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `clase:manage` en esa sede, o sin contexto de trabajo\
+            \ activo"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La sede o la oferta no existen, o son de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La oferta no es grupal
+      summary: Programar clases semanales
       tags:
       - Clases
   /api/v1/consultorios/{consultorioId}/clases/{claseId}:
@@ -19199,6 +19281,843 @@ paths:
       summary: Hechos registrados en la auditoria de la organizacion
       tags:
       - Auditoria
+  /api/v1/organizations/{orgId}/biblioteca/busquedas:
+    post:
+      description: "Devuelve los `k` pasajes mas parecidos (1 a 20, por defecto 5)\
+        \ de libros activos y listos. `camino` dice si se busco por similitud (VECTOR)\
+        \ o por palabras (PALABRAS, si el modelo no esta disponible o todavia no hay\
+        \ vectores del modelo vigente); `alcanza` es verdadero con al menos 2 pasajes\
+        \ sobre el `corte`. Consulta en blanco o de mas de 600 caracteres: 400."
+      operationId: buscarEnBiblioteca
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BibliotecaBusquedaRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BibliotecaBusquedaResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BibliotecaBusquedaResponse"
+          description: "Pasajes encontrados, posiblemente ninguno"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Consulta en blanco o de mas de 600 caracteres, o `k` fuera\
+            \ de 1 a 20"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: la organizacion de la ruta no es la\
+            \ del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`biblioteca-deshabilitada`'
+      summary: Buscar pasajes en la biblioteca
+      tags:
+      - Biblioteca
+  /api/v1/organizations/{orgId}/biblioteca/consultas:
+    post:
+      description: |-
+        Responde la pregunta con un modelo de lenguaje local, usando solo los pasajes de la biblioteca de la organizacion. Requiere `biblioteca:consultar` y los interruptores `akine.biblioteca.enabled` y `akine.biblioteca.consulta.enabled`. Nada se guarda.
+
+        La respuesta 200 es un stream `text/event-stream`. Cada evento lleva su nombre en `event:` y un JSON en `data:`:
+
+        - `espera` (`ConsultaEventoEspera`): la consulta esta en la cola; cada vez que cambia la posicion.
+        - `etapa` (`ConsultaEventoEtapa`): `buscando` al salir de la cola y `redactando` antes del primer `texto` generado.
+        - `aclaracion` (`ConsultaEventoAclaracion`): la consulta no dice que se busca; repregunta con opciones, sin fuentes ni texto, y sigue `fin` con `sinMaterial` en false.
+        - `fuentes` (`ConsultaEventoFuentes`): una vez, antes del texto, solo con material.
+        - `texto` (`ConsultaEventoTexto`): fragmentos de la respuesta, en orden.
+        - `fin` (`ConsultaEventoFin`): la respuesta termino. Sin material, antes llega un unico `texto` con el aviso fijo y el modelo no se llama.
+        - `error` (`ConsultaEventoError`): el modelo fallo o se cumplieron los 90 s; el texto parcial queda. `type` es `asistente-no-disponible`.
+
+        Una consulta que nombra su propio tema es independiente: no hereda nada del historial ni de `librosPreferidos`. El historial solo completa una consulta sin tema ("ejercicios", "¿y quien la hace?").
+
+        Las lineas que empiezan con `:` son comentarios de latido y se ignoran.
+      operationId: consultarBiblioteca
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsultaRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: Stream de eventos de la respuesta
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Pregunta en blanco o de mas de 600 caracteres, historial de\
+            \ mas de 6 turnos, un turno sin rol valido o con mas de 2000 caracteres,\
+            \ o mas de 10 `librosPreferidos` o alguno que no sea positivo"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:consultar` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: la organizacion de la ruta no es la\
+            \ del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`biblioteca-deshabilitada`: la biblioteca o la consulta estan\
+            \ apagadas"
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`consulta-ocupada`: la cola de la instancia esta llena (1\
+            \ en curso y 3 esperando); trae `Retry-After`"
+          headers:
+            Retry-After:
+              description: Segundos sugeridos antes de reintentar
+              schema:
+                type: integer
+                example: 15
+              style: simple
+      summary: Preguntar a la biblioteca
+      tags:
+      - Biblioteca
+  /api/v1/organizations/{orgId}/biblioteca/libros:
+    get:
+      description: "`q` busca en titulo y autores; `estado=INACTIVO` lista los dados\
+        \ de baja. `sort` ordena por titulo, creadoEn o estado."
+      operationId: listarLibros
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: area
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - PENDIENTE
+          - PROCESANDO
+          - LISTO
+          - ERROR
+          - INACTIVO
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      - description: "Orden de la pagina: un solo valor campo,asc o campo,desc, entre\
+          \ los que declara el enum. No es repetible. El servidor desempata siempre\
+          \ por id, para que el paginado sea estable. Un valor fuera del enum responde\
+          \ 400 validation-error. Sin el parametro, el orden de siempre: creadoEn\
+          \ descendente."
+        in: query
+        name: sort
+        required: false
+        schema:
+          type: string
+          enum:
+          - "titulo,asc"
+          - "titulo,desc"
+          - "creadoEn,asc"
+          - "creadoEn,desc"
+          - "estado,asc"
+          - "estado,desc"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroPageResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroPageResponse"
+          description: Pagina de libros
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`sort` o `estado` fuera del enum'
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: la organizacion de la ruta no es la\
+            \ del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`biblioteca-deshabilitada`'
+      summary: Listar los libros de la biblioteca
+      tags:
+      - Biblioteca
+    post:
+      description: "El tipo se decide por los bytes. 202: queda PENDIENTE y se procesa\
+        \ aparte. 409 libro-duplicado si ya hay un libro activo con el mismo contenido."
+      operationId: subirLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: titulo
+        required: true
+        schema:
+          type: string
+      - in: query
+        name: autores
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: edicion
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: area
+        required: false
+        schema:
+          type: string
+      - description: "Debe ser true: declara que se tienen los derechos"
+        in: query
+        name: declaracionDerechos
+        required: true
+        schema:
+          type: boolean
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                archivo:
+                  type: string
+                  format: binary
+              required:
+              - archivo
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+          description: "Libro creado, PENDIENTE de procesar"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-archivo-no-aceptado` (vacio, no es PDF o supera el\
+            \ tamano maximo), datos invalidos o sin declaracion de derechos"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: la organizacion de la ruta no es la\
+            \ del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`biblioteca-deshabilitada` o `libro-duplicado` (con `libroId`
+            del que ya tiene ese contenido)'
+      summary: Subir un libro PDF
+      tags:
+      - Biblioteca
+  /api/v1/organizations/{orgId}/biblioteca/libros/{id}:
+    delete:
+      description: En cualquier estado; tambien elimina su reemplazo pendiente.
+      operationId: eliminarLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "204":
+          description: Libro eliminado
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: el libro no existe, es de otra organizacion\
+            \ o la organizacion de la ruta no es la del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`biblioteca-deshabilitada`'
+      summary: Eliminar un libro y su archivo
+      tags:
+      - Biblioteca
+    get:
+      operationId: verLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroDetalleResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroDetalleResponse"
+          description: El libro con sus fragmentos y sospechosos
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: el libro no existe, es de otra organizacion\
+            \ o la organizacion de la ruta no es la del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`biblioteca-deshabilitada`'
+      summary: Detalle de un libro
+      tags:
+      - Biblioteca
+    put:
+      description: "Con `version`; si cambio, 409 concurrent-modification. La fila\
+        \ de un reemplazo en curso no se edita: 409 libro-en-proceso."
+      operationId: editarLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibroDatosRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+          description: Libro editado
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Titulo vacio o campos mas largos que el maximo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: el libro no existe, es de otra organizacion\
+            \ o la organizacion de la ruta no es la del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`biblioteca-deshabilitada`, `concurrent-modification` o `libro-en-proceso`\
+            \ (es un reemplazo en curso)"
+      summary: "Editar titulo, autores, edicion y area"
+      tags:
+      - Biblioteca
+  /api/v1/organizations/{orgId}/biblioteca/libros/{id}/activacion:
+    post:
+      operationId: activarLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+          description: Libro activo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: el libro no existe, es de otra organizacion\
+            \ o la organizacion de la ruta no es la del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`biblioteca-deshabilitada`, `libro-duplicado` (otro libro\
+            \ activo tiene ese contenido) o `libro-en-proceso` (es un reemplazo en\
+            \ curso)"
+      summary: Activar un libro dado de baja
+      tags:
+      - Biblioteca
+  /api/v1/organizations/{orgId}/biblioteca/libros/{id}/desactivacion:
+    post:
+      operationId: desactivarLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+          description: Libro dado de baja
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: el libro no existe, es de otra organizacion\
+            \ o la organizacion de la ruta no es la del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`biblioteca-deshabilitada` o `libro-en-proceso` (es un reemplazo
+            en curso o tiene uno)'
+      summary: Dar de baja un libro sin borrarlo
+      tags:
+      - Biblioteca
+  /api/v1/organizations/{orgId}/biblioteca/libros/{id}/reemplazo:
+    post:
+      description: "Copia los datos del original; devuelve el libro nuevo, PENDIENTE.\
+        \ El original sigue vigente hasta que el nuevo este LISTO."
+      operationId: reemplazarLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: query
+        name: declaracionDerechos
+        required: true
+        schema:
+          type: boolean
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                archivo:
+                  type: string
+                  format: binary
+              required:
+              - archivo
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+          description: "Reemplazo creado, PENDIENTE de procesar"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`libro-archivo-no-aceptado` o sin declaracion de derechos'
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: el libro no existe, es de otra organizacion\
+            \ o la organizacion de la ruta no es la del contexto, o esta dado de baja"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`biblioteca-deshabilitada`, `libro-duplicado` o `libro-en-proceso`\
+            \ (el original se esta procesando o ya tiene un reemplazo en curso)"
+      summary: Subir un archivo que reemplaza al libro
+      tags:
+      - Biblioteca
+  /api/v1/organizations/{orgId}/biblioteca/libros/{id}/reproceso:
+    post:
+      operationId: reprocesarLibro
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/LibroResponse"
+          description: "Libro de vuelta en la cola, PENDIENTE"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin `biblioteca:manage` en la organizacion, o sin organizacion\
+            \ en contexto"
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`libro-no-encontrado`: el libro no existe, es de otra organizacion\
+            \ o la organizacion de la ruta no es la del contexto"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: '`biblioteca-deshabilitada` o `libro-en-proceso` (ya se esta
+            procesando o tiene un reemplazo en curso)'
+      summary: Volver a procesar un libro
+      tags:
+      - Biblioteca
   /api/v1/organizations/{orgId}/colaborador-invitaciones:
     get:
       description: |-
@@ -21469,7 +22388,7 @@ paths:
 
         Sin q devuelve el padron completo, paginado y ordenado por apellido.
 
-        estado filtra por ciclo de vida y por defecto trae solo las ACTIVAS. perfil filtra por perfil clinico y por defecto no filtra: la busqueda del mostrador no sabe de antemano si quien busca es paciente.
+        estado filtra por ciclo de vida y por defecto trae solo las ACTIVAS. perfil filtra por perfil clinico y por defecto no filtra: la busqueda del mostrador no sabe de antemano si quien busca es paciente. actividad separa a quien hoy hace actividades del centro (clases, pases, abonos) y se combina con perfil.
 
         OJO: esPaciente es DERIVADO y de solo lectura. Una persona sin perfil clinico es una persona valida y completa —RN-M07-006—, no una ficha a medio cargar.
 
@@ -21502,6 +22421,18 @@ paths:
           enum:
           - CON_PERFIL
           - SIN_PERFIL
+          - TODOS
+      - description: "Filtro por actividades vigentes hoy: una inscripcion reservada\
+          \ o confirmada a una clase que no termino, o un pase o abono activo. Por\
+          \ defecto indistinto. Se combina con perfil"
+        in: query
+        name: actividad
+        required: false
+        schema:
+          type: string
+          enum:
+          - CON_ACTIVIDAD
+          - SIN_ACTIVIDAD
           - TODOS
       - description: "Pagina, base cero"
         in: query
@@ -25247,7 +26178,7 @@ paths:
 
         estado filtra por ciclo de vida y por defecto trae solo los ACTIVOS. Con el default, un selector de alta de oferta nunca ofrece un servicio dado de baja, que es lo que evita que el 409 servicio-inactivo tenga que aparecer en esa pantalla.
 
-        No exige contexto de trabajo elegido: el catalogo global es el mismo para todos los centros y no hay ninguna fila que acotar por tenant.
+        Devuelve el catalogo global y, si quien llama trabaja en un centro, los servicios propios de su organizacion (alcance ORGANIZACION). El rol de plataforma ve solo el global.
       operationId: listServicios
       parameters:
       - description: Texto a buscar en el nombre y en el codigo. Vacio trae todo
@@ -25282,14 +26213,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: Sin sesion autenticada
-      summary: Listar el catalogo global de servicios
+      summary: Listar el catalogo de servicios visible
       tags:
       - Servicios y ofertas
     post:
       description: |-
-        Exige rol de plataforma: lo que se crea aca lo ven todos los centros del SaaS.
+        El alcance sale de quien llama, no del cuerpo. El rol de plataforma crea en el catalogo global, que ven todos los centros. Un usuario de un centro con catalogo:manage crea un servicio propio de su organizacion (alcance ORGANIZACION), que ve solo ella.
 
-        El codigo es unico entre los servicios VIGENTES y no se puede cambiar despues: es lo que las ofertas guardan. El codigo de un servicio dado de baja SI se puede reusar. El nombre tambien es unico entre los vigentes, comparado sin distinguir mayusculas ni acentos.
+        El codigo es unico entre los servicios VIGENTES del mismo duenio y no se puede cambiar despues: es lo que las ofertas guardan. El codigo de un servicio dado de baja SI se puede reusar. El nombre tambien es unico entre los vigentes, comparado sin distinguir mayusculas ni acentos.
 
         modalidadDefault, requiereCasoClinicoDefault y generaRegistroClinicoDefault son DEFAULTS que la oferta hereda si no dice otra cosa. No son restricciones: una sede puede ofrecer en grupal un servicio cuyo default es individual.
 
@@ -25319,7 +26250,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Sin rol de plataforma
+          description: Sin rol de plataforma (servicio global) o sin catalogo:manage
+            (servicio propio)
         "409":
           content:
             application/problem+json:
@@ -25327,13 +26259,13 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: Codigo repetido (servicio-codigo-taken) o nombre repetido (servicio-nombre-taken)
             entre los servicios vigentes
-      summary: Dar de alta un servicio del catalogo global
+      summary: Dar de alta un servicio del catalogo
       tags:
       - Servicios y ofertas
   /api/v1/servicios/{servicioId}:
     delete:
       description: |-
-        Baja LOGICA con motivo obligatorio. Exige rol de plataforma.
+        Baja LOGICA con motivo obligatorio. Global: rol de plataforma; propio: catalogo:manage.
 
         LA BAJA NO CASCADEA, y esto es lo mas importante de la operacion. Las ofertas activas de los centros que ya referencian este servicio SIGUEN OPERANDO: RF-M27-002 prohibe el borrado fisico cuando hay referencias y RN-M03-006 prohibe afectar historicos. Lo unico que la baja impide es CREAR ofertas nuevas sobre el, que responden 409 servicio-inactivo.
 
@@ -25370,7 +26302,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Sin rol de plataforma
+          description: Sin rol de plataforma (servicio global) o sin catalogo:manage
+            (servicio propio)
         "404":
           content:
             application/problem+json:
@@ -25383,12 +26316,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
           description: El servicio ya estaba dado de baja (servicio-already-inactive)
-      summary: Dar de baja un servicio del catalogo global
+      summary: Dar de baja un servicio del catalogo
       tags:
       - Servicios y ofertas
     put:
       description: |-
-        Exige rol de plataforma.
+        Un servicio global exige rol de plataforma; uno propio, catalogo:manage en su centro.
 
         El codigo NO se puede cambiar y por eso no esta en el cuerpo: es la clave con la que las ofertas de todos los centros lo referencian, y cambiarlo seria reescribir el significado de filas que ya existen en tenants que no participan de esta llamada. Renombrar es cambiar nombre.
 
@@ -25429,7 +26362,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: Sin rol de plataforma
+          description: Sin rol de plataforma (servicio global) o sin catalogo:manage
+            (servicio propio)
         "404":
           content:
             application/problem+json:
@@ -25443,7 +26377,7 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: "Nombre repetido (servicio-nombre-taken), servicio dado de\
             \ baja (servicio-inactivo), o version desactualizada (concurrent-modification)"
-      summary: Editar un servicio del catalogo global
+      summary: Editar un servicio del catalogo
       tags:
       - Servicios y ofertas
   /api/v1/terms:
@@ -27619,6 +28553,65 @@ components:
           minLength: 0
       required:
       - motivo
+    BibliotecaBusquedaRequest:
+      type: object
+      description: Consulta a la biblioteca
+      properties:
+        consulta:
+          type: string
+          maxLength: 600
+        k:
+          type: integer
+          format: int32
+          description: "Pasajes a devolver, de 1 a 20; por defecto 5"
+          maximum: 20
+          minimum: 1
+      required:
+      - consulta
+    BibliotecaBusquedaResponse:
+      type: object
+      description: Resultado de una busqueda en la biblioteca
+      properties:
+        alcanza:
+          type: boolean
+          description: Hay al menos 2 pasajes sobre el corte
+        camino:
+          type: string
+          description: VECTOR por similitud; PALABRAS si el modelo no esta disponible
+          enum:
+          - VECTOR
+          - PALABRAS
+        corte:
+          type: number
+          format: double
+          description: Puntaje minimo del camino usado
+        pasajes:
+          type: array
+          items:
+            $ref: "#/components/schemas/BibliotecaPasajeResponse"
+    BibliotecaPasajeResponse:
+      type: object
+      description: Pasaje de un libro de la biblioteca
+      properties:
+        libroId:
+          type: integer
+          format: int64
+        paginaDesde:
+          type: integer
+          format: int32
+        paginaHasta:
+          type: integer
+          format: int32
+        puntaje:
+          type: number
+          format: double
+        superaCorte:
+          type: boolean
+        texto:
+          type: string
+          maxLength: 500
+        titulo:
+          type: string
     BloqueResponse:
       type: object
       description: Bloque recurrente de disponibilidad de un profesional en una sede
@@ -29890,6 +30883,125 @@ components:
           format: int64
           description: Ausente si el turno es de otra sede
           example: 501
+    ConsultaEventoAclaracion:
+      type: object
+      description: "Evento `aclaracion` del stream de consultarBiblioteca: la consulta\
+        \ no dice que se busca y se repregunta, sin fuentes ni texto. Le sigue `fin`\
+        \ con `sinMaterial` en false. Las opciones son los aspectos del tema que la\
+        \ biblioteca tiene; pueden venir vacias (\"¿Para qué afección o tema?\")"
+      properties:
+        opciones:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpcionDeAclaracionResponse"
+        texto:
+          type: string
+          description: "La repregunta, lista para mostrar"
+      required:
+      - opciones
+      - texto
+    ConsultaEventoError:
+      type: object
+      description: "Evento `error` del stream de consultarBiblioteca: la respuesta\
+        \ se corto (modelo caido o limite de 90 s) y el stream se cierra; el texto\
+        \ que ya llego queda"
+      properties:
+        type:
+          type: string
+          format: uri
+          description: "problemType, hoy siempre .../asistente-no-disponible"
+      required:
+      - type
+    ConsultaEventoEspera:
+      type: object
+      description: "Evento `espera` del stream de consultarBiblioteca: la consulta\
+        \ espera en la cola de la instancia; se emite cada vez que cambia la posicion"
+      properties:
+        posicion:
+          type: integer
+          format: int32
+          description: 1 = la proxima en empezar
+          minimum: 1
+      required:
+      - posicion
+    ConsultaEventoEtapa:
+      type: object
+      description: "Evento `etapa` del stream de consultarBiblioteca: `buscando` al\
+        \ salir de la cola y `redactando` antes del primer `texto` generado"
+      properties:
+        etapa:
+          type: string
+          enum:
+          - buscando
+          - redactando
+      required:
+      - etapa
+    ConsultaEventoFin:
+      type: object
+      description: "Evento `fin` del stream de consultarBiblioteca: la respuesta termino\
+        \ y el stream se cierra"
+      properties:
+        camino:
+          type: string
+          description: "Como se busco: por similitud o por palabras"
+          enum:
+          - VECTOR
+          - PALABRAS
+        sinMaterial:
+          type: boolean
+          description: "true si no hubo material: el texto es el aviso fijo y el modelo\
+            \ no se llamo"
+      required:
+      - camino
+      - sinMaterial
+    ConsultaEventoFuentes:
+      type: object
+      description: "Evento `fuentes` del stream de consultarBiblioteca: los pasajes\
+        \ que se le pasaron al modelo, una vez y antes del texto"
+      properties:
+        fuentes:
+          type: array
+          items:
+            $ref: "#/components/schemas/FuenteDeConsultaResponse"
+      required:
+      - fuentes
+    ConsultaEventoTexto:
+      type: object
+      description: "Evento `texto` del stream de consultarBiblioteca: un fragmento\
+        \ de la respuesta; se concatenan en el orden en que llegan"
+      properties:
+        texto:
+          type: string
+      required:
+      - texto
+    ConsultaRequest:
+      type: object
+      description: "Pregunta a la biblioteca. El servidor no guarda la conversacion:\
+        \ el historial lo manda el cliente en cada pregunta."
+      properties:
+        historial:
+          type: array
+          description: "Turnos previos, del mas viejo al mas nuevo; hasta 6"
+          items:
+            $ref: "#/components/schemas/TurnoDeConsultaRequest"
+          maxItems: 6
+        librosPreferidos:
+          type: array
+          description: "Libros de las fuentes de la respuesta anterior, solo en una\
+            \ repregunta o al profundizar. Solo reordenan los resultados dentro de\
+            \ la organizacion, y solo si la consulta continua la charla: una que nombra\
+            \ su propio tema los ignora"
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+          maxItems: 10
+        pregunta:
+          type: string
+          maxLength: 600
+          minLength: 1
+      required:
+      - pregunta
     ConsultorioPageResponse:
       type: object
       description: "Pagina de sedes de la organizacion, segun el filtro de estado\
@@ -34499,6 +35611,36 @@ components:
           format: int64
           description: Version de la fila
           example: 0
+    FechaOmitidaDeSerie:
+      type: object
+      description: Una fecha de la serie que no se programo
+      properties:
+        detalle:
+          type: string
+          description: El mensaje que daria esa fecha programada como clase suelta
+          example: El espacio ya esta ocupado en ese horario
+        fecha:
+          type: string
+          format: date
+          description: "Fecha local, en la zona de la sede"
+          example: 2026-11-24
+        motivo:
+          type: string
+          description: "Por que no se programo. PASADO: la fecha ya paso. FERIADO:\
+            \ la sede no atiende. OFERTA_NO_VIGENTE: la oferta no rige ese dia. HORARIO_NO_DISPONIBLE:\
+            \ el profesional no atiende, no esta habilitado o hay un cierre. RECURSO_OCUPADO:\
+            \ el profesional o el box tienen un turno o una clase que se cruza. CAPACIDAD:\
+            \ el cupo supera el de la oferta o el del box. CLAVE_REUSADA: la clave\
+            \ ya programo otra clase esa fecha"
+          enum:
+          - PASADO
+          - FERIADO
+          - OFERTA_NO_VIGENTE
+          - HORARIO_NO_DISPONIBLE
+          - RECURSO_OCUPADO
+          - CAPACIDAD
+          - CLAVE_REUSADA
+          example: RECURSO_OCUPADO
     FeriadoResponse:
       type: object
       description: Feriado del calendario nacional que cae en la ventana consultada
@@ -34843,6 +35985,31 @@ components:
           description: Id de la fila que produjo la franja —el bloque o la excepcion
             de apertura— para que la pantalla pueda linkearla
           example: 501
+    FuenteDeConsultaResponse:
+      type: object
+      description: "Fuente de una respuesta de la biblioteca: libro, paginas y extracto\
+        \ del pasaje"
+      properties:
+        extracto:
+          type: string
+          maxLength: 300
+        libroId:
+          type: integer
+          format: int64
+        paginaDesde:
+          type: integer
+          format: int32
+        paginaHasta:
+          type: integer
+          format: int32
+        titulo:
+          type: string
+      required:
+      - extracto
+      - libroId
+      - paginaDesde
+      - paginaHasta
+      - titulo
     GrantPlatformRoleRequest:
       type: object
       description: Rol de plataforma a otorgar
@@ -36042,6 +37209,127 @@ components:
             \ cuando la mitad entro por tarjeta."
           items:
             $ref: "#/components/schemas/TotalPorMedioDeCaja"
+    LibroDatosRequest:
+      type: object
+      description: Datos editables de un libro
+      properties:
+        area:
+          type: string
+          maxLength: 100
+        autores:
+          type: string
+          maxLength: 500
+        edicion:
+          type: string
+          maxLength: 100
+        titulo:
+          type: string
+          maxLength: 300
+        version:
+          type: integer
+          format: int64
+          description: "Version leida, para el control optimista"
+      required:
+      - titulo
+      - version
+    LibroDetalleResponse:
+      type: object
+      description: "Detalle de un libro: datos, fragmentos y los marcados como sospechosos"
+      properties:
+        fragmentos:
+          type: integer
+          format: int64
+          description: Cantidad de fragmentos
+        fragmentosConVector:
+          type: integer
+          format: int64
+          description: Fragmentos que ya tienen vector
+        libro:
+          $ref: "#/components/schemas/LibroResponse"
+        sospechosos:
+          type: array
+          description: Fragmentos que parecen texto corrupto o instrucciones
+          items:
+            $ref: "#/components/schemas/LibroFragmentoSospechosoResponse"
+    LibroFragmentoSospechosoResponse:
+      type: object
+      description: Un fragmento marcado como sospechoso
+      properties:
+        extracto:
+          type: string
+          description: Primeros 200 caracteres
+        paginaDesde:
+          type: integer
+          format: int32
+          description: Primera pagina del fragmento
+    LibroPageResponse:
+      type: object
+      description: Pagina de libros de la biblioteca
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibroResponse"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina, base cero"
+        size:
+          type: integer
+          format: int32
+          description: Elementos por pagina
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+    LibroResponse:
+      type: object
+      description: Un libro de la biblioteca de la organizacion
+      properties:
+        area:
+          type: string
+        autores:
+          type: string
+        edicion:
+          type: string
+        estado:
+          type: string
+          description: Estado que ve el usuario; INACTIVO si esta dado de baja
+          enum:
+          - PENDIENTE
+          - PROCESANDO
+          - LISTO
+          - ERROR
+          - INACTIVO
+        id:
+          type: integer
+          format: int64
+          example: 12
+        motivoError:
+          type: string
+          description: "Por que fallo el procesamiento, si fallo"
+        paginas:
+          type: integer
+          format: int32
+          description: Paginas del PDF; vacio hasta que se procesa
+        progreso:
+          type: integer
+          format: int32
+          description: "Avance del procesamiento, 0 a 100"
+          example: 40
+        reemplazaLibroId:
+          type: integer
+          format: int64
+          description: "Libro al que reemplaza, mientras el reemplazo no esta LISTO"
+        titulo:
+          type: string
+          example: Kinesiologia del deporte
+        version:
+          type: integer
+          format: int64
+          description: Version para el control optimista de PUT
     LimitUsageResponse:
       type: object
       description: Consumo actual de un limite del plan contratado
@@ -37592,6 +38880,19 @@ components:
           type: boolean
           description: "Si HOY cae dentro de la ventana de vigencia, en la zona horaria\
             \ de la sede. Distinto de estado: ver la descripcion del esquema"
+    OpcionDeAclaracionResponse:
+      type: object
+      description: "Opcion de una repregunta de la biblioteca: el clic manda `pregunta`\
+        \ como una consulta nueva"
+      properties:
+        etiqueta:
+          type: string
+        pregunta:
+          type: string
+          maxLength: 600
+      required:
+      - etiqueta
+      - pregunta
     OperativoDeTurno:
       type: object
       description: "Lo que la agenda muestra de un turno ademas de la reserva. PHI\
@@ -39963,6 +41264,13 @@ components:
       - https://akine.app/problems/caso-clinico-requerido
       - https://akine.app/problems/enmienda-fuera-de-ventana
       - https://akine.app/problems/profesional-no-habilitado-en-oferta
+      - https://akine.app/problems/biblioteca-deshabilitada
+      - https://akine.app/problems/libro-no-encontrado
+      - https://akine.app/problems/libro-duplicado
+      - https://akine.app/problems/libro-archivo-no-aceptado
+      - https://akine.app/problems/libro-en-proceso
+      - https://akine.app/problems/consulta-ocupada
+      - https://akine.app/problems/asistente-no-disponible
     Producto:
       type: object
       description: Producto de pack del catalogo de una sede (RF-M29-001).
@@ -40165,6 +41473,89 @@ components:
       - capacidad
       - fin
       - inicio
+    ProgramarSerieDeClases:
+      type: object
+      description: "Programa una clase en cada fecha del rango que cae en uno de los\
+        \ dias de la semana pedidos, con el mismo horario, profesional, box y cupo.\
+        \ Cada fecha se valida como una clase suelta y la que no se puede programar\
+        \ se informa, sin frenar las demas."
+      properties:
+        capacidad:
+          type: integer
+          format: int32
+          description: Cupo de cada clase. Limitado ademas por la oferta y el box.
+            Minimo 2
+          example: 10
+          minimum: 2
+        desde:
+          type: string
+          format: date
+          description: "Primer dia del rango, inclusive, en la zona de la sede"
+          example: 2026-11-10
+        diasSemana:
+          type: array
+          description: Dias de la semana en que se dicta la clase. Al menos uno; los
+            repetidos cuentan una vez
+          items:
+            type: integer
+            format: int32
+            description: "Dia de la semana en formato ISO-8601: lunes = 1 .. domingo\
+              \ = 7"
+            maximum: 7
+            minimum: 1
+          maxItems: 7
+          minItems: 0
+        espacioId:
+          type: integer
+          format: int64
+          description: "Box elegido. Sin el, el servidor elige en cada fecha el primer\
+            \ box apto y libre (solo si la oferta exige espacio)"
+          example: 8
+          exclusiveMinimum: 0
+        hasta:
+          type: string
+          format: date
+          description: "Ultimo dia del rango, INCLUSIVE. El rango no puede superar\
+            \ un anio"
+          example: 2026-12-31
+        horaFin:
+          type: string
+          description: "Hora local de fin, EXCLUSIVA y posterior a la de inicio"
+          example: 19:00
+          pattern: "^([01]\\d|2[0-3]):[0-5]\\d$"
+        horaInicio:
+          type: string
+          description: "Hora local de inicio, en la zona de la sede"
+          example: 18:00
+          pattern: "^([01]\\d|2[0-3]):[0-5]\\d$"
+        idempotencyKey:
+          type: string
+          description: "Clave del cliente para la serie entera. Un reintento con la\
+            \ misma clave devuelve las clases ya creadas en vez de duplicarlas, y\
+            \ sigue con las que faltan"
+          example: b3f1c2a4-5d6e-4f70-8a91-2c3d4e5f6a7b
+          maxLength: 64
+          minLength: 0
+        profesionalId:
+          type: integer
+          format: int64
+          description: Membership del profesional a cargo. Obligatorio si la oferta
+            lo requiere
+          example: 31
+          exclusiveMinimum: 0
+        titulo:
+          type: string
+          description: Rotulo de cada clase de la serie
+          example: Yoga - martes y jueves
+          maxLength: 120
+          minLength: 0
+      required:
+      - capacidad
+      - desde
+      - diasSemana
+      - hasta
+      - horaFin
+      - horaInicio
     PuntoDeSerieDeReporte:
       type: object
       description: "Una barra: los dias `desde`..`hasta` inclusive y su valor. Cero\
@@ -42324,6 +43715,23 @@ components:
       required:
       - consultorioId
       - organizationId
+    SerieDeClases:
+      type: object
+      description: "Resultado de programar una serie: las clases programadas y las\
+        \ fechas que no se pudieron programar, cada una con su motivo"
+      properties:
+        omitidas:
+          type: array
+          description: "Fechas que no se programaron, en orden. Vacio si salieron\
+            \ todas"
+          items:
+            $ref: "#/components/schemas/FechaOmitidaDeSerie"
+        programadas:
+          type: array
+          description: "Clases de la serie, en orden de fecha. En un reintento con\
+            \ la misma clave incluye las que ya existian"
+          items:
+            $ref: "#/components/schemas/Clase"
     SerieDeIndicadorDeReporte:
       type: object
       description: "La serie de un indicador. La suma de los puntos es `total`, y\
@@ -42640,8 +44048,16 @@ components:
       - sedeId
     ServicioResponse:
       type: object
-      description: Servicio del catalogo global de la plataforma
+      description: Servicio del catalogo global de la plataforma o propio del centro
       properties:
+        alcance:
+          type: string
+          description: "GLOBAL: del catalogo de la plataforma, lo ven todos los centros.\
+            \ ORGANIZACION: servicio propio del centro, lo ve solo esa organizacion"
+          enum:
+          - GLOBAL
+          - ORGANIZACION
+          example: GLOBAL
         codigo:
           type: string
           description: "Clave estable con la que las ofertas lo referencian. No cambia\
@@ -43950,6 +45366,21 @@ components:
           $ref: "#/components/schemas/TurnoDelDia"
           description: "El turno, con paciente, oferta, espacio, recepcion, serie\
             \ y cobertura ya resueltos"
+    TurnoDeConsultaRequest:
+      type: object
+      description: Turno previo de la conversacion
+      properties:
+        rol:
+          type: string
+          enum:
+          - usuario
+          - asistente
+        texto:
+          type: string
+          maxLength: 2000
+      required:
+      - rol
+      - texto
     TurnoDelDia:
       type: object
       description: "Turno de la agenda del dia de una sede, con el paciente resuelto.\

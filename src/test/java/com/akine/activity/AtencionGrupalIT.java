@@ -317,17 +317,17 @@ class AtencionGrupalIT {
 		long personaId = InsertarConId.insertar(jdbc, """
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", mundo.organizationId(), apellido, apellido.toUpperCase());
 		jdbc.update("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", mundo.organizationId(), personaId, actor.accountId());
 		long historiaId = InsertarConId.insertar(jdbc, """
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", mundo.organizationId(), personaId, actor.accountId());
 		return new long[]{personaId, historiaId};
 	}
@@ -338,7 +338,7 @@ class AtencionGrupalIT {
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'GRUPAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'GRUPAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "AGR-" + sufijo.toUpperCase(), "Servicio " + sufijo);
 		return InsertarConId.insertar(jdbc, """
 				INSERT INTO oferta_servicio_consultorio
@@ -346,8 +346,8 @@ class AtencionGrupalIT {
 				        duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				        genera_registro_clinico, requiere_profesional, requiere_espacio,
 				        vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'GRUPAL', 60, 8, 0, ?, ?, 0, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'GRUPAL', 60, 8, false, CAST(? AS boolean), CAST(? AS boolean), false, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", mundo.organizationId(), mundo.consultorioId(), servicioId, "Grupal " + sufijo,
 				clinica, clinica);
 	}
@@ -362,9 +362,9 @@ class AtencionGrupalIT {
 				                              inicio, fin, capacidad, estado,
 				                              programado_por_cuenta_id, programado_en, version)
 				VALUES (?, ?, ?, ?,
-				        DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 7 DAY),
-				        DATE_ADD(DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 7 DAY), INTERVAL 1 HOUR),
-				        8, 'PROGRAMADA', ?, UTC_TIMESTAMP(6), 0)
+				        (CURRENT_TIMESTAMP + INTERVAL '7 days'),
+				        ((CURRENT_TIMESTAMP + INTERVAL '7 days') + INTERVAL '1 hours'),
+				        8, 'PROGRAMADA', ?, CURRENT_TIMESTAMP, 0)
 				""", mundo.organizationId(), mundo.consultorioId(), ofertaId, titulo, actor.accountId());
 	}
 

@@ -58,8 +58,10 @@ de commits, o directamente se revierte una decisión correcta por desconocer su 
 | [0020](0020-rol-de-plataforma-sin-organization-id.md) | `platform_role` no lleva `organization_id` | Superseded by ADR-0023 | AKINE-01.03 |
 | [0021](0021-catalogos-clinicos-globales-sin-organization-id.md) | Los catálogos clínicos llevan `organization_id` nullable | Superseded by ADR-0023 | AKINE-02.05 |
 | [0022](0022-feriados-globales-sin-organization-id.md) | `feriado` es global, sin `organization_id` | Superseded by ADR-0023 | AKINE-02.04 |
-| [0023](0023-tablas-globales-sin-organization-id.md) | Qué tabla puede no llevar `organization_id`: criterio único y lista consolidada | Aceptado | AKINE-02.06 |
+| [0023](0023-tablas-globales-sin-organization-id.md) | Qué tabla puede no llevar `organization_id`: criterio único y lista consolidada | Aceptado (la fila de `servicio`, superseded by ADR-0025) | AKINE-02.06 |
 | [0024](0024-encounter-es-duenio-de-la-sesion.md) | `encounter` es el módulo dueño de la Sesión (no `clinical`) | Aceptado | AKINE-06.01 |
+| [0025](0025-servicio-propio-de-la-organizacion.md) | `servicio` admite servicios propios del centro (`organization_id` nullable + `owner_key`) | Aceptado | Clases y servicios del centro (09/11/2026) |
+| [0026](0026-postgresql-unico-motor.md) | PostgreSQL + pgvector es el único motor; baseline Flyway V1–V13 | Aceptado | Migración a PostgreSQL (11/11/2026) |
 
 > **La lista de excepciones a [ADR-0004](0004-convenciones-de-persistencia-multi-tenant.md) vive
 > en [ADR-0023](0023-tablas-globales-sin-organization-id.md), y sólo ahí.** Ese ADR consolida las

@@ -14,7 +14,7 @@ import java.time.Instant;
 /**
  * Una alerta sobre una autorizacion que nace de un hecho de otro modulo (DP-13, RN-M17-003).
  *
- * <p><b>Solo lectura desde JPA.</b> Se inserta con un {@code INSERT ... ON DUPLICATE KEY UPDATE}
+ * <p><b>Solo lectura desde JPA.</b> Se inserta con un {@code INSERT ... ON CONFLICT DO NOTHING}
  * nativo —una alerta por consumo, y dos anulaciones concurrentes no chocan— y se resuelve con un
  * {@code UPDATE} condicional. Ninguna de las dos escrituras pasa por la sesion de JPA, y por eso
  * todas las columnas son {@code insertable = false, updatable = false}: si alguien la guardara por

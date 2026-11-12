@@ -43,7 +43,7 @@ import org.springframework.transaction.PlatformTransactionManager;
  * chocar pasa de "toda la transaccion de negocio" a "un INSERT".
  *
  * <p>Y ese INSERT ya no puede fallar: {@code crearSiFalta} es
- * {@code INSERT ... ON DUPLICATE KEY UPDATE}, una sola sentencia atomica sin lectura previa.
+ * {@code INSERT ... ON CONFLICT DO NOTHING}, una sola sentencia atomica sin lectura previa.
  * Envolver el camino viejo en un try/catch <b>no habria alcanzado</b>: atrapar una excepcion de
  * persistencia no des-marca la transaccion, y Spring termina lanzando
  * {@code UnexpectedRollbackException} al commitear. La excepcion hay que evitarla, no atraparla.

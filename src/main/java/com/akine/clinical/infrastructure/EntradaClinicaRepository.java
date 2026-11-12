@@ -62,7 +62,7 @@ public interface EntradaClinicaRepository
 			SELECT * FROM entrada_clinica e
 			 WHERE e.organization_id = :organizationId
 			   AND e.historia_clinica_id = :historiaClinicaId
-			   AND e.active = 1
+			   AND e.active = true
 			   AND e.ocurrio_en <= :hasta
 			 ORDER BY e.ocurrio_en DESC, e.id DESC
 			 LIMIT :limite

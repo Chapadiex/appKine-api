@@ -102,7 +102,7 @@ class CajaDiariaMigrationIT {
 		long abierta = db.insertar("jornada_caja", jornadaAbierta(tenant.consultorioId()));
 		jdbc.update("""
 				UPDATE jornada_caja
-				   SET estado = 'CERRADA', cerrada_en = UTC_TIMESTAMP(6), cerrada_por_cuenta_id = ?,
+				   SET estado = 'CERRADA', cerrada_en = CURRENT_TIMESTAMP, cerrada_por_cuenta_id = ?,
 				       saldo_teorico_cierre = 1000.00, saldo_declarado = 1000.00, diferencia = 0.00
 				 WHERE id = ?
 				""", tenant.cuentaId(), abierta);

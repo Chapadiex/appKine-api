@@ -203,7 +203,7 @@ class DisponibilidadEfectivaSedeIT {
 				INSERT INTO consultorio_calendario
 				    (organization_id, consultorio_id, pais, cierra_por_feriado, version,
 				     created_at, updated_at)
-				VALUES (?, ?, 'AR', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'AR', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, sede);
 
 		// APERTURA de SEDE: membership_id NULL. "Este año abrimos de 10 a 14."
@@ -212,8 +212,8 @@ class DisponibilidadEfectivaSedeIT {
 				    (organization_id, consultorio_id, membership_id, tipo, motivo,
 				     fecha_desde, fecha_hasta, hora_desde, hora_hasta, active, version,
 				     created_at, updated_at)
-				VALUES (?, ?, NULL, 'APERTURA', 'AMPLIACION', ?, ?, '10:00:00', '14:00:00', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, NULL, 'APERTURA', 'AMPLIACION', CAST(? AS date), CAST(? AS date), '10:00:00', '14:00:00', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, sede, NAVIDAD, NAVIDAD.plusDays(1));
 
 		given(consultorioDirectory.find(organizationId, sede)).willReturn(Optional.of(
@@ -266,7 +266,7 @@ class DisponibilidadEfectivaSedeIT {
 		jdbc.update("""
 				INSERT INTO organization (name, slug, timezone, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Efectiva Sintetica " + sufijo, slug, ZONA);
 		return jdbc.queryForObject("SELECT id FROM organization WHERE slug = ?", Long.class, slug);
 	}
@@ -275,7 +275,7 @@ class DisponibilidadEfectivaSedeIT {
 		jdbc.update("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, nombre, ZONA);
 		return jdbc.queryForObject(
 				"SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
@@ -287,8 +287,8 @@ class DisponibilidadEfectivaSedeIT {
 		jdbc.update("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado,
 				                    active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'Efectiva', 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'Efectiva', 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 		return jdbc.queryForObject(
 				"SELECT id FROM cuenta WHERE email_normalizado = ?", Long.class, email);
@@ -299,9 +299,9 @@ class DisponibilidadEfectivaSedeIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, active, version,
 				                        created_at, updated_at)
-				VALUES (?, NULL, ?, 'PROFESIONAL', 0,
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, NULL, ?, 'PROFESIONAL', false,
+				        (CURRENT_TIMESTAMP - INTERVAL '1 minutes'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, accountId);
 		return jdbc.queryForObject("""
 				SELECT id FROM membership
@@ -317,7 +317,7 @@ class DisponibilidadEfectivaSedeIT {
 				INSERT INTO profesional_disponibilidad
 				    (organization_id, consultorio_id, membership_id, dia_semana, hora_desde,
 				     hora_hasta, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, '2020-01-01', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, CAST(? AS time), CAST(? AS time), '2020-01-01', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, membershipId, diaSemana, horaDesde, horaHasta);
 	}
 

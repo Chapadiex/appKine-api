@@ -5,6 +5,8 @@ import com.akine.encounter.domain.exception.SesionAjenaException;
 import com.akine.encounter.domain.exception.SesionNoCerradaException;
 import com.akine.encounter.domain.exception.SesionCerradaException;
 import jakarta.persistence.Column;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -131,7 +133,8 @@ public class Sesion {
 	@Column(name = "iniciada_por_cuenta_id", nullable = false, updatable = false)
 	private Long iniciadaPorCuentaId;
 
-	@Column(name = "borrador", columnDefinition = "json")
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "borrador", columnDefinition = "jsonb")
 	private String borrador;
 
 	@Column(name = "borrador_guardado_en")

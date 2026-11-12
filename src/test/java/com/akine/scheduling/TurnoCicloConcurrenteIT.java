@@ -253,10 +253,10 @@ class TurnoCicloConcurrenteIT {
 				                   reservado_por_cuenta_id, reservado_en, version,
 				                   created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?,
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 7 DAY),
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 7 DAY) + INTERVAL 60 MINUTE,
-				        'RESERVADO', ?, UTC_TIMESTAMP(6), 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        (CURRENT_TIMESTAMP - INTERVAL '7 days'),
+				        (CURRENT_TIMESTAMP - INTERVAL '7 days') + INTERVAL '60 minutes',
+				        'RESERVADO', ?, CURRENT_TIMESTAMP, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.ofertaId(),
 				fixture.personaA(), fixture.profesionalMembershipId(),
 				fixture.actor().accountId());
@@ -283,7 +283,7 @@ class TurnoCicloConcurrenteIT {
 		return jdbc.queryForObject("""
 				SELECT COUNT(*) FROM turno
 				 WHERE organization_id = ? AND oferta_id = ? AND deleted_at IS NULL
-				   AND inicio = ?
+				   AND inicio = CAST(? AS timestamptz)
 				""", Long.class, fixture.organizationId(), fixture.ofertaId(),
 				inicio.atZone(ZoneId.of("UTC")).toLocalDateTime());
 	}

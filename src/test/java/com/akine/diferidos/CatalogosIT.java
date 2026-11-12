@@ -449,7 +449,7 @@ class CatalogosIT extends BaseEscenarioDiferido {
 	private long vigenciasActivas(long nomencladorId, String codigo) {
 		Long total = jdbc.queryForObject("""
 				SELECT COUNT(*) FROM nomenclador_item
-				 WHERE nomenclador_id = ? AND codigo = ? AND active = 1
+				 WHERE nomenclador_id = ? AND codigo = ? AND active = true
 				""", Long.class, nomencladorId, codigo);
 		return total == null ? 0L : total;
 	}

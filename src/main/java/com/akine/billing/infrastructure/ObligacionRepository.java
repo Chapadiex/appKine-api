@@ -140,8 +140,8 @@ public interface ObligacionRepository
 			   AND o.estado IN ('PENDIENTE', 'PARCIAL')
 			   AND o.saldo > 0
 			   AND o.deleted_at IS NULL
-			   AND (:desde IS NULL OR o.devengada_en >= :desde)
-			   AND (:hasta IS NULL OR o.devengada_en < :hasta)
+			   AND (CAST(:desde AS timestamptz) IS NULL OR o.devengada_en >= :desde)
+			   AND (CAST(:hasta AS timestamptz) IS NULL OR o.devengada_en < :hasta)
 			   AND NOT EXISTS (SELECT 1 FROM presentacion_item i
 			                    WHERE i.obligacion_id = o.id
 			                      AND i.estado IN ('INCLUIDO', 'ACEPTADO', 'DEBITADO_PARCIAL'))
@@ -244,7 +244,7 @@ public interface ObligacionRepository
 	 * @return filas {@code [dia, importe]}
 	 */
 	@Query(value = """
-			SELECT DATE(CONVERT_TZ(o.devengada_en, '+00:00', :desfase)) AS dia,
+			SELECT CAST((o.devengada_en AT TIME ZONE 'UTC') + CAST(:desfase AS interval) AS date) AS dia,
 			       SUM(o.importe_original) AS total
 			  FROM obligacion o
 			 WHERE o.organization_id = :organizationId

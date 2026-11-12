@@ -187,7 +187,7 @@ class ClaseYTurnoEntreSedesIT {
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'GRUPAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'GRUPAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SEDES-" + sufijo, "Servicio " + sufijo);
 		long servicio = jdbc.queryForObject("SELECT id FROM servicio WHERE codigo = ?", Long.class, "SEDES-" + sufijo);
 		jdbc.update("""
@@ -196,8 +196,8 @@ class ClaseYTurnoEntreSedesIT {
 				        duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				        genera_registro_clinico, requiere_profesional, requiere_espacio,
 				        vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'GRUPAL', 60, 10, 0, 0, 0, 1, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'GRUPAL', 60, 10, false, false, false, true, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", sede.organizationId(), sede.consultorioId(), servicio, "Grupal " + sufijo);
 		return jdbc.queryForObject(
 				"SELECT id FROM oferta_servicio_consultorio WHERE organization_id = ? AND nombre_comercial = ?",

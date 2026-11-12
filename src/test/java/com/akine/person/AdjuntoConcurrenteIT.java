@@ -222,7 +222,7 @@ class AdjuntoConcurrenteIT {
 		String slug = "adjunto-it-" + sufijo;
 		jdbc.update("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro Sintetico " + sufijo, slug, ZONA);
 		return jdbc.queryForObject("SELECT id FROM organization WHERE slug = ?", Long.class, slug);
 	}
@@ -232,7 +232,7 @@ class AdjuntoConcurrenteIT {
 		jdbc.update("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, nombre, ZONA);
 		return jdbc.queryForObject(
 				"SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
@@ -244,8 +244,8 @@ class AdjuntoConcurrenteIT {
 		jdbc.update("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado,
 				                    active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 		return jdbc.queryForObject(
 				"SELECT id FROM cuenta WHERE email_normalizado = ?", Long.class, email);
@@ -257,9 +257,9 @@ class AdjuntoConcurrenteIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, 'CONSULTORIO_ADMIN', 0,
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR), 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'CONSULTORIO_ADMIN', false,
+				        (CURRENT_TIMESTAMP - INTERVAL '5 years'), 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, accountId);
 	}
 
@@ -270,7 +270,7 @@ class AdjuntoConcurrenteIT {
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				VALUES (?, 'DNI', ?, ?, 'Sintetica', 'Adjunto', 'SINTETICA', 'ADJUNTO',
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, documento, documento);
 	}
 }

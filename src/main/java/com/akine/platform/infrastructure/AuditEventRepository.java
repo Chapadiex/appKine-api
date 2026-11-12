@@ -145,8 +145,7 @@ public interface AuditEventRepository extends Repository<AuditEvent, Long> {
 			+ "    select t.id from AuditEvent t where t.organizationId = e.organizationId"
 			+ "     and t.eventType = :traslado and t.entityType = e.entityType and t.entityId = e.entityId))"
 			+ " and (:unificar = false or e.eventType <> :reserva or e.agendaTurnoOrigenRef is null)"
-			+ " and (:desde is null or e.occurredAt >= :desde)"
-			+ " and (:hasta is null or e.occurredAt < :hasta)"
+			+ " and e.occurredAt >= :desde and e.occurredAt < :hasta"
 			+ " and (:patron is null or e.reason like :patron escape '\\'"
 			+ "      or e.eventType like :patron escape '\\')")
 	Page<AuditEvent> deAgenda(

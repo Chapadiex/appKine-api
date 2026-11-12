@@ -88,11 +88,11 @@ class SerieDeTurnosIT {
 	void la_migracion_v70_ejecuto() {
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM information_schema.columns
-				 WHERE table_schema = DATABASE() AND table_name = 'turno' AND column_name = 'serie_id'
+				 WHERE table_schema = current_schema() AND table_name = 'turno' AND column_name = 'serie_id'
 				""", Long.class)).isEqualTo(1L);
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM information_schema.tables
-				 WHERE table_schema = DATABASE() AND table_name = 'turno_serie'
+				 WHERE table_schema = current_schema() AND table_name = 'turno_serie'
 				""", Long.class)).isEqualTo(1L);
 	}
 
@@ -266,8 +266,8 @@ class SerieDeTurnosIT {
 		// El turno no puede llegar al pasado por el servicio —la serie exige futuro—: se corre la
 		// fila a la semana pasada, como la dejaria el tiempo.
 		jdbc.update("""
-				UPDATE turno SET inicio = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 7 DAY),
-				                 fin = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 7 DAY) + INTERVAL 60 MINUTE
+				UPDATE turno SET inicio = (CURRENT_TIMESTAMP - INTERVAL '7 days'),
+				                 fin = (CURRENT_TIMESTAMP - INTERVAL '7 days') + INTERVAL '60 minutes'
 				 WHERE id = ?
 				""", primero);
 
@@ -436,7 +436,7 @@ class SerieDeTurnosIT {
 
 	@org.junit.jupiter.api.AfterEach
 	void borrarFeriadoSintetico() {
-		jdbc.update("DELETE FROM feriado WHERE pais = 'AR' AND fecha = ? AND nombre = 'Feriado sintetico U-22'",
+		jdbc.update("DELETE FROM feriado WHERE pais = 'AR' AND fecha = CAST(? AS date) AND nombre = 'Feriado sintetico U-22'",
 				FERIADO_SINTETICO);
 	}
 
@@ -476,7 +476,7 @@ class SerieDeTurnosIT {
 						.containsEntry("fecha", java.sql.Date.valueOf(FERIADO_SINTETICO))
 						.containsEntry("motivo", "FERIADO"));
 		assertThat(jdbc.queryForObject("""
-				SELECT JSON_UNQUOTE(JSON_EXTRACT(details, '$.omitidasPorFeriado')) FROM audit_event
+				SELECT details ->> 'omitidasPorFeriado' FROM audit_event
 				 WHERE organization_id = ? AND event_type = 'TURNO_SERIE_CREADA' AND entity_id = ?
 				""", String.class, fixture.organizationId(), serie.id()))
 				.as("la auditoria del alta dice que fecha se salto")
@@ -559,9 +559,9 @@ class SerieDeTurnosIT {
 
 	private void insertarFeriadoSintetico() {
 		jdbc.update("""
-				INSERT IGNORE INTO feriado (pais, fecha, nombre, tipo, created_at, updated_at)
-				VALUES ('AR', ?, 'Feriado sintetico U-22', 'INAMOVIBLE', UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-				""", FERIADO_SINTETICO);
+				INSERT INTO feriado (pais, fecha, nombre, tipo, created_at, updated_at)
+				VALUES ('AR', CAST(? AS date), 'Feriado sintetico U-22', 'INAMOVIBLE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING
+""", FERIADO_SINTETICO);
 	}
 
 	// =================================================================================
@@ -589,8 +589,8 @@ class SerieDeTurnosIT {
 	/** Corre la fila al pasado, como la dejaria el tiempo: el servicio no reserva ni cancela en el pasado. */
 	private void alPasado(long turnoId, int dias) {
 		jdbc.update("""
-				UPDATE turno SET inicio = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL ? DAY),
-				                 fin = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL ? DAY) + INTERVAL 60 MINUTE
+				UPDATE turno SET inicio = (CURRENT_TIMESTAMP - make_interval(days => ?)),
+				                 fin = (CURRENT_TIMESTAMP - make_interval(days => ?)) + INTERVAL '60 minutes'
 				 WHERE id = ?
 				""", dias, dias, turnoId);
 	}
@@ -624,7 +624,7 @@ class SerieDeTurnosIT {
 		return jdbc.queryForObject("""
 				SELECT COUNT(*) FROM turno
 				 WHERE organization_id = ? AND oferta_id = ? AND deleted_at IS NULL
-				   AND inicio = ?
+				   AND inicio = CAST(? AS timestamptz)
 				""", Long.class, fixture.organizationId(), fixture.ofertaId(),
 				inicio.atZone(ZoneId.of("UTC")).toLocalDateTime());
 	}

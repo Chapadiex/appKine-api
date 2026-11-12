@@ -280,7 +280,7 @@ class DevengoPorClaseIT {
 	void la_migracion_no_pierde_origenes_y_el_unique_cuida_la_viva() {
 		String check = jdbc.queryForObject("""
 				SELECT CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS
-				 WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'ck_obligacion_origen'
+				 WHERE CONSTRAINT_SCHEMA = current_schema() AND CONSTRAINT_NAME = 'ck_obligacion_origen'
 				""", String.class);
 		assertThat(check).contains("SESION", "VENTA_PASE", "VENTA_ABONO", "ASISTENCIA_CLASE");
 
@@ -297,7 +297,7 @@ class DevengoPorClaseIT {
 				.isInstanceOf(DataIntegrityViolationException.class);
 		// Anulada la viva, la base admite otra: es lo que deja re-devengar.
 		jdbc.update("""
-				UPDATE obligacion SET estado = 'ANULADA', saldo = 0, anulada_en = UTC_TIMESTAMP(6),
+				UPDATE obligacion SET estado = 'ANULADA', saldo = 0, anulada_en = CURRENT_TIMESTAMP,
 				       anulada_por_cuenta_id = ?, motivo_anulacion = 'IT' WHERE id = ?
 				""", tenant.actor().accountId(), alta.devengo().obligacionId());
 		insertarDeudaDeClase(tenant, asistencia, clase);
@@ -354,8 +354,8 @@ class DevengoPorClaseIT {
 				INSERT INTO jornada_caja (organization_id, consultorio_id, fecha_negocio, moneda,
 				                          estado, saldo_inicial, saldo_arqueo, abierta_en,
 				                          abierta_por_cuenta_id, created_at, updated_at)
-				VALUES (?, ?, ?, 'ARS', 'ABIERTA', 0.00, 0.00, UTC_TIMESTAMP(6), ?,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CAST(? AS date), 'ARS', 'ABIERTA', 0.00, 0.00, CURRENT_TIMESTAMP, ?,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), tenant.consultorioId(),
 				LocalDate.now(ZoneId.of(ActividadItFixture.ZONA)).toString(), tenant.actor().accountId());
 	}
@@ -366,7 +366,7 @@ class DevengoPorClaseIT {
 				                        persona_id, responsable, concepto, importe_original, saldo, moneda,
 				                        estado, oferta_id, snapshot_nombre, snapshot_precio, devengada_en)
 				VALUES (?, ?, 'ASISTENCIA_CLASE', ?, ?, ?, 'PACIENTE', 'PARTICULAR', 6000.00, 6000.00, 'ARS',
-				        'PENDIENTE', ?, 'IT', 6000.00, ?)
+				        'PENDIENTE', ?, 'IT', 6000.00, CAST(? AS timestamptz))
 				""", tenant.organizationId(), tenant.consultorioId(), asistencia, clase, tenant.persona(0),
 				tenant.ofertaId(), Timestamp.from(java.time.Instant.now()));
 	}

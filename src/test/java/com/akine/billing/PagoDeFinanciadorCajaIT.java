@@ -152,7 +152,7 @@ class PagoDeFinanciadorCajaIT {
 				.isEqualTo(1);
 		assertThat(contar("""
 				SELECT COUNT(*) FROM movimiento_caja
-				 WHERE tipo_origen = 'PAGO_FINANCIADOR' AND referencia_origen = ?
+				 WHERE tipo_origen = 'PAGO_FINANCIADOR' AND referencia_origen = CAST(? AS bigint)
 				""", primero.id()))
 				.isEqualTo(1);
 		assertThat(saldoDelLote(lote.id()))
@@ -227,7 +227,7 @@ class PagoDeFinanciadorCajaIT {
 		return jdbc.queryForMap("""
 				SELECT id, jornada_caja_id, afecta_arqueo, tipo, medio, importe
 				  FROM movimiento_caja
-				 WHERE tipo_origen = 'PAGO_FINANCIADOR' AND referencia_origen = ?
+				 WHERE tipo_origen = 'PAGO_FINANCIADOR' AND referencia_origen = CAST(? AS bigint)
 				""", pagoId);
 	}
 

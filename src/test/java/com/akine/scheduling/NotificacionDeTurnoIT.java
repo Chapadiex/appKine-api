@@ -329,8 +329,8 @@ class NotificacionDeTurnoIT {
 	private Map<String, Object> filaDe(String clave) {
 		List<Map<String, Object>> filas = jdbc.queryForList("""
 				SELECT tipo, destinatario, organization_id, referencia_token_id,
-				       CAST(payload_sanitizado AS CHAR) AS payload,
-				       JSON_UNQUOTE(JSON_EXTRACT(payload_sanitizado, '$.turnoInicio')) AS turno_inicio
+				       CAST(payload_sanitizado AS text) AS payload,
+				       payload_sanitizado ->> 'turnoInicio' AS turno_inicio
 				  FROM notification_outbox
 				 WHERE clave_idempotente = ?
 				""", clave);

@@ -18,16 +18,18 @@ entorno real. Se apoya en la imagen del backend (G-3, `AGENT.md` §12), la del f
 
 | Script | Qué hace | Necesita |
 |---|---|---|
-| `ops/backup.sh` | mysqldump consistente + tar de adjuntos, verificación y retención | bash, Docker (o `mysqldump` local) |
-| `ops/verificar-backup.sh` | Restaura un backup en un MySQL efímero y lo comprueba | bash, Docker |
-| `ops/restore.sh` | Restaura base y/o adjuntos en el destino | bash, Docker (o `mysql` local) |
+| `ops/backup.sh` | `pg_dump` consistente + tar de adjuntos, manifiesto `akine-backup/2`, verificación y retención | bash, Docker (o `pg_dump` y `psql` locales) |
+| `ops/verificar-backup.sh` | Restaura un backup en un PostgreSQL efímero (rol sin superusuario, `vector` creada por el DBA) y lo comprueba | bash, Docker |
+| `ops/restore.sh` | Restaura base (en una sola transacción, sobre una base vacía) y/o adjuntos en el destino | bash, Docker (o `psql` local) |
 | `ops/verificar-adjuntos.sh` | Cruza cada fila de adjunto contra su binario (existencia y SHA-256) | bash, Docker |
 | `ops/smoke.mjs` | Smoke post-deploy: health, versión, login, lectura, frontend y proxy | Node 18+ |
 | `ops/release-notes.mjs` | Borrador de release notes desde los PR mergeados entre dos refs | Node 18+, git |
 | `ops/simulacro-restore.sh` | Simulacro completo en un stack aislado: sembrar, backup, destruir, restaurar, comprobar | bash, Docker, Node |
 
 Todos se configuran **por variable de entorno**: ningún script tiene un host ni una credencial
-escritos adentro. Las contraseñas viajan en `MYSQL_PWD` (nunca como argumento, que se ve en
+escritos adentro. El cliente de base es local si `pg_dump` y `psql` están en el PATH y, si no, la
+imagen `pgvector/pgvector:0.8.1-pg18-trixie` por `docker run` (`AKINE_DB_CLIENT=local|docker`,
+`AKINE_OPS_IMAGE`). Las contraseñas viajan en `PGPASSWORD` (nunca como argumento, que se ve en
 `ps`) y ningún script las imprime.
 
 ## Supuestos del despliegue
@@ -37,8 +39,11 @@ Lo que estos documentos dan por hecho. Si el despliegue real es otro, se ajustan
 - **Un backend y un frontend por entorno**, en contenedores. El frontend proxyea `/api` al
   backend (nginx, `AKINE_API_URL`) y es la única puerta pública; el actuator del backend no se
   publica a internet.
-- **MySQL 8.4** con `--log-bin-trust-function-creators=1` (los triggers de `V14`; ver
-  `compose.yaml`) y binlog activo.
+- **PostgreSQL 18 con pgvector 0.8** (la imagen `pgvector/pgvector:0.8.1-pg18-trixie`, la del
+  `compose.yaml` y los tests), con ICU para la collation `akine_ci`. La extensión `vector` exige
+  superusuario: la crea el DBA en la base antes del primer arranque y antes de un restore (en
+  desarrollo lo hace `ops/postgres/init`); el backend corre con un rol sin superusuario dueño de la
+  base. Zona de la base en UTC (`ALTER DATABASE ... SET timezone TO 'UTC'`).
 - **Los adjuntos viven en un volumen montado en `/app/var`** del backend: `adjuntos/`
   (administrativos) y `adjuntos-clinicos/`. Sin volumen, se pierden con el contenedor.
 - **Las imágenes se identifican por digest o por un tag inmutable** (por ejemplo el SHA corto del

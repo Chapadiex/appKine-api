@@ -178,7 +178,7 @@ class ImportacionArancelesIT {
 
 	private long contarAranceles(long convenioId) {
 		return jdbc.queryForObject(
-				"SELECT COUNT(*) FROM convenio_arancel WHERE convenio_id = ? AND active = 1",
+				"SELECT COUNT(*) FROM convenio_arancel WHERE convenio_id = ? AND active = true",
 				Long.class, convenioId);
 	}
 
@@ -187,8 +187,8 @@ class ImportacionArancelesIT {
 				SELECT COUNT(*) FROM convenio_arancel a
 				  JOIN convenio_arancel b
 				    ON b.convenio_id = a.convenio_id AND b.practica_id = a.practica_id
-				   AND b.id > a.id AND a.active = 1 AND b.active = 1
-				   AND (a.oferta_id <=> b.oferta_id)
+				   AND b.id > a.id AND a.active = true AND b.active = true
+				   AND (a.oferta_id IS NOT DISTINCT FROM b.oferta_id)
 				   AND (a.vigencia_hasta IS NULL OR a.vigencia_hasta >= b.vigencia_desde)
 				   AND (b.vigencia_hasta IS NULL OR b.vigencia_hasta >= a.vigencia_desde)
 				 WHERE a.convenio_id = ?

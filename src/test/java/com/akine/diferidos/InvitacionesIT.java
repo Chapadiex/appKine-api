@@ -413,7 +413,7 @@ class InvitacionesIT extends BaseEscenarioDiferido {
 	private String tokenDe(long invitacionId) {
 		String token = "token-de-prueba-" + UUID.randomUUID();
 		int filas = jdbc.update(
-				"UPDATE colaborador_invitacion SET token_hash = SHA2(?, 256) WHERE id = ?",
+				"UPDATE colaborador_invitacion SET token_hash = encode(sha256(convert_to(?, 'UTF8')), 'hex') WHERE id = ?",
 				token, invitacionId);
 		assertThat(filas).isEqualTo(1);
 		return token;

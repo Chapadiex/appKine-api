@@ -364,7 +364,7 @@ class DisponibilidadIT {
 		// Solo el miercoles original: ni lunes ni martes, que el servicio habia guardado antes del 409.
 		assertThat(contar("""
 				SELECT COUNT(*) FROM profesional_disponibilidad
-				 WHERE membership_id = ? AND active = 1
+				 WHERE membership_id = ? AND active = true
 				""", fixture.profesionalMembershipId())).isEqualTo(1L);
 		assertThat(contar("""
 				SELECT COUNT(*) FROM audit_event
@@ -380,7 +380,7 @@ class DisponibilidadIT {
 		assertThat(creados).hasSize(4).allMatch(BloqueView::nuevo);
 		assertThat(contar("""
 				SELECT COUNT(*) FROM profesional_disponibilidad
-				 WHERE membership_id = ? AND active = 1
+				 WHERE membership_id = ? AND active = true
 				""", fixture.profesionalMembershipId())).isEqualTo(5L);
 		assertThat(leerDeLaBase(fixture, miercoles.id()).isOperable()).isTrue();
 	}
@@ -889,7 +889,7 @@ class DisponibilidadIT {
 	/** La columna tal cual la tiene MySQL, sin pasar por el converter. */
 	private String horaHastaCruda(long bloqueId) {
 		return jdbc.queryForObject(
-				"SELECT CAST(hora_hasta AS CHAR) FROM profesional_disponibilidad WHERE id = ?",
+				"SELECT CAST(hora_hasta AS text) FROM profesional_disponibilidad WHERE id = ?",
 				String.class, bloqueId);
 	}
 
@@ -967,7 +967,7 @@ class DisponibilidadIT {
 		jdbc.update("""
 				INSERT INTO organization (name, slug, timezone, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro Sintetico " + sufijo, slug, ZONA);
 		return jdbc.queryForObject("SELECT id FROM organization WHERE slug = ?", Long.class, slug);
 	}
@@ -977,7 +977,7 @@ class DisponibilidadIT {
 		jdbc.update("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, nombre, ZONA);
 		return jdbc.queryForObject(
 				"SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
@@ -989,8 +989,8 @@ class DisponibilidadIT {
 		jdbc.update("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado,
 				                    active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 		return jdbc.queryForObject(
 				"SELECT id FROM cuenta WHERE email_normalizado = ?", Long.class, email);
@@ -1025,8 +1025,8 @@ class DisponibilidadIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR), 'ACTIVA',
-				        1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '5 years'), 'ACTIVA',
+				        true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, accountId, rol);
 		return jdbc.queryForObject("""
 				SELECT id FROM membership
@@ -1038,9 +1038,9 @@ class DisponibilidadIT {
 	private void desvincular(long membershipId) {
 		int filas = jdbc.update("""
 				UPDATE membership
-				   SET valid_until = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE),
+				   SET valid_until = (CURRENT_TIMESTAMP - INTERVAL '1 minutes'),
 				       estado = 'REVOCADA',
-				       updated_at = UTC_TIMESTAMP(6)
+				       updated_at = CURRENT_TIMESTAMP
 				 WHERE id = ?
 				""", membershipId);
 		assertThat(filas).isEqualTo(1);
@@ -1057,8 +1057,8 @@ class DisponibilidadIT {
 				    (organization_id, consultorio_id, membership_id, dia_semana, hora_desde,
 				     hora_hasta, vigencia_desde, vigencia_hasta, active, version,
 				     created_at, updated_at)
-				VALUES (?, ?, ?, 3, '09:00:00', '13:00:00', ?, ?, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 3, '09:00:00', '13:00:00', CAST(? AS date), CAST(? AS date), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(),
 				fixture.profesionalMembershipId(), desde, hasta);
 	}

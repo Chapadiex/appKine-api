@@ -359,9 +359,9 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 		// baja de perfil sola no tiene endpoint: la de la persona cascadea y deja activa=false).
 		int bajas = jdbc.update("""
 				UPDATE perfil_paciente
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6),
-				       deactivation_reason = 'baja sintetica', updated_at = UTC_TIMESTAMP(6)
-				 WHERE organization_id = ? AND persona_id = ? AND active = 1
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP,
+				       deactivation_reason = 'baja sintetica', updated_at = CURRENT_TIMESTAMP
+				 WHERE organization_id = ? AND persona_id = ? AND active = true
 				""", tenant.organizationId(), persona);
 		assertThat(bajas).isEqualTo(1);
 
@@ -487,6 +487,11 @@ class MatrizDePermisosIT extends BaseEscenarioDiferido {
 		// y ajustar pases no son del mostrador; vender y ver pases no son del profesional.
 		rechazado(celdas, post(o + memberships.get(ADM) + "/grants", token, grant("pase:adjust")),
 				ADM, "pase:adjust");
+		// M30: la biblioteca es solo del ORG_ADMIN, nunca por grant.
+		rechazado(celdas, post(o + memberships.get(ADM) + "/grants", token, grant("biblioteca:manage")),
+				ADM, "biblioteca:manage");
+		rechazado(celdas, post(o + memberships.get(ADM) + "/grants", token, grant("biblioteca:consultar")),
+				ADM, "biblioteca:consultar");
 		rechazado(celdas, post(o + memberships.get(ADM) + "/grants", token, grant("producto:manage")),
 				ADM, "producto:manage");
 		rechazado(celdas, post(o + memberships.get(PROF) + "/grants", token, grant("pase:read")),

@@ -68,9 +68,9 @@ public interface JornadaCajaRepository
 			SELECT * FROM jornada_caja
 			 WHERE organization_id = :organizationId
 			   AND consultorio_id = :consultorioId
-			   AND (:estado IS NULL OR estado = :estado)
-			   AND (:desde IS NULL OR fecha_negocio >= :desde)
-			   AND (:hasta IS NULL OR fecha_negocio <= :hasta)
+			   AND (CAST(:estado AS varchar) IS NULL OR estado = :estado)
+			   AND (CAST(:desde AS date) IS NULL OR fecha_negocio >= :desde)
+			   AND (CAST(:hasta AS date) IS NULL OR fecha_negocio <= :hasta)
 			 ORDER BY fecha_negocio DESC, id DESC
 			 LIMIT :limite OFFSET :desplazamiento
 			""", nativeQuery = true)
@@ -84,11 +84,11 @@ public interface JornadaCajaRepository
 			@Param("desplazamiento") int desplazamiento);
 
 	@Query(value = """
-			SELECT COUNT(*) FROM jornada_caja
+			SELECT COUNT(*) FROM (SELECT 1 FROM jornada_caja
 			 WHERE id = :jornadaId
 			   AND organization_id = :organizationId
 			   AND estado = 'ABIERTA'
-			   FOR UPDATE
+			   FOR UPDATE) AS bloqueadas
 			""", nativeQuery = true)
 	long contarAbiertaBajoLock(
 			@Param("organizationId") long organizationId,

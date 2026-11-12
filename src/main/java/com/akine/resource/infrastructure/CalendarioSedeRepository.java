@@ -77,7 +77,7 @@ public interface CalendarioSedeRepository
 	 *       {@code UnexpectedRollbackException}. La excepcion hay que EVITARLA, no atraparla.</li>
 	 * </ol>
 	 *
-	 * <p>{@code ON DUPLICATE KEY UPDATE id = id} es un no-op deliberado: el motor resuelve la
+	 * <p>{@code ON CONFLICT DO NOTHING} es un no-op deliberado: el motor resuelve la
 	 * carrera en una sola sentencia atomica, sin excepcion y sin lectura previa. Es especifico de
 	 * MySQL, que es la base fijada por DP-09.
 	 *
@@ -90,9 +90,9 @@ public interface CalendarioSedeRepository
 			INSERT INTO consultorio_calendario
 			    (organization_id, consultorio_id, pais, cierra_por_feriado, version,
 			     created_at, updated_at)
-			VALUES (:organizationId, :consultorioId, 'AR', 1, 0,
-			        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-			ON DUPLICATE KEY UPDATE id = id
+			VALUES (:organizationId, :consultorioId, 'AR', true, 0,
+			        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			ON CONFLICT DO NOTHING
 			""", nativeQuery = true)
 	@Override
 	void crearSiFalta(

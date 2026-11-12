@@ -313,8 +313,8 @@ abstract class BaseEscenarioDiferido {
 				INSERT INTO platform_role (account_id, role_code, granted_by_account_id, reason,
 				                           valid_from, active, version, created_at, updated_at)
 				VALUES (?, 'PLATFORM_ADMIN', NULL, 'Fixture sintetico de test de integracion',
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        (CURRENT_TIMESTAMP - INTERVAL '1 minutes'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", cuentaId);
 		assertThat(filas)
 				.as("el rol de plataforma tiene que quedar sembrado para la cuenta %s", cuentaId)

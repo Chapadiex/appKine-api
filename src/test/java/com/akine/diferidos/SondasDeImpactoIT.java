@@ -201,7 +201,7 @@ class SondasDeImpactoIT extends BaseEscenarioDiferido {
 				.as("informa, no bloquea (RN-M05-004): %s", revocacion.body()).isEqualTo(200);
 
 		String detalles = jdbc.queryForObject("""
-				SELECT CAST(details AS CHAR) FROM audit_event
+				SELECT CAST(details AS text) FROM audit_event
 				 WHERE event_type = 'MEMBERSHIP_REVOKED' AND entity_id = ?
 				 ORDER BY id DESC LIMIT 1
 				""", String.class, fixture.profesionalMembershipId());
@@ -319,10 +319,10 @@ class SondasDeImpactoIT extends BaseEscenarioDiferido {
 	private void envejecerComoAusente(long turnoId) {
 		int filas = jdbc.update("""
 				UPDATE turno
-				   SET inicio = DATE_SUB(inicio, INTERVAL 60 DAY),
-				       fin = DATE_SUB(fin, INTERVAL 60 DAY),
+				   SET inicio = (inicio - INTERVAL '60 days'),
+				       fin = (fin - INTERVAL '60 days'),
 				       estado = 'AUSENTE',
-				       ausente_en = UTC_TIMESTAMP(6)
+				       ausente_en = CURRENT_TIMESTAMP
 				 WHERE id = ?
 				""", turnoId);
 		assertThat(filas).isEqualTo(1);
@@ -335,8 +335,13 @@ class SondasDeImpactoIT extends BaseEscenarioDiferido {
 		return proximoLunes(zona).atTime(horaLocal, 0).atZone(zona).toInstant();
 	}
 
-	private static LocalDate proximoLunes(ZoneId zona) {
-		return LocalDate.now(zona).with(TemporalAdjusters.next(DayOfWeek.MONDAY)).plusWeeks(1);
+	/** Un lunes feriado (el 23/11/2026, por ejemplo) cierra la sede y ninguna reserva entra. */
+	private LocalDate proximoLunes(ZoneId zona) {
+		LocalDate lunes = LocalDate.now(zona).with(TemporalAdjusters.next(DayOfWeek.MONDAY)).plusWeeks(1);
+		while (jdbc.queryForObject("SELECT COUNT(*) FROM feriado WHERE fecha = ?", Integer.class, lunes) > 0) {
+			lunes = lunes.plusWeeks(1);
+		}
+		return lunes;
 	}
 
 	private void habilitarMasDeUnaSede(Sesion sesion) {
@@ -373,7 +378,7 @@ class SondasDeImpactoIT extends BaseEscenarioDiferido {
 
 	private boolean activa(String tabla, long id) {
 		Long activa = jdbc.queryForObject(
-				"SELECT active FROM " + tabla + " WHERE id = ?", Long.class, id);
+				"SELECT CAST(active AS integer) FROM " + tabla + " WHERE id = ?", Long.class, id);
 		return activa != null && activa == 1L;
 	}
 

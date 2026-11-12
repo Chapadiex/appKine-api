@@ -34,8 +34,8 @@ public interface FinanciadorRepository
 	@Query(value = """
 			SELECT * FROM financiador
 			 WHERE organization_id = :organizationId
-			   AND (:activoFiltro = -1 OR active = :activoFiltro)
-			   AND (:tipo IS NULL OR tipo = :tipo)
+			   AND (:activoFiltro = -1 OR active = (:activoFiltro = 1))
+			   AND (CAST(:tipo AS varchar) IS NULL OR tipo = :tipo)
 			   AND (nombre LIKE :patron OR codigo LIKE :patron OR cuit LIKE :patron)
 			 ORDER BY nombre ASC
 			""", nativeQuery = true)

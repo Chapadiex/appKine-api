@@ -41,7 +41,7 @@ public interface NomencladorItemRepository
 			SELECT * FROM nomenclador_item
 			 WHERE nomenclador_id = :nomencladorId
 			   AND owner_key IN (:owners)
-			   AND (:activoFiltro = -1 OR active = :activoFiltro)
+			   AND (:activoFiltro = -1 OR active = (:activoFiltro = 1))
 			   AND (:practicaId = -1 OR practica_id = :practicaId)
 			   AND (:codigo = '' OR codigo = :codigo)
 			 ORDER BY codigo ASC, valid_from DESC
@@ -62,7 +62,7 @@ public interface NomencladorItemRepository
 			SELECT * FROM nomenclador_item
 			 WHERE nomenclador_id = :nomencladorId
 			   AND codigo = :codigo
-			   AND active = 1
+			   AND active = true
 			 ORDER BY valid_from ASC
 			""", nativeQuery = true)
 	List<NomencladorItem> vigenciasDelCodigo(
@@ -95,7 +95,7 @@ public interface NomencladorItemRepository
 	@Query(value = """
 			SELECT COUNT(*) FROM nomenclador_item
 			 WHERE nomenclador_id = :nomencladorId
-			   AND active = 1
+			   AND active = true
 			""", nativeQuery = true)
 	long contarVigentesPorNomenclador(@Param("nomencladorId") Long nomencladorId);
 }

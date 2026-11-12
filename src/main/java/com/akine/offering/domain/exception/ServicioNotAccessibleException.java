@@ -21,7 +21,7 @@ public class ServicioNotAccessibleException extends RuntimeException {
 	private final long servicioId;
 
 	public ServicioNotAccessibleException(long servicioId) {
-		super("No existe un servicio con id " + servicioId + " en el catalogo global");
+		super("No existe un servicio con id " + servicioId + " en el catalogo visible");
 		this.servicioId = servicioId;
 	}
 

@@ -16,6 +16,7 @@ import com.akine.person.domain.Persona;
 import com.akine.person.domain.TipoDocumento;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -99,6 +100,10 @@ public final class PersonRepositoryPorts {
 		 * @param activoFiltro  {@code 1} solo activas, {@code 0} solo inactivas, {@code -1} todas
 		 * @param perfilFiltro  {@code 1} solo con perfil de paciente vigente, {@code 0} solo sin
 		 *                      perfil, {@code -1} indistinto
+		 * @param actividadFiltro {@code 1} solo con una inscripcion o un pase vigente hoy,
+		 *                      {@code 0} solo sin ninguno, {@code -1} indistinto
+		 * @param hoy           el dia de la organizacion, contra el que se mide la vigencia de un
+		 *                      pase (es un {@code DATE} en el dia de la sede, no en UTC)
 		 */
 		List<Persona> buscar(
 				Long organizationId,
@@ -106,6 +111,8 @@ public final class PersonRepositoryPorts {
 				String patronClave,
 				int activoFiltro,
 				int perfilFiltro,
+				int actividadFiltro,
+				LocalDate hoy,
 				String orden,
 				int offset,
 				int limite);
@@ -116,7 +123,9 @@ public final class PersonRepositoryPorts {
 				String patronNombre,
 				String patronClave,
 				int activoFiltro,
-				int perfilFiltro);
+				int perfilFiltro,
+				int actividadFiltro,
+				LocalDate hoy);
 
 		/**
 		 * La persona VIGENTE que ya tiene ese documento, si existe.
@@ -482,9 +491,8 @@ public final class PersonRepositoryPorts {
 		 * Registra la alerta si ese consumo todavia no tiene una del mismo tipo. Si ya la tiene,
 		 * no hace nada y no lanza.
 		 *
-		 * <p>No devuelve filas afectadas a proposito: con el {@code CLIENT_FOUND_ROWS} que
-		 * Connector/J activa por defecto, el no-op del {@code ON DUPLICATE KEY UPDATE} informa 1
-		 * igual que una insercion, asi que el numero no distingue nada.
+		 * <p>No devuelve filas afectadas: el contrato es "registrar si falta" y nadie necesita saber
+		 * cual de los dos caminos tomo ({@code ON CONFLICT DO NOTHING}).
 		 */
 		@SuppressWarnings("java:S107")
 		void registrarSiFalta(

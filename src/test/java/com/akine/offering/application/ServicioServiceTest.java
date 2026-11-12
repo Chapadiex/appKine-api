@@ -25,6 +25,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
+import com.akine.organization.spi.PermissionGuard;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,6 +43,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
@@ -79,6 +83,9 @@ class ServicioServiceTest {
 	@Mock
 	private AuditTrail auditTrail;
 
+	@Mock
+	private PermissionGuard permissionGuard;
+
 	private ServicioService service;
 
 	/** Rol de plataforma: el unico que puede mutar el catalogo global. Sin contexto de tenant. */
@@ -89,7 +96,7 @@ class ServicioServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		service = new ServicioService(servicios, auditTrail);
+		service = new ServicioService(servicios, auditTrail, permissionGuard);
 		given(servicios.saveAndFlush(any())).willAnswer(invocacion -> conId(invocacion.getArgument(0)));
 		given(servicios.save(any())).willAnswer(invocacion -> invocacion.getArgument(0));
 	}
@@ -99,29 +106,83 @@ class ServicioServiceTest {
 	// =================================================================================
 
 	@Test
-	@DisplayName("Un usuario sin rol de plataforma no puede crear un servicio global: 403 y nada escrito")
-	void sin_rol_de_plataforma_el_alta_da_403() {
+	@DisplayName("Un usuario de un centro con catalogo:manage crea un servicio PROPIO de su organizacion")
+	void el_centro_crea_un_servicio_propio() {
+		ServicioView creado = service.crear(delCentro, altaValida());
+
+		// V143: el alcance sale de quien llama. El servicio queda a nombre de la organizacion del
+		// contexto, no del catalogo global que ven todos.
+		assertThat(creado.alcance()).isEqualTo("ORGANIZACION");
+		verify(servicios).saveAndFlush(argThat(servicio -> Long.valueOf(10L).equals(servicio.getOrganizationId())));
+		verify(permissionGuard).requirePermission(argThat(consulta ->
+				"catalogo:manage".equals(consulta.permissionCode())
+						&& Long.valueOf(10L).equals(consulta.organizationId())));
+	}
+
+	@Test
+	@DisplayName("Sin catalogo:manage el centro no crea nada: 403 y nada escrito")
+	void sin_catalogo_manage_el_alta_da_403() {
+		willThrow(new AccessDeniedException("sin permiso")).given(permissionGuard).requirePermission(any());
+
 		assertThatThrownBy(() -> service.crear(delCentro, altaValida()))
 				.isInstanceOf(AccessDeniedException.class);
 
-		// 403 y no 401: el interceptor del frontend borra el token ante cualquier 401 y el usuario
-		// entra en un bucle de login. Y no 404: el servicio es global, ocultarlo no protege nada.
-		// Que no se haya escrito NADA es la mitad que importa del assert: un rechazo que igual
-		// persiste o audita seria peor que no tener el control.
+		// 403 y no 401: el interceptor del frontend borra el token ante cualquier 401. Que no se
+		// haya escrito NADA es la mitad que importa: un rechazo que igual persiste seria peor.
 		verifyNoInteractions(servicios, auditTrail);
 	}
 
 	@Test
-	@DisplayName("Tampoco puede editar ni dar de baja: las tres mutaciones piden lo mismo")
-	void sin_rol_de_plataforma_editar_y_dar_de_baja_dan_403() {
+	@DisplayName("El rol de plataforma sigue creando en el catalogo global, sin permiso de tenant")
+	void la_plataforma_crea_en_el_global() {
+		ServicioView creado = service.crear(plataforma, altaValida());
+
+		assertThat(creado.alcance()).isEqualTo("GLOBAL");
+		verifyNoInteractions(permissionGuard);
+	}
+
+	@Test
+	@DisplayName("Un centro no edita ni da de baja un servicio GLOBAL: 403 y nada escrito")
+	void el_centro_no_muta_el_catalogo_global() {
+		given(servicios.findVisible(eq(SERVICIO_ID), anyList())).willReturn(Optional.of(servicioVigente()));
+
 		assertThatThrownBy(() -> service.editar(delCentro, SERVICIO_ID, edicionDeNombre("Otro")))
 				.isInstanceOf(AccessDeniedException.class);
 		assertThatThrownBy(() -> service.darDeBaja(delCentro, SERVICIO_ID, "ya no se ofrece"))
 				.isInstanceOf(AccessDeniedException.class);
 
-		// El chequeo va ANTES de leer: sin esto, un 404 delataria que el id no existe a alguien
-		// que ni siquiera tiene derecho a preguntar.
-		verifyNoInteractions(servicios, auditTrail);
+		verify(servicios, never()).save(any());
+		verify(servicios, never()).saveAndFlush(any());
+		verifyNoInteractions(auditTrail);
+	}
+
+	@Test
+	@DisplayName("Lo que el centro ve se acota al global y a su organizacion; la plataforma ve solo el global")
+	void cada_actor_ve_sus_duenios() {
+		given(servicios.findVisible(eq(SERVICIO_ID), anyList())).willReturn(Optional.empty());
+
+		// Un servicio propio de OTRO centro no esta entre los duenios visibles: 404, no 403, para no
+		// confirmar que existe.
+		assertThatThrownBy(() -> service.darDeBaja(delCentro, SERVICIO_ID, "x"))
+				.isInstanceOf(ServicioNotAccessibleException.class);
+		verify(servicios).findVisible(SERVICIO_ID, List.of(0L, 10L));
+
+		assertThatThrownBy(() -> service.darDeBaja(plataforma, SERVICIO_ID, "x"))
+				.isInstanceOf(ServicioNotAccessibleException.class);
+		verify(servicios).findVisible(SERVICIO_ID, List.of(0L));
+	}
+
+	@Test
+	@DisplayName("El centro da de baja su propio servicio con catalogo:manage, auditado en su organizacion")
+	void el_centro_da_de_baja_su_servicio() {
+		Servicio propio = conId(new Servicio(10L, "YOGA", "Yoga", null, Naturaleza.BIENESTAR,
+				Modalidad.GRUPAL, false, false));
+		given(servicios.findVisible(eq(SERVICIO_ID), anyList())).willReturn(Optional.of(propio));
+
+		ServicioView dado = service.darDeBaja(delCentro, SERVICIO_ID, "ya no se ofrece");
+
+		assertThat(dado.estado()).isEqualTo("INACTIVO");
+		verify(auditTrail).record(argThat(entrada -> Long.valueOf(10L).equals(entrada.organizationId())));
 	}
 
 	// =================================================================================
@@ -142,7 +203,7 @@ class ServicioServiceTest {
 		// Despues de un flush fallido no se vuelve a tocar la sesion JPA: ni una lectura para
 		// averiguar cual de los dos uniques choco, ni la auditoria. Lo que sale de ahi es un 500
 		// en vez del 409 legitimo.
-		verify(servicios, never()).findById(any());
+		verify(servicios, never()).findVisible(any(), any());
 		verifyNoInteractions(auditTrail);
 	}
 
@@ -183,8 +244,8 @@ class ServicioServiceTest {
 		// carrera entre el SELECT y el INSERT, y —si mirara activos e inactivos, que es como se
 		// escribe mal— rechazaria el alta que reusa un codigo liberado por una baja logica. La
 		// unica comprobacion sin ventana es el unique.
-		verify(servicios, never()).buscar(anyString(), anyInt());
-		verify(servicios, never()).findById(any());
+		verify(servicios, never()).buscarVisibles(any(), anyString(), anyInt());
+		verify(servicios, never()).findVisible(any(), any());
 	}
 
 	@Test
@@ -194,7 +255,7 @@ class ServicioServiceTest {
 		// toca —queda null—, pero MySQL en modo estricto rechaza el UPDATE y Spring lo envuelve en
 		// la MISMA DataIntegrityViolationException que levanta un unique.
 		Servicio servicio = servicioVigente();
-		given(servicios.findById(SERVICIO_ID)).willReturn(Optional.of(servicio));
+		given(servicios.findVisible(eq(SERVICIO_ID), anyList())).willReturn(Optional.of(servicio));
 		DataIntegrityViolationException largoExcedido = new DataIntegrityViolationException(
 				"could not execute statement",
 				new RuntimeException("Data too long for column 'descripcion' at row 1"));
@@ -227,7 +288,7 @@ class ServicioServiceTest {
 		List<OfertaServicioConsultorio> ofertas = List.of(unCentro, otraSede, otroTenant);
 
 		Servicio servicio = servicioVigente();
-		given(servicios.findById(SERVICIO_ID)).willReturn(Optional.of(servicio));
+		given(servicios.findVisible(eq(SERVICIO_ID), anyList())).willReturn(Optional.of(servicio));
 
 		ServicioView vista = service.darDeBaja(plataforma, SERVICIO_ID, "se discontinua el concepto");
 
@@ -322,7 +383,7 @@ class ServicioServiceTest {
 	void editar_con_version_desactualizada_da_concurrent_modification() {
 		Servicio servicio = servicioVigente();
 		ReflectionTestUtils.setField(servicio, "version", 3L);
-		given(servicios.findById(SERVICIO_ID)).willReturn(Optional.of(servicio));
+		given(servicios.findVisible(eq(SERVICIO_ID), anyList())).willReturn(Optional.of(servicio));
 
 		assertThatThrownBy(() -> service.editar(plataforma, SERVICIO_ID, edicionDeNombre("Otro nombre")))
 				// GlobalExceptionHandler mapea el plano —y la subclase de JPA— a
@@ -351,7 +412,7 @@ class ServicioServiceTest {
 	@Test
 	@DisplayName("Editar un id inexistente da 404: en un catalogo global, 404 significa que no existe")
 	void editar_un_servicio_inexistente_da_404() {
-		given(servicios.findById(SERVICIO_ID)).willReturn(Optional.empty());
+		given(servicios.findVisible(eq(SERVICIO_ID), anyList())).willReturn(Optional.empty());
 
 		assertThatThrownBy(() -> service.editar(plataforma, SERVICIO_ID, edicionDeNombre("Otro")))
 				.isInstanceOf(ServicioNotAccessibleException.class);
@@ -362,7 +423,7 @@ class ServicioServiceTest {
 	void un_servicio_inactivo_no_admite_mutaciones() {
 		Servicio servicio = servicioVigente();
 		servicio.deactivate(Instant.now(), "se discontinua");
-		given(servicios.findById(SERVICIO_ID)).willReturn(Optional.of(servicio));
+		given(servicios.findVisible(eq(SERVICIO_ID), anyList())).willReturn(Optional.of(servicio));
 
 		// 409 y no 404: el servicio existe, es global y se lee con 200 —RN-M03-006 exige que el
 		// historico conserve su nombre y su codigo—. Lo que no admite son operaciones nuevas.
@@ -379,7 +440,7 @@ class ServicioServiceTest {
 	@Test
 	@DisplayName("La baja exige un motivo declarado: sin el, la auditoria no responde por que")
 	void la_baja_sin_motivo_se_rechaza() {
-		given(servicios.findById(SERVICIO_ID)).willReturn(Optional.of(servicioVigente()));
+		given(servicios.findVisible(eq(SERVICIO_ID), anyList())).willReturn(Optional.of(servicioVigente()));
 
 		assertThatThrownBy(() -> service.darDeBaja(plataforma, SERVICIO_ID, "   "))
 				.isInstanceOf(IllegalArgumentException.class);
@@ -393,18 +454,18 @@ class ServicioServiceTest {
 	// =================================================================================
 
 	@Test
-	@DisplayName("Leer el catalogo no exige rol de plataforma ni contexto: es global y autenticado")
+	@DisplayName("Leer no exige permiso aparte: el centro ve el global y lo suyo, con el filtro ACTIVO por defecto")
 	void cualquier_usuario_autenticado_lee_el_catalogo_global() {
-		given(servicios.buscar("%", 1)).willReturn(List.of(conId(servicioVigente())));
+		given(servicios.buscarVisibles(List.of(0L, 10L), "%", 1)).willReturn(List.of(conId(servicioVigente())));
 
-		// La firma no recibe OperatingActor, y eso ES la aserción: no hay nada que decidir con el.
-		List<ServicioView> catalogo = service.buscar(new ServicioBusqueda(null, null));
+		// Sin permiso aparte (como antes de V143): solo se acota por duenio.
+		List<ServicioView> catalogo = service.buscar(delCentro, new ServicioBusqueda(null, null));
 
 		assertThat(catalogo).hasSize(1);
 		assertThat(catalogo.get(0).nombre()).isEqualTo("Kinesiologia deportiva");
 		// El default del filtro es ACTIVO (centinela 1): un selector nunca ofrece un servicio dado
 		// de baja, que es lo que evita el 409 de RF-M27-002 en la pantalla de alta de una Oferta.
-		verify(servicios).buscar("%", 1);
+		verifyNoInteractions(permissionGuard);
 	}
 
 	// =================================================================================

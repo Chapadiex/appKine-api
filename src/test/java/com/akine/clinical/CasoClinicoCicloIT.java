@@ -471,8 +471,8 @@ class CasoClinicoCicloIT {
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, caso_id,
 				                    oferta_id, profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, 'BORRADOR', UTC_TIMESTAMP(6), ?, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, ?, 'BORRADOR', CURRENT_TIMESTAMP, ?, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{
 						fixture.organizationId(), fixture.consultorioId(),
 						fixture.historiaClinicaId(), casoId, fixture.ofertaId(),
@@ -493,10 +493,10 @@ class CasoClinicoCicloIT {
 				                   reservado_por_cuenta_id, reservado_en, version,
 				                   created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?,
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 7 DAY),
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 7 DAY) + INTERVAL 60 MINUTE,
-				        'RESERVADO', ?, UTC_TIMESTAMP(6), 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        (CURRENT_TIMESTAMP - INTERVAL '7 days'),
+				        (CURRENT_TIMESTAMP - INTERVAL '7 days') + INTERVAL '60 minutes',
+				        'RESERVADO', ?, CURRENT_TIMESTAMP, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{
 						fixture.organizationId(), fixture.consultorioId(), fixture.ofertaId(),
 						fixture.personaId(), fixture.membershipId(), fixture.cuentaId()});
@@ -535,29 +535,29 @@ class CasoClinicoCicloIT {
 		long organizationId = insertar("""
 				INSERT INTO organization (name, slug, timezone, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{"Centro Sintetico " + sufijo, "ciclo-it-" + sufijo, ZONA});
 
 		long consultorioId = insertar("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{organizationId, "Sede Sintetica " + sufijo, ZONA});
 
 		String email = "ciclo-it-" + sufijo + "@ejemplo.test";
 		long cuentaId = insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{email, email});
 
 		long membershipId = insertar("""
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, 'PROFESIONAL', 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'PROFESIONAL', false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{organizationId, consultorioId, cuentaId});
 
 		long servicioId = insertar("""
@@ -565,8 +565,8 @@ class CasoClinicoCicloIT {
 				                      requiere_caso_clinico_default,
 				                      genera_registro_clinico_default, active, version,
 				                      created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', false, false, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{"CICLO-" + sufijo.toUpperCase(), "Servicio " + sufijo});
 
 		long ofertaId = insertar("""
@@ -575,9 +575,9 @@ class CasoClinicoCicloIT {
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', 0, 1, 1, 1, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', false, true, true, true, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{organizationId, consultorioId, servicioId, "Oferta " + sufijo});
 
 		Fixture parcial = new Fixture(organizationId, consultorioId, cuentaId, membershipId,
@@ -600,16 +600,16 @@ class CasoClinicoCicloIT {
 		long cuentaId = insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Suplente', 'DePrueba', 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Suplente', 'DePrueba', 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{email, email});
 
 		return insertar("""
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, 'PROFESIONAL', 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'PROFESIONAL', false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{fixture.organizationId(), fixture.consultorioId(), cuentaId});
 	}
 
@@ -617,15 +617,15 @@ class CasoClinicoCicloIT {
 		long personaId = insertar("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave,
 				                     nombre_clave, active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{
 						fixture.organizationId(), apellido, apellido.toUpperCase()});
 
 		insertar("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{fixture.organizationId(), personaId, fixture.cuentaId()});
 		return personaId;
 	}
@@ -634,7 +634,7 @@ class CasoClinicoCicloIT {
 		return insertar("""
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{fixture.organizationId(), personaId, fixture.cuentaId()});
 	}
 

@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,6 +40,12 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 	 * digito ASCII, igual que {@code ClaveDeBusqueda.deDocumento}— y se compara contra
 	 * {@code patronClave}. Sin migracion: no hay columna de clave materializada.
 	 *
+	 * <p>{@code :actividadFiltro} (10/11/2026) mira dos tablas de {@code activity} con el mismo
+	 * criterio con el que se lee {@code cobertura_paciente}: un {@code EXISTS} en la misma consulta,
+	 * porque filtrar despues rompe el paginado. Hace actividades quien tiene una inscripcion
+	 * reservada o confirmada a una clase que no termino, o un pase o abono {@code ACTIVO} vigente
+	 * en {@code :hoy}, el dia de la organizacion.
+	 *
 	 * <p>El {@code LIMIT/OFFSET} esta en la consulta y no se recorta en memoria: el padron es la
 	 * primera tabla del sistema con volumen real (RNF-M07-004).
 	 *
@@ -56,16 +63,33 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 	@Query(value = """
 			SELECT * FROM persona p
 			 WHERE p.organization_id = :organizationId
-			   AND (:activoFiltro = -1 OR p.active = :activoFiltro)
+			   AND (:activoFiltro = -1 OR p.active = (:activoFiltro = 1))
 			   AND (:perfilFiltro = -1
 			        OR (:perfilFiltro = 1 AND EXISTS (SELECT 1 FROM perfil_paciente pp
 			                                           WHERE pp.persona_id = p.id
 			                                             AND pp.organization_id = p.organization_id
-			                                             AND pp.active = 1))
+			                                             AND pp.active = true))
 			        OR (:perfilFiltro = 0 AND NOT EXISTS (SELECT 1 FROM perfil_paciente pp
 			                                               WHERE pp.persona_id = p.id
 			                                                 AND pp.organization_id = p.organization_id
-			                                                 AND pp.active = 1)))
+			                                                 AND pp.active = true)))
+			   AND (:actividadFiltro = -1
+			        OR (:actividadFiltro = 1) = (
+			             EXISTS (SELECT 1 FROM inscripcion_clase ic
+			                       JOIN clase_programada c ON c.id = ic.clase_id
+			                      WHERE ic.persona_id = p.id
+			                        AND ic.organization_id = p.organization_id
+			                        AND ic.deleted_at IS NULL
+			                        AND ic.estado IN ('RESERVADA', 'CONFIRMADA')
+			                        AND c.deleted_at IS NULL
+			                        AND c.estado <> 'CANCELADA'
+			                        AND c.fin > CURRENT_TIMESTAMP)
+			             OR EXISTS (SELECT 1 FROM pase_servicio ps
+			                         WHERE ps.persona_id = p.id
+			                           AND ps.organization_id = p.organization_id
+			                           AND ps.estado = 'ACTIVO'
+			                           AND ps.vigencia_desde <= :hoy
+			                           AND ps.vigencia_hasta >= :hoy)))
 			   AND (p.documento_clave LIKE :patronClave
 			        OR p.apellido_clave LIKE :patronNombre
 			        OR p.nombre_clave LIKE :patronNombre
@@ -73,8 +97,8 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			        OR EXISTS (SELECT 1 FROM cobertura_paciente cp
 			                    WHERE cp.persona_id = p.id
 			                      AND cp.organization_id = p.organization_id
-			                      AND cp.active = 1
-			                      AND REGEXP_REPLACE(UPPER(cp.numero_afiliado), '[^A-Z0-9]', '')
+			                      AND cp.active = true
+			                      AND REGEXP_REPLACE(UPPER(cp.numero_afiliado) COLLATE "C", '[^A-Z0-9]', '', 'g')
 			                          LIKE :patronClave))
 			 ORDER BY
 			   CASE WHEN :orden = 'apellido,desc' THEN p.apellido_clave END DESC,
@@ -95,6 +119,8 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			@Param("patronClave") String patronClave,
 			@Param("activoFiltro") int activoFiltro,
 			@Param("perfilFiltro") int perfilFiltro,
+			@Param("actividadFiltro") int actividadFiltro,
+			@Param("hoy") LocalDate hoy,
 			@Param("orden") String orden,
 			@Param("offset") int offset,
 			@Param("limite") int limite);
@@ -104,16 +130,33 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 	@Query(value = """
 			SELECT COUNT(*) FROM persona p
 			 WHERE p.organization_id = :organizationId
-			   AND (:activoFiltro = -1 OR p.active = :activoFiltro)
+			   AND (:activoFiltro = -1 OR p.active = (:activoFiltro = 1))
 			   AND (:perfilFiltro = -1
 			        OR (:perfilFiltro = 1 AND EXISTS (SELECT 1 FROM perfil_paciente pp
 			                                           WHERE pp.persona_id = p.id
 			                                             AND pp.organization_id = p.organization_id
-			                                             AND pp.active = 1))
+			                                             AND pp.active = true))
 			        OR (:perfilFiltro = 0 AND NOT EXISTS (SELECT 1 FROM perfil_paciente pp
 			                                               WHERE pp.persona_id = p.id
 			                                                 AND pp.organization_id = p.organization_id
-			                                                 AND pp.active = 1)))
+			                                                 AND pp.active = true)))
+			   AND (:actividadFiltro = -1
+			        OR (:actividadFiltro = 1) = (
+			             EXISTS (SELECT 1 FROM inscripcion_clase ic
+			                       JOIN clase_programada c ON c.id = ic.clase_id
+			                      WHERE ic.persona_id = p.id
+			                        AND ic.organization_id = p.organization_id
+			                        AND ic.deleted_at IS NULL
+			                        AND ic.estado IN ('RESERVADA', 'CONFIRMADA')
+			                        AND c.deleted_at IS NULL
+			                        AND c.estado <> 'CANCELADA'
+			                        AND c.fin > CURRENT_TIMESTAMP)
+			             OR EXISTS (SELECT 1 FROM pase_servicio ps
+			                         WHERE ps.persona_id = p.id
+			                           AND ps.organization_id = p.organization_id
+			                           AND ps.estado = 'ACTIVO'
+			                           AND ps.vigencia_desde <= :hoy
+			                           AND ps.vigencia_hasta >= :hoy)))
 			   AND (p.documento_clave LIKE :patronClave
 			        OR p.apellido_clave LIKE :patronNombre
 			        OR p.nombre_clave LIKE :patronNombre
@@ -121,8 +164,8 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			        OR EXISTS (SELECT 1 FROM cobertura_paciente cp
 			                    WHERE cp.persona_id = p.id
 			                      AND cp.organization_id = p.organization_id
-			                      AND cp.active = 1
-			                      AND REGEXP_REPLACE(UPPER(cp.numero_afiliado), '[^A-Z0-9]', '')
+			                      AND cp.active = true
+			                      AND REGEXP_REPLACE(UPPER(cp.numero_afiliado) COLLATE "C", '[^A-Z0-9]', '', 'g')
 			                          LIKE :patronClave))
 			""", nativeQuery = true)
 	long contar(
@@ -130,7 +173,9 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			@Param("patronNombre") String patronNombre,
 			@Param("patronClave") String patronClave,
 			@Param("activoFiltro") int activoFiltro,
-			@Param("perfilFiltro") int perfilFiltro);
+			@Param("perfilFiltro") int perfilFiltro,
+			@Param("actividadFiltro") int actividadFiltro,
+			@Param("hoy") LocalDate hoy);
 
 	/**
 	 * La persona vigente que ya tiene ese documento. Es la que se le muestra al operador cuando

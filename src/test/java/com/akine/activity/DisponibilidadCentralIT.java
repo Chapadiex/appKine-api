@@ -118,13 +118,13 @@ class DisponibilidadCentralIT {
 		assertThat(excepcionesVivas(norte, "APERTURA")).isEqualTo(1);
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM disponibilidad_excepcion
-				 WHERE consultorio_id = ? AND membership_id = ? AND tipo = 'CIERRE' AND active = 1
-				   AND hora_desde = '10:00:00' AND hora_hasta = '12:00:00' AND fecha_desde = ?
+				 WHERE consultorio_id = ? AND membership_id = ? AND tipo = 'CIERRE' AND active = true
+				   AND hora_desde = '10:00:00' AND hora_hasta = '12:00:00' AND fecha_desde = CAST(? AS date)
 				""", Long.class, centro.consultorioId(), centro.profesionalMembershipId(), LUNES)).isEqualTo(1);
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM audit_event
 				 WHERE consultorio_id = ? AND event_type = 'DISPONIBILIDAD_EXCEPCION_CREATED'
-				   AND details LIKE '%SUSTITUCION_POR_APERTURA%'
+				   AND CAST(details AS text) LIKE '%SUSTITUCION_POR_APERTURA%'
 				""", Long.class, centro.consultorioId())).isEqualTo(1);
 		// Y Centro deja de ofrecer las 10:00: el cierre recorta su franja.
 		assertThatThrownBy(() -> reservar(centro, a(10, 0)))
@@ -139,12 +139,12 @@ class DisponibilidadCentralIT {
 		abrir(norte, true);
 		long cierre = jdbc.queryForObject("""
 				SELECT id FROM disponibilidad_excepcion
-				 WHERE consultorio_id = ? AND tipo = 'CIERRE' AND active = 1
+				 WHERE consultorio_id = ? AND tipo = 'CIERRE' AND active = true
 				""", Long.class, centro.consultorioId());
 
 		// D-2: el historial lo muestra como un cierre normal, con el origen en castellano.
 		var auditoria = jdbc.queryForMap("""
-				SELECT reason, JSON_UNQUOTE(JSON_EXTRACT(details, '$.despues')) AS despues FROM audit_event
+				SELECT reason, details ->> 'despues' AS despues FROM audit_event
 				 WHERE entity_id = ? AND event_type = 'DISPONIBILIDAD_EXCEPCION_CREATED'
 				""", cierre);
 		assertThat(auditoria.get("despues")).isEqualTo("Cierre por bloqueo, 08/03/2027, 10:00–12:00");
@@ -419,7 +419,7 @@ class DisponibilidadCentralIT {
 		jdbc.update("""
 				INSERT INTO disponibilidad_excepcion (organization_id, consultorio_id, membership_id, tipo, motivo,
 				       fecha_desde, fecha_hasta, hora_desde, hora_hasta, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 'CIERRE', 'BLOQUEO', ?, ?, '10:30:00', '11:30:00', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'CIERRE', 'BLOQUEO', CAST(? AS date), CAST(? AS date), '10:30:00', '11:30:00', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", centro.organizationId(), centro.consultorioId(), centro.profesionalMembershipId(), LUNES,
 				LUNES.plusDays(1));
 
@@ -515,7 +515,7 @@ class DisponibilidadCentralIT {
 
 	private long excepcionesVivas(Fixture sede, String tipo) {
 		return jdbc.queryForObject(
-				"SELECT COUNT(*) FROM disponibilidad_excepcion WHERE consultorio_id = ? AND tipo = ? AND active = 1",
+				"SELECT COUNT(*) FROM disponibilidad_excepcion WHERE consultorio_id = ? AND tipo = ? AND active = true",
 				Long.class, sede.consultorioId(), tipo);
 	}
 
@@ -526,7 +526,7 @@ class DisponibilidadCentralIT {
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'GRUPAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'GRUPAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "DISP-" + sufijo, "Servicio " + sufijo);
 		long servicio = jdbc.queryForObject("SELECT id FROM servicio WHERE codigo = ?", Long.class, "DISP-" + sufijo);
 		jdbc.update("""
@@ -535,8 +535,8 @@ class DisponibilidadCentralIT {
 				        duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				        genera_registro_clinico, requiere_profesional, requiere_espacio,
 				        vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'GRUPAL', 60, 10, 0, 0, 0, 1, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'GRUPAL', 60, 10, false, false, false, true, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", sede.organizationId(), sede.consultorioId(), servicio, "Grupal " + sufijo);
 		return jdbc.queryForObject(
 				"SELECT id FROM oferta_servicio_consultorio WHERE organization_id = ? AND nombre_comercial = ?",

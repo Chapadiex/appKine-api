@@ -215,7 +215,7 @@ public class HistoriaClinicaService {
 		boolean laAbrioEsta = historias.abrirSiFalta(organizationId, personaId, actorAccountId) == 1;
 		HistoriaClinica vigente = historias.releerVigenteBloqueando(organizationId, personaId)
 				.orElseThrow(() -> new IllegalStateException(
-						"La historia clinica no quedo abierta: el INSERT IGNORE no inserto y no hay"
+						"La historia clinica no quedo abierta: el INSERT ... ON CONFLICT DO NOTHING no inserto y no hay"
 						+ " vigente que releer (un error degradado a advertencia que no es el unique)."
 						+ " personaId=" + personaId));
 		if (laAbrioEsta) {
