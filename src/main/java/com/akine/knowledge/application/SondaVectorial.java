@@ -7,6 +7,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * {@link SondaDeEvidencia} sobre el almacen vectorial: el mejor coseno de la consulta entre los
@@ -18,10 +19,17 @@ public class SondaVectorial implements SondaDeEvidencia {
 
 	private final AlmacenVectorial almacen;
 	private final ObjectProvider<ModeloEmbeddings> modelo;
+	private final BusquedaHibrida busqueda;
 
-	public SondaVectorial(AlmacenVectorial almacen, ObjectProvider<ModeloEmbeddings> modelo) {
+	public SondaVectorial(AlmacenVectorial almacen, ObjectProvider<ModeloEmbeddings> modelo, BusquedaHibrida busqueda) {
 		this.almacen = almacen;
 		this.modelo = modelo;
+		this.busqueda = busqueda;
+	}
+
+	@Override
+	public boolean nombraElTema(long orgId, String tema) {
+		return busqueda.buscar(orgId, List.of(tema), tema, Set.of()).hayEvidencia();
 	}
 
 	@Override

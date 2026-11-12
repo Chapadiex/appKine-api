@@ -58,7 +58,7 @@ class BusquedaHibridaIT {
 		String deA = palabra();
 		String deB = palabra();
 		long libroA = procesado(a, pdf(pagina(deA, 1), pagina(deA, 2)));
-		long libroB = procesado(b, pdf(pagina(deB, 1)));
+		long libroB = procesado(b, pdf(pagina(deB, 1), pagina(deB, 2)));
 		String textoDeB = jdbc.queryForObject(
 				"SELECT texto FROM libro_fragmento WHERE libro_id = ? ORDER BY orden LIMIT 1", String.class, libroB);
 		String exacto = textoDeB.substring(0, Math.min(600, textoDeB.length()));

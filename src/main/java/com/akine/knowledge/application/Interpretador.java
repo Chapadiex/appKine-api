@@ -331,6 +331,9 @@ public class Interpretador {
 	/** Repregunta con los aspectos que tienen evidencia; sin ninguno, busqueda normal. */
 	private Interpretacion aclararOBuscar(long orgId, String tema, String pregunta) {
 		List<OpcionDeAclaracion> opciones = new ArrayList<>();
+		if (!nombra(orgId, tema)) {
+			return new Buscar(tema, Intencion.OTRA, pregunta, List.of(pregunta), true, false);
+		}
 		for (Aspecto aspecto : Aspecto.values()) {
 			if (puntaje(orgId, aspecto.texto + " " + tema) >= corteVector) {
 				String etiqueta = aspecto.etiqueta.formatted(tema);
@@ -341,6 +344,17 @@ public class Interpretador {
 			return new Buscar(tema, Intencion.OTRA, pregunta, List.of(pregunta), true, false);
 		}
 		return new Aclarar(TEXTO_REPREGUNTA.formatted(tema), opciones);
+	}
+
+	/** Una falla de la sonda no frena la repregunta: decide despues el control de evidencia. */
+	private boolean nombra(long orgId, String tema) {
+		try {
+			return sonda.nombraElTema(orgId, tema);
+		}
+		catch (RuntimeException e) {
+			log.info("Sonda de evidencia fallida: {}", e.getClass().getSimpleName());
+			return true;
+		}
 	}
 
 	private double puntaje(long orgId, String consulta) {
@@ -511,6 +525,16 @@ public class Interpretador {
 		return palabras(normal).stream()
 				.filter(p -> p.length() >= 3 && esDeContenido(p) && !ASPECTO.matcher(p).find())
 				.toList();
+	}
+
+	/** Las palabras de tema de un texto cualquiera; las usa la evidencia de {@link BusquedaHibrida}. */
+	static Set<String> palabrasDeTemaDe(String texto) {
+		return texto == null ? Set.of() : Set.copyOf(palabrasDeTema(normalizar(texto)));
+	}
+
+	/** Si la palabra esta en el conjunto, por igual o por la misma base ({@link #estaEn}). */
+	static boolean aparece(String palabra, Set<String> palabras) {
+		return estaEn(palabra, palabras);
 	}
 
 	private static boolean esDeContenido(String palabra) {

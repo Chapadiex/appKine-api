@@ -7,4 +7,12 @@ package com.akine.knowledge.application;
 public interface SondaDeEvidencia {
 
 	double mejorPuntaje(long orgId, String consulta);
+
+	/**
+	 * Si la biblioteca nombra el tema (la evidencia de {@link BusquedaHibrida}). Sin eso no se ofrecen
+	 * aspectos: el coseno sólo no distingue un tema ausente.
+	 */
+	default boolean nombraElTema(long orgId, String tema) {
+		return true;
+	}
 }

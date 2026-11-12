@@ -33,16 +33,20 @@ import java.util.stream.Collectors;
  * {@link AlmacenVectorial}. No se guarda ni se cachea nada entre consultas y los logs llevan solo
  * cantidades, nunca texto.
  *
- * <p>Hay evidencia si al menos {@code minimoPasajes} pasajes fusionados superan el corte vectorial
- * o coinciden por palabras con el tema ("coincide": esta en el top de texto completo y su texto
- * contiene, sin tildes ni mayusculas, alguna palabra del tema de 4 letras o mas).
+ * <p>Hay evidencia si cada palabra de tema (las de {@link Interpretador}: sin vacias, relleno ni
+ * aspectos, comparadas por base) aparece en algun pasaje devuelto y al menos {@code minimoPasajes}
+ * coinciden por palabras ("coincide": esta en el top de texto completo y nombra alguna). Sin
+ * palabras de tema decide el corte vectorial.
  */
 @Service
 public class BusquedaHibrida {
 
 	private static final Logger log = LoggerFactory.getLogger(BusquedaHibrida.class);
 
-	private static final int LARGO_MINIMO_PALABRA = 4;
+	/** Letras minimas de la palabra corta para que una sea comienzo de la otra. */
+	private static final int LARGO_PREFIJO = 5;
+	/** Hasta cuantas letras una palabra del tema puede ser una sigla. */
+	private static final int LARGO_SIGLA = 4;
 
 	/** Configuracion; los pesos van en {@code double} porque son de aplicacion, no de dominio. */
 	public record Ajustes(
@@ -102,7 +106,7 @@ public class BusquedaHibrida {
 
 		Map<Long, FragmentoEncontrado> fragmentos = almacen.fragmentos(orgId, List.copyOf(candidatos.keySet()))
 				.stream().collect(Collectors.toMap(FragmentoEncontrado::fragmentoId, Function.identity()));
-		Set<String> palabrasDelTema = palabrasDelTema(tema);
+		Set<String> palabrasDelTema = Interpretador.palabrasDeTemaDe(tema);
 		Set<Long> preferidos = librosPreferidos == null ? Set.of() : librosPreferidos;
 		List<PasajeFusionado> fusionados = new ArrayList<>(candidatos.size());
 		for (Map.Entry<Long, Acumulado> e : candidatos.entrySet()) {
@@ -124,11 +128,31 @@ public class BusquedaHibrida {
 
 		int tope = Math.max(ajustes.pasajesBreve(), ajustes.pasajesProfundo());
 		List<PasajeFusionado> devueltos = List.copyOf(fusionados.subList(0, Math.min(tope, fusionados.size())));
-		// La evidencia se mide sobre lo que se le manda al modelo, no sobre todos los candidatos.
-		long conEvidencia = devueltos.stream().filter(p -> p.superaCorte() || p.coincidePalabra()).count();
-		log.debug("Busqueda hibrida: {} consultas, {} candidatos, {} con evidencia, camino {}",
-				textos.size(), candidatos.size(), conEvidencia, camino);
-		return new ResultadoHibrido(camino, devueltos, conEvidencia >= ajustes.minimoPasajes());
+		// El tema se busca en todos los candidatos; la cantidad que coincide, en lo que se le manda al modelo.
+		boolean hayEvidencia = palabrasDelTema.isEmpty()
+				? devueltos.stream().filter(PasajeFusionado::superaCorte).count() >= ajustes.minimoPasajes()
+				: nombraTodoElTema(fusionados, palabrasDelTema)
+						&& devueltos.stream().filter(PasajeFusionado::coincidePalabra).count() >= ajustes.minimoPasajes();
+		log.debug("Busqueda hibrida: {} consultas, {} candidatos, evidencia {}, camino {}",
+				textos.size(), candidatos.size(), hayEvidencia, camino);
+		return new ResultadoHibrido(camino, devueltos, hayEvidencia);
+	}
+
+	/**
+	 * Cada palabra de tema aparece en algun candidato (vector o texto completo: si el libro la nombra, el
+	 * texto completo la trae aunque no quede entre los devueltos). El coseno de e5 no separa un tema
+	 * ausente de uno presente (los dos rondan 0,82–0,85): lo que los separa es que el libro lo nombre.
+	 */
+	private static boolean nombraTodoElTema(List<PasajeFusionado> candidatos, Set<String> palabrasDelTema) {
+		Set<String> nombradas = new HashSet<>();
+		for (PasajeFusionado p : candidatos) {
+			nombradas.addAll(Arrays.asList(normalizar(p.pasaje().texto()).split("[^\\p{L}\\p{N}]+")));
+		}
+		// Una sigla ("acv") el libro la escribe desarrollada: no es obligatoria si el tema dice algo mas.
+		Set<String> obligatorias = palabrasDelTema.stream().filter(w -> w.length() > LARGO_SIGLA)
+				.collect(Collectors.toSet());
+		return (obligatorias.isEmpty() ? palabrasDelTema : obligatorias).stream()
+				.allMatch(w -> nombra(nombradas, w));
 	}
 
 	private void sumar(Map<Long, Acumulado> candidatos, List<Coincidencia> lista, boolean vector) {
@@ -154,25 +178,25 @@ public class BusquedaHibrida {
 		return actual == null || nuevo.compareTo(actual) > 0 ? nuevo : actual;
 	}
 
-	static Set<String> palabrasDelTema(String tema) {
-		if (tema == null || tema.isBlank()) {
-			return Set.of();
-		}
-		Set<String> palabras = new HashSet<>();
-		for (String p : normalizar(tema).split("[^\\p{L}\\p{N}]+")) {
-			if (p.length() >= LARGO_MINIMO_PALABRA) {
-				palabras.add(p);
-			}
-		}
-		return palabras;
-	}
-
 	private static boolean contieneAlguna(String texto, Set<String> palabras) {
 		if (palabras.isEmpty()) {
 			return false;
 		}
 		Set<String> delTexto = new HashSet<>(Arrays.asList(normalizar(texto).split("[^\\p{L}\\p{N}]+")));
-		return palabras.stream().anyMatch(delTexto::contains);
+		return palabras.stream().anyMatch(w -> nombra(delTexto, w));
+	}
+
+	/**
+	 * El texto nombra la palabra: igual, misma base ({@link Interpretador#aparece}), o una es comienzo
+	 * de la otra con 5 letras o mas en la corta ("doloroso" y "dolor", "medular" y "medula"; no
+	 * "fibromialgia" y "fibrosis").
+	 */
+	private static boolean nombra(Set<String> delTexto, String palabra) {
+		if (Interpretador.aparece(palabra, delTexto)) {
+			return true;
+		}
+		return delTexto.stream().anyMatch(t -> Math.min(t.length(), palabra.length()) >= LARGO_PREFIJO
+				&& (t.startsWith(palabra) || palabra.startsWith(t)));
 	}
 
 	/** Sin tildes ni mayusculas. */

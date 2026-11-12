@@ -166,6 +166,32 @@ class BusquedaHibridaTest {
 	}
 
 	@Test
+	void temaQueElLibroNoNombraNoTieneEvidenciaAunqueSupereElCorte() {
+		Falso a = new Falso();
+		a.vector = List.of(c(1, "0.84"), c(2, "0.84"));
+		a.palabras = List.of(c(1, "0.4"), c(2, "0.3"));
+		a.textos = Map.of(1L, "Tratamiento del dolor cronico", 2L, "Fibrosis quistica y ejercicio");
+
+		ResultadoHibrido r = new BusquedaHibrida(a, proveedor(modeloOk()), AJUSTES)
+				.buscar(1, List.of("q"), "fibromialgia", Set.of());
+
+		assertThat(r.pasajes()).allMatch(PasajeFusionado::superaCorte);
+		assertThat(r.hayEvidencia()).isFalse();
+	}
+
+	@Test
+	void siglaNoEsObligatoriaYElComienzoDeLaPalabraAlcanza() {
+		Falso a = new Falso();
+		a.palabras = List.of(c(1, "0.4"), c(2, "0.3"));
+		a.textos = Map.of(1L, "Dolor de hombro tras un accidente cerebrovascular", 2L, "El hombro y la medula");
+
+		ResultadoHibrido r = new BusquedaHibrida(a, proveedor(null), AJUSTES)
+				.buscar(1, List.of("q"), "acv hombro doloroso", Set.of());
+
+		assertThat(r.hayEvidencia()).isTrue();
+	}
+
+	@Test
 	void sinNadaNoHayEvidencia() {
 		ResultadoHibrido r = new BusquedaHibrida(new Falso(), proveedor(modeloOk()), AJUSTES)
 				.buscar(1, List.of("q"), "lumbalgia", Set.of());
