@@ -1,6 +1,6 @@
 // Cuantas sentencias y transacciones cuesta UN pedido de cada endpoint (docs/carga.md §9).
 //
-// Lo corre `perf/stack.sh por-pedido`, que fotografia los contadores de MySQL antes y despues de
+// Lo corre `perf/stack.sh por-pedido`, que fotografia pg_stat_statements antes y despues de
 // cada endpoint y divide por la cantidad de pedidos. Un solo usuario, en serie y sin pausa: lo
 // que se mide es el costo de cada pedido, no la concurrencia.
 //
