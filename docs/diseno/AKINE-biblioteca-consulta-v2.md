@@ -284,3 +284,26 @@ de tratamiento y no de la introducción.
 modelo de 4B todavía mezcla datos de tablas (una respuesta de fractura de cadera dijo "carga de 20–20 kg"):
 se ve en la lectura a mano, no en el Recall. El bonus por páginas vecinas al profundizar (R12) no se
 implementó.
+
+## 10. Decisiones tomadas durante la implementación (11–12/11)
+
+Cada una con su costo si resulta equivocada.
+
+| # | Decisión | Costo si está mal |
+|---|---|---|
+| R1 | `librosPreferidos` opcional en el pedido; el backend lo usa sólo en seguimientos y filtrado por la organización | un campo más en el contrato |
+| R6 | Ambigua = hasta 2 palabras de contenido sin intención | "dolor lumbar crónico" no repregunta |
+| R7 | La cantidad de pasajes con evidencia se cuenta sobre los que ve el modelo | puede faltar algo útil más abajo del ranking |
+| R11 | El reproceso automático **borra** la copia superada (fila, fragmentos, archivo); la auditoría registra `LIBRO_ELIMINADO`. Excepción a la baja lógica: es un índice derivado de un archivo idéntico | no se vuelve al índice anterior sin reprocesar |
+| R12 | Sin bonus por páginas vecinas al profundizar (queda el bonus por libro) | profundizar puede repetir pasajes |
+| R13 | Un índice necesita título o tabuladores/puntos guía; los números crecientes solos no alcanzan | un índice sin título queda indexado como ruido |
+| R14 | El modelo que redacta no recibe historial: sólo la pregunta completa y el material | un seguimiento pierde matices que la pregunta completa no recogió |
+| R15 | Una pregunta con palabras de tema propias es independiente; su tema se recorta a esas palabras más el desarrollo de sus siglas | "¿y para las fracturas?" repregunta en vez de heredar |
+| R18 | Evidencia = la biblioteca nombra cada palabra de tema y al menos 2 pasajes devueltos la nombran (§9) | un sinónimo que el libro no usa da "sin material" |
+| R19 | La repregunta sólo ofrece aspectos de un tema que la biblioteca nombra | una búsqueda más por repregunta |
+| R20 | Con charla, una consulta sin tema propio es seguimiento y hereda el tema de la última pregunta | un "¿y algo más?" genérico siempre se ata al tema anterior |
+
+Quedan para después, sin urgencia: el aviso por lector de pantalla anuncia "Respuesta lista" también en una
+repregunta; los botones de una repregunta vieja siguen activos; una sigla corta puede "desarrollarse" con
+palabras que el modelo inventó ("pie" → "pierna inferior"); un aspecto suelto seguido de un tema de tres o
+más palabras pierde el aspecto; mientras corre un reproceso, desactivar o reemplazar ese libro da 409.
