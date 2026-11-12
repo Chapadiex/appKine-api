@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.167.0
+  version: 0.168.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -147,6 +147,8 @@ tags:
 - description: Catalogo de financiadores y planes de cobertura de la organizacion
     (M15)
   name: Financiadores y planes
+- description: "Colores institucionales, logo y datos de contacto del centro"
+  name: Marca de la organizacion
 - description: "Catalogo comercial: que incluye cada plan"
   name: Planes
 - description: "La Sesion de cada participante de una clase clinica (M14, M28)"
@@ -21295,6 +21297,271 @@ paths:
       summary: Busca una direccion para ubicar la sede
       tags:
       - Consultorios
+  /api/v1/organizations/{orgId}/marca:
+    get:
+      description: "Colores por tema, datos de contacto y logos cargados. Requiere\
+        \ ser miembro vigente de la organizacion del contexto activo. Un centro que\
+        \ nunca edito su marca responde 200 con todo ausente y version 0."
+      operationId: getMarcaDeOrganizacion
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarcaResponse"
+          description: Marca vigente
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada o falta el contexto
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o es de otro tenant"
+      summary: Marca de la organizacion
+      tags:
+      - Marca de la organizacion
+    put:
+      description: |-
+        Reemplazo completo: lo omitido o vacio se borra, y un color borrado vuelve al de AKINE. Requiere tenant:update (solo el ORG_ADMIN de la organizacion).
+
+        El contraste de los colores NO se valida: el centro elige libre y la pantalla avisa. Solo se valida la forma (#rrggbb, email, URL con http o https).
+
+        La version enviada se compara antes de mutar; si quedo vieja, 409 concurrent-modification. Los logos no se tocan por aca.
+      operationId: updateMarcaDeOrganizacion
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMarcaRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarcaResponse"
+          description: "Marca actualizada, con la version nueva"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Algun campo no tiene la forma esperada
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El actor no es ORG_ADMIN de la organizacion
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o es de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La version enviada quedo vieja: releer y reintentar"
+      summary: Reemplazar colores y datos de contacto
+      tags:
+      - Marca de la organizacion
+  /api/v1/organizations/{orgId}/marca/logo/{variante}:
+    delete:
+      description: "Idempotente: quitar un logo que no esta responde igual. Requiere\
+        \ tenant:update."
+      operationId: quitarLogoDeOrganizacion
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Tema del logo
+        example: CLARO
+        in: path
+        name: variante
+        required: true
+        schema:
+          type: string
+          enum:
+          - CLARO
+          - OSCURO
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarcaResponse"
+          description: La marca sin ese logo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El actor no es ORG_ADMIN de la organizacion
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o es de otro tenant"
+      summary: Quitar el logo de un tema
+      tags:
+      - Marca de la organizacion
+    get:
+      description: "La imagen tal como se subio. Requiere ser miembro vigente. 404\
+        \ si el centro no cargo logo para ese tema: en oscuro, el cliente cae al logo\
+        \ claro."
+      operationId: descargarLogoDeOrganizacion
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Tema del logo
+        example: CLARO
+        in: path
+        name: variante
+        required: true
+        schema:
+          type: string
+          enum:
+          - CLARO
+          - OSCURO
+      responses:
+        "200":
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+          description: La imagen
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada o falta el contexto
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No hay logo para ese tema, o la organizacion no existe o es\
+            \ de otro tenant"
+      summary: Contenido del logo de un tema
+      tags:
+      - Marca de la organizacion
+    put:
+      description: "El cuerpo es la imagen, sin envoltorio. PNG, JPG o WebP de hasta\
+        \ 500 kB. El tipo lo deciden los bytes del archivo, no el Content-Type del\
+        \ pedido: SVG y cualquier otra cosa se rechazan con 400 (errors.logo). Requiere\
+        \ tenant:update."
+      operationId: subirLogoDeOrganizacion
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Tema del logo
+        example: CLARO
+        in: path
+        name: variante
+        required: true
+        schema:
+          type: string
+          enum:
+          - CLARO
+          - OSCURO
+      requestBody:
+        content:
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+          image/png:
+            schema:
+              type: string
+              format: binary
+          image/webp:
+            schema:
+              type: string
+              format: binary
+        description: La imagen
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarcaResponse"
+          description: Logo guardado; la marca con su huella nueva
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Archivo vacio, demasiado grande o de un formato no admitido"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El actor no es ORG_ADMIN de la organizacion
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o es de otro tenant"
+      summary: Subir o reemplazar el logo de un tema
+      tags:
+      - Marca de la organizacion
   /api/v1/organizations/{orgId}/memberships:
     get:
       description: |-
@@ -37534,6 +37801,84 @@ components:
       required:
       - email
       - password
+    LogoDeMarcaResponse:
+      type: object
+      description: "Un logo cargado, sin su contenido. El contenido se pide aparte"
+      properties:
+        contentType:
+          type: string
+          description: "Tipo de la imagen, decidido por sus bytes"
+          example: image/png
+        sha256:
+          type: string
+          description: "Huella SHA-256 del contenido. Cambia cuando cambia el logo:\
+            \ sirve para saber si hay que volver a pedirlo"
+      required:
+      - contentType
+      - sha256
+    MarcaResponse:
+      type: object
+      description: "Marca de la organizacion: colores institucionales por tema, datos\
+        \ de contacto del pie de pagina y logos cargados. Un color ausente significa\
+        \ que se usa el de AKINE; un logo ausente, que no hay"
+      properties:
+        colorAcentoClaro:
+          type: string
+          description: Color de enlaces y seleccion en tema claro
+          example: "#115e59"
+        colorAcentoOscuro:
+          type: string
+          description: Color de enlaces y seleccion en tema oscuro
+          example: "#5eead4"
+        colorPrincipalClaro:
+          type: string
+          description: "Color de accion (botones, foco) en tema claro"
+          example: "#0f766e"
+        colorPrincipalOscuro:
+          type: string
+          description: Color de accion en tema oscuro
+          example: "#2dd4bf"
+        direccion:
+          type: string
+          description: Direccion que se muestra en el pie
+          example: "Av. Colon 1234, Cordoba"
+        email:
+          type: string
+          description: Email de contacto del centro
+          example: contacto@centro.example
+        leyenda:
+          type: string
+          description: "Linea libre del pie: horario, matricula, lema"
+          example: Lunes a viernes de 8 a 20 h
+        logoClaro:
+          $ref: "#/components/schemas/LogoDeMarcaResponse"
+          description: "Logo para tema claro, si hay"
+        logoOscuro:
+          $ref: "#/components/schemas/LogoDeMarcaResponse"
+          description: "Logo para tema oscuro, si hay. Sin el, en oscuro se usa el\
+            \ claro"
+        organizationId:
+          type: integer
+          format: int64
+          description: Organizacion duena de la marca
+          example: 1
+        sitioWeb:
+          type: string
+          description: Sitio web del centro
+          example: https://centro.example
+        telefono:
+          type: string
+          description: Telefono de contacto del centro
+          example: +54 351 555-0100
+        version:
+          type: integer
+          format: int64
+          description: Version a reenviar al editar. 0 si el centro nunca edito su
+            marca
+          example: 0
+      required:
+      - organizationId
+      - version
     MarcarCoberturaPrincipalRequest:
       type: object
       description: Nueva marca principal de la cobertura
@@ -46218,6 +46563,72 @@ components:
           - OTRO
       required:
       - expectedVersion
+    UpdateMarcaRequest:
+      type: object
+      description: "Marca completa de la organizacion, con la version para bloqueo\
+        \ optimista. Lo omitido o vacio se borra"
+      properties:
+        colorAcentoClaro:
+          type: string
+          description: "Color de enlaces y seleccion en tema claro, #rrggbb"
+          example: "#115e59"
+          pattern: "^$|^#[0-9a-fA-F]{6}$"
+        colorAcentoOscuro:
+          type: string
+          description: "Color de enlaces y seleccion en tema oscuro, #rrggbb"
+          example: "#5eead4"
+          pattern: "^$|^#[0-9a-fA-F]{6}$"
+        colorPrincipalClaro:
+          type: string
+          description: "Color de accion en tema claro, #rrggbb"
+          example: "#0f766e"
+          pattern: "^$|^#[0-9a-fA-F]{6}$"
+        colorPrincipalOscuro:
+          type: string
+          description: "Color de accion en tema oscuro, #rrggbb"
+          example: "#2dd4bf"
+          pattern: "^$|^#[0-9a-fA-F]{6}$"
+        direccion:
+          type: string
+          description: Direccion que se muestra en el pie
+          example: "Av. Colon 1234, Cordoba"
+          maxLength: 240
+          minLength: 0
+        email:
+          type: string
+          format: email
+          description: Email de contacto
+          example: contacto@centro.example
+          maxLength: 254
+          minLength: 0
+        leyenda:
+          type: string
+          description: Linea libre del pie
+          example: Lunes a viernes de 8 a 20 h
+          maxLength: 200
+          minLength: 0
+        sitioWeb:
+          type: string
+          description: "Sitio web, con http:// o https://"
+          example: https://centro.example
+          maxLength: 200
+          minLength: 0
+          pattern: ^$|^https?://\S+$
+        telefono:
+          type: string
+          description: Telefono de contacto
+          example: +54 351 555-0100
+          maxLength: 40
+          minLength: 0
+        version:
+          type: integer
+          format: int64
+          description: "Version que el cliente cree vigente, tal como la devolvio\
+            \ el GET"
+          example: 0
+          minimum: 0
+      required:
+      - version
     UpdateMedicionDefinicionRequest:
       type: object
       description: Cambios a aplicar sobre una definicion de medida

@@ -107,6 +107,11 @@ final class AuditEvents {
 	 */
 	static final String PERMISSION_DENIED = "PERMISSION_DENIED";
 
+	/** Marca del tenant: colores, datos de contacto y logo. */
+	static final String ORGANIZATION_BRANDING_UPDATED = "ORGANIZATION_BRANDING_UPDATED";
+	static final String ORGANIZATION_LOGO_UPDATED = "ORGANIZATION_LOGO_UPDATED";
+	static final String ORGANIZATION_LOGO_REMOVED = "ORGANIZATION_LOGO_REMOVED";
+
 	static final String ENTITY_ORGANIZATION = "Organization";
 	static final String ENTITY_SUBSCRIPTION = "Subscription";
 	static final String ENTITY_MEMBERSHIP = "Membership";
