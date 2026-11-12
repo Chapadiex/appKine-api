@@ -3,6 +3,8 @@ package com.akine.notification.domain;
 import com.akine.notification.domain.exception.InvalidOutboxTransitionException;
 import com.akine.notification.spi.NotificationType;
 import jakarta.persistence.Column;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -58,7 +60,8 @@ public class NotificationOutboxEntry extends TimestampedNotification {
 	private String destinatario;
 
 	/** JSON plano y validado. Ver {@link SanitizedPayload}: claves en lista blanca. */
-	@Column(name = "payload_sanitizado", nullable = false, columnDefinition = "json", updatable = false)
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "payload_sanitizado", nullable = false, columnDefinition = "jsonb", updatable = false)
 	private String payloadSanitizado;
 
 	@Enumerated(EnumType.STRING)

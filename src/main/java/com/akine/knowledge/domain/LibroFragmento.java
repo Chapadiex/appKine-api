@@ -6,12 +6,15 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.Array;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * Un trozo de texto de un libro, con su vector.
  *
- * <p>El vector se guarda como bytes (float32 little-endian): el dominio no maneja
- * {@code float}/{@code double}. Los fragmentos se reemplazan en bloque, no se editan.
+ * <p>El dominio maneja el vector como bytes (float32 little-endian), sin {@code float}/{@code double};
+ * en la base es {@code vector(768)} de pgvector, con los mismos float32. Los fragmentos se reemplazan en bloque, no se editan.
  */
 @Entity
 @Table(name = "libro_fragmento")
@@ -39,8 +42,10 @@ public class LibroFragmento {
 	@Column(name = "texto", nullable = false, columnDefinition = "text")
 	private String texto;
 
-	@Column(name = "vector", columnDefinition = "blob")
-	private byte[] vector;
+	@JdbcTypeCode(SqlTypes.VECTOR)
+	@Array(length = 768)
+	@Column(name = "vector")
+	private float[] vector;
 
 	@Column(name = "modelo_embeddings", length = 100)
 	private String modeloEmbeddings;
@@ -69,7 +74,7 @@ public class LibroFragmento {
 		if ((vector == null) != (modelo == null)) {
 			throw new IllegalArgumentException("vector y modelo van juntos");
 		}
-		this.vector = vector;
+		this.vector = vector == null ? null : Vectores.deBytes(vector);
 		this.modeloEmbeddings = modelo;
 	}
 
@@ -80,7 +85,7 @@ public class LibroFragmento {
 	public int getPaginaDesde() { return paginaDesde; }
 	public int getPaginaHasta() { return paginaHasta; }
 	public String getTexto() { return texto; }
-	public byte[] getVector() { return vector; }
+	public byte[] getVector() { return vector == null ? null : Vectores.aBytes(vector); }
 	public String getModeloEmbeddings() { return modeloEmbeddings; }
 	public boolean isSospechoso() { return sospechoso; }
 }
