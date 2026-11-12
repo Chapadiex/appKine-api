@@ -147,6 +147,20 @@ class InterpretadorTest {
 	}
 
 	@Test
+	void seguimientoSinTemaPropioRecuperaElTemaQueElModeloPerdio() {
+		List<TurnoDeConsulta> charla = List.of(
+				new TurnoDeConsulta(TurnoDeConsulta.Rol.USUARIO, "lumbalgia"),
+				new TurnoDeConsulta(TurnoDeConsulta.Rol.ASISTENTE, "¿Qué buscás sobre lumbalgia?"));
+		modelo.responderJson(json("ejercicios", true, "ejercicios", "¿Qué ejercicios se recomiendan?"));
+
+		Buscar buscar = (Buscar) conEvidenciaEnTodo().interpretar(ORG, "ejercicios", charla, limite());
+
+		assertThat(buscar.independiente()).isFalse();
+		assertThat(buscar.tema()).isEqualTo("lumbalgia");
+		assertThat(buscar.preguntaCompleta()).isEqualTo("ejercicios lumbalgia");
+	}
+
+	@Test
 	void temaNuevoEsIndependiente() {
 		modelo.responderJson(json("kinesiofobia", true, "otra", "¿Qué hay sobre kinesiofobia?"));
 

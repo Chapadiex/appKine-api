@@ -202,12 +202,24 @@ public class Interpretador {
 			// La consulta nombra un tema nuevo y el modelo lo cambio por el de la charla.
 			return respaldo(consulta, historial);
 		}
+		String tema = leida.tema();
+		String completa = leida.preguntaCompleta();
+		if (!historial.isEmpty() && palabrasDeTema(normal).isEmpty()) {
+			// Sin tema propio ("ejercicios", "¿y quién lo hace?") es un seguimiento de la ultima pregunta,
+			// diga lo que diga el modelo; si perdio ese tema, se le devuelve.
+			List<String> previo = palabrasDeTema(normalizar(ultimaPregunta(historial)));
+			Set<String> enTemaLeido = Set.copyOf(palabras(normalizar(tema)));
+			if (!previo.isEmpty() && previo.stream().noneMatch(p -> estaEn(p, enTemaLeido))) {
+				tema = String.join(" ", previo);
+				completa = consulta + " " + tema;
+			}
+			return new Buscar(tema, leida.intencion(), completa,
+					consultas(completa, leida.intencion(), tema), false, profundo);
+		}
 		// Con palabras de tema propias es independiente aunque la charla ya las nombrara (R15).
 		boolean independiente = leida.temaNuevo() || historial.isEmpty() || nombraOtroTema
 				|| !profundo && !palabrasDeTema(normal).isEmpty()
 				|| !contenido(normalizar(leida.tema()), enCharla);
-		String tema = leida.tema();
-		String completa = leida.preguntaCompleta();
 		if (independiente) {
 			// Ni el tema ni la pregunta completa suman temas que la consulta no nombra (ni los de la charla),
 			// salvo el desarrollo de una sigla de la consulta (§4.1).

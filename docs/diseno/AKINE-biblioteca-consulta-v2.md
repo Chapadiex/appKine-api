@@ -244,3 +244,43 @@ Con el set de evaluación:
 8. **El caso que rompe el diseño.** El FULLTEXT de MySQL con stopwords y palabras cortas ("ACV", "EPOC")
    puede no encontrar siglas de 3 o 4 letras (`innodb_ft_min_token_size` = 3 por defecto). La interpretación
    las escribe completas y la vectorial las cubre igual. Se verifica en el set de evaluación.
+
+## 9. Resultado medido (12/11, GPU RTX 4050, qwen3:4b-instruct, M2–M5 reprocesados a la versión 2)
+
+Mismo set de 38 casos (`docs/consulta/evaluacion/`), misma pila, mismos libros. v1 en `resultados-v1.md`,
+v2 en `resultados-v2.md`.
+
+| Métrica | v1 | v2 |
+|---|---|---|
+| Recall@5 de páginas (casos "responder") | 13/23 (57 %) | **18/23 (78 %)** |
+| Repregunta cuando es ambigua | 0/10 | **10/10** |
+| Claras que no repreguntan | — | 28/28 |
+| "Sin material" en temas ausentes | 5/5 | **5/5** |
+| "Sin material" falso en casos "responder" | 3/23 | **0/23** |
+| Primera palabra p50 / p95 | 1,1 / 2,3 s | 2,8 / 3,7 s |
+| Repregunta p50 / p95 | — | 1,1 / 2,5 s |
+| Total p50 / p95 | 2,0 / 3,9 s | 5,2 / 8,7 s |
+
+Los objetivos de §6 (primera palabra < 5 s, repregunta < 3 s) se cumplen. v2 es más lenta que v1 porque
+interpreta antes de buscar y redacta con un modelo más grande; a cambio la respuesta sale de las páginas
+de tratamiento y no de la introducción.
+
+**Lo que la medición cambió del diseño (T7):**
+
+- **El corte vectorial no sirve para decidir "sin material".** En la primera corrida los cinco temas
+  ausentes respondieron con pasajes de otra cosa: el coseno de e5 los deja entre 0,81 y 0,84 y a los
+  presentes entre 0,818 y 0,861. Lo que los separa es que el libro nombre el tema (los cinco tienen cero
+  menciones). La evidencia pasó a exigir que cada palabra de tema aparezca entre los candidatos y que al
+  menos `minimo-pasajes` de los devueltos la nombren, con coincidencia por comienzo de palabra (doloroso /
+  dolor) y siglas no obligatorias (acv). La repregunta tampoco ofrece aspectos de un tema que la biblioteca
+  no nombra. `corte-vector` queda sólo para un tema sin palabras de tema; `minimo-pasajes` sigue en 2.
+- **Un seguimiento sin tema propio hereda el de la última pregunta** aunque el modelo diga lo contrario:
+  "lumbalgia" → repregunta → "ejercicios" perdía la lumbalgia porque el modelo devolvía tema "ejercicios".
+- **Preguntas cruzadas:** "qué es lumbalgia" y después "ejercicios para manguito rotador" da "sin material"
+  (no hay manguito en la biblioteca) sin un solo pasaje de lumbalgia.
+
+**Lo que queda:** C05 (rehabilitación cardíaca) y C12 (autismo) responden con fuentes de otro módulo; P03
+(profundizar EPOC) no trae las páginas esperadas; H05 alterna entre corridas. La calidad de redacción del
+modelo de 4B todavía mezcla datos de tablas (una respuesta de fractura de cadera dijo "carga de 20–20 kg"):
+se ve en la lectura a mano, no en el Recall. El bonus por páginas vecinas al profundizar (R12) no se
+implementó.
