@@ -526,7 +526,7 @@ class ReporteReadIT {
 				                   created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?,
 				        (CURRENT_TIMESTAMP + make_interval(hours => ?)),
-				        (CURRENT_TIMESTAMP + make_interval(minutes => ?)),
+				        (CURRENT_TIMESTAMP + make_interval(mins => ?)),
 				        'RESERVADO', ?, CURRENT_TIMESTAMP, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, ofertaId, personaId, membershipId,
 				horasDesdeAhora, horasDesdeAhora * 60 + 45, cuentaId);

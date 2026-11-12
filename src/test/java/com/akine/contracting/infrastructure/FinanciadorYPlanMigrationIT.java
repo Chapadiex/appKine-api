@@ -8,7 +8,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -181,7 +180,7 @@ class FinanciadorYPlanMigrationIT {
 
 		assertThatThrownBy(() -> insertarFinanciador(org, "A", "Uno", "30-71234567-8"))
 				.isInstanceOfAny(DataIntegrityViolationException.class,
-						UncategorizedSQLException.class);
+						DataIntegrityViolationException.class);
 	}
 
 	// =================================================================================
@@ -223,7 +222,7 @@ class FinanciadorYPlanMigrationIT {
 		assertThatThrownBy(
 				() -> insertarPlan(org, financiador, "INV", "Invertido", "2026-02-01", "2026-01-01"))
 				.isInstanceOfAny(DataIntegrityViolationException.class,
-						UncategorizedSQLException.class);
+						DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -241,7 +240,7 @@ class FinanciadorYPlanMigrationIT {
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, financiador))
 				.isInstanceOfAny(DataIntegrityViolationException.class,
-						UncategorizedSQLException.class);
+						DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -254,7 +253,7 @@ class FinanciadorYPlanMigrationIT {
 
 		assertThatThrownBy(() -> jdbc().update("UPDATE financiador SET active = false WHERE id = ?", id))
 				.isInstanceOfAny(DataIntegrityViolationException.class,
-						UncategorizedSQLException.class);
+						DataIntegrityViolationException.class);
 	}
 
 	@Test

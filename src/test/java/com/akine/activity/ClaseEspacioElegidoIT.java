@@ -68,7 +68,7 @@ class ClaseEspacioElegidoIT {
 	void setUp() {
 		fx = new ActividadItFixture(jdbc, inscripcionService);
 		tenant = fx.crearTenant(20, 0);
-		jdbc.update("UPDATE oferta_servicio_consultorio SET requiere_espacio = 1 WHERE id = ?",
+		jdbc.update("UPDATE oferta_servicio_consultorio SET requiere_espacio = true WHERE id = ?",
 				tenant.ofertaId());
 		salon = crearEspacio("Salon " + UUID.randomUUID().toString().substring(0, 6), 20);
 		boxChico = crearEspacio("Box " + UUID.randomUUID().toString().substring(0, 6), 4);

@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -215,8 +214,8 @@ class EntradaYAdjuntoClinicoMigrationIT {
 	void una_manual_no_puede_referenciar_nada() {
 		assertThatThrownBy(() -> insertarEntrada(ORG_A, historiaEnA, "EVOLUCION", "MANUAL", 77L))
 				.as("ck_entrada_clinica_origen_trazable. El CHECK de MySQL llega como "
-						+ "UncategorizedSQLException, al reves que el UNIQUE")
-				.isInstanceOf(UncategorizedSQLException.class);
+						+ "DataIntegrityViolationException, igual que el UNIQUE")
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -226,7 +225,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 		// puede ir a verificar. Hoy este camino no lo escribe nadie —solo se escribe MANUAL— y el
 		// CHECK esta igual: el dia que otro modulo genere entradas, el invariante ya esta puesto.
 		assertThatThrownBy(() -> insertarEntrada(ORG_A, historiaEnA, "EVOLUCION", "SESION", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -242,7 +241,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 	@DisplayName("un tipo de entrada fuera del catalogo no entra")
 	void el_tipo_de_entrada_es_lista_cerrada() {
 		assertThatThrownBy(() -> insertarEntrada(ORG_A, historiaEnA, "DIAGNOSTICO", "MANUAL", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	// =================================================================================
@@ -255,7 +254,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 		long entradaId = insertarEntrada(ORG_A, historiaEnA, "EVOLUCION", "MANUAL", null);
 
 		assertThatThrownBy(() -> insertarVersion(ORG_A, entradaId, 1, "Motivo indebido"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -267,7 +266,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 		assertThatThrownBy(() -> insertarVersion(ORG_A, entradaId, 2, null))
 				.as("ck_entrada_version_motivo_de_enmienda: RN-M09-004 pide que el cambio clinico "
 						+ "sea trazable, y un cambio sin motivo no lo es")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() -> insertarVersion(ORG_A, entradaId, 2, "Se corrige la lateralidad"))
 				.doesNotThrowAnyException();
@@ -311,7 +310,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 				""", entradaId))
 				.as("una entrada clinica que desaparece sin explicacion es lo que RN-M09-004 "
 						+ "quiere impedir")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -324,7 +323,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 				   SET active = true, deleted_at = CURRENT_TIMESTAMP, deactivation_reason = 'x'
 				 WHERE id = ?
 				""", entradaId))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -335,7 +334,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 		assertThatThrownBy(() -> jdbc().update("""
 				UPDATE adjunto_clinico SET active = false, deleted_at = CURRENT_TIMESTAMP WHERE id = ?
 				""", adjuntoId))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	// =================================================================================
@@ -351,7 +350,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 			assertThatThrownBy(() ->
 					insertarAdjunto(ORG_A, historiaEnA, administrativa, nuevoChecksum()))
 					.as("%s es una categoria administrativa y no puede entrar acá", administrativa)
-					.isInstanceOf(UncategorizedSQLException.class);
+					.isInstanceOf(DataIntegrityViolationException.class);
 		}
 	}
 
@@ -362,11 +361,11 @@ class EntradaYAdjuntoClinicoMigrationIT {
 
 		assertThatThrownBy(() -> jdbc().update(
 				"UPDATE adjunto_clinico SET estado = 'BORRADO' WHERE id = ?", adjuntoId))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() -> jdbc().update(
 				"UPDATE adjunto_clinico SET tamano_bytes = 0 WHERE id = ?", adjuntoId))
 				.as("un adjunto de cero bytes es un archivo que no se subio")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test

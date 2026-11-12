@@ -48,7 +48,7 @@ function cierre(s, desde) {
 	return -1;
 }
 
-const unidad = { DAY: 'days', HOUR: 'hours', MINUTE: 'minutes', SECOND: 'seconds', MONTH: 'months', YEAR: 'years', WEEK: 'weeks', MICROSECOND: 'microseconds' };
+const unidad = { DAY: 'days', HOUR: 'hours', MINUTE: 'mins', SECOND: 'secs', MONTH: 'months', YEAR: 'years', WEEK: 'weeks', MICROSECOND: 'microseconds' };
 
 function intervalo(cant, u) {
 	const nombre = unidad[u.toUpperCase()];
@@ -162,7 +162,7 @@ let archivosCambiados = 0, sentencias = 0;
 		});
 		// literales simples, uno por uno (las concatenaciones se portan pedazo a pedazo)
 		src = src.replace(/"((?:[^"\\\n]|\\.)*)"/g, (m, cuerpo) => {
-			if (!/(UTC_TIMESTAMP|NOW\(|CURDATE|UTC_DATE|DATE_ADD|DATE_SUB|IFNULL|INSERT\s+IGNORE|INSERT\s+INTO|\b(active|activo|sospechoso)\s*=\s*[01])/i.test(cuerpo)) return m;
+			if (!/(UTC_TIMESTAMP|NOW\(|CURDATE|UTC_DATE|DATE_ADD|DATE_SUB|IFNULL|INSERT\s+IGNORE|INSERT\s+INTO|\b\w+\s*(=|<>)\s*[01]\b)/i.test(cuerpo)) return m;
 			let n;
 			try { n = portar(cuerpo); } catch (err) { pendientes.push(`${p}: ${err.message}`); return m; }
 			if (n !== cuerpo) sentencias++;

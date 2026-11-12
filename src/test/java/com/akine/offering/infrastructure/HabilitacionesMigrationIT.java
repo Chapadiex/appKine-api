@@ -11,7 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -167,10 +166,9 @@ class HabilitacionesMigrationIT {
 				   SET active = false, deleted_at = CURRENT_TIMESTAMP
 				 WHERE oferta_id = ? AND membership_id = ?
 				""", fixture.ofertaId(), fixture.membershipId()))
-				.as("una baja sin motivo tiene que violar ck_oph_baja_coherente. El CHECK de "
-						+ "MySQL llega como UncategorizedSQLException y no como violacion de "
-						+ "integridad, al reves que el UNIQUE")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.as("una baja sin motivo tiene que violar ck_oph_baja_coherente: en PostgreSQL un CHECK "
+						+ "llega como DataIntegrityViolationException, igual que el UNIQUE")
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -189,7 +187,7 @@ class HabilitacionesMigrationIT {
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.ofertaId(),
 				fixture.espacioId()))
 				.as("una ventana de largo cero tiene que violar ck_oeh_vigencia_coherente")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	// =================================================================================
@@ -283,7 +281,7 @@ class HabilitacionesMigrationIT {
 				     duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				     genera_registro_clinico, requiere_profesional, requiere_espacio,
 				     vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'GRUPAL', 45, 8, false, true, true, true, true, CURRENT_DATE(), true, 0,
+				VALUES (?, ?, ?, ?, 'GRUPAL', 45, 8, false, true, true, true, true, CURRENT_DATE, true, 0,
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, servicioId, nombre);
 		return jdbc().queryForObject("""

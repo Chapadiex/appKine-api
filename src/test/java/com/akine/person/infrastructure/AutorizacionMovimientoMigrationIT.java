@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -191,9 +190,9 @@ class AutorizacionMovimientoMigrationIT {
 	void el_tipo_es_lista_cerrada() {
 		assertThatThrownBy(() -> insertar(ORG_A, autorizacionEnA, personaEnA, "AJUSTE", 1,
 				"SESION", 1L, null, null))
-				.as("ck_movimiento_tipo. Un CHECK de MySQL llega como UncategorizedSQLException, "
-						+ "al reves que el UNIQUE")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.as("ck_movimiento_tipo. Un CHECK llega como DataIntegrityViolationException, "
+						+ "igual que el UNIQUE")
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -219,7 +218,7 @@ class AutorizacionMovimientoMigrationIT {
 		// prueba que una prestacion ocurrio.
 		assertThatThrownBy(() -> insertar(ORG_A, autorizacionEnA, personaEnA, "CONSUMO", 1,
 				"TURNO", 2L, null, null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -230,10 +229,10 @@ class AutorizacionMovimientoMigrationIT {
 		// numeros negativos, todo lector tiene que saber el signo de cada tipo para sumar.
 		assertThatThrownBy(() -> insertar(ORG_A, autorizacionEnA, personaEnA, "CONSUMO", 0,
 				"SESION", 3L, null, null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() -> insertar(ORG_A, autorizacionEnA, personaEnA, "CONSUMO", -1,
 				"SESION", 4L, null, null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -246,7 +245,7 @@ class AutorizacionMovimientoMigrationIT {
 		assertThatThrownBy(() -> insertar(ORG_A, autorizacionEnA, personaEnA, "REVERSION", 1,
 				"SESION", 5L, null, null))
 				.as("ck_movimiento_motivo_exigido")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		// Control negativo: si el CHECK exigiera motivo en todos, cada cierre de sesion tendria
 		// que inventar una explicacion que el requisito no pide.
@@ -267,7 +266,7 @@ class AutorizacionMovimientoMigrationIT {
 		assertThatThrownBy(() -> insertar(ORG_A, autorizacionEnA, personaEnA, "CONSUMO", 1,
 				"SESION", 7L, null, consumoId))
 				.as("ck_movimiento_origen_solo_en_reversion")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() -> insertar(ORG_A, autorizacionEnA, personaEnA, "REVERSION", 1,
 				"SESION", 6L, "Se cargo en el paciente equivocado", consumoId))

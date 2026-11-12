@@ -115,7 +115,7 @@ class AbonoRenovacionYAvisosIT {
 		assertThat(nuevo.get("renovacion_automatica")).isEqualTo(Boolean.TRUE);
 		assertThat(((Number) nuevo.get("vendido_por_cuenta_id")).longValue()).isEqualTo(tenant.actor().accountId());
 		// El periodo viejo no se vuelve a renovar: su marca se apago en la misma transaccion.
-		assertThat(jdbc.queryForObject("SELECT renovacion_automatica FROM pase_servicio WHERE id = ?",
+		assertThat(jdbc.queryForObject("SELECT CAST(renovacion_automatica AS integer) FROM pase_servicio WHERE id = ?",
 				Integer.class, anterior)).isZero();
 		// Un periodo, una obligacion VENTA_ABONO, con el precio nuevo; el viejo conserva la suya.
 		assertThat(jdbc.queryForList("SELECT origen FROM obligacion WHERE pase_id = ?", String.class, nuevoId))
@@ -331,7 +331,7 @@ class AbonoRenovacionYAvisosIT {
 		long productoId = productoService.crear(tenant.actor(), tenant.consultorioId(), abono(tenant.ofertaId(), 31)).id();
 		long raiz = ventaService.vender(tenant.actor(), tenant.consultorioId(),
 				new VenderPaseCommand(productoId, tenant.persona(0), null, hoy().minusDays(20), null, true)).pase().id();
-		jdbc.update("UPDATE pase_servicio SET vigencia_desde = ?, vigencia_hasta = ? WHERE id = ?",
+		jdbc.update("UPDATE pase_servicio SET vigencia_desde = CAST(? AS date), vigencia_hasta = CAST(? AS date) WHERE id = ?",
 				LocalDate.parse("2027-01-31"), LocalDate.parse("2027-02-27"), raiz);
 
 		assertThat(RenovacionEnFecha.renovar(renovacion, candidato(tenant, productoId, raiz),
@@ -365,7 +365,7 @@ class AbonoRenovacionYAvisosIT {
 				new VenderPaseCommand(productoId, tenant.persona(0), null)).pase().id();
 		long sinCorreo = ventaService.vender(tenant.actor(), tenant.consultorioId(),
 				new VenderPaseCommand(productoId, tenant.persona(1), null)).pase().id();
-		jdbc.update("UPDATE pase_servicio SET vigencia_hasta = ? WHERE id IN (?, ?)", hoy().plusDays(2), conCorreo, sinCorreo);
+		jdbc.update("UPDATE pase_servicio SET vigencia_hasta = CAST(? AS date) WHERE id IN (?, ?)", hoy().plusDays(2), conCorreo, sinCorreo);
 		ajusteService.ajustar(tenant.actor(), tenant.consultorioId(), conCorreo,
 				new AjustarSaldoCommand(-3, "Tres clases antes del sistema", version(conCorreo)), true);
 
@@ -488,7 +488,7 @@ class AbonoRenovacionYAvisosIT {
 
 	/** Corre el fin del periodo (y el inicio, para que no dure mas que el producto). */
 	private void terminaEn(long paseId, LocalDate fin) {
-		jdbc.update("UPDATE pase_servicio SET vigencia_desde = ?, vigencia_hasta = ? WHERE id = ?",
+		jdbc.update("UPDATE pase_servicio SET vigencia_desde = CAST(? AS date), vigencia_hasta = CAST(? AS date) WHERE id = ?",
 				fin.minusDays(29), fin, paseId);
 	}
 

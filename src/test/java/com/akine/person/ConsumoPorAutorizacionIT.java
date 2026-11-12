@@ -294,7 +294,7 @@ class ConsumoPorAutorizacionIT {
 	void cobertura_vencida_no_consume() {
 		Fixture f = crearFixture();
 		long kinesio = autorizar(f, f.coberturaId(), f.practica1(), "C-1", 10, 0);
-		jdbc.update("UPDATE cobertura_paciente SET vigencia_hasta = ? WHERE id = ?",
+		jdbc.update("UPDATE cobertura_paciente SET vigencia_hasta = CAST(? AS date) WHERE id = ?",
 				hoy().minusDays(1), f.coberturaId());
 
 		List<ResultadoDeConsumo> resultado = consumir(f, 870_001L, Set.of(f.practica1()));

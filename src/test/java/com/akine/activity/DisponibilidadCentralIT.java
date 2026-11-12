@@ -119,7 +119,7 @@ class DisponibilidadCentralIT {
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM disponibilidad_excepcion
 				 WHERE consultorio_id = ? AND membership_id = ? AND tipo = 'CIERRE' AND active = true
-				   AND hora_desde = '10:00:00' AND hora_hasta = '12:00:00' AND fecha_desde = ?
+				   AND hora_desde = '10:00:00' AND hora_hasta = '12:00:00' AND fecha_desde = CAST(? AS date)
 				""", Long.class, centro.consultorioId(), centro.profesionalMembershipId(), LUNES)).isEqualTo(1);
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM audit_event

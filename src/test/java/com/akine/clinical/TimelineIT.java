@@ -433,7 +433,7 @@ class TimelineIT {
 				new AdjuntoClinicoAltaCommand(CategoriaAdjuntoClinico.ESTUDIO, null, null,
 						marca + ".pdf", "application/pdf", pdf(marca)),
 				JUSTIFICACION);
-		jdbc.update("UPDATE adjunto_clinico SET subido_en = ? WHERE id = ?",
+		jdbc.update("UPDATE adjunto_clinico SET subido_en = CAST(? AS timestamptz) WHERE id = ?",
 				utc(subidoEn), alta.adjunto().id());
 		return alta;
 	}

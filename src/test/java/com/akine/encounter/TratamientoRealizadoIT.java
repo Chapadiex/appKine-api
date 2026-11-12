@@ -455,7 +455,7 @@ class TratamientoRealizadoIT {
 		// Nada cambio en la sesion de A.
 		assertThat(contar("tratamiento_realizado", "sesion_id", sesionA)).isEqualTo(1);
 		assertThat(jdbc.queryForObject(
-				"SELECT active FROM tratamiento_realizado WHERE id = ?", Integer.class, deA.id()))
+				"SELECT CAST(active AS integer) FROM tratamiento_realizado WHERE id = ?", Integer.class, deA.id()))
 				.isEqualTo(1);
 		assertThat(versionEnBase(sesionA)).isEqualTo(version);
 	}

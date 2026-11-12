@@ -147,7 +147,7 @@ class ObligacionDelFinanciadorIT {
 	@DisplayName("sin cobertura vigente: una sola obligacion particular por el precio de la oferta")
 	void sin_cobertura_particular() {
 		Fixture f = crearFixture(true);
-		jdbc.update("UPDATE cobertura_paciente SET vigencia_hasta = ? WHERE id = ?",
+		jdbc.update("UPDATE cobertura_paciente SET vigencia_hasta = CAST(? AS date) WHERE id = ?",
 				hoy().minusDays(1), f.cobertura());
 		long sesion = insertarSesion(f);
 		tratar(f, sesion, f.kine());
@@ -310,7 +310,7 @@ class ObligacionDelFinanciadorIT {
 		LocalDate dia = LocalDate.of(2026, 10, 9);
 		Instant nocheDeCordoba = dia.atTime(22, 30).atZone(ZoneId.of(ZONA)).toInstant();
 		// Como texto UTC y no como Timestamp: sin depender de la zona de la JVM ni del driver.
-		jdbc.update("UPDATE obligacion SET devengada_en = ? WHERE id = ?",
+		jdbc.update("UPDATE obligacion SET devengada_en = CAST(? AS timestamptz) WHERE id = ?",
 				nocheDeCordoba.toString().replace("T", " ").replace("Z", ""), financiadorObligacion);
 		assertThat(jdbc.queryForObject(
 				"SELECT to_char(devengada_en AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI') FROM obligacion WHERE id = ?",
@@ -396,7 +396,7 @@ class ObligacionDelFinanciadorIT {
 				        CURRENT_TIMESTAMP)
 				""", f.organizationId(), f.consultorioId(), sesion, f.personaId(),
 				f.financiador(), f.ofertaId()))
-				// Un CHECK violado (error 3819 de MySQL) llega como UncategorizedSQLException, no como
+				// Un CHECK violado (error 3819 de MySQL) llega como DataIntegrityViolationException, no como
 				// DataIntegrityViolationException: lo que identifica la regla es el nombre.
 				.isInstanceOf(DataAccessException.class)
 				.hasMessageContaining("ck_obligacion_snapshot_convenio_coherente");

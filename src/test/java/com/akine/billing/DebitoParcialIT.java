@@ -204,8 +204,8 @@ class DebitoParcialIT {
 			boolean credencialVencida) {
 		jdbc.update("""
 				UPDATE obligacion
-				   SET snapshot_requeria_orden = ?, snapshot_requeria_autorizacion = ?,
-				       snapshot_requeria_credencial = ?, snapshot_credencial_vencida = ?
+				   SET snapshot_requeria_orden = CAST(? AS boolean), snapshot_requeria_autorizacion = CAST(? AS boolean),
+				       snapshot_requeria_credencial = CAST(? AS boolean), snapshot_credencial_vencida = CAST(? AS boolean)
 				 WHERE id = ?
 				""", orden, autorizacion, credencial, credencialVencida, obligacionId);
 	}

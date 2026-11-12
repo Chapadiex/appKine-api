@@ -283,7 +283,7 @@ class TurnoCicloConcurrenteIT {
 		return jdbc.queryForObject("""
 				SELECT COUNT(*) FROM turno
 				 WHERE organization_id = ? AND oferta_id = ? AND deleted_at IS NULL
-				   AND inicio = ?
+				   AND inicio = CAST(? AS timestamptz)
 				""", Long.class, fixture.organizationId(), fixture.ofertaId(),
 				inicio.atZone(ZoneId.of("UTC")).toLocalDateTime());
 	}

@@ -243,7 +243,7 @@ class ActividadEnElReporteIT {
 		registrar(t, clase, t.persona(1), ResultadoAsistencia.AUSENTE, "No vino");
 
 		LocalDate hoy = hoy();
-		jdbc.update("UPDATE pase_servicio SET vigencia_desde = ?, vigencia_hasta = ? WHERE id = ?",
+		jdbc.update("UPDATE pase_servicio SET vigencia_desde = CAST(? AS date), vigencia_hasta = CAST(? AS date) WHERE id = ?",
 				hoy.minusDays(60), hoy.minusDays(2), pack4);
 		vencimiento.vencerLosVencidos(500);
 
@@ -307,10 +307,10 @@ class ActividadEnElReporteIT {
 
 		long renovable = ventaService.vender(actorDe(t), t.consultorioId(),
 				new VenderPaseCommand(producto, t.persona(0), null, hoy.minusDays(2), null, true)).pase().id();
-		jdbc.update("UPDATE pase_servicio SET vigencia_hasta = ? WHERE id = ?", hoy.plusDays(1), renovable);
+		jdbc.update("UPDATE pase_servicio SET vigencia_hasta = CAST(? AS date) WHERE id = ?", hoy.plusDays(1), renovable);
 		long terminado = ventaService.vender(actorDe(t), t.consultorioId(),
 				new VenderPaseCommand(producto, t.persona(1), null, hoy.minusDays(2), null)).pase().id();
-		jdbc.update("UPDATE pase_servicio SET vigencia_desde = ?, vigencia_hasta = ? WHERE id = ?",
+		jdbc.update("UPDATE pase_servicio SET vigencia_desde = CAST(? AS date), vigencia_hasta = CAST(? AS date) WHERE id = ?",
 				hoy.minusDays(40), hoy.minusDays(3), terminado);
 		long anulado = ventaService.vender(actorDe(t), t.consultorioId(),
 				new VenderPaseCommand(producto, t.persona(2), null, hoy.minusDays(2), null)).pase().id();
@@ -358,7 +358,7 @@ class ActividadEnElReporteIT {
 		return jdbc.queryForObject("""
 				SELECT COALESCE(SUM(creditos_disponibles), 0) FROM pase_servicio
 				 WHERE organization_id = ? AND estado = 'ACTIVO'
-				   AND vigencia_desde <= ? AND vigencia_hasta >= ?
+				   AND vigencia_desde <= CAST(? AS date) AND vigencia_hasta >= CAST(? AS date)
 				""", Integer.class, t.organizationId(), hoy, hoy);
 	}
 

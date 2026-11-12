@@ -12,7 +12,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -136,7 +135,7 @@ class DisponibilidadMigrationIT {
 
 		assertThatThrownBy(() -> insertarBloque(fixture, 1, "10:00:00", "09:00:00"))
 				.as("hora_hasta <= hora_desde tiene que violar ck_profesional_disponibilidad_horario")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_profesional_disponibilidad_horario");
 
 		// El borde de la igualdad, que es lo que el nombre del test promete y hasta la tarea 12
@@ -147,7 +146,7 @@ class DisponibilidadMigrationIT {
 		assertThatThrownBy(() -> insertarBloque(fixture, 1, "09:00:00", "09:00:00"))
 				.as("hora_hasta == hora_desde es una franja vacia y tambien tiene que violar "
 						+ "ck_profesional_disponibilidad_horario")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_profesional_disponibilidad_horario");
 	}
 
@@ -178,12 +177,12 @@ class DisponibilidadMigrationIT {
 
 		assertThatThrownBy(() -> insertarBloque(fixture, 8, "09:00:00", "10:00:00"))
 				.as("dia_semana = 8 tiene que violar ck_profesional_disponibilidad_dia_semana")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_profesional_disponibilidad_dia_semana");
 
 		assertThatThrownBy(() -> insertarBloque(fixture, 0, "09:00:00", "10:00:00"))
 				.as("dia_semana = 0 tampoco es un ISO-8601 valido")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_profesional_disponibilidad_dia_semana");
 	}
 
@@ -201,12 +200,12 @@ class DisponibilidadMigrationIT {
 				    (organization_id, consultorio_id, membership_id, dia_semana, hora_desde,
 				     hora_hasta, vigencia_desde, active, deleted_at, deactivation_reason,
 				     version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, '09:00:00', '10:00:00', CURRENT_DATE(), false, NULL, NULL,
+				VALUES (?, ?, ?, 1, '09:00:00', '10:00:00', CURRENT_DATE, false, NULL, NULL,
 				        0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.membershipId()))
 				.as("active = false con deleted_at NULL tiene que violar "
 						+ "ck_profesional_disponibilidad_baja_coherente")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_profesional_disponibilidad_baja_coherente");
 	}
 
@@ -229,13 +228,13 @@ class DisponibilidadMigrationIT {
 				    (organization_id, consultorio_id, membership_id, tipo, motivo,
 				     fecha_desde, fecha_hasta, hora_desde, hora_hasta, active, deleted_at,
 				     deactivation_reason, version, created_at, updated_at)
-				VALUES (?, ?, ?, 'CIERRE', 'AUSENCIA', CURRENT_DATE(),
-				        (CURRENT_DATE() + INTERVAL '1 days'), NULL, NULL,
+				VALUES (?, ?, ?, 'CIERRE', 'AUSENCIA', CURRENT_DATE,
+				        (CURRENT_DATE + INTERVAL '1 days'), NULL, NULL,
 				        false, NULL, NULL, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.membershipId()))
 				.as("active = false con deleted_at NULL tiene que violar "
 						+ "ck_disponibilidad_excepcion_baja_coherente")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_disponibilidad_excepcion_baja_coherente");
 	}
 
@@ -253,12 +252,12 @@ class DisponibilidadMigrationIT {
 				    (organization_id, consultorio_id, membership_id, tipo, motivo,
 				     fecha_desde, fecha_hasta, hora_desde, hora_hasta, active, version,
 				     created_at, updated_at)
-				VALUES (?, ?, ?, 'CIERRE', 'AUSENCIA', CURRENT_DATE(),
-				        (CURRENT_DATE() + INTERVAL '1 days'), '09:00:00', NULL,
+				VALUES (?, ?, ?, 'CIERRE', 'AUSENCIA', CURRENT_DATE,
+				        (CURRENT_DATE + INTERVAL '1 days'), '09:00:00', NULL,
 				        true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.membershipId()))
 				.as("hora_desde sin hora_hasta tiene que violar ck_disponibilidad_excepcion_horario")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_disponibilidad_excepcion_horario");
 	}
 
@@ -278,8 +277,8 @@ class DisponibilidadMigrationIT {
 				    (organization_id, consultorio_id, membership_id, tipo, motivo,
 				     fecha_desde, fecha_hasta, hora_desde, hora_hasta, active, version,
 				     created_at, updated_at)
-				VALUES (?, ?, NULL, 'CIERRE', 'FERIADO', CURRENT_DATE(),
-				        (CURRENT_DATE() + INTERVAL '1 days'), NULL, NULL,
+				VALUES (?, ?, NULL, 'CIERRE', 'FERIADO', CURRENT_DATE,
+				        (CURRENT_DATE + INTERVAL '1 days'), NULL, NULL,
 				        true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId());
 
@@ -379,7 +378,7 @@ class DisponibilidadMigrationIT {
 				INSERT INTO profesional_disponibilidad
 				    (organization_id, consultorio_id, membership_id, dia_semana, hora_desde,
 				     hora_hasta, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, CURRENT_DATE(), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				VALUES (?, ?, ?, ?, ?, ?, CURRENT_DATE, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.membershipId(),
 				diaSemana, horaDesde, horaHasta);
 	}

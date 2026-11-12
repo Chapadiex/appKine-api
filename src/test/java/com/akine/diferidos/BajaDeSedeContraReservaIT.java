@@ -191,7 +191,7 @@ class BajaDeSedeContraReservaIT extends BaseEscenarioDiferido {
 
 	private boolean activa(long sedeId) {
 		Long activa = jdbc.queryForObject(
-				"SELECT active FROM consultorio WHERE id = ?", Long.class, sedeId);
+				"SELECT CAST(active AS integer) FROM consultorio WHERE id = ?", Long.class, sedeId);
 		return activa != null && activa == 1L;
 	}
 

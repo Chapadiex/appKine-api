@@ -8,7 +8,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -112,7 +111,7 @@ class CoberturaPacienteMigrationIT {
 				VALUES (?, ?, 'FINANCIADA', ?, ?, '2026-09-01', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", contexto.org, contexto.persona, contexto.plan, contexto.financiador))
 				.isInstanceOfAny(DataIntegrityViolationException.class,
-						UncategorizedSQLException.class);
+						DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -125,7 +124,7 @@ class CoberturaPacienteMigrationIT {
 		assertThatThrownBy(() -> insertar(contexto, "PARTICULAR", contexto.plan, "62000123456",
 				"2026-09-01", null))
 				.isInstanceOfAny(DataIntegrityViolationException.class,
-						UncategorizedSQLException.class);
+						DataIntegrityViolationException.class);
 	}
 
 	// =================================================================================
@@ -185,7 +184,7 @@ class CoberturaPacienteMigrationIT {
 		assertThatThrownBy(() -> insertar(contexto, "PARTICULAR", null, null,
 				"2026-09-10", "2026-09-01"))
 				.isInstanceOfAny(DataIntegrityViolationException.class,
-						UncategorizedSQLException.class);
+						DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -198,7 +197,7 @@ class CoberturaPacienteMigrationIT {
 				UPDATE cobertura_paciente SET active = false, deleted_at = CURRENT_TIMESTAMP WHERE id = ?
 				""", id))
 				.isInstanceOfAny(DataIntegrityViolationException.class,
-						UncategorizedSQLException.class);
+						DataIntegrityViolationException.class);
 	}
 
 	@Test

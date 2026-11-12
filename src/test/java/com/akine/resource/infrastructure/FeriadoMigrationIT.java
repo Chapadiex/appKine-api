@@ -8,7 +8,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -155,7 +154,7 @@ class FeriadoMigrationIT {
 				INSERT INTO feriado (pais, fecha, nombre, tipo, created_at, updated_at)
 				VALUES ('AR', '2030-01-01', 'Feriado inventado', 'INVENTADO', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				"""))
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_feriado_tipo");
 	}
 }

@@ -436,7 +436,7 @@ class SerieDeTurnosIT {
 
 	@org.junit.jupiter.api.AfterEach
 	void borrarFeriadoSintetico() {
-		jdbc.update("DELETE FROM feriado WHERE pais = 'AR' AND fecha = ? AND nombre = 'Feriado sintetico U-22'",
+		jdbc.update("DELETE FROM feriado WHERE pais = 'AR' AND fecha = CAST(? AS date) AND nombre = 'Feriado sintetico U-22'",
 				FERIADO_SINTETICO);
 	}
 
@@ -624,7 +624,7 @@ class SerieDeTurnosIT {
 		return jdbc.queryForObject("""
 				SELECT COUNT(*) FROM turno
 				 WHERE organization_id = ? AND oferta_id = ? AND deleted_at IS NULL
-				   AND inicio = ?
+				   AND inicio = CAST(? AS timestamptz)
 				""", Long.class, fixture.organizationId(), fixture.ofertaId(),
 				inicio.atZone(ZoneId.of("UTC")).toLocalDateTime());
 	}

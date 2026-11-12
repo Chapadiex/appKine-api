@@ -1,9 +1,9 @@
 package com.akine.billing;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import com.akine.testsupport.InsertarConId;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDateTime;
@@ -67,8 +67,8 @@ public final class MigracionItSoporte {
 	public void violaCheck(String constraint, ThrowingCallable intento) {
 		assertThatThrownBy(intento)
 				.as(constraint)
-				.isInstanceOf(UncategorizedSQLException.class)
-				.hasMessageContaining("'" + constraint + "'");
+				.isInstanceOf(DataIntegrityViolationException.class)
+				.hasMessageContaining("\"" + constraint + "\"");
 	}
 
 	public void violaUnique(String constraint, ThrowingCallable intento) {

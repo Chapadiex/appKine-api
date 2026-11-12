@@ -4,6 +4,7 @@ import java.sql.CallableStatement;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 
 import org.hibernate.type.SqlTypes;
 import org.hibernate.type.descriptor.ValueBinder;
@@ -37,8 +38,10 @@ import org.hibernate.type.descriptor.jdbc.JdbcType;
  *       esquema compara contra la columna real, y ahora coincide.</li>
  *   <li>{@link #getBinder} y {@link #getExtractor} siguen moviendo texto plano con
  *       {@code setString}/{@code getString}, exactamente el mismo mecanismo que ya prueba
- *       {@code DisponibilidadMigrationIT} contra SQL crudo: MySQL acepta el cast implicito de
- *       {@code VARCHAR} a {@code TIME} en la asignacion, incluido {@code '24:00:00'}.</li>
+ *       {@code DisponibilidadMigrationIT} contra SQL crudo. El texto viaja con tipo no especificado
+ *       ({@code Types.OTHER}) y PostgreSQL lo interpreta con el tipo de la columna, incluido
+ *       {@code '24:00:00'}: un {@code VARCHAR} explicito no se convierte solo a {@code TIME} (MySQL
+ *       si lo hacia).</li>
  * </ul>
  *
  * <p>Se aplica con {@code @org.hibernate.annotations.JdbcType(HoraJdbcType.class)} junto al
@@ -61,13 +64,13 @@ public class HoraJdbcType implements JdbcType {
 			@Override
 			protected void doBind(PreparedStatement st, X value, int index, WrapperOptions options)
 					throws SQLException {
-				st.setString(index, javaType.unwrap(value, String.class, options));
+				st.setObject(index, javaType.unwrap(value, String.class, options), Types.OTHER);
 			}
 
 			@Override
 			protected void doBind(CallableStatement st, X value, String name, WrapperOptions options)
 					throws SQLException {
-				st.setString(name, javaType.unwrap(value, String.class, options));
+				st.setObject(name, javaType.unwrap(value, String.class, options), Types.OTHER);
 			}
 		};
 	}

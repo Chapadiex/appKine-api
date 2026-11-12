@@ -357,7 +357,7 @@ class ConsultoriosIT extends BaseEscenarioDiferido {
 
 	private boolean sigueActiva(long consultorioId) {
 		Long activa = jdbc.queryForObject(
-				"SELECT active FROM consultorio WHERE id = ?", Long.class, consultorioId);
+				"SELECT CAST(active AS integer) FROM consultorio WHERE id = ?", Long.class, consultorioId);
 		return activa != null && activa == 1L;
 	}
 

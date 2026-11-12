@@ -59,7 +59,9 @@ final class CarreraDirigida implements AutoCloseable {
 						"La tarea termino sin bloquearse en '" + patron + "': " + resultado(futuro));
 			}
 			if (System.currentTimeMillis() > limite) {
-				throw new IllegalStateException("La tarea nunca se bloqueo en '" + patron + "'");
+				throw new IllegalStateException("La tarea nunca se bloqueo en '" + patron + "'. Esperando lock: "
+						+ jdbc.queryForList("SELECT regexp_replace(query, '\\s+', ' ', 'g') FROM pg_stat_activity"
+								+ " WHERE pid <> pg_backend_pid() AND wait_event_type = 'Lock'", String.class));
 			}
 			pausa();
 		}

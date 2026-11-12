@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -349,15 +348,15 @@ class PlanTratamientoMigrationIT {
 	@DisplayName("un estado fuera de los cuatro no entra")
 	void el_estado_es_lista_cerrada() {
 		assertThatThrownBy(() -> insertarPlan(ORG_A, casoEnA, 1, "ARCHIVADO"))
-				.as("ck_plan_tratamiento_estado. Un CHECK llega como UncategorizedSQLException")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.as("ck_plan_tratamiento_estado. Un CHECK llega como DataIntegrityViolationException")
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
 	@DisplayName("un numero de plan cero o negativo no entra")
 	void el_correlativo_es_positivo() {
 		assertThatThrownBy(() -> insertarPlan(ORG_A, casoEnA, 0, "BORRADOR"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -367,7 +366,7 @@ class PlanTratamientoMigrationIT {
 
 		assertThatThrownBy(() -> jdbc().update(
 				"UPDATE plan_tratamiento SET ultimo_numero_version = 0 WHERE id = ?", planId))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -383,7 +382,7 @@ class PlanTratamientoMigrationIT {
 				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", ORG_A, casoEnA))
 				.as("ck_plan_tratamiento_activacion: ACTIVO sin activado_en")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatThrownBy(() -> jdbc().update("""
 				INSERT INTO plan_tratamiento (organization_id, caso_clinico_id, numero_plan, estado,
@@ -393,7 +392,7 @@ class PlanTratamientoMigrationIT {
 				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", ORG_A, casoEnA))
 				.as("ck_plan_tratamiento_activacion: BORRADOR que arrastra la activacion")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -419,7 +418,7 @@ class PlanTratamientoMigrationIT {
 				 WHERE id = ?
 				""", activo))
 				.as("ck_plan_tratamiento_suspension: falta el motivo")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatThrownBy(() -> jdbc().update("""
 				UPDATE plan_tratamiento SET suspendido_en = CURRENT_TIMESTAMP,
@@ -427,7 +426,7 @@ class PlanTratamientoMigrationIT {
 				 WHERE id = ?
 				""", activo))
 				.as("un ACTIVO no puede arrastrar los datos de una suspension anterior")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() -> jdbc().update("""
 				UPDATE plan_tratamiento SET estado = 'SUSPENDIDO', suspendido_en = CURRENT_TIMESTAMP,
@@ -448,7 +447,7 @@ class PlanTratamientoMigrationIT {
 				 WHERE id = ?
 				""", activo))
 				.as("ck_plan_tratamiento_finalizacion: faltan actor y motivo")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatThrownBy(() -> jdbc().update("""
 				UPDATE plan_tratamiento SET finalizado_en = CURRENT_TIMESTAMP, finalizado_por = 1,
@@ -456,7 +455,7 @@ class PlanTratamientoMigrationIT {
 				 WHERE id = ?
 				""", activo))
 				.as("y un ACTIVO no puede llevarlos")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() -> jdbc().update("""
 				UPDATE plan_tratamiento SET estado = 'FINALIZADO', finalizado_en = CURRENT_TIMESTAMP,
@@ -481,10 +480,10 @@ class PlanTratamientoMigrationIT {
 
 		assertThatThrownBy(() -> insertarVersion(ORG_A, planId, 1, "Motivo indebido"))
 				.as("ck_plan_version_motivo_de_modificacion: la 1 no lleva motivo")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() -> insertarVersion(ORG_A, planId, 2, null))
 				.as("y la 2 no puede no llevarlo")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() -> insertarVersion(ORG_A, planId, 1, null)).doesNotThrowAnyException();
 		assertThatCode(() -> insertarVersion(ORG_A, planId, 2, "El paciente progresa"))
@@ -515,11 +514,11 @@ class PlanTratamientoMigrationIT {
 		long planId = insertarPlan(ORG_A, casoEnA, 1, "ACTIVO");
 
 		assertThatThrownBy(() -> insertarVersionCon(ORG_A, planId, 1, null, 0, 8))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() -> insertarVersionCon(ORG_A, planId, 1, null, 22, 8))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() -> insertarVersionCon(ORG_A, planId, 1, null, 3, 0))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() -> insertarVersionCon(ORG_A, planId, 1, null, null, null))
 				.as("las dos son opcionales: un plan puede no proponer recurrencia")
@@ -562,7 +561,7 @@ class PlanTratamientoMigrationIT {
 		assertThatThrownBy(() ->
 				insertarItem(ORG_A, versionId, ofertaEnA, 10, 8, "AUTORIZACION", null))
 				.as("ck_plan_item_origen_trazable: AUTORIZACION sin autorizacion_id")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -576,7 +575,7 @@ class PlanTratamientoMigrationIT {
 
 		assertThatThrownBy(() ->
 				insertarItem(ORG_A, versionId, ofertaEnA, 0, null, "DECLARADA", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() ->
 				insertarItem(ORG_A, versionId, ofertaEnA, 10, 0, "DECLARADA", null))
@@ -594,10 +593,10 @@ class PlanTratamientoMigrationIT {
 
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, planId, "SUSPENSION", "ACTIVO", "SUSPENDIDO", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, planId, "FINALIZACION", "ACTIVO", "FINALIZADO", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		// Control negativo: si exigiera motivo en todos, cada activacion pediria una explicacion
 		// que el requisito no pide y la pantalla no tiene donde escribir.
@@ -615,10 +614,10 @@ class PlanTratamientoMigrationIT {
 
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, planId, "CREACION", "BORRADOR", "BORRADOR", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, planId, "ACTIVACION", null, "ACTIVO", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() ->
 				insertarEvento(ORG_A, planId, "CREACION", null, "BORRADOR", null))
@@ -635,7 +634,7 @@ class PlanTratamientoMigrationIT {
 
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, planId, "VINCULACION", "ACTIVO", "ACTIVO", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test

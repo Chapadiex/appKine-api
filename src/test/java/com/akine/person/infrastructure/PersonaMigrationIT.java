@@ -11,7 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -192,10 +191,9 @@ class PersonaMigrationIT {
 				 VALUES (?, 'DNI', NULL, NULL, 'Perez', 'Ana', 'PEREZ', 'ANA',
 				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", ORG_A))
-				.as("tiene que violar ck_persona_documento_completo. El CHECK de MySQL llega como "
-						+ "UncategorizedSQLException y no como violacion de integridad, al reves "
-						+ "que el UNIQUE")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.as("tiene que violar ck_persona_documento_completo: en PostgreSQL un CHECK llega como "
+						+ "DataIntegrityViolationException, igual que el UNIQUE")
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -208,14 +206,14 @@ class PersonaMigrationIT {
 				   SET active = false, deleted_at = CURRENT_TIMESTAMP
 				 WHERE organization_id = ? AND documento_clave = ?
 				""", ORG_A, "30777888"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
 	@DisplayName("un tipo de documento fuera del catalogo no entra")
 	void el_tipo_de_documento_es_lista_cerrada() {
 		assertThatThrownBy(() -> insertarPersona(ORG_A, "CUIL", "20301112223", "Perez", "Ana"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	// =================================================================================

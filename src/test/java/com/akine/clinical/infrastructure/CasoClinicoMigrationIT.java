@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -224,15 +223,15 @@ class CasoClinicoMigrationIT {
 		// muerto, y `SUSPENDIDO` es el que la intuicion pide primero.
 		assertThatThrownBy(() -> insertarCaso(ORG_A, historiaEnA, 1, "SUSPENDIDO"))
 				.as("ck_caso_clinico_estado. Un CHECK de MySQL llega como "
-						+ "UncategorizedSQLException, al reves que el UNIQUE")
-				.isInstanceOf(UncategorizedSQLException.class);
+						+ "DataIntegrityViolationException, igual que el UNIQUE")
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
 	@DisplayName("un numero de caso cero o negativo no entra")
 	void el_correlativo_es_positivo() {
 		assertThatThrownBy(() -> insertarCaso(ORG_A, historiaEnA, 0, "ACTIVO"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -248,14 +247,14 @@ class CasoClinicoMigrationIT {
 				 WHERE id = ?
 				""", casoId))
 				.as("ck_caso_clinico_cierre_coherente: falta el motivo")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatThrownBy(() -> jdbc().update("""
 				UPDATE caso_clinico SET estado = 'CERRADO', motivo_cierre = 'Alta'
 				 WHERE id = ?
 				""", casoId))
 				.as("ck_caso_clinico_cierre_coherente: faltan instante y actor")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -272,7 +271,7 @@ class CasoClinicoMigrationIT {
 				                        motivo_cierre = 'Alta'
 				 WHERE id = ?
 				""", casoId))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -345,7 +344,7 @@ class CasoClinicoMigrationIT {
 		long casoId = insertarCaso(ORG_A, historiaEnA, 1, "ACTIVO");
 
 		assertThatThrownBy(() -> insertarParticipacion(ORG_A, casoId, membershipEnA, "AUXILIAR"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -357,7 +356,7 @@ class CasoClinicoMigrationIT {
 		assertThatThrownBy(() -> jdbc().update("""
 				UPDATE caso_profesional SET hasta = (desde - INTERVAL '1 days') WHERE id = ?
 				""", participacionId))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -425,7 +424,7 @@ class CasoClinicoMigrationIT {
 
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, casoId, "SUSPENSION", "ACTIVO", "ACTIVO", "motivo"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -437,10 +436,10 @@ class CasoClinicoMigrationIT {
 
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, casoId, "CIERRE", "ACTIVO", "CERRADO", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, casoId, "REAPERTURA", "CERRADO", "ACTIVO", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() ->
 				insertarEvento(ORG_A, casoId, "CIERRE", "ACTIVO", "CERRADO", "Alta por objetivos"))
@@ -468,10 +467,10 @@ class CasoClinicoMigrationIT {
 
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, casoId, "APERTURA", "ACTIVO", "ACTIVO", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, casoId, "EDICION", null, "ACTIVO", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() ->
 				insertarEvento(ORG_A, casoId, "APERTURA", null, "ACTIVO", null))
@@ -485,7 +484,7 @@ class CasoClinicoMigrationIT {
 
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, casoId, "EDICION", "ACTIVO", "SUSPENDIDO", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	// =================================================================================
@@ -533,7 +532,7 @@ class CasoClinicoMigrationIT {
 		// tratamiento" y no hay tratamiento al cual pertenezca.
 		assertThatThrownBy(() -> insertarSesion(ORG_A, historiaEnA, null, 1, 3))
 				.as("ck_sesion_numero_en_caso")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -542,7 +541,7 @@ class CasoClinicoMigrationIT {
 		long casoId = insertarCaso(ORG_A, historiaEnA, 1, "ACTIVO");
 
 		assertThatThrownBy(() -> insertarSesion(ORG_A, historiaEnA, casoId, 1, 0))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test

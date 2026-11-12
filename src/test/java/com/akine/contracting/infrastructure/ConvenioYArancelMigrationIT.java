@@ -11,7 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -186,7 +185,7 @@ class ConvenioYArancelMigrationIT {
 		Escenario escenario = fixtures.crear();
 
 		assertThatThrownBy(() -> insertarConvenio(escenario, "X", "2026-06-30", "2026-01-01"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() -> insertarConvenio(escenario, "Y", "2026-06-30", "2026-06-30"))
 				.as("un convenio que vale un solo dia es un estado real: hasta es INCLUSIVA")
@@ -211,7 +210,7 @@ class ConvenioYArancelMigrationIT {
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", escenario.organizationId(), escenario.consultorioId(), convenioId,
 				escenario.practicaId()))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -222,7 +221,7 @@ class ConvenioYArancelMigrationIT {
 
 		assertThatThrownBy(() -> insertarArancelCon(
 				escenario, convenioId, "-1.00", "-1.00", "0.00", "2026-01-01"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() -> insertarArancelCon(
 				escenario, convenioId, "0.00", "0.00", "0.00", "2026-01-01"))
@@ -237,7 +236,7 @@ class ConvenioYArancelMigrationIT {
 		long id = insertarConvenio(escenario, "A", "2026-01-01", null);
 
 		assertThatThrownBy(() -> jdbc.update("UPDATE convenio SET active = false WHERE id = ?", id))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -254,7 +253,7 @@ class ConvenioYArancelMigrationIT {
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", escenario.organizationId(), escenario.consultorioId(),
 				escenario.financiadorId(), escenario.planId()))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -272,7 +271,7 @@ class ConvenioYArancelMigrationIT {
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", escenario.organizationId(), escenario.consultorioId(),
 				escenario.financiadorId(), escenario.planId()))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test

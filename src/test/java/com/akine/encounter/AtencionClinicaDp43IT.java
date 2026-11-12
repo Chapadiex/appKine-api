@@ -417,7 +417,7 @@ class AtencionClinicaDp43IT {
 			Mundo mundo = fixtures.crearMundo();
 			long sesionId = cerrada(mundo);
 			Instant cerradaEn = Instant.now().minus(Duration.ofDays(31));
-			jdbc.update("UPDATE sesion SET cerrada_en = ? WHERE id = ?",
+			jdbc.update("UPDATE sesion SET cerrada_en = CAST(? AS timestamptz) WHERE id = ?",
 					java.sql.Timestamp.from(cerradaEn), sesionId);
 
 			assertThat(sesionService.ver(mundo.actor(), mundo.consultorioId(), sesionId).enmendableHasta())
@@ -474,7 +474,7 @@ class AtencionClinicaDp43IT {
 	// =================================================================================
 
 	private void exigirCaso(Mundo mundo) {
-		jdbc.update("UPDATE oferta_servicio_consultorio SET requiere_caso_clinico = 1 WHERE id = ?",
+		jdbc.update("UPDATE oferta_servicio_consultorio SET requiere_caso_clinico = true WHERE id = ?",
 				mundo.ofertaId());
 	}
 

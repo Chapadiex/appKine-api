@@ -125,7 +125,7 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 		assertThatThrownBy(() -> jdbc.update(
 				"UPDATE membership SET role_code = 'PLATFORM_ADMIN' WHERE organization_id = ?",
 				tenant.organizationId()))
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_membership_role_code_no_plataforma");
 	}
 

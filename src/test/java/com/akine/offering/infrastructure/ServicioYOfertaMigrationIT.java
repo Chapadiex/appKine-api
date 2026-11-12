@@ -12,7 +12,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -177,7 +176,7 @@ class ServicioYOfertaMigrationIT {
 		// como un grupo de una persona.
 		assertThatThrownBy(() -> insertarOferta(fixture, nombre("grupal-1"), "GRUPAL", 1))
 				.as("modalidad GRUPAL con capacidad 1 tiene que violar ck_oferta_grupal_capacidad")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_oferta_grupal_capacidad");
 
 		// Y el borde de arriba: 2 es el minimo aceptable para una grupal. Sin esto, un CHECK que
@@ -204,7 +203,7 @@ class ServicioYOfertaMigrationIT {
 		// sus tres columnas. Mismo criterio que espacio.capacidad en V19.
 		assertThatThrownBy(() -> insertarOferta(fixture, nombre("individual-0"), "INDIVIDUAL", 0))
 				.as("capacidad 0 tiene que violar ck_oferta_capacidad_positiva")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_oferta_capacidad_positiva");
 	}
 
@@ -221,7 +220,7 @@ class ServicioYOfertaMigrationIT {
 				new java.math.BigDecimal("4500.00"), null))
 				.as("4500 no significa nada sin saber de que moneda es: tiene que violar "
 						+ "ck_oferta_precio_con_moneda")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_oferta_precio_con_moneda");
 	}
 
@@ -233,7 +232,7 @@ class ServicioYOfertaMigrationIT {
 		assertThatThrownBy(() -> insertarOfertaConPrecio(fixture, nombre("moneda-sola"), null, "ARS"))
 				.as("una moneda sin importe es un dato a medias: tiene que violar "
 						+ "ck_oferta_precio_con_moneda")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_oferta_precio_con_moneda");
 
 		// Las dos combinaciones validas, para que el CHECK no sea "siempre falso": ninguno de los
@@ -263,12 +262,12 @@ class ServicioYOfertaMigrationIT {
 		// romper nada visible.
 		assertThatThrownBy(() -> insertarOfertaConVigencia(fixture, nombre("vigencia-cero"), 0))
 				.as("vigencia_hasta == vigencia_desde tiene que violar ck_oferta_vigencia_coherente")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_oferta_vigencia_coherente");
 
 		assertThatThrownBy(() -> insertarOfertaConVigencia(fixture, nombre("vigencia-negativa"), -1))
 				.as("una ventana que termina antes de empezar tampoco es una ventana")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_oferta_vigencia_coherente");
 
 		assertThatCode(() -> insertarOfertaConVigencia(fixture, nombre("vigencia-un-dia"), 1))
@@ -398,7 +397,7 @@ class ServicioYOfertaMigrationIT {
 				     duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				     genera_registro_clinico, requiere_profesional, requiere_espacio,
 				     vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 45, ?, false, true, true, true, true, CURRENT_DATE(), true, 0,
+				VALUES (?, ?, ?, ?, ?, 45, ?, false, true, true, true, true, CURRENT_DATE, true, 0,
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.servicioId(),
 				nombreComercial, modalidad, capacidad);
@@ -412,7 +411,7 @@ class ServicioYOfertaMigrationIT {
 				     duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				     requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				     requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 45, 1, ?, ?, false, true, true, true, true, CURRENT_DATE(), true, 0,
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 45, 1, ?, ?, false, true, true, true, true, CURRENT_DATE, true, 0,
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.servicioId(),
 				nombreComercial, precioBase, moneda);
@@ -426,7 +425,7 @@ class ServicioYOfertaMigrationIT {
 				     genera_registro_clinico, requiere_profesional, requiere_espacio,
 				     vigencia_desde, vigencia_hasta, active, version, created_at, updated_at)
 				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 45, 1, false, true, true, true, true,
-				        CURRENT_DATE(), (CURRENT_DATE() + make_interval(days => ?)), true, 0,
+				        CURRENT_DATE, (CURRENT_DATE + make_interval(days => ?)), true, 0,
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.servicioId(),
 				nombreComercial, diasHasta);

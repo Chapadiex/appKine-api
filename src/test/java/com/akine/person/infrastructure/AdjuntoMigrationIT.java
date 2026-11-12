@@ -8,7 +8,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -115,7 +114,7 @@ class AdjuntoMigrationIT {
 			assertThatThrownBy(() -> insertarAdjunto(personaId, checksumAlAzar(), clinica, clave()))
 					.as("categoria clinica rechazada: %s", clinica)
 					.isInstanceOfAny(
-							DataIntegrityViolationException.class, UncategorizedSQLException.class);
+							DataIntegrityViolationException.class, DataIntegrityViolationException.class);
 		}
 	}
 
@@ -132,7 +131,7 @@ class AdjuntoMigrationIT {
 				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", ORG_A, personaId, checksumAlAzar(), clave()))
 				.isInstanceOfAny(
-						DataIntegrityViolationException.class, UncategorizedSQLException.class);
+						DataIntegrityViolationException.class, DataIntegrityViolationException.class);
 
 		String clave = clave();
 		insertarAdjunto(personaId, checksumAlAzar(), "OTRO", clave);
@@ -141,7 +140,7 @@ class AdjuntoMigrationIT {
 				UPDATE adjunto_administrativo SET active = false WHERE storage_key = ?
 				""", clave))
 				.isInstanceOfAny(
-						DataIntegrityViolationException.class, UncategorizedSQLException.class);
+						DataIntegrityViolationException.class, DataIntegrityViolationException.class);
 	}
 
 	// =================================================================================

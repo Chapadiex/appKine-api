@@ -77,7 +77,7 @@ class ParticularEnObligacionIT {
 		assertThat(consumida(autorizacion)).isZero();
 		assertThat(consumosDeLaSesion(sesion)).isZero();
 		// RN-M13-004: Particular no toca la cobertura maestra.
-		assertThat(jdbc.queryForObject("SELECT active FROM cobertura_paciente WHERE id = ?",
+		assertThat(jdbc.queryForObject("SELECT CAST(active AS integer) FROM cobertura_paciente WHERE id = ?",
 				Integer.class, f.cobertura())).isEqualTo(1);
 	}
 

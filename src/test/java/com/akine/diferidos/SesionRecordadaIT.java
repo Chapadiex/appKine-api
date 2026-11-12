@@ -132,8 +132,8 @@ class SesionRecordadaIT extends BaseEscenarioDiferido {
 
 	private static Duration vida(Map<String, Object> fila) {
 		return Duration.between(
-				(java.time.LocalDateTime) fila.get("emitido_en"),
-				(java.time.LocalDateTime) fila.get("expira_en"));
+				((java.sql.Timestamp) fila.get("emitido_en")).toInstant(),
+				((java.sql.Timestamp) fila.get("expira_en")).toInstant());
 	}
 
 	private ConCookie login(String email, Boolean recordarme) {

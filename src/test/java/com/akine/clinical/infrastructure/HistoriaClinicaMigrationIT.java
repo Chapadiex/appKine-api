@@ -13,7 +13,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -203,8 +202,8 @@ class HistoriaClinicaMigrationIT {
 				UPDATE historia_clinica SET resumen = 'dolor lumbar' WHERE id = ?
 				""", historiaId))
 				.as("tiene que violar ck_historia_clinica_resumen_trazable. El CHECK de MySQL llega "
-						+ "como UncategorizedSQLException, al reves que el UNIQUE")
-				.isInstanceOf(UncategorizedSQLException.class);
+						+ "como DataIntegrityViolationException, igual que el UNIQUE")
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -218,7 +217,7 @@ class HistoriaClinicaMigrationIT {
 				   SET active = false, deleted_at = CURRENT_TIMESTAMP
 				 WHERE id = ?
 				""", antecedenteId))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -227,7 +226,7 @@ class HistoriaClinicaMigrationIT {
 		long historiaId = abrirHistoria(ORG_A, personaEnA);
 
 		assertThatThrownBy(() -> registrarAntecedente(ORG_A, historiaId, "VACUNA"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test

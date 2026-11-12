@@ -373,7 +373,7 @@ class SondasDeImpactoIT extends BaseEscenarioDiferido {
 
 	private boolean activa(String tabla, long id) {
 		Long activa = jdbc.queryForObject(
-				"SELECT active FROM " + tabla + " WHERE id = ?", Long.class, id);
+				"SELECT CAST(active AS integer) FROM " + tabla + " WHERE id = ?", Long.class, id);
 		return activa != null && activa == 1L;
 	}
 
