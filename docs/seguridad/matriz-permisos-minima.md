@@ -1009,3 +1009,19 @@ de la membership: sede u organización). Para los demás alcances no cambia nada
 
 **Lo verifican** `RolePermissionsTest`, `PermissionEvaluatorServiceTest`, `MembershipServiceTest`,
 `AgendaDelProfesionalTest`, `AgendaPropiaEnResourceTest` y `AgendaEntreSedesIT`.
+
+## 22. Enmiendas — Biblioteca (M30)
+
+La biblioteca del centro (M30, `docs/producto/AKINE_Requerimientos_Integrados.md`) no tiene fila en el §32. Se agrega un solo código, `biblioteca:manage`, que cubre todas las operaciones del módulo: subir, listar, ver detalle, editar, reemplazar, reprocesar, activar o desactivar, eliminar y probar búsqueda. No hay un `biblioteca:read` separado: los profesionales no ven la pantalla y usarán la biblioteca a través de otros módulos, no por esta API. Diseño: `docs/diseno/AKINE-biblioteca-rag.md`.
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `biblioteca:manage` | — | Org | — | — | — | — |
+| `biblioteca:consultar` | — | Org | Org | Org | Org | — |
+
+- **Alcance `ORGANIZACION`.** La biblioteca es de la organización y no de una sede; una membership con alcance de sede no la administra.
+- **No es otorgable por membership.** No entra en el catálogo de permisos otorgables por grant (§16): ningún grant puede dárselo al `CONSULTORIO_ADMIN`, al `PROFESIONAL`, al `ADMINISTRATIVO` ni al `PACIENTE`.
+- **`PLATFORM_ADMIN` no lo tiene:** el soporte de plataforma no administra el material de un centro.
+- **Cross-tenant:** un libro de otra organización responde 404 `libro-no-encontrado`, nunca 403.
+- **Biblioteca apagada:** con el interruptor global apagado, toda operación responde 409 `biblioteca-deshabilitada` aunque el actor tenga el permiso.
+- **`biblioteca:consultar` (RF-M30-012):** consultar la biblioteca con el asistente. Por base para `ORG_ADMIN`, `CONSULTORIO_ADMIN`, `PROFESIONAL` y `ADMINISTRATIVO`, con alcance `ORGANIZACION`; no es otorgable por grant y `PACIENTE` y `PLATFORM_ADMIN` no lo tienen. La consulta exige además `akine.biblioteca.consulta.enabled`: apagado, 409 `biblioteca-deshabilitada`.

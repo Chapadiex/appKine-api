@@ -1,0 +1,86 @@
+package com.akine.knowledge.api;
+
+import com.akine.knowledge.domain.exception.AsistenteNoDisponibleException;
+import com.akine.knowledge.domain.exception.BibliotecaDeshabilitadaException;
+import com.akine.knowledge.domain.exception.ConsultaOcupadaException;
+import com.akine.knowledge.domain.exception.LibroArchivoNoAceptadoException;
+import com.akine.knowledge.domain.exception.LibroDuplicadoException;
+import com.akine.knowledge.domain.exception.LibroEnProcesoException;
+import com.akine.knowledge.domain.exception.LibroNoEncontradoException;
+import com.akine.platform.spi.problem.ProblemType;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+/** Traduce las excepciones de {@code knowledge} a Problem Details, en su propio advice. */
+@RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
+public class KnowledgeProblemHandler {
+
+	@ExceptionHandler(BibliotecaDeshabilitadaException.class)
+	public ProblemDetail handleDeshabilitada(BibliotecaDeshabilitadaException exception) {
+		return problema(HttpStatus.CONFLICT, ProblemType.BIBLIOTECA_DESHABILITADA,
+				"Biblioteca deshabilitada", exception.getMessage());
+	}
+
+	/**
+	 * Inexistente o de otra organizacion (tambien la de la ruta distinta de la del contexto): 404,
+	 * nunca 403. Sin contexto no llega aca: {@code AccessDeniedException}, 403.
+	 */
+	@ExceptionHandler(LibroNoEncontradoException.class)
+	public ProblemDetail handleNoEncontrado(LibroNoEncontradoException exception) {
+		return problema(HttpStatus.NOT_FOUND, ProblemType.LIBRO_NO_ENCONTRADO,
+				"Libro no encontrado", exception.getMessage());
+	}
+
+	@ExceptionHandler(LibroDuplicadoException.class)
+	public ProblemDetail handleDuplicado(LibroDuplicadoException exception) {
+		ProblemDetail problem = problema(HttpStatus.CONFLICT, ProblemType.LIBRO_DUPLICADO,
+				"Libro duplicado", exception.getMessage());
+		problem.setProperty("libroId", exception.getLibroId());
+		return problem;
+	}
+
+	@ExceptionHandler(LibroArchivoNoAceptadoException.class)
+	public ProblemDetail handleArchivoNoAceptado(LibroArchivoNoAceptadoException exception) {
+		ProblemDetail problem = problema(HttpStatus.BAD_REQUEST, ProblemType.LIBRO_ARCHIVO_NO_ACEPTADO,
+				"Archivo no aceptado", exception.getMessage());
+		problem.setProperty("causa", exception.getCausa().name());
+		return problem;
+	}
+
+	@ExceptionHandler(LibroEnProcesoException.class)
+	public ProblemDetail handleEnProceso(LibroEnProcesoException exception) {
+		return problema(HttpStatus.CONFLICT, ProblemType.LIBRO_EN_PROCESO,
+				"Libro en proceso", exception.getMessage());
+	}
+
+	/** Cola llena: 503 con {@code Retry-After}. */
+	@ExceptionHandler(ConsultaOcupadaException.class)
+	public ResponseEntity<ProblemDetail> handleConsultaOcupada(ConsultaOcupadaException exception) {
+		ProblemDetail problem = problema(HttpStatus.SERVICE_UNAVAILABLE, ProblemType.CONSULTA_OCUPADA,
+				"Asistente ocupado", exception.getMessage());
+		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+				.header(HttpHeaders.RETRY_AFTER, String.valueOf(ConsultaOcupadaException.REINTENTAR_EN_SEGUNDOS))
+				.body(problem);
+	}
+
+	@ExceptionHandler(AsistenteNoDisponibleException.class)
+	public ProblemDetail handleAsistenteNoDisponible(AsistenteNoDisponibleException exception) {
+		return problema(HttpStatus.SERVICE_UNAVAILABLE, ProblemType.ASISTENTE_NO_DISPONIBLE,
+				"Asistente no disponible", exception.getMessage());
+	}
+
+	private static ProblemDetail problema(
+			HttpStatus status, ProblemType type, String title, String detail) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
+		problem.setType(type.uri());
+		problem.setTitle(title);
+		return problem;
+	}
+}

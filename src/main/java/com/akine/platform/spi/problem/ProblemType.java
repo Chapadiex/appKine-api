@@ -1417,7 +1417,30 @@ public enum ProblemType {
 	 * filtraba habilitaciones en la reserva— y el reemplazo del profesional. Una oferta sin
 	 * habilitaciones declaradas admite a todos (regla de V28).
 	 */
-	PROFESIONAL_NO_HABILITADO_EN_OFERTA("profesional-no-habilitado-en-oferta");
+	PROFESIONAL_NO_HABILITADO_EN_OFERTA("profesional-no-habilitado-en-oferta"),
+
+	// --- Biblioteca (M30) -------------------------------------------------------------------
+
+	/** La biblioteca esta apagada por configuracion (409). */
+	BIBLIOTECA_DESHABILITADA("biblioteca-deshabilitada"),
+
+	/** El libro no existe o es de otra organizacion (404, nunca 403). */
+	LIBRO_NO_ENCONTRADO("libro-no-encontrado"),
+
+	/** Ya hay un libro con el mismo contenido en la organizacion (409). Lleva {@code libroId}. */
+	LIBRO_DUPLICADO("libro-duplicado"),
+
+	/** El archivo no se acepta (400). Lleva {@code causa}: NO_ES_PDF, MUY_GRANDE o VACIO. */
+	LIBRO_ARCHIVO_NO_ACEPTADO("libro-archivo-no-aceptado"),
+
+	/** El libro se esta procesando y no admite la operacion (409). */
+	LIBRO_EN_PROCESO("libro-en-proceso"),
+
+	/** La cola de consultas a la biblioteca esta llena (503, con {@code Retry-After}). */
+	CONSULTA_OCUPADA("consulta-ocupada"),
+
+	/** El modelo de lenguaje no responde o vencio el plazo (503). */
+	ASISTENTE_NO_DISPONIBLE("asistente-no-disponible");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

@@ -1,0 +1,13 @@
+# GPU NVIDIA para el modelo de lenguaje local de la consulta (opcional). Se suma al compose principal:
+#   docker compose -f compose.yaml -f compose.gpu.yaml up -d ollama
+# Medido el 11/11/2026 con qwen2.5:3b: ~24 s por respuesta en CPU contra ~1,5 s en una RTX 4050.
+# Sin GPU NVIDIA ni el soporte de GPU de Docker, no usar este archivo: el arranque falla.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

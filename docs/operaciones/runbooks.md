@@ -535,3 +535,52 @@ docker logs --since 1h akine-api 2>&1 | jq -r 'select(.message|test("Lote de asi
   sólo corre el techo y deja menos holgura a la base.
 - No agrupar ítems en una transacción para "acelerar" el lote: DP-30 lo descartó (opción b), porque
   cambia la transacción independiente por participante de RF-M13-008.
+
+---
+
+## R-consulta. Consulta a la biblioteca: Ollama
+
+La consulta interpreta las preguntas y redacta sus respuestas con un modelo de lenguaje local
+(`qwen3:4b-instruct`, desde la consulta v2) servido por
+Ollama. Esta apagada por defecto y exige ademas `akine.biblioteca.enabled`. No guarda preguntas ni
+respuestas: los logs llevan solo tiempos y cantidades.
+
+**Bajar el modelo** (una vez por volumen `akine-ollama-data`)
+
+```bash
+docker compose up -d ollama
+docker compose exec ollama ollama pull qwen3:4b-instruct
+```
+
+**Con GPU NVIDIA** (recomendado: con `qwen2.5:3b`, ~1,5 s por respuesta contra ~24 s en CPU; con
+`qwen3:4b-instruct`, ~8 s por respuesta completa en una RTX 4050; medido el 11/11/2026)
+
+```bash
+docker compose -f compose.yaml -f compose.gpu.yaml up -d ollama
+docker compose exec ollama ollama ps   # PROCESSOR tiene que decir "100% GPU"
+```
+
+Al arrancar con la consulta prendida, el backend le pide a Ollama que cargue el modelo en segundo
+plano (`PrecargaDelModelo`; si Ollama no responde, solo deja un `warn`). Sin esa precarga, la primera
+consulta despues de arrancar el contenedor tarda entre uno y tres minutos: carga el
+modelo en la placa. Despues queda cargado 2 horas desde la ultima consulta.
+
+**Que mirar en el log y en las metricas** (nunca texto de la consulta): una linea INFO por consulta,
+`Consulta a la biblioteca terminada`, con `resultado`, `ms_cola`, `ms_interpretar`, `ms_buscar`,
+`ms_primera_palabra`, `ms_total`, `pasajes`, `tokens_entrada`, `tokens_salida` y `tokens_por_segundo`
+(`-` = la etapa no ocurrio). Los mismos tiempos van al timer `akine_consultas_etapa_seconds{etapa}`
+(`cola`, `interpretar`, `buscar`, `primera_palabra`, `total`). Objetivo en GPU: primera palabra < 5 s y
+repregunta < 3 s.
+
+**Variables**
+
+| Variable | Que hace | Default |
+|---|---|---|
+| `AKINE_BIBLIOTECA_CONSULTA_ENABLED` | Enciende la consulta | `false` |
+| `AKINE_BIBLIOTECA_CONSULTA_URL` | Direccion de Ollama | `http://localhost:11434` |
+| `AKINE_BIBLIOTECA_CONSULTA_MODELO` | Modelo a usar (`qwen2.5:3b` sigue como alternativa mas liviana) | `qwen3:4b-instruct` |
+| `AKINE_BIBLIOTECA_CONSULTA_KEEPALIVE` | Cuanto queda cargado el modelo despues de la ultima consulta | `2h` |
+
+**Si Ollama esta caido o no tiene el modelo:** solo la consulta responde 503
+(`asistente-no-disponible`) o devuelve el error por el stream; la busqueda y el resto de la
+biblioteca siguen funcionando. Verificar con `curl http://localhost:11434/api/tags`.

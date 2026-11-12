@@ -249,3 +249,17 @@ levantado.
 
 Sin etiqueta de sede: la cardinalidad sería la cantidad de sedes. La sede del rechazo va al log.
 Cómo encenderlo y qué mirar: `docs/carga.md` §12 ("U-49 c") y el runbook R8.
+
+## 9. La consulta a la biblioteca (M30, contrato 0.165.0)
+
+`ConsultaController` (`knowledge.api`) publica, en cero desde el arranque:
+
+| Señal | Nombre | Etiquetas | Qué dice |
+|---|---|---|---|
+| Contador | `akine_consultas_total` | `resultado` = `con_material` \| `sin_material` \| `error` \| `ocupada` \| `cancelada` | Consultas por cómo terminaron. **Ocupada**: 503 con la cola llena, sin abrir el stream. **Error**: el modelo falló o se cumplieron los 90 s (evento `error`). **Cancelada**: el cliente cerró el stream antes del final |
+| Log | `Consulta a la biblioteca terminada: …` | `resultado`, `pasajes`, `duracionMs` | INFO por consulta, desde que se abre el stream (incluye la espera en la cola) |
+
+**Sin contenido.** Ni la pregunta, ni el historial, ni los pasajes, ni la respuesta van a la métrica
+o al log, y de una falla inesperada se registra sólo la clase de la excepción. Una cola llena deja
+además `Consulta a la biblioteca rechazada: cola llena` (INFO). La cola es por instancia (1 en curso y
+`akine.biblioteca.consulta.max-en-espera` esperando), así que la tasa de `ocupada` se lee por pod.

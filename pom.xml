@@ -25,6 +25,8 @@
 		<bouncycastle.version>1.86</bouncycastle.version>
 		<greenmail.version>2.1.15</greenmail.version>
 		<dependency-check.version>12.2.2</dependency-check.version>
+		<pdfbox.version>3.0.8</pdfbox.version>
+		<langchain4j-embeddings.version>1.23.0-beta33</langchain4j-embeddings.version>
 		<akine.it.procesos>2</akine.it.procesos>
 		<!-- Parches de seguridad por encima de lo que gestiona Spring Boot 4.1.1 (G-6, 09/10/2026).
 		     Tomcat 11.0.24: tres CVE criticos (CVE-2026-65905, -65182, -68525), corregidos en
@@ -44,7 +46,7 @@
 		<mysql.version>9.6.0</mysql.version>
 		<!-- Version SemVer del contrato OpenAPI publicado. Se sube a mano en la etapa
 		     que cambie la API: minor para cambios aditivos, major para incompatibles. -->
-		<akine.contract.version>0.164.0</akine.contract.version>
+		<akine.contract.version>0.167.0</akine.contract.version>
 	</properties>
 
 	<dependencies>
@@ -80,6 +82,22 @@
 			<groupId>com.mysql</groupId>
 			<artifactId>mysql-connector-j</artifactId>
 			<scope>runtime</scope>
+		</dependency>
+
+		<!-- Extraccion de texto de la biblioteca de libros (modulo knowledge). -->
+		<dependency>
+			<groupId>org.apache.pdfbox</groupId>
+			<artifactId>pdfbox</artifactId>
+			<version>${pdfbox.version}</version>
+		</dependency>
+
+		<!-- Embeddings locales (multilingual-e5-base en ONNX) de la biblioteca. El artefacto de
+		     LangChain4j que trae OnnxEmbeddingModel se publica siempre como beta en la linea 1.x;
+		     langchain4j-core es estable. No arrastra Spring. -->
+		<dependency>
+			<groupId>dev.langchain4j</groupId>
+			<artifactId>langchain4j-embeddings</artifactId>
+			<version>${langchain4j-embeddings.version}</version>
 		</dependency>
 
 		<!-- ===== Seguridad =====
