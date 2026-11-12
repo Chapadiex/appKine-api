@@ -17,7 +17,7 @@ class BibliotecaVersionRepository implements BibliotecaVersionPort {
 	public void avanzar(long orgId) {
 		jdbc.update("""
 				INSERT INTO biblioteca_version (organization_id, version) VALUES (?, 1)
-				ON DUPLICATE KEY UPDATE version = version + 1
+				ON CONFLICT (organization_id) DO UPDATE SET version = biblioteca_version.version + 1
 				""", orgId);
 	}
 
@@ -25,7 +25,7 @@ class BibliotecaVersionRepository implements BibliotecaVersionPort {
 	public void asegurarFila(long orgId) {
 		jdbc.update("""
 				INSERT INTO biblioteca_version (organization_id, version) VALUES (?, 0)
-				ON DUPLICATE KEY UPDATE version = version
+				ON CONFLICT (organization_id) DO NOTHING
 				""", orgId);
 	}
 

@@ -343,7 +343,7 @@ class ConsultoriosIT extends BaseEscenarioDiferido {
 
 	private long sedesActivas(long organizationId) {
 		Long total = jdbc.queryForObject(
-				"SELECT COUNT(*) FROM consultorio WHERE organization_id = ? AND active = 1",
+				"SELECT COUNT(*) FROM consultorio WHERE organization_id = ? AND active = true",
 				Long.class, organizationId);
 		return total == null ? 0L : total;
 	}

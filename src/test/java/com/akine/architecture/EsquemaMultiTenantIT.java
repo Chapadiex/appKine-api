@@ -113,7 +113,7 @@ class EsquemaMultiTenantIT {
 		// --- ADR-0021 (superseded by 0023) — catalogos clinicos, DOS poblaciones --------------
 		EXCEPCIONES.put("especialidad", new Excepcion(Forma.NULLABLE,
 				"Dos poblaciones en la misma tabla: NULL = concepto de plataforma, valor = del tenant. "
-						+ "Los unique van sobre owner_key = IFNULL(organization_id, 0)"));
+						+ "Los unique van sobre owner_key = COALESCE(organization_id, 0)"));
 		EXCEPCIONES.put("practica", new Excepcion(Forma.NULLABLE,
 				"Dos poblaciones en la misma tabla, igual que especialidad (ADR-0021)"));
 		EXCEPCIONES.put("nomenclador", new Excepcion(Forma.NULLABLE,
@@ -255,7 +255,7 @@ class EsquemaMultiTenantIT {
 	@DisplayName("el esquema aplicado tiene las tablas de las migraciones, no una muestra")
 	void el_esquema_aplicado_tiene_las_tablas_de_las_migraciones() {
 		// El contrapeso de los tres tests de arriba: todos recorren la lista de tablas, y si esa
-		// lista viniera vacia —esquema equivocado, base sin migrar, DATABASE() apuntando a otro
+		// lista viniera vacia —esquema equivocado, base sin migrar, current_schema() apuntando a otro
 		// lado— los tres pasarian sin verificar absolutamente nada.
 		assertThat(tablasDelEsquema())
 				.as("el esquema tiene que estar migrado a V24: si esta vacio o incompleto, los otros "
@@ -272,7 +272,7 @@ class EsquemaMultiTenantIT {
 	private List<String> tablasDelEsquema() {
 		return jdbc().queryForList("""
 				SELECT table_name FROM information_schema.tables
-				 WHERE table_schema = DATABASE()
+				 WHERE table_schema = current_schema()
 				   AND table_type = 'BASE TABLE'
 				   AND table_name <> ?
 				 ORDER BY table_name
@@ -283,7 +283,7 @@ class EsquemaMultiTenantIT {
 	private String nullabilidadDeOrganizationId(String tabla) {
 		List<String> filas = jdbc().queryForList("""
 				SELECT is_nullable FROM information_schema.columns
-				 WHERE table_schema = DATABASE()
+				 WHERE table_schema = current_schema()
 				   AND table_name = ?
 				   AND column_name = 'organization_id'
 				""", String.class, tabla);

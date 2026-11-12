@@ -163,8 +163,8 @@ public final class AgendaFixtures {
 		jdbc.update("""
 				INSERT INTO espacio (organization_id, consultorio_id, name, tipo, capacidad, valid_from,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 'BOX', 1, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'BOX', 1, (CURRENT_TIMESTAMP - INTERVAL '5 years'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), nombre);
 		return jdbc.queryForObject("""
 				SELECT id FROM espacio WHERE organization_id = ? AND consultorio_id = ? AND name = ?
@@ -249,7 +249,7 @@ public final class AgendaFixtures {
 		String slug = "turno-it-" + sufijo;
 		jdbc.update("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro Sintetico " + sufijo, slug, ZONA);
 		return jdbc.queryForObject("SELECT id FROM organization WHERE slug = ?", Long.class, slug);
 	}
@@ -259,7 +259,7 @@ public final class AgendaFixtures {
 		jdbc.update("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, nombre, ZONA);
 		return jdbc.queryForObject(
 				"SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
@@ -271,8 +271,8 @@ public final class AgendaFixtures {
 		jdbc.update("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado,
 				                    active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 		return jdbc.queryForObject(
 				"SELECT id FROM cuenta WHERE email_normalizado = ?", Long.class, email);
@@ -286,8 +286,8 @@ public final class AgendaFixtures {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR), 'ACTIVA',
-				        1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '5 years'), 'ACTIVA',
+				        true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, accountId, rol);
 		return jdbc.queryForObject("""
 				SELECT id FROM membership
@@ -301,8 +301,8 @@ public final class AgendaFixtures {
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', false, false, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", codigo, "Servicio Sintetico " + sufijo);
 		return jdbc.queryForObject("SELECT id FROM servicio WHERE codigo = ?", Long.class, codigo);
 	}
@@ -323,9 +323,9 @@ public final class AgendaFixtures {
 				        duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				        genera_registro_clinico, requiere_profesional, requiere_espacio,
 				        vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 60, ?, 0, 0, 0, 1, ?,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 60, ?, false, false, false, true, CAST(? AS boolean),
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, servicioId, nombre,
 				capacidad > 1 ? "GRUPAL" : "INDIVIDUAL", capacidad, requiereEspacio ? 1 : 0);
 		return jdbc.queryForObject("""
@@ -341,8 +341,8 @@ public final class AgendaFixtures {
 				INSERT INTO oferta_profesional_habilitado
 				       (organization_id, consultorio_id, oferta_id, membership_id, valid_from,
 				        active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, (CURRENT_TIMESTAMP - INTERVAL '5 years'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, ofertaId, membershipId);
 	}
 
@@ -354,8 +354,8 @@ public final class AgendaFixtures {
 				       (organization_id, consultorio_id, membership_id, dia_semana,
 				        hora_desde, hora_hasta, vigencia_desde, active, version,
 				        created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, ?, CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, membershipId,
 				DayOfWeek.MONDAY.getValue(), LocalTime.of(9, 0), LocalTime.of(13, 0));
 	}
@@ -372,8 +372,8 @@ public final class AgendaFixtures {
 		jdbc.update("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, apellido, apellido.toUpperCase());
 		long personaId = jdbc.queryForObject("""
 				SELECT id FROM persona WHERE organization_id = ? AND apellido = ?
@@ -382,7 +382,7 @@ public final class AgendaFixtures {
 		jdbc.update("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, personaId, activadoPor);
 		return personaId;
 	}

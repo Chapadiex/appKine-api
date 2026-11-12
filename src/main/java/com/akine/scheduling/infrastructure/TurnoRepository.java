@@ -495,7 +495,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 	 * nadie y queda afuera. Es la MISMA consulta con un filtro mas, no una segunda formula.
 	 */
 	@Query(value = """
-			SELECT DATE(IFNULL(CONVERT_TZ(t.inicio, '+00:00', :zona), t.inicio)) AS dia,
+			SELECT CAST(t.inicio AT TIME ZONE :zona AS date) AS dia,
 			       t.estado AS estado,
 			       COUNT(*) AS cantidad
 			  FROM turno t

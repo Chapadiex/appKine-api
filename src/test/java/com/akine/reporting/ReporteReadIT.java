@@ -236,8 +236,8 @@ class ReporteReadIT {
 				INSERT INTO platform_role (account_id, role_code, granted_by_account_id, reason,
 				                           valid_from, active, version, created_at, updated_at)
 				VALUES (?, 'PLATFORM_ADMIN', NULL, 'Fixture sintetico de test de integracion',
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        (CURRENT_TIMESTAMP - INTERVAL '1 minutes'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", cuenta);
 		OperatingActor plataforma =
 				new OperatingActor(cuenta, true, centro.organizationId(), centro.consultorioId());
@@ -250,9 +250,9 @@ class ReporteReadIT {
 				                            granted_by_account_id, valid_from, valid_until,
 				                            active, version, created_at, updated_at)
 				VALUES (?, ?, 'Incidente sintetico de test de integracion', ?,
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE),
-				        DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 1 HOUR), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        (CURRENT_TIMESTAMP - INTERVAL '1 minutes'),
+				        (CURRENT_TIMESTAMP + INTERVAL '1 hours'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", centro.organizationId(), cuenta, cuenta);
 
 		ReporteView vista = generar(plataforma, ReporteCode.OPERATIVO);
@@ -397,12 +397,12 @@ class ReporteReadIT {
 
 		long organizationId = insertar("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro " + sufijo, "reporte-it-" + sufijo, ZONA);
 		long consultorioId = insertar("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, "Sede " + sufijo, ZONA);
 
 		OperatingActor orgAdmin = miembro(organizationId, consultorioId, null, "ORG_ADMIN");
@@ -421,7 +421,7 @@ class ReporteReadIT {
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "REP-" + sufijo.toUpperCase(), "Servicio " + sufijo);
 		long ofertaId = insertar("""
 				INSERT INTO oferta_servicio_consultorio
@@ -429,20 +429,20 @@ class ReporteReadIT {
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 1000.00, 'ARS', 0, 0, 0, 1, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 1000.00, 'ARS', false, false, false, true, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, servicioId, "Oferta " + sufijo);
 
 		String apellido = "Paciente" + sufijo;
 		long personaId = insertar("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, apellido, apellido.toUpperCase());
 		long historiaId = insertar("""
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, personaId, cuentaA);
 
 		// Turnos: 2 de A, 3 de B, en horas distintas de manana.
@@ -490,8 +490,8 @@ class ReporteReadIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioDeLaMembership, cuenta, rol);
 		return new OperatingActor(cuenta, false, organizationId, consultorioDelContexto);
 	}
@@ -501,8 +501,8 @@ class ReporteReadIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, cuenta, rol);
 	}
 
@@ -511,8 +511,8 @@ class ReporteReadIT {
 		return insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetica', 'DePrueba', 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetica', 'DePrueba', 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 	}
 
@@ -525,9 +525,9 @@ class ReporteReadIT {
 				                   reservado_por_cuenta_id, reservado_en, version,
 				                   created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?,
-				        DATE_ADD(UTC_TIMESTAMP(6), INTERVAL ? HOUR),
-				        DATE_ADD(UTC_TIMESTAMP(6), INTERVAL ? MINUTE),
-				        'RESERVADO', ?, UTC_TIMESTAMP(6), 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        (CURRENT_TIMESTAMP + make_interval(hours => ?)),
+				        (CURRENT_TIMESTAMP + make_interval(minutes => ?)),
+				        'RESERVADO', ?, CURRENT_TIMESTAMP, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, ofertaId, personaId, membershipId,
 				horasDesdeAhora, horasDesdeAhora * 60 + 45, cuentaId);
 	}
@@ -540,8 +540,8 @@ class ReporteReadIT {
 				                    profesional_membership_id, estado, numero_sesion, iniciada_en,
 				                    iniciada_por_cuenta_id, cerrada_en, cerrada_por_cuenta_id,
 				                    ultimo_numero_version, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'CERRADA', ?, UTC_TIMESTAMP(6), ?, UTC_TIMESTAMP(6), ?,
-				        1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 'CERRADA', ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, ?,
+				        1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, historiaId, ofertaId, membershipId,
 				numeroSesion, cuentaId, cuentaId);
 	}
@@ -554,8 +554,8 @@ class ReporteReadIT {
 				                          oferta_id, oferta_consultorio_id, diagnostico_presuntivo,
 				                          estado, abierto_en, abierto_por, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'Diagnostico sintetico', 'ACTIVO', UTC_TIMESTAMP(6), ?, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 'Diagnostico sintetico', 'ACTIVO', CURRENT_TIMESTAMP, ?, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, historiaId, numero, ofertaId, consultorioId, abiertoPor);
 	}
 
@@ -565,9 +565,9 @@ class ReporteReadIT {
 		jdbc.update("""
 				INSERT INTO caso_profesional (organization_id, caso_id, profesional_membership_id,
 				                              rol, desde, hasta, created_at, updated_at)
-				VALUES (?, ?, ?, ?, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 2 DAY),
-				        IF(?, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 DAY), NULL),
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, (CURRENT_TIMESTAMP - INTERVAL '2 days'),
+				        CASE WHEN ? THEN (CURRENT_TIMESTAMP - INTERVAL '1 days') END,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, casoId, membershipId, rol, yaSalio);
 	}
 

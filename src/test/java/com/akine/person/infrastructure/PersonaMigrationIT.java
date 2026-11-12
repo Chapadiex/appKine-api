@@ -79,7 +79,7 @@ class PersonaMigrationIT {
 		for (String tabla : List.of("persona", "perfil_paciente")) {
 			String nullable = jdbc().queryForObject("""
 					SELECT is_nullable FROM information_schema.columns
-					 WHERE table_schema = DATABASE() AND table_name = ?
+					 WHERE table_schema = current_schema() AND table_name = ?
 					   AND column_name = 'organization_id'
 					""", String.class, tabla);
 
@@ -99,8 +99,8 @@ class PersonaMigrationIT {
 		for (String tabla : List.of("persona", "perfil_paciente")) {
 			List<String> primeras = jdbc().queryForList("""
 					SELECT DISTINCT s.column_name
-					  FROM information_schema.statistics s
-					 WHERE s.table_schema = DATABASE() AND s.table_name = ?
+					  FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) s
+					 WHERE s.table_schema = current_schema() AND s.table_name = ?
 					   AND s.seq_in_index = 1 AND s.index_name <> 'PRIMARY'
 					   AND NOT EXISTS (
 					       SELECT 1 FROM information_schema.table_constraints tc
@@ -167,7 +167,7 @@ class PersonaMigrationIT {
 		insertarPersona(ORG_A, "DNI", "30555666", "Perez", "Ana");
 		jdbc().update("""
 				UPDATE persona
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6),
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP,
 				       deactivation_reason = 'ficha duplicada'
 				 WHERE organization_id = ? AND documento_clave = ?
 				""", ORG_A, "30555666");
@@ -190,7 +190,7 @@ class PersonaMigrationIT {
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				 VALUES (?, 'DNI', NULL, NULL, 'Perez', 'Ana', 'PEREZ', 'ANA',
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", ORG_A))
 				.as("tiene que violar ck_persona_documento_completo. El CHECK de MySQL llega como "
 						+ "UncategorizedSQLException y no como violacion de integridad, al reves "
@@ -205,7 +205,7 @@ class PersonaMigrationIT {
 
 		assertThatThrownBy(() -> jdbc().update("""
 				UPDATE persona
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6)
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP
 				 WHERE organization_id = ? AND documento_clave = ?
 				""", ORG_A, "30777888"))
 				.isInstanceOf(UncategorizedSQLException.class);
@@ -245,7 +245,7 @@ class PersonaMigrationIT {
 		activarPerfil(personaId);
 		jdbc().update("""
 				UPDATE perfil_paciente
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6),
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP,
 				       deactivation_reason = 'alta clinica'
 				 WHERE persona_id = ?
 				""", personaId);
@@ -261,7 +261,7 @@ class PersonaMigrationIT {
 		// activacion pasaria a crear por transitividad el artefacto que la etapa prohibe crear.
 		List<String> columnas = jdbc().queryForList("""
 				SELECT column_name FROM information_schema.columns
-				 WHERE table_schema = DATABASE() AND table_name = 'perfil_paciente'
+				 WHERE table_schema = current_schema() AND table_name = 'perfil_paciente'
 				""", String.class);
 
 		assertThat(columnas)
@@ -280,7 +280,7 @@ class PersonaMigrationIT {
 				INSERT INTO persona (organization_id, tipo_documento, numero_documento,
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, ?, UPPER(?), UPPER(?), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, ?, ?, ?, UPPER(?), UPPER(?), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, tipo, numero, numero, apellido, nombre, apellido, nombre);
 	}
 
@@ -288,7 +288,7 @@ class PersonaMigrationIT {
 		jdbc().update("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             created_at, updated_at)
-				 VALUES (?, ?, UTC_TIMESTAMP(6), 1, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", ORG_A, personaId);
 	}
 }

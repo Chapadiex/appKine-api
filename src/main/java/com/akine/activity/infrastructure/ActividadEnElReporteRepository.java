@@ -66,10 +66,10 @@ public interface ActividadEnElReporteRepository extends Repository<ClasePrograma
 			       c.capacidad,
 			       c.cupo_ocupado,
 			       c.estado,
-			       TIMESTAMPDIFF(SECOND, '1970-01-01', c.inicio) AS inicio_epoch,
-			       DATE(IFNULL(CONVERT_TZ(c.inicio, '+00:00', :zona), c.inicio)) AS dia,
-			       HOUR(IFNULL(CONVERT_TZ(c.inicio, '+00:00', :zona), c.inicio)) AS hora,
-			       MINUTE(IFNULL(CONVERT_TZ(c.inicio, '+00:00', :zona), c.inicio)) AS minuto,
+			       CAST(FLOOR(EXTRACT(EPOCH FROM c.inicio)) AS bigint) AS inicio_epoch,
+			       CAST(c.inicio AT TIME ZONE :zona AS date) AS dia,
+			       CAST(EXTRACT(HOUR FROM c.inicio AT TIME ZONE :zona) AS integer) AS hora,
+			       CAST(EXTRACT(MINUTE FROM c.inicio AT TIME ZONE :zona) AS integer) AS minuto,
 			       c.titulo
 			  FROM clase_programada c
 			 WHERE c.organization_id = :organizationId
@@ -355,7 +355,7 @@ public interface ActividadEnElReporteRepository extends Repository<ClasePrograma
 	@Query(value = """
 			SELECT i.persona_id,
 			       c.oferta_id,
-			       TIMESTAMPDIFF(MICROSECOND, '1970-01-01', c.inicio) AS inicio_micros
+			       CAST(EXTRACT(EPOCH FROM c.inicio) * 1000000 AS bigint) AS inicio_micros
 			  FROM inscripcion_clase i
 			  JOIN clase_programada c
 			    ON c.id = i.clase_id

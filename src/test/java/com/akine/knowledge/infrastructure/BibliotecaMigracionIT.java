@@ -53,7 +53,7 @@ class BibliotecaMigracionIT {
 		String sufijo = UUID.randomUUID().toString().substring(0, 8);
 		jdbc.update("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro " + sufijo, "bib-it-" + sufijo);
 		orgId = jdbc.queryForObject("SELECT id FROM organization WHERE slug = ?", Long.class,
 				"bib-it-" + sufijo);

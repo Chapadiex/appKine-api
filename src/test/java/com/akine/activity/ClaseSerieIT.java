@@ -125,8 +125,8 @@ class ClaseSerieIT {
 		jdbc.update("""
 				INSERT INTO espacio (organization_id, consultorio_id, name, tipo, capacidad, valid_from,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 'BOX', ?, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'BOX', ?, (CURRENT_TIMESTAMP - INTERVAL '5 years'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), tenant.consultorioId(), nombre, capacidad);
 		return jdbc.queryForObject("""
 				SELECT id FROM espacio WHERE organization_id = ? AND consultorio_id = ? AND name = ?

@@ -71,11 +71,11 @@ public interface PresentacionRepository
 			 WHERE organization_id = :organizationId
 			   AND consultorio_id = :consultorioId
 			   AND deleted_at IS NULL
-			   AND (:estado IS NULL OR estado = :estado)
-			   AND (:financiadorId IS NULL OR financiador_id = :financiadorId)
-			   AND (:desde IS NULL OR periodo_hasta >= :desde)
-			   AND (:hasta IS NULL OR periodo_desde <= :hasta)
-			   AND (:patron IS NULL OR factura_numero LIKE :patron OR numero = :numero)
+			   AND (CAST(:estado AS varchar) IS NULL OR estado = :estado)
+			   AND (CAST(:financiadorId AS bigint) IS NULL OR financiador_id = :financiadorId)
+			   AND (CAST(:desde AS date) IS NULL OR periodo_hasta >= :desde)
+			   AND (CAST(:hasta AS date) IS NULL OR periodo_desde <= :hasta)
+			   AND (CAST(:patron AS varchar) IS NULL OR factura_numero LIKE :patron OR numero = :numero)
 			 ORDER BY periodo_hasta DESC, id DESC
 			 LIMIT :limite OFFSET :desplazamiento
 			""", nativeQuery = true)

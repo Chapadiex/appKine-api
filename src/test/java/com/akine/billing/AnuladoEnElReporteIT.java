@@ -73,9 +73,9 @@ class AnuladoEnElReporteIT {
 				                        anulada_en, anulada_por_cuenta_id, motivo_anulacion,
 				                        deleted_at, version, created_at, updated_at)
 				VALUES (?, ?, ?, ?, 'PACIENTE', ?, 0.00, 'ARS', 'ANULADA',
-				        ?, 'Sesion sintetica', ?, UTC_TIMESTAMP(6),
-				        UTC_TIMESTAMP(6), ?, 'Anulacion sintetica',
-				        IF(?, UTC_TIMESTAMP(6), NULL), 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        ?, 'Sesion sintetica', ?, CURRENT_TIMESTAMP,
+				        CURRENT_TIMESTAMP, ?, 'Anulacion sintetica',
+				        CASE WHEN ? THEN CURRENT_TIMESTAMP END, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.sesionId(),
 				fixture.personaId(), new BigDecimal(importe), fixture.ofertaId(),
 				new BigDecimal(importe), fixture.cuentaId(), dadaDeBaja);
@@ -86,14 +86,14 @@ class AnuladoEnElReporteIT {
 
 		long organizationId = insertar("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM organization WHERE slug = ?",
 				new Object[]{"Centro " + sufijo, "anulado-it-" + sufijo, ZONA},
 				new Object[]{"anulado-it-" + sufijo});
 
 		long consultorioId = insertar("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
 				new Object[]{organizationId, "Sede " + sufijo, ZONA},
 				new Object[]{organizationId, "Sede " + sufijo});
@@ -102,7 +102,7 @@ class AnuladoEnElReporteIT {
 		long cuentaId = insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM cuenta WHERE email_normalizado = ?",
 				new Object[]{email, email}, new Object[]{email});
 
@@ -110,7 +110,7 @@ class AnuladoEnElReporteIT {
 		long personaId = insertar("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM persona WHERE organization_id = ? AND apellido = ?",
 				new Object[]{organizationId, apellido, apellido.toUpperCase()},
 				new Object[]{organizationId, apellido});
@@ -118,7 +118,7 @@ class AnuladoEnElReporteIT {
 		long historiaId = insertar("""
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM historia_clinica WHERE organization_id = ? AND persona_id = ?",
 				new Object[]{organizationId, personaId, cuentaId},
 				new Object[]{organizationId, personaId});
@@ -127,7 +127,7 @@ class AnuladoEnElReporteIT {
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM servicio WHERE codigo = ?",
 				new Object[]{"ANUL-" + sufijo.toUpperCase(), "Servicio " + sufijo},
 				new Object[]{"ANUL-" + sufijo.toUpperCase()});
@@ -138,8 +138,8 @@ class AnuladoEnElReporteIT {
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 1000.00, 'ARS', 0, 0, 0, 0, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 1000.00, 'ARS', false, false, false, false, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", """
 				SELECT id FROM oferta_servicio_consultorio
 				 WHERE organization_id = ? AND nombre_comercial = ?
@@ -150,8 +150,8 @@ class AnuladoEnElReporteIT {
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'BORRADOR', UTC_TIMESTAMP(6), ?, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 'BORRADOR', CURRENT_TIMESTAMP, ?, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, historiaId, ofertaId, 1L, cuentaId);
 
 		return new Fixture(organizationId, consultorioId, personaId, cuentaId, sesionId, ofertaId);

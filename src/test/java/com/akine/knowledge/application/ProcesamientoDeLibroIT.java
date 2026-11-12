@@ -81,17 +81,17 @@ class ProcesamientoDeLibroIT {
 		// Libros PENDIENTE que otras clases de IT dejaron en la base compartida. Primero los
 		// reemplazos que son PENDIENTE o apuntan a un PENDIENTE: la FK no deja borrar al original.
 		jdbc.update("""
-				DELETE r FROM libro r
-				  JOIN libro orig ON orig.id = r.reemplaza_libro_id
-				  JOIN organization o ON o.id = r.organization_id
-				 WHERE o.slug NOT LIKE 'proc-it-%' AND (r.estado = 'PENDIENTE' OR orig.estado = 'PENDIENTE')""");
+				DELETE FROM libro r
+				 USING libro orig, organization o
+				 WHERE orig.id = r.reemplaza_libro_id AND o.id = r.organization_id
+				   AND o.slug NOT LIKE 'proc-it-%' AND (r.estado = 'PENDIENTE' OR orig.estado = 'PENDIENTE')""");
 		jdbc.update("""
-				DELETE l FROM libro l JOIN organization o ON o.id = l.organization_id
-				 WHERE l.estado = 'PENDIENTE' AND o.slug NOT LIKE 'proc-it-%'""");
+				DELETE FROM libro l USING organization o
+				 WHERE o.id = l.organization_id AND l.estado = 'PENDIENTE' AND o.slug NOT LIKE 'proc-it-%'""");
 		String sufijo = UUID.randomUUID().toString().substring(0, 8);
 		jdbc.update("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro " + sufijo, "proc-it-" + sufijo);
 		orgId = jdbc.queryForObject("SELECT id FROM organization WHERE slug = ?", Long.class,
 				"proc-it-" + sufijo);
@@ -182,7 +182,7 @@ class ProcesamientoDeLibroIT {
 		long id = subir(pdf(null, pagina(1), pagina(2)));
 		// Otro nodo lo reclamo de nuevo: el lease cambio.
 		alCerrar(id, () -> jdbc.update(
-				"UPDATE libro SET procesando_desde = procesando_desde + INTERVAL 1 SECOND WHERE id = ?", id));
+				"UPDATE libro SET procesando_desde = procesando_desde + INTERVAL '1 seconds' WHERE id = ?", id));
 
 		procesarHasta(id);
 
@@ -199,8 +199,8 @@ class ProcesamientoDeLibroIT {
 
 		// Un nodo que se cayo a mitad del proceso
 		jdbc.update("""
-				UPDATE libro SET estado = 'PROCESANDO', procesando_desde = UTC_TIMESTAMP(6) - INTERVAL 1 DAY,
-				       latido = UTC_TIMESTAMP(6) - INTERVAL 1 DAY
+				UPDATE libro SET estado = 'PROCESANDO', procesando_desde = CURRENT_TIMESTAMP - INTERVAL '1 days',
+				       latido = CURRENT_TIMESTAMP - INTERVAL '1 days'
 				 WHERE id = ?""", id);
 		assertThat(procesamiento.devolverTrabados(Instant.now().minus(Duration.ofMinutes(15))))
 				.isGreaterThanOrEqualTo(1);
@@ -218,11 +218,11 @@ class ProcesamientoDeLibroIT {
 		long muerto = subir(pdf(null, pagina(2)));
 		// Los dos empezaron hace un dia; solo el vivo siguio latiendo.
 		jdbc.update("""
-				UPDATE libro SET estado = 'PROCESANDO', procesando_desde = UTC_TIMESTAMP(6) - INTERVAL 1 DAY,
-				       latido = UTC_TIMESTAMP(6) WHERE id = ?""", vivo);
+				UPDATE libro SET estado = 'PROCESANDO', procesando_desde = CURRENT_TIMESTAMP - INTERVAL '1 days',
+				       latido = CURRENT_TIMESTAMP WHERE id = ?""", vivo);
 		jdbc.update("""
-				UPDATE libro SET estado = 'PROCESANDO', procesando_desde = UTC_TIMESTAMP(6) - INTERVAL 1 DAY,
-				       latido = UTC_TIMESTAMP(6) - INTERVAL 1 DAY WHERE id = ?""", muerto);
+				UPDATE libro SET estado = 'PROCESANDO', procesando_desde = CURRENT_TIMESTAMP - INTERVAL '1 days',
+				       latido = CURRENT_TIMESTAMP - INTERVAL '1 days' WHERE id = ?""", muerto);
 
 		procesamiento.devolverTrabados(Instant.now().minus(Duration.ofMinutes(15)));
 
@@ -332,7 +332,7 @@ class ProcesamientoDeLibroIT {
 					.isInstanceOf(OutOfMemoryError.class);
 			assertThat(jdbc.queryForMap("SELECT estado, intentos FROM libro WHERE id = ?", id))
 					.containsEntry("estado", "PROCESANDO").containsEntry("intentos", intento);
-			jdbc.update("UPDATE libro SET latido = UTC_TIMESTAMP(6) - INTERVAL 1 DAY WHERE id = ?", id);
+			jdbc.update("UPDATE libro SET latido = CURRENT_TIMESTAMP - INTERVAL '1 days' WHERE id = ?", id);
 			procesamiento.devolverTrabados(Instant.now().minus(Duration.ofMinutes(15)));
 			assertThat(estado(id)).isEqualTo("PENDIENTE");
 		}
@@ -390,8 +390,8 @@ class ProcesamientoDeLibroIT {
 	/** Borra los PENDIENTE de otras organizaciones (de otras clases o de este proceso). */
 	private void soloLosDeEsteTest() {
 		jdbc.update("""
-				DELETE r FROM libro r JOIN libro orig ON orig.id = r.reemplaza_libro_id
-				 WHERE r.organization_id <> ? AND (r.estado = 'PENDIENTE' OR orig.estado = 'PENDIENTE')""", orgId);
+				DELETE FROM libro r USING libro orig
+				 WHERE orig.id = r.reemplaza_libro_id AND r.organization_id <> ? AND (r.estado = 'PENDIENTE' OR orig.estado = 'PENDIENTE')""", orgId);
 		jdbc.update("DELETE FROM libro WHERE estado = 'PENDIENTE' AND organization_id <> ?", orgId);
 	}
 

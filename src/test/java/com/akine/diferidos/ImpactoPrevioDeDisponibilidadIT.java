@@ -54,8 +54,8 @@ class ImpactoPrevioDeDisponibilidadIT extends BaseEscenarioDiferido {
 				INSERT INTO profesional_disponibilidad
 				       (organization_id, consultorio_id, membership_id, dia_semana, hora_desde,
 				        hora_hasta, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 2, '09:00', '13:00', DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 2, '09:00', '13:00', CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", sesion.organizationId(), sesion.consultorioId(), membership);
 
 		ZoneId zona = ZoneId.of(jdbc.queryForObject(

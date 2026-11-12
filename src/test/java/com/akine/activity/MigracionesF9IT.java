@@ -69,8 +69,8 @@ class MigracionesF9IT {
 	void los_indices_empiezan_por_el_tenant() {
 		List<Map<String, Object>> primeras = jdbc.queryForList("""
 				SELECT table_name AS tabla, index_name AS indice, column_name AS columna
-				  FROM information_schema.statistics
-				 WHERE table_schema = DATABASE() AND seq_in_index = 1
+				  FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) AS statistics
+				 WHERE table_schema = current_schema() AND seq_in_index = 1
 				   AND table_name IN ('clase_programada', 'clase_evento', 'inscripcion_clase',
 				                      'asistencia_actividad', 'asistencia_evento')
 				   AND (index_name LIKE 'ix\\_%' OR index_name LIKE 'uk\\_%')
@@ -100,10 +100,12 @@ class MigracionesF9IT {
 	@DisplayName("40/47/58 · Las foreign keys de las tablas de F9 apuntan donde dicen")
 	void las_foreign_keys_apuntan_donde_dicen() {
 		Map<String, String> fks = jdbc.queryForList("""
-				SELECT constraint_name AS fk, referenced_table_name AS destino
-				  FROM information_schema.key_column_usage
-				 WHERE table_schema = DATABASE() AND referenced_table_name IS NOT NULL
-				   AND table_name IN ('clase_programada', 'clase_evento', 'inscripcion_clase',
+				SELECT con.conname AS fk, destino.relname AS destino
+				  FROM pg_constraint con
+				  JOIN pg_class origen ON origen.oid = con.conrelid
+				  JOIN pg_class destino ON destino.oid = con.confrelid
+				 WHERE con.contype = 'f'
+				   AND origen.relname IN ('clase_programada', 'clase_evento', 'inscripcion_clase',
 				                      'asistencia_actividad', 'asistencia_evento')
 				""").stream().collect(Collectors.toMap(
 				f -> (String) f.get("fk"), f -> (String) f.get("destino"), (a, b) -> a));
@@ -167,7 +169,7 @@ class MigracionesF9IT {
 	void clase_evento_sin_columnas_de_edicion() {
 		List<String> columnas = jdbc.queryForList("""
 				SELECT column_name FROM information_schema.columns
-				 WHERE table_schema = DATABASE() AND table_name = 'clase_evento'
+				 WHERE table_schema = current_schema() AND table_name = 'clase_evento'
 				""", String.class);
 		assertThat(columnas).contains("organization_id", "clase_id", "tipo", "ocurrido_en")
 				.doesNotContain("version", "updated_at", "deleted_at", "deleted_key");
@@ -303,7 +305,7 @@ class MigracionesF9IT {
 				  FROM information_schema.table_constraints tc
 				  JOIN information_schema.check_constraints cc
 				    ON cc.constraint_schema = tc.constraint_schema AND cc.constraint_name = tc.constraint_name
-				 WHERE tc.table_schema = DATABASE() AND tc.table_name = 'clase_programada'
+				 WHERE tc.table_schema = current_schema() AND tc.table_name = 'clase_programada'
 				   AND tc.constraint_type = 'CHECK'
 				""", String.class);
 		assertThat(clausulas).as("los CHECK de la clase que dejaron V58, V60 y V61").hasSize(5)
@@ -377,7 +379,7 @@ class MigracionesF9IT {
 	private void cancelarInscripcion(long id) {
 		jdbc.update("""
 				UPDATE inscripcion_clase
-				   SET estado = 'CANCELADA', deleted_at = UTC_TIMESTAMP(6), motivo_cancelacion = 'Baja sintetica'
+				   SET estado = 'CANCELADA', deleted_at = CURRENT_TIMESTAMP, motivo_cancelacion = 'Baja sintetica'
 				 WHERE id = ?
 				""", id);
 	}

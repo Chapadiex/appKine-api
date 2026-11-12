@@ -63,7 +63,7 @@ class DisponibilidadMigrationIT {
 		for (String tabla : TABLAS) {
 			String esNullable = jdbc().queryForObject("""
 					SELECT is_nullable FROM information_schema.columns
-					 WHERE table_schema = DATABASE()
+					 WHERE table_schema = current_schema()
 					   AND table_name = ?
 					   AND column_name = 'organization_id'
 					""", String.class, tabla);
@@ -97,8 +97,8 @@ class DisponibilidadMigrationIT {
 			// indices y uniques DISEÑADOS por la aplicacion.
 			List<Map<String, Object>> primeraColumnaPorIndice = jdbc().queryForList("""
 					SELECT s.index_name, s.column_name
-					  FROM information_schema.statistics s
-					 WHERE s.table_schema = DATABASE()
+					  FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) s
+					 WHERE s.table_schema = current_schema()
 					   AND s.table_name = ?
 					   AND s.index_name <> 'PRIMARY'
 					   AND s.seq_in_index = 1
@@ -192,7 +192,7 @@ class DisponibilidadMigrationIT {
 	// =================================================================================
 
 	@Test
-	@DisplayName("el CHECK de baja coherente rechaza active = 0 sin deleted_at")
+	@DisplayName("el CHECK de baja coherente rechaza active = false sin deleted_at")
 	void el_check_de_baja_coherente_rechaza_active_0_sin_deleted_at() {
 		Fixture fixture = crearFixture();
 
@@ -201,10 +201,10 @@ class DisponibilidadMigrationIT {
 				    (organization_id, consultorio_id, membership_id, dia_semana, hora_desde,
 				     hora_hasta, vigencia_desde, active, deleted_at, deactivation_reason,
 				     version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, '09:00:00', '10:00:00', CURRENT_DATE(), 0, NULL, NULL,
-				        0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 1, '09:00:00', '10:00:00', CURRENT_DATE(), false, NULL, NULL,
+				        0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.membershipId()))
-				.as("active = 0 con deleted_at NULL tiene que violar "
+				.as("active = false con deleted_at NULL tiene que violar "
 						+ "ck_profesional_disponibilidad_baja_coherente")
 				.isInstanceOf(UncategorizedSQLException.class)
 				.hasMessageContaining("ck_profesional_disponibilidad_baja_coherente");
@@ -220,7 +220,7 @@ class DisponibilidadMigrationIT {
 	 * excepcion con {@code active = 0} y sin motivo es una baja que no responde por que.
 	 */
 	@Test
-	@DisplayName("el CHECK de baja coherente de la excepcion rechaza active = 0 sin deleted_at")
+	@DisplayName("el CHECK de baja coherente de la excepcion rechaza active = false sin deleted_at")
 	void el_check_de_baja_coherente_de_la_excepcion_rechaza_active_0_sin_deleted_at() {
 		Fixture fixture = crearFixture();
 
@@ -230,10 +230,10 @@ class DisponibilidadMigrationIT {
 				     fecha_desde, fecha_hasta, hora_desde, hora_hasta, active, deleted_at,
 				     deactivation_reason, version, created_at, updated_at)
 				VALUES (?, ?, ?, 'CIERRE', 'AUSENCIA', CURRENT_DATE(),
-				        DATE_ADD(CURRENT_DATE(), INTERVAL 1 DAY), NULL, NULL,
-				        0, NULL, NULL, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        (CURRENT_DATE() + INTERVAL '1 days'), NULL, NULL,
+				        false, NULL, NULL, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.membershipId()))
-				.as("active = 0 con deleted_at NULL tiene que violar "
+				.as("active = false con deleted_at NULL tiene que violar "
 						+ "ck_disponibilidad_excepcion_baja_coherente")
 				.isInstanceOf(UncategorizedSQLException.class)
 				.hasMessageContaining("ck_disponibilidad_excepcion_baja_coherente");
@@ -254,8 +254,8 @@ class DisponibilidadMigrationIT {
 				     fecha_desde, fecha_hasta, hora_desde, hora_hasta, active, version,
 				     created_at, updated_at)
 				VALUES (?, ?, ?, 'CIERRE', 'AUSENCIA', CURRENT_DATE(),
-				        DATE_ADD(CURRENT_DATE(), INTERVAL 1 DAY), '09:00:00', NULL,
-				        1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        (CURRENT_DATE() + INTERVAL '1 days'), '09:00:00', NULL,
+				        true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.membershipId()))
 				.as("hora_desde sin hora_hasta tiene que violar ck_disponibilidad_excepcion_horario")
 				.isInstanceOf(UncategorizedSQLException.class)
@@ -279,8 +279,8 @@ class DisponibilidadMigrationIT {
 				     fecha_desde, fecha_hasta, hora_desde, hora_hasta, active, version,
 				     created_at, updated_at)
 				VALUES (?, ?, NULL, 'CIERRE', 'FERIADO', CURRENT_DATE(),
-				        DATE_ADD(CURRENT_DATE(), INTERVAL 1 DAY), NULL, NULL,
-				        1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        (CURRENT_DATE() + INTERVAL '1 days'), NULL, NULL,
+				        true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId());
 
 		Long total = jdbc().queryForObject("""
@@ -330,7 +330,7 @@ class DisponibilidadMigrationIT {
 		jdbc().update("""
 				INSERT INTO organization (name, slug, timezone, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Disponibilidad Sintetica " + sufijo, slug);
 		return jdbc().queryForObject(
 				"SELECT id FROM organization WHERE slug = ?", Long.class, slug);
@@ -340,7 +340,7 @@ class DisponibilidadMigrationIT {
 		jdbc().update("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, "Sede Sintetica " + sufijo);
 		return jdbc().queryForObject(
 				"SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
@@ -352,8 +352,8 @@ class DisponibilidadMigrationIT {
 		jdbc().update("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado,
 				                    active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'Disponibilidad', 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'Disponibilidad', 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 		return jdbc().queryForObject(
 				"SELECT id FROM cuenta WHERE email_normalizado = ?", Long.class, email);
@@ -364,9 +364,9 @@ class DisponibilidadMigrationIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, 'PROFESIONAL', 0,
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'PROFESIONAL', false,
+				        (CURRENT_TIMESTAMP - INTERVAL '1 minutes'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, accountId);
 		return jdbc().queryForObject("""
 				SELECT id FROM membership
@@ -379,7 +379,7 @@ class DisponibilidadMigrationIT {
 				INSERT INTO profesional_disponibilidad
 				    (organization_id, consultorio_id, membership_id, dia_semana, hora_desde,
 				     hora_hasta, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, CURRENT_DATE(), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, ?, CURRENT_DATE(), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.membershipId(),
 				diaSemana, horaDesde, horaHasta);
 	}
@@ -389,7 +389,7 @@ class DisponibilidadMigrationIT {
 				INSERT INTO consultorio_calendario
 				    (organization_id, consultorio_id, pais, cierra_por_feriado, version,
 				     created_at, updated_at)
-				VALUES (?, ?, 'AR', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'AR', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId());
 	}
 }

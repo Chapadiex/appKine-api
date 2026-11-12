@@ -136,7 +136,7 @@ public interface AutorizacionRepository
 			   SET cantidad_consumida = cantidad_consumida + :cantidad
 			 WHERE id = :autorizacionId
 			   AND organization_id = :organizationId
-			   AND active = 1
+			   AND active = true
 			   AND estado = 'APROBADA'
 			   AND (cantidad_autorizada IS NULL
 			        OR cantidad_autorizada - cantidad_consumida >= :cantidad)

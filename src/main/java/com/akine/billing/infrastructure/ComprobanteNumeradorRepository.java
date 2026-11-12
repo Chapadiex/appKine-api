@@ -25,8 +25,8 @@ public interface ComprobanteNumeradorRepository
 	@Query(value = """
 			INSERT INTO comprobante_numerador (organization_id, consultorio_id, ultimo_numero,
 			                                   created_at, updated_at)
-			VALUES (:organizationId, :consultorioId, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-			ON DUPLICATE KEY UPDATE id = id
+			VALUES (:organizationId, :consultorioId, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			ON CONFLICT DO NOTHING
 			""", nativeQuery = true)
 	@Override
 	void crearSiFalta(

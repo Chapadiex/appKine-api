@@ -302,7 +302,7 @@
 					<includes>
 						<include>**/*IT.java</include>
 					</includes>
-					<!-- Cada proceso tiene su servidor MySQL y sus directorios de adjuntos. Con 4 en local,
+					<!-- Cada proceso tiene su servidor PostgreSQL y sus directorios de adjuntos. Con 4 en local,
 					     Testcontainers no encontro Docker al arrancar en paralelo: no subirlo sin probarlo. -->
 					<forkCount>${akine.it.procesos}</forkCount>
 					<systemPropertyVariables>

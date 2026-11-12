@@ -63,11 +63,11 @@ public interface ConsultorioRepository extends JpaRepository<Consultorio, Long>,
 	 * exactamente la que corre, y eso es justamente lo que hay que poder auditar.
 	 */
 	@Query(value = """
-			SELECT COUNT(*) FROM consultorio
+			SELECT COUNT(*) FROM (SELECT 1 FROM consultorio
 			 WHERE organization_id = :organizationId
-			   AND active = 1
+			   AND active = true
 			   AND id <> :excludedConsultorioId
-			 FOR SHARE
+			 FOR SHARE) AS bloqueadas
 			""", nativeQuery = true)
 	long countActiveForShare(
 			@Param("organizationId") Long organizationId,
@@ -86,11 +86,11 @@ public interface ConsultorioRepository extends JpaRepository<Consultorio, Long>,
 
 	/** 1 si la sede esta activa, 0 si no, con lock COMPARTIDO sobre la fila. Ver el puerto. */
 	@Query(value = """
-			SELECT COUNT(*) FROM consultorio
+			SELECT COUNT(*) FROM (SELECT 1 FROM consultorio
 			 WHERE id = :id
 			   AND organization_id = :organizationId
-			   AND active = 1
-			 FOR SHARE
+			   AND active = true
+			 FOR SHARE) AS bloqueadas
 			""", nativeQuery = true)
 	long countActivaForShare(
 			@Param("id") Long id,

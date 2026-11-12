@@ -74,7 +74,7 @@ class CuentaCorrienteDeFinanciadorIT {
 		insertarLotes(organizationId, sede, financiadorId, cuentaId, 2, false);
 		jdbc.update("""
 				UPDATE presentacion
-				   SET estado = 'ANULADA', anulada_en = UTC_TIMESTAMP(6), anulada_por_cuenta_id = ?,
+				   SET estado = 'ANULADA', anulada_en = CURRENT_TIMESTAMP, anulada_por_cuenta_id = ?,
 				       motivo_anulacion = 'Periodo mal elegido'
 				 WHERE organization_id = ? AND financiador_id = ?
 				 ORDER BY id LIMIT 1
@@ -120,22 +120,22 @@ class CuentaCorrienteDeFinanciadorIT {
 				                          total_presentado, total_debitado, total_cobrado, saldo,
 				                          creada_en, creada_por_cuenta_id, deleted_at)
 				VALUES (?, ?, ?, '2026-09-01', '2026-09-30', 'ARS', 'BORRADOR',
-				        100.00, 10.00, 20.00, 70.00, UTC_TIMESTAMP(6), ?,
-				        IF(?, UTC_TIMESTAMP(6), NULL))
+				        100.00, 10.00, 20.00, 70.00, CURRENT_TIMESTAMP, ?,
+				        CASE WHEN ? THEN CURRENT_TIMESTAMP END)
 				""", filas);
 	}
 
 	private long insertarOrganizacion(String sufijo) {
 		return InsertarConId.insertar(jdbc, """
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro " + sufijo, "cc-fin-it-" + sufijo, ZONA);
 	}
 
 	private long insertarSede(long organizationId, String nombre) {
 		return InsertarConId.insertar(jdbc, """
 				INSERT INTO consultorio (organization_id, name, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, "Sede " + nombre, ZONA);
 	}
 
@@ -144,7 +144,7 @@ class CuentaCorrienteDeFinanciadorIT {
 		return InsertarConId.insertar(jdbc, """
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 	}
 
@@ -152,7 +152,7 @@ class CuentaCorrienteDeFinanciadorIT {
 		return InsertarConId.insertar(jdbc, """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 'PREPAGA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'PREPAGA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, "FIN-" + sufijo, "Financiador " + sufijo);
 	}
 }

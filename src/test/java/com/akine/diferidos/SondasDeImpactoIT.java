@@ -319,10 +319,10 @@ class SondasDeImpactoIT extends BaseEscenarioDiferido {
 	private void envejecerComoAusente(long turnoId) {
 		int filas = jdbc.update("""
 				UPDATE turno
-				   SET inicio = DATE_SUB(inicio, INTERVAL 60 DAY),
-				       fin = DATE_SUB(fin, INTERVAL 60 DAY),
+				   SET inicio = (inicio - INTERVAL '60 days'),
+				       fin = (fin - INTERVAL '60 days'),
 				       estado = 'AUSENTE',
-				       ausente_en = UTC_TIMESTAMP(6)
+				       ausente_en = CURRENT_TIMESTAMP
 				 WHERE id = ?
 				""", turnoId);
 		assertThat(filas).isEqualTo(1);

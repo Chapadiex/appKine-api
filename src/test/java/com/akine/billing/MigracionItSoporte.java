@@ -85,8 +85,8 @@ public final class MigracionItSoporte {
 	/** Que la columna exista, sea generada STORED y con la expresion que se espera. */
 	public void esGeneradaStored(String tabla, String columna, String fragmentoDeExpresion) {
 		Map<String, Object> fila = jdbc.queryForMap("""
-				SELECT extra, generation_expression FROM information_schema.columns
-				 WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?
+				SELECT CASE WHEN is_generated = 'ALWAYS' THEN 'STORED GENERATED' ELSE '' END AS extra, generation_expression FROM information_schema.columns
+				 WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?
 				""", tabla, columna);
 		assertThat((String) fila.get("extra")).as(tabla + "." + columna).isEqualTo("STORED GENERATED");
 		assertThat((String) fila.get("generation_expression"))
@@ -98,14 +98,14 @@ public final class MigracionItSoporte {
 	public int checksLlamados(String constraint) {
 		return jdbc.queryForObject("""
 				SELECT COUNT(*) FROM information_schema.check_constraints
-				 WHERE constraint_schema = DATABASE() AND constraint_name = ?
+				 WHERE constraint_schema = current_schema() AND constraint_name = ?
 				""", Integer.class, constraint);
 	}
 
 	public String clausulaDe(String constraint) {
 		return jdbc.queryForObject("""
 				SELECT check_clause FROM information_schema.check_constraints
-				 WHERE constraint_schema = DATABASE() AND constraint_name = ?
+				 WHERE constraint_schema = current_schema() AND constraint_name = ?
 				""", String.class, constraint);
 	}
 

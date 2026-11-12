@@ -105,7 +105,7 @@ class BusquedaIT {
 		List<Long> marcados = fragmentosCon(libro, sospechosa);
 		assertThat(marcados).isNotEmpty();
 		// Con su vector intacto: el filtro es la marca, no la falta de vector.
-		jdbc.update("UPDATE libro_fragmento SET sospechoso = 1 WHERE libro_id = ? AND texto LIKE ?",
+		jdbc.update("UPDATE libro_fragmento SET sospechoso = true WHERE libro_id = ? AND texto LIKE ?",
 				libro, "%" + sospechosa + "%");
 
 		ResultadoBusqueda r = busqueda.buscar(actor(org), org, sospechosa, 20);
@@ -195,7 +195,7 @@ class BusquedaIT {
 		String sufijo = UUID.randomUUID().toString().substring(0, 8);
 		jdbc.update("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro " + sufijo, "busqueda-it-" + sufijo);
 		return jdbc.queryForObject("SELECT id FROM organization WHERE slug = ?", Long.class,
 				"busqueda-it-" + sufijo);

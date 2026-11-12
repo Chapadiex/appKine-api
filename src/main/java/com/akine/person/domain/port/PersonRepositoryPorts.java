@@ -491,9 +491,8 @@ public final class PersonRepositoryPorts {
 		 * Registra la alerta si ese consumo todavia no tiene una del mismo tipo. Si ya la tiene,
 		 * no hace nada y no lanza.
 		 *
-		 * <p>No devuelve filas afectadas a proposito: con el {@code CLIENT_FOUND_ROWS} que
-		 * Connector/J activa por defecto, el no-op del {@code ON DUPLICATE KEY UPDATE} informa 1
-		 * igual que una insercion, asi que el numero no distingue nada.
+		 * <p>No devuelve filas afectadas: el contrato es "registrar si falta" y nadie necesita saber
+		 * cual de los dos caminos tomo ({@code ON CONFLICT DO NOTHING}).
 		 */
 		@SuppressWarnings("java:S107")
 		void registrarSiFalta(

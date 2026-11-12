@@ -138,7 +138,7 @@ class SaldoYTituloSegunQuienMiraIT {
 		claseService.cancelar(tenant.actor(), tenant.consultorioId(), clase, "Sin instructor");
 
 		String payload = jdbc.queryForObject("""
-				SELECT CAST(payload_sanitizado AS CHAR) FROM notification_outbox
+				SELECT CAST(payload_sanitizado AS text) FROM notification_outbox
 				 WHERE organization_id = ? AND tipo = 'CLASE_MODIFICADA' AND destinatario = ?
 				""", String.class, tenant.organizationId(), email);
 		assertThat(payload)
@@ -181,7 +181,7 @@ class SaldoYTituloSegunQuienMiraIT {
 		jdbc.update("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 		long cuentaId = jdbc.queryForObject(
 				"SELECT id FROM cuenta WHERE email_normalizado = ?", Long.class, email);
@@ -189,8 +189,8 @@ class SaldoYTituloSegunQuienMiraIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), tenant.consultorioId(), cuentaId, rol);
 		return new OperatingActor(cuentaId, false, tenant.organizationId(), tenant.consultorioId());
 	}

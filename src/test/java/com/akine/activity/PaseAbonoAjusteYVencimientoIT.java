@@ -288,8 +288,8 @@ class PaseAbonoAjusteYVencimientoIT {
 				new AjustarSaldoCommand(-3, "Usadas antes del sistema", 0), true);
 		long vigente = venderPack(tenant, 8);
 		// La vigencia no se puede esperar: se corre hacia atras como dato de prueba.
-		jdbc.update("UPDATE pase_servicio SET vigencia_desde = DATE_SUB(vigencia_desde, INTERVAL 90 DAY), "
-				+ "vigencia_hasta = DATE_SUB(CURDATE(), INTERVAL 2 DAY) WHERE id = ?", paseId);
+		jdbc.update("UPDATE pase_servicio SET vigencia_desde = (vigencia_desde - INTERVAL '90 days'), "
+				+ "vigencia_hasta = CAST(CURRENT_DATE - INTERVAL '2 days' AS date) WHERE id = ?", paseId);
 
 		vencimiento.vencerLosVencidos(500);
 		vencimiento.vencerLosVencidos(500);
@@ -373,7 +373,7 @@ class PaseAbonoAjusteYVencimientoIT {
 	}
 
 	private long venderPack(Tenant tenant, int creditos) {
-		long productoId = jdbc.query("SELECT id FROM producto_servicio WHERE organization_id = ? AND active = 1",
+		long productoId = jdbc.query("SELECT id FROM producto_servicio WHERE organization_id = ? AND active = true",
 				rs -> rs.next() ? rs.getLong(1) : 0L, tenant.organizationId());
 		if (productoId == 0L) {
 			productoId = productoService.crear(tenant.actor(), tenant.consultorioId(),

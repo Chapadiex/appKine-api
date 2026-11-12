@@ -107,9 +107,9 @@ public interface MovimientoCajaRepository
 			SELECT * FROM movimiento_caja
 			 WHERE organization_id = :organizationId
 			   AND consultorio_id = :consultorioId
-			   AND (:jornadaCajaId IS NULL OR jornada_caja_id = :jornadaCajaId)
-			   AND (:fechaNegocio IS NULL OR fecha_negocio = :fechaNegocio)
-			   AND (:tipo IS NULL OR tipo = :tipo)
+			   AND (CAST(:jornadaCajaId AS bigint) IS NULL OR jornada_caja_id = :jornadaCajaId)
+			   AND (CAST(:fechaNegocio AS date) IS NULL OR fecha_negocio = :fechaNegocio)
+			   AND (CAST(:tipo AS varchar) IS NULL OR tipo = :tipo)
 			 ORDER BY registrado_en DESC, id DESC
 			 LIMIT :limite OFFSET :desplazamiento
 			""", nativeQuery = true)

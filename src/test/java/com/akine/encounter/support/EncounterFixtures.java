@@ -33,7 +33,7 @@ public final class EncounterFixtures {
 
 		long organizationId = insertar("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM organization WHERE slug = ?",
 				new Object[]{"Centro " + sufijo, "enc-it-" + sufijo, ZONA},
 				new Object[]{"enc-it-" + sufijo});
@@ -46,7 +46,7 @@ public final class EncounterFixtures {
 		long personaId = insertar("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM persona WHERE organization_id = ? AND apellido = ?",
 				new Object[]{organizationId, apellido, apellido.toUpperCase()},
 				new Object[]{organizationId, apellido});
@@ -54,13 +54,13 @@ public final class EncounterFixtures {
 		jdbc.update("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, personaId, profesional.cuentaId());
 
 		long historiaClinicaId = insertar("""
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM historia_clinica WHERE organization_id = ? AND persona_id = ?",
 				new Object[]{organizationId, personaId, profesional.cuentaId()},
 				new Object[]{organizationId, personaId});
@@ -69,7 +69,7 @@ public final class EncounterFixtures {
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM servicio WHERE codigo = ?",
 				new Object[]{"ENC-" + sufijo.toUpperCase(), "Servicio " + sufijo},
 				new Object[]{"ENC-" + sufijo.toUpperCase()});
@@ -80,8 +80,8 @@ public final class EncounterFixtures {
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', 0, 0, 0, 1, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', false, false, false, true, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", """
 				SELECT id FROM oferta_servicio_consultorio
 				 WHERE organization_id = ? AND nombre_comercial = ?
@@ -91,8 +91,8 @@ public final class EncounterFixtures {
 		long especialidadId = insertar("""
 				INSERT INTO especialidad (organization_id, codigo, name, valid_from, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, ?, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, (CURRENT_TIMESTAMP - INTERVAL '5 years'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM especialidad WHERE organization_id = ? AND codigo = ?",
 				new Object[]{organizationId, "ESP-" + sufijo, "Especialidad " + sufijo},
 				new Object[]{organizationId, "ESP-" + sufijo});
@@ -104,7 +104,7 @@ public final class EncounterFixtures {
 		long medicionId = insertar("""
 				INSERT INTO medicion_definicion (organization_id, codigo, name, tipo, unidad, minimo,
 				                                 maximo, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 'NUMERICO', 'grados', 0, 180, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'NUMERICO', 'grados', 0, 180, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM medicion_definicion WHERE organization_id = ? AND codigo = ?",
 				new Object[]{organizationId, "ROM-" + sufijo, "Rango articular " + sufijo},
 				new Object[]{organizationId, "ROM-" + sufijo});
@@ -116,7 +116,7 @@ public final class EncounterFixtures {
 	public long crearConsultorio(long organizationId, String nombre) {
 		return insertar("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
 				new Object[]{organizationId, nombre, ZONA},
 				new Object[]{organizationId, nombre});
@@ -128,7 +128,7 @@ public final class EncounterFixtures {
 		long cuentaId = insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM cuenta WHERE email_normalizado = ?",
 				new Object[]{email, email}, new Object[]{email});
 
@@ -136,8 +136,8 @@ public final class EncounterFixtures {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM membership WHERE organization_id = ? AND account_id = ?",
 				new Object[]{organizationId, consultorioId, cuentaId, rol},
 				new Object[]{organizationId, cuentaId});
@@ -152,7 +152,7 @@ public final class EncounterFixtures {
 		long cuentaId = insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM cuenta WHERE email_normalizado = ?",
 				new Object[]{email, email}, new Object[]{email});
 
@@ -160,8 +160,8 @@ public final class EncounterFixtures {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, NULL, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, NULL, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM membership WHERE organization_id = ? AND account_id = ?",
 				new Object[]{organizationId, cuentaId, rol},
 				new Object[]{organizationId, cuentaId});
@@ -174,8 +174,8 @@ public final class EncounterFixtures {
 		return insertar("""
 				INSERT INTO practica (organization_id, especialidad_id, codigo, name, valid_from, active,
 				                      version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, (CURRENT_TIMESTAMP - INTERVAL '5 years'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM practica WHERE organization_id = ? AND codigo = ?",
 				new Object[]{organizationId, especialidadId, codigo, nombre},
 				new Object[]{organizationId, codigo});
@@ -185,8 +185,8 @@ public final class EncounterFixtures {
 		return insertar("""
 				INSERT INTO espacio (organization_id, consultorio_id, name, tipo, capacidad, valid_from,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 'BOX', 1, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'BOX', 1, (CURRENT_TIMESTAMP - INTERVAL '5 years'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM espacio WHERE organization_id = ? AND consultorio_id = ? AND name = ?",
 				new Object[]{organizationId, consultorioId, nombre},
 				new Object[]{organizationId, consultorioId, nombre});
@@ -203,8 +203,8 @@ public final class EncounterFixtures {
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'BORRADOR', UTC_TIMESTAMP(6), ?, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 'BORRADOR', CURRENT_TIMESTAMP, ?, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", mundo.organizationId(), mundo.consultorioId(), mundo.historiaClinicaId(),
 				mundo.ofertaId(), duenio.membershipId(), duenio.cuentaId());
 	}
@@ -216,8 +216,8 @@ public final class EncounterFixtures {
 				                          oferta_id, oferta_consultorio_id, diagnostico_presuntivo,
 				                          estado, abierto_en, abierto_por, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'Diagnostico sintetico', 'ACTIVO', UTC_TIMESTAMP(6), ?, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 'Diagnostico sintetico', 'ACTIVO', CURRENT_TIMESTAMP, ?, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", """
 				SELECT id FROM caso_clinico WHERE historia_clinica_id = ? AND numero_caso = ?
 				""", new Object[]{mundo.organizationId(), mundo.historiaClinicaId(), numero,

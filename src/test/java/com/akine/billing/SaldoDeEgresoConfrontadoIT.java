@@ -94,14 +94,14 @@ class SaldoDeEgresoConfrontadoIT {
 
 		long organizationId = insertar("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM organization WHERE slug = ?",
 				new Object[]{"Centro " + sufijo, "egreso-it-" + sufijo, ZONA},
 				new Object[]{"egreso-it-" + sufijo});
 
 		long consultorioId = insertar("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
 				new Object[]{organizationId, "Sede " + sufijo, ZONA},
 				new Object[]{organizationId, "Sede " + sufijo});
@@ -110,7 +110,7 @@ class SaldoDeEgresoConfrontadoIT {
 		long cuentaId = insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "SELECT id FROM cuenta WHERE email_normalizado = ?",
 				new Object[]{email, email}, new Object[]{email});
 
@@ -118,8 +118,8 @@ class SaldoDeEgresoConfrontadoIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, 'ADMINISTRATIVO', 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'ADMINISTRATIVO', false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, cuentaId);
 
 		return new Fixture(organizationId, consultorioId, sufijo,

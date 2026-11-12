@@ -75,7 +75,7 @@ class PedidosDeLaAtencionIT {
 				});
 
 		assertThat(jdbc.queryForObject(
-				"SELECT JSON_UNQUOTE(JSON_EXTRACT(borrador, '$.motivoConsulta')) FROM sesion WHERE id = ?",
+				"SELECT borrador ->> 'motivoConsulta' FROM sesion WHERE id = ?",
 				String.class, sesionId)).isEqualTo("lumbalgia");
 		assertThat(versionEnBase(sesionId)).as("un rechazo no consume version").isEqualTo(1L);
 	}
@@ -93,7 +93,18 @@ class PedidosDeLaAtencionIT {
 					mundo.actor(), mundo.consultorioId(), sesionId, valido, version).version();
 		}
 
-		assertThat(jdbc.queryForObject("SELECT JSON_DEPTH(borrador) FROM sesion WHERE id = ?",
+		assertThat(jdbc.queryForObject("""
+				WITH RECURSIVE nivel (valor, profundidad) AS (
+				    SELECT borrador, 1 FROM sesion WHERE id = ?
+				    UNION ALL
+				    SELECT hijo.valor, nivel.profundidad + 1
+				      FROM nivel, LATERAL (
+				          SELECT value FROM jsonb_each(CASE WHEN jsonb_typeof(nivel.valor) = 'object' THEN nivel.valor END)
+				          UNION ALL
+				          SELECT value FROM jsonb_array_elements(CASE WHEN jsonb_typeof(nivel.valor) = 'array' THEN nivel.valor END)
+				      ) AS hijo (valor))
+				SELECT MAX(profundidad) FROM nivel
+				""",
 				Integer.class, sesionId)).isEqualTo(99);
 	}
 
@@ -192,7 +203,7 @@ class PedidosDeLaAtencionIT {
 		long cerrado = fixtures.crearCaso(mundo, 2);
 		long ajeno = fixtures.crearCaso(otro, 1);
 		jdbc.update("""
-				UPDATE caso_clinico SET estado = 'CERRADO', cerrado_en = UTC_TIMESTAMP(6),
+				UPDATE caso_clinico SET estado = 'CERRADO', cerrado_en = CURRENT_TIMESTAMP,
 				       cerrado_por = 1, motivo_cierre = 'Alta' WHERE id = ?
 				""", cerrado);
 		long sesionId = fixtures.crearSesion(mundo);

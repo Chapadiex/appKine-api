@@ -38,7 +38,7 @@ public class AutorizacionPersonaLock {
 
 	public AutorizacionPersonaLock() {
 		// Requerido por JPA. Publico porque la fila la inserta una sentencia nativa
-		// —INSERT ... ON DUPLICATE KEY UPDATE— y nadie la construye para persistirla.
+		// —INSERT ... ON CONFLICT DO NOTHING— y nadie la construye para persistirla.
 	}
 
 	public Long getId() {

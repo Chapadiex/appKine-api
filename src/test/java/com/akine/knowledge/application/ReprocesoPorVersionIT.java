@@ -85,7 +85,7 @@ class ReprocesoPorVersionIT {
 		String sufijo = UUID.randomUUID().toString().substring(0, 8);
 		jdbc.update("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro " + sufijo, "repro-it-" + sufijo);
 		orgId = jdbc.queryForObject("SELECT id FROM organization WHERE slug = ?", Long.class,
 				"repro-it-" + sufijo);
@@ -196,7 +196,7 @@ class ReprocesoPorVersionIT {
 		jdbc.update("UPDATE libro SET version_procesamiento = 1 WHERE id = ?", id);
 		jdbc.update("""
 				INSERT INTO libro_fragmento (organization_id, libro_id, orden, pagina_desde, pagina_hasta, texto, sospechoso)
-				VALUES (?, ?, 999, 1, 1, ?, 0)""", orgId, id, DERECHOS.replace('\n', ' '));
+				VALUES (?, ?, 999, 1, 1, ?, false)""", orgId, id, DERECHOS.replace('\n', ' '));
 		// La busqueda cachea los vectores por version de la organizacion: el fragmento agregado a mano
 		// tiene que invalidarla.
 		jdbc.update("UPDATE biblioteca_version SET version = version + 1 WHERE organization_id = ?", orgId);
@@ -210,8 +210,8 @@ class ReprocesoPorVersionIT {
 	 */
 	private void soloLosDeEsteTest() {
 		jdbc.update("""
-				DELETE r FROM libro r JOIN libro orig ON orig.id = r.reemplaza_libro_id
-				 WHERE r.organization_id <> ? AND (r.estado = 'PENDIENTE' OR orig.estado = 'PENDIENTE')""", orgId);
+				DELETE FROM libro r USING libro orig
+				 WHERE orig.id = r.reemplaza_libro_id AND r.organization_id <> ? AND (r.estado = 'PENDIENTE' OR orig.estado = 'PENDIENTE')""", orgId);
 		jdbc.update("DELETE FROM libro WHERE estado = 'PENDIENTE' AND organization_id <> ?", orgId);
 		jdbc.update("UPDATE libro SET version_procesamiento = 2 WHERE organization_id <> ?", orgId);
 	}

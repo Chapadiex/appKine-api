@@ -63,18 +63,18 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 	@Query(value = """
 			SELECT * FROM persona p
 			 WHERE p.organization_id = :organizationId
-			   AND (:activoFiltro = -1 OR p.active = :activoFiltro)
+			   AND (:activoFiltro = -1 OR p.active = (:activoFiltro = 1))
 			   AND (:perfilFiltro = -1
 			        OR (:perfilFiltro = 1 AND EXISTS (SELECT 1 FROM perfil_paciente pp
 			                                           WHERE pp.persona_id = p.id
 			                                             AND pp.organization_id = p.organization_id
-			                                             AND pp.active = 1))
+			                                             AND pp.active = true))
 			        OR (:perfilFiltro = 0 AND NOT EXISTS (SELECT 1 FROM perfil_paciente pp
 			                                               WHERE pp.persona_id = p.id
 			                                                 AND pp.organization_id = p.organization_id
-			                                                 AND pp.active = 1)))
+			                                                 AND pp.active = true)))
 			   AND (:actividadFiltro = -1
-			        OR :actividadFiltro = (
+			        OR (:actividadFiltro = 1) = (
 			             EXISTS (SELECT 1 FROM inscripcion_clase ic
 			                       JOIN clase_programada c ON c.id = ic.clase_id
 			                      WHERE ic.persona_id = p.id
@@ -83,7 +83,7 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			                        AND ic.estado IN ('RESERVADA', 'CONFIRMADA')
 			                        AND c.deleted_at IS NULL
 			                        AND c.estado <> 'CANCELADA'
-			                        AND c.fin > UTC_TIMESTAMP(6))
+			                        AND c.fin > CURRENT_TIMESTAMP)
 			             OR EXISTS (SELECT 1 FROM pase_servicio ps
 			                         WHERE ps.persona_id = p.id
 			                           AND ps.organization_id = p.organization_id
@@ -97,8 +97,8 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			        OR EXISTS (SELECT 1 FROM cobertura_paciente cp
 			                    WHERE cp.persona_id = p.id
 			                      AND cp.organization_id = p.organization_id
-			                      AND cp.active = 1
-			                      AND REGEXP_REPLACE(UPPER(cp.numero_afiliado), '[^A-Z0-9]', '')
+			                      AND cp.active = true
+			                      AND REGEXP_REPLACE(UPPER(cp.numero_afiliado) COLLATE "C", '[^A-Z0-9]', '', 'g')
 			                          LIKE :patronClave))
 			 ORDER BY
 			   CASE WHEN :orden = 'apellido,desc' THEN p.apellido_clave END DESC,
@@ -130,18 +130,18 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 	@Query(value = """
 			SELECT COUNT(*) FROM persona p
 			 WHERE p.organization_id = :organizationId
-			   AND (:activoFiltro = -1 OR p.active = :activoFiltro)
+			   AND (:activoFiltro = -1 OR p.active = (:activoFiltro = 1))
 			   AND (:perfilFiltro = -1
 			        OR (:perfilFiltro = 1 AND EXISTS (SELECT 1 FROM perfil_paciente pp
 			                                           WHERE pp.persona_id = p.id
 			                                             AND pp.organization_id = p.organization_id
-			                                             AND pp.active = 1))
+			                                             AND pp.active = true))
 			        OR (:perfilFiltro = 0 AND NOT EXISTS (SELECT 1 FROM perfil_paciente pp
 			                                               WHERE pp.persona_id = p.id
 			                                                 AND pp.organization_id = p.organization_id
-			                                                 AND pp.active = 1)))
+			                                                 AND pp.active = true)))
 			   AND (:actividadFiltro = -1
-			        OR :actividadFiltro = (
+			        OR (:actividadFiltro = 1) = (
 			             EXISTS (SELECT 1 FROM inscripcion_clase ic
 			                       JOIN clase_programada c ON c.id = ic.clase_id
 			                      WHERE ic.persona_id = p.id
@@ -150,7 +150,7 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			                        AND ic.estado IN ('RESERVADA', 'CONFIRMADA')
 			                        AND c.deleted_at IS NULL
 			                        AND c.estado <> 'CANCELADA'
-			                        AND c.fin > UTC_TIMESTAMP(6))
+			                        AND c.fin > CURRENT_TIMESTAMP)
 			             OR EXISTS (SELECT 1 FROM pase_servicio ps
 			                         WHERE ps.persona_id = p.id
 			                           AND ps.organization_id = p.organization_id
@@ -164,8 +164,8 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			        OR EXISTS (SELECT 1 FROM cobertura_paciente cp
 			                    WHERE cp.persona_id = p.id
 			                      AND cp.organization_id = p.organization_id
-			                      AND cp.active = 1
-			                      AND REGEXP_REPLACE(UPPER(cp.numero_afiliado), '[^A-Z0-9]', '')
+			                      AND cp.active = true
+			                      AND REGEXP_REPLACE(UPPER(cp.numero_afiliado) COLLATE "C", '[^A-Z0-9]', '', 'g')
 			                          LIKE :patronClave))
 			""", nativeQuery = true)
 	long contar(

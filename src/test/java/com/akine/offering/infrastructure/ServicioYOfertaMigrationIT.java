@@ -104,7 +104,7 @@ class ServicioYOfertaMigrationIT {
 	void oferta_lleva_organization_id_not_null() {
 		String esNullable = jdbc().queryForObject("""
 				SELECT is_nullable FROM information_schema.columns
-				 WHERE table_schema = DATABASE()
+				 WHERE table_schema = current_schema()
 				   AND table_name = 'oferta_servicio_consultorio'
 				   AND column_name = 'organization_id'
 				""", String.class);
@@ -133,8 +133,8 @@ class ServicioYOfertaMigrationIT {
 		// tenant no pase inadvertido.
 		List<Map<String, Object>> primeraColumnaPorIndice = jdbc().queryForList("""
 				SELECT s.index_name, s.column_name
-				  FROM information_schema.statistics s
-				 WHERE s.table_schema = DATABASE()
+				  FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) s
+				 WHERE s.table_schema = current_schema()
 				   AND s.table_name = 'oferta_servicio_consultorio'
 				   AND s.index_name <> 'PRIMARY'
 				   AND s.seq_in_index = 1
@@ -335,7 +335,7 @@ class ServicioYOfertaMigrationIT {
 	private List<String> columnasDe(String tabla) {
 		return jdbc().queryForList("""
 				SELECT column_name FROM information_schema.columns
-				 WHERE table_schema = DATABASE() AND table_name = ?
+				 WHERE table_schema = current_schema() AND table_name = ?
 				""", String.class, tabla);
 	}
 
@@ -358,7 +358,7 @@ class ServicioYOfertaMigrationIT {
 		jdbc().update("""
 				INSERT INTO organization (name, slug, timezone, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Oferta Sintetica " + sufijo, slug);
 		return jdbc().queryForObject(
 				"SELECT id FROM organization WHERE slug = ?", Long.class, slug);
@@ -369,7 +369,7 @@ class ServicioYOfertaMigrationIT {
 		jdbc().update("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, name);
 		return jdbc().queryForObject(
 				"SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
@@ -383,8 +383,8 @@ class ServicioYOfertaMigrationIT {
 				                      requiere_caso_clinico_default,
 				                      genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'Servicio sintetico de prueba', 'CLINICO', 'INDIVIDUAL', 1, 1,
-				        1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Servicio sintetico de prueba', 'CLINICO', 'INDIVIDUAL', true, true,
+				        true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", codigo, "Servicio Sintetico " + sufijo);
 		return jdbc().queryForObject(
 				"SELECT id FROM servicio WHERE codigo = ?", Long.class, codigo);
@@ -398,8 +398,8 @@ class ServicioYOfertaMigrationIT {
 				     duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				     genera_registro_clinico, requiere_profesional, requiere_espacio,
 				     vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 45, ?, 0, 1, 1, 1, 1, CURRENT_DATE(), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 45, ?, false, true, true, true, true, CURRENT_DATE(), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.servicioId(),
 				nombreComercial, modalidad, capacidad);
 	}
@@ -412,8 +412,8 @@ class ServicioYOfertaMigrationIT {
 				     duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				     requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				     requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 45, 1, ?, ?, 0, 1, 1, 1, 1, CURRENT_DATE(), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 45, 1, ?, ?, false, true, true, true, true, CURRENT_DATE(), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.servicioId(),
 				nombreComercial, precioBase, moneda);
 	}
@@ -425,9 +425,9 @@ class ServicioYOfertaMigrationIT {
 				     duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				     genera_registro_clinico, requiere_profesional, requiere_espacio,
 				     vigencia_desde, vigencia_hasta, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 45, 1, 0, 1, 1, 1, 1,
-				        CURRENT_DATE(), DATE_ADD(CURRENT_DATE(), INTERVAL ? DAY), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 45, 1, false, true, true, true, true,
+				        CURRENT_DATE(), (CURRENT_DATE() + make_interval(days => ?)), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.servicioId(),
 				nombreComercial, diasHasta);
 	}
@@ -435,9 +435,9 @@ class ServicioYOfertaMigrationIT {
 	private void darDeBaja(Fixture fixture, String nombreComercial) {
 		jdbc().update("""
 				UPDATE oferta_servicio_consultorio
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6),
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP,
 				       deactivation_reason = 'Baja sintetica de prueba',
-				       updated_at = UTC_TIMESTAMP(6)
+				       updated_at = CURRENT_TIMESTAMP
 				 WHERE organization_id = ? AND consultorio_id = ? AND nombre_comercial = ?
 				""", fixture.organizationId(), fixture.consultorioId(), nombreComercial);
 	}

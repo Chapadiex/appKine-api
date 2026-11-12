@@ -84,7 +84,7 @@ CREATE TABLE libro_fragmento
 CREATE INDEX ix_libro_fragmento_libro ON libro_fragmento (libro_id, organization_id);
 CREATE INDEX ix_libro_fragmento_modelo ON libro_fragmento (modelo_embeddings);
 CREATE INDEX ix_libro_fragmento_organizacion ON libro_fragmento (organization_id, modelo_embeddings);
-COMMENT ON COLUMN libro_fragmento.vector IS '768 float32 little-endian (3072 bytes). NULL hasta que el worker lo calcula. Invariante: vector IS NULL <=> modelo_embeddings IS NULL';
+COMMENT ON COLUMN libro_fragmento.vector IS 'Embedding de multilingual-e5-base (768 dimensiones). NULL hasta que el worker lo calcula. Invariante: vector IS NULL <=> modelo_embeddings IS NULL';
 COMMENT ON COLUMN libro_fragmento.modelo_embeddings IS 'Modelo que calculo el vector; distinto del vigente = a reindexar';
 
 -- -------------------------------------------------------------------------------------

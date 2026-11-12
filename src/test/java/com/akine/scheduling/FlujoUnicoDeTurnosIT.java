@@ -309,7 +309,7 @@ class FlujoUnicoDeTurnosIT {
 
 		TurnoView suyo = reservar(fixture.personaA(), minutos(9, 30), carla);
 		assertThat(suyo.fin()).isEqualTo(hora(10));
-		assertThat(jdbc.queryForObject("SELECT TIMESTAMPDIFF(MINUTE, inicio, fin) FROM turno WHERE id = ?", Integer.class, suyo.id()))
+		assertThat(jdbc.queryForObject("SELECT CAST(EXTRACT(EPOCH FROM fin - inicio) / 60 AS integer) FROM turno WHERE id = ?", Integer.class, suyo.id()))
 				.isEqualTo(30);
 		assertThat(reservar(fixture.personaB(), hora(9), otro).fin()).isEqualTo(hora(10));
 
@@ -346,7 +346,7 @@ class FlujoUnicoDeTurnosIT {
 				fixture.ofertaId(), carla, LUNES.plusWeeks(2), LUNES.plusWeeks(2).plusDays(1), null, null, null, 1)).horarios())
 				.singleElement()
 				.satisfies(horario -> assertThat(java.time.Duration.between(horario.desde(), horario.hasta())).hasMinutes(60));
-		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM oferta_duracion_profesional WHERE oferta_id = ? AND active = 0",
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM oferta_duracion_profesional WHERE oferta_id = ? AND active = false",
 				Long.class, fixture.ofertaId())).as("quitarla es baja logica").isEqualTo(1L);
 	}
 
@@ -365,7 +365,7 @@ class FlujoUnicoDeTurnosIT {
 		assertThatThrownBy(() -> habilitaciones.reemplazarDuraciones(actorDeOffering(), fixture.organizationId(), fixture.consultorioId(),
 				fixture.ofertaId(), Map.of(profesional, 40), leida))
 				.isInstanceOf(OptimisticLockingFailureException.class);
-		assertThat(jdbc.queryForObject("SELECT duracion_minutos FROM oferta_duracion_profesional WHERE oferta_id = ? AND active = 1",
+		assertThat(jdbc.queryForObject("SELECT duracion_minutos FROM oferta_duracion_profesional WHERE oferta_id = ? AND active = true",
 				Integer.class, fixture.ofertaId())).isEqualTo(20);
 	}
 
@@ -611,7 +611,7 @@ class FlujoUnicoDeTurnosIT {
 	@Test
 	@DisplayName("una oferta de baja responde NO_DISPONIBLE en la validacion, sin caerse buscando alternativas")
 	void validacion_de_una_oferta_de_baja() {
-		jdbc.update("UPDATE oferta_servicio_consultorio SET active = 0, deleted_at = UTC_TIMESTAMP(6), deactivation_reason = 'Sintetico' WHERE id = ?",
+		jdbc.update("UPDATE oferta_servicio_consultorio SET active = false, deleted_at = CURRENT_TIMESTAMP, deactivation_reason = 'Sintetico' WHERE id = ?",
 				fixture.ofertaId());
 
 		var resultado = disponibilidad.validar(fixture.actor(), fixture.consultorioId(), new ValidacionDeHorarioCommand(
@@ -692,7 +692,7 @@ class FlujoUnicoDeTurnosIT {
 		jdbc.update("""
 				INSERT INTO subscription (organization_id, plan_id, status, started_at, active,
 				                          version, created_at, updated_at)
-				SELECT ?, id, 'ACTIVA', UTC_TIMESTAMP(6), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6)
+				SELECT ?, id, 'ACTIVA', CURRENT_TIMESTAMP, 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 				FROM plan WHERE code = 'BASICO'
 				""", fixture.organizationId());
 	}

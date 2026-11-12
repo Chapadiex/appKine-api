@@ -452,7 +452,7 @@ class ContinuidadYServiciosEnElReporteIT {
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "CONT-" + sufijo.toUpperCase(), naturaleza + " " + sufijo, naturaleza, modalidad);
 		return insertar("""
 				INSERT INTO oferta_servicio_consultorio
@@ -460,8 +460,8 @@ class ContinuidadYServiciosEnElReporteIT {
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 30, 1, 1000.00, 'ARS', 0, 0, 0, 1, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 30, 1, 1000.00, 'ARS', false, false, false, true, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", t.organizationId(), t.consultorioId(), servicio, "Oferta " + naturaleza + " " + sufijo,
 				modalidad);
 	}
@@ -476,7 +476,7 @@ class ContinuidadYServiciosEnElReporteIT {
 		return insertar("""
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", t.organizationId(), persona, t.actor().accountId());
 	}
 
@@ -489,8 +489,8 @@ class ContinuidadYServiciosEnElReporteIT {
 				                    iniciada_por_cuenta_id, cerrada_en, cerrada_por_cuenta_id,
 				                    proxima_conducta, ultimo_numero_version, version,
 				                    created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'CERRADA', ?, ?, ?, ?, ?, ?, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 'CERRADA', ?, CAST(? AS timestamptz), ?, CAST(? AS timestamptz), ?, ?, 1, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", t.organizationId(), t.consultorioId(), historia, oferta, membership,
 				NUMERO_DE_SESION.getAndIncrement(), utc(cerradaEn), t.actor().accountId(),
 				utc(cerradaEn), t.actor().accountId(), conducta);
@@ -508,7 +508,7 @@ class ContinuidadYServiciosEnElReporteIT {
 				                        anulada_en, anulada_por_cuenta_id, motivo_anulacion,
 				                        version, created_at, updated_at)
 				VALUES (?, ?, ?, ?, 'PACIENTE', ?, ?, 'ARS', ?, ?, 'Sesion sintetica', ?,
-				        UTC_TIMESTAMP(6), ?, ?, ?, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        CURRENT_TIMESTAMP, CAST(? AS timestamptz), ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", t.organizationId(), t.consultorioId(), sesion, persona,
 				new BigDecimal(importe), new BigDecimal(importe), estado, oferta, new BigDecimal(importe),
 				anulada ? utc(Instant.now()) : null, anulada ? t.actor().accountId() : null,
@@ -520,8 +520,8 @@ class ContinuidadYServiciosEnElReporteIT {
 				INSERT INTO membership_grant (organization_id, membership_id, permission_code,
 				                              granted_by_account_id, reason, valid_from, active,
 				                              version, created_at, updated_at)
-				VALUES (?, ?, 'HC_READ', ?, 'sintetico', DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 DAY), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'HC_READ', ?, 'sintetico', (CURRENT_TIMESTAMP - INTERVAL '1 days'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", t.organizationId(), membership, t.actor().accountId());
 	}
 

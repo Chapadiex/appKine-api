@@ -80,10 +80,10 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 				INSERT INTO membership_grant (organization_id, membership_id, permission_code,
 				                              granted_by_account_id, reason, valid_from, active,
 				                              version, created_at, updated_at)
-				VALUES (?, ?, 'AUDITORIA_READ_CLINICA', ?, 'sintetico', UTC_TIMESTAMP(6), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6)),
-				       (?, ?, 'AUDITORIA_READ_CLINICA', ?, 'sintetico', UTC_TIMESTAMP(6), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'AUDITORIA_READ_CLINICA', ?, 'sintetico', CURRENT_TIMESTAMP, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+				       (?, ?, 'AUDITORIA_READ_CLINICA', ?, 'sintetico', CURRENT_TIMESTAMP, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), membership, tenant.cuentaId(),
 				tenant.organizationId(), membership, tenant.cuentaId()))
 				.isInstanceOf(DataIntegrityViolationException.class);
@@ -99,7 +99,7 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 				.isInstanceOf(DataIntegrityViolationException.class);
 
 		// Revocado sale del unique: se puede volver a otorgar conservando el historial.
-		jdbc.update("UPDATE platform_role SET active = 0, valid_until = UTC_TIMESTAMP(6) "
+		jdbc.update("UPDATE platform_role SET active = false, valid_until = CURRENT_TIMESTAMP "
 				+ "WHERE account_id = ?", cuenta.cuentaId());
 		assertThatCode(() -> sembrarRolDePlataforma(cuenta.cuentaId()))
 				.doesNotThrowAnyException();

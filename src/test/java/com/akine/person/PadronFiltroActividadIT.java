@@ -69,9 +69,9 @@ class PadronFiltroActividadIT {
 		datos.inscribir(tenant, clase, inscripta, false);
 
 		long producto = producto(tenant);
-		pase(tenant, producto, conPase, "CURDATE() - INTERVAL 5 DAY", "CURDATE() + INTERVAL 25 DAY");
-		pase(tenant, producto, conPaseVencido, "CURDATE() - INTERVAL 40 DAY",
-				"CURDATE() - INTERVAL 10 DAY");
+		pase(tenant, producto, conPase, "CURRENT_DATE - INTERVAL '5 days'", "CURRENT_DATE + INTERVAL '25 days'");
+		pase(tenant, producto, conPaseVencido, "CURRENT_DATE - INTERVAL '40 days'",
+				"CURRENT_DATE - INTERVAL '10 days'");
 
 		assertThat(ids(tenant, ActividadFiltro.CON_ACTIVIDAD))
 				.containsExactlyInAnyOrder(inscripta, conPase);
@@ -98,7 +98,7 @@ class PadronFiltroActividadIT {
 		return InsertarConId.insertar(jdbc, """
 				INSERT INTO producto_servicio (organization_id, consultorio_id, oferta_id, nombre, tipo,
 				                               creditos, precio, moneda, vigencia_dias, vigencia_desde)
-				VALUES (?, ?, ?, 'Pack sintetico', 'PACK', 8, 1000.00, 'ARS', 30, CURDATE() - INTERVAL 60 DAY)
+				VALUES (?, ?, ?, 'Pack sintetico', 'PACK', 8, 1000.00, 'ARS', 30, CURRENT_DATE - INTERVAL '60 days')
 				""", tenant.organizationId(), tenant.consultorioId(), tenant.ofertaId());
 	}
 
@@ -110,7 +110,7 @@ class PadronFiltroActividadIT {
 				                           creditos_disponibles, vigencia_desde, vigencia_hasta, estado,
 				                           vendido_por_cuenta_id, vendido_en)
 				VALUES (?, ?, ?, ?, 'Pack sintetico', 1000.00, 'ARS', 8, ?, 8, 8, %s, %s, 'ACTIVO',
-				        ?, UTC_TIMESTAMP(6))
+				        ?, CURRENT_TIMESTAMP)
 				""".formatted(desde, hasta),
 				tenant.organizationId(), tenant.consultorioId(), persona, producto,
 				tenant.ofertaId(), tenant.actor().accountId());

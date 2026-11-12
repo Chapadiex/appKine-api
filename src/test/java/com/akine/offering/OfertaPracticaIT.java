@@ -56,7 +56,7 @@ class OfertaPracticaIT {
 	void v75_ejecuta() {
 		List<String> constraints = jdbc.queryForList("""
 				SELECT constraint_name FROM information_schema.table_constraints
-				WHERE table_schema = DATABASE() AND table_name = 'oferta_practica'
+				WHERE table_schema = current_schema() AND table_name = 'oferta_practica'
 				""", String.class);
 
 		assertThat(constraints).contains(
@@ -113,7 +113,7 @@ class OfertaPracticaIT {
 				.containsExactly("INACTIVO", "ACTIVO");
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM oferta_practica
-				WHERE oferta_id = ? AND practica_id = ? AND active = 0
+				WHERE oferta_id = ? AND practica_id = ? AND active = false
 				  AND deactivation_reason IS NOT NULL
 				""", Integer.class, oferta(e), e.practicaA())).isEqualTo(1);
 		assertThat(version(e)).as("tres reemplazos, tres avances").isEqualTo(v + 3);
@@ -254,7 +254,7 @@ class OfertaPracticaIT {
 		Escenario e = escenario();
 		long global = insertarPractica(null, "GLB");
 		jdbc.update("""
-				UPDATE practica SET active = 0, deleted_at = UTC_TIMESTAMP(6),
+				UPDATE practica SET active = false, deleted_at = CURRENT_TIMESTAMP,
 				       deactivation_reason = 'Baja sintetica' WHERE id = ?
 				""", e.practicaC());
 
@@ -283,7 +283,7 @@ class OfertaPracticaIT {
 		jdbc.update("""
 				INSERT INTO subscription (organization_id, plan_id, status, started_at, active,
 				                          version, created_at, updated_at)
-				SELECT ?, id, 'ACTIVA', UTC_TIMESTAMP(6), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6)
+				SELECT ?, id, 'ACTIVA', CURRENT_TIMESTAMP, 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 				FROM plan WHERE code = 'BASICO'
 				""", f.organizationId());
 		OperatingActor admin = new OperatingActor(
@@ -299,14 +299,14 @@ class OfertaPracticaIT {
 		long especialidadId = InsertarConId.insertar(jdbc, """
 				INSERT INTO especialidad (organization_id, codigo, name, valid_from, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, "ESP-" + sufijo, "Especialidad " + sufijo);
 		return InsertarConId.insertar(jdbc, """
 				INSERT INTO practica (organization_id, especialidad_id, codigo, name, valid_from,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, especialidadId, "PRA-" + sufijo, "Practica " + sufijo);
 	}
 
@@ -315,7 +315,7 @@ class OfertaPracticaIT {
 				INSERT INTO oferta_practica (organization_id, consultorio_id, oferta_id, practica_id,
 				                             principal, active, deleted_at, deactivation_reason,
 				                             version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, CAST(? AS boolean), CAST(? AS boolean), CAST(? AS timestamptz), ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org(e), sede(e), oferta(e), practicaId, principal, !dadaDeBaja,
 				dadaDeBaja ? java.sql.Timestamp.valueOf("2026-01-01 00:00:00") : null,
 				dadaDeBaja ? "Baja sintetica" : null);
@@ -326,7 +326,7 @@ class OfertaPracticaIT {
 		return InsertarConId.insertar(jdbc, """
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org(e), nombre, AgendaFixtures.ZONA);
 	}
 

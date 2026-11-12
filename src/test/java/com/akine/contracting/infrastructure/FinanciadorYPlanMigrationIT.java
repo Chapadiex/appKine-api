@@ -75,7 +75,7 @@ class FinanciadorYPlanMigrationIT {
 		for (String tabla : List.of("financiador", "plan_cobertura")) {
 			String nullable = jdbc().queryForObject("""
 					SELECT is_nullable FROM information_schema.columns
-					 WHERE table_schema = DATABASE() AND table_name = ?
+					 WHERE table_schema = current_schema() AND table_name = ?
 					   AND column_name = 'organization_id'
 					""", String.class, tabla);
 
@@ -97,8 +97,8 @@ class FinanciadorYPlanMigrationIT {
 		// base algo que la base no ofrece.
 		for (String tabla : List.of("financiador", "plan_cobertura")) {
 			List<String> primeras = jdbc().queryForList("""
-					SELECT column_name FROM information_schema.statistics
-					 WHERE table_schema = DATABASE() AND table_name = ?
+					SELECT column_name FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) AS statistics
+					 WHERE table_schema = current_schema() AND table_name = ?
 					   AND seq_in_index = 1
 					   AND (index_name LIKE 'uk\\_%' OR index_name LIKE 'ix\\_%')
 					""", String.class, tabla);
@@ -140,7 +140,7 @@ class FinanciadorYPlanMigrationIT {
 
 		jdbc().update("""
 				UPDATE financiador
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6), deactivation_reason = 'baja'
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP, deactivation_reason = 'baja'
 				 WHERE id = ?
 				""", id);
 
@@ -237,8 +237,8 @@ class FinanciadorYPlanMigrationIT {
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, copago, active, version,
 				                            created_at, updated_at)
-				VALUES (?, ?, 'X', 'X', '2026-01-01', 0, 1, 100.00, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'X', 'X', '2026-01-01', false, true, 100.00, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, financiador))
 				.isInstanceOfAny(DataIntegrityViolationException.class,
 						UncategorizedSQLException.class);
@@ -252,7 +252,7 @@ class FinanciadorYPlanMigrationIT {
 		long org = insertarOrganizacion();
 		long id = insertarFinanciador(org, "A", "Uno", null);
 
-		assertThatThrownBy(() -> jdbc().update("UPDATE financiador SET active = 0 WHERE id = ?", id))
+		assertThatThrownBy(() -> jdbc().update("UPDATE financiador SET active = false WHERE id = ?", id))
 				.isInstanceOfAny(DataIntegrityViolationException.class,
 						UncategorizedSQLException.class);
 	}
@@ -279,7 +279,7 @@ class FinanciadorYPlanMigrationIT {
 		jdbc().update("""
 				INSERT INTO organization (name, slug, timezone, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Financiadores Sinteticos " + slug, slug);
 		return jdbc().queryForObject("SELECT id FROM organization WHERE slug = ?", Long.class, slug);
 	}
@@ -288,7 +288,7 @@ class FinanciadorYPlanMigrationIT {
 		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, cuit, active,
 				                         version, created_at, updated_at)
-				VALUES (?, ?, ?, 'PREPAGA', ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'PREPAGA', ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, codigo, nombre, cuit);
 	}
 
@@ -301,7 +301,7 @@ class FinanciadorYPlanMigrationIT {
 				                            vigencia_desde, vigencia_hasta, requiere_autorizacion,
 				                            requiere_credencial, active, version,
 				                            created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, 0, 1, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, CAST(? AS date), CAST(? AS date), false, true, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, financiadorId, codigo, nombre, desde, hasta);
 	}
 }

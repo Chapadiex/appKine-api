@@ -111,7 +111,7 @@ class TerminosIT extends BaseEscenarioDiferido {
 
 		// El token en claro solo viaja por correo: se fija uno conocido sobre la fila emitida.
 		String token = "token-sintetico-" + UUID.randomUUID();
-		jdbc.update("UPDATE colaborador_invitacion SET token_hash = SHA2(?, 256) WHERE id = ?",
+		jdbc.update("UPDATE colaborador_invitacion SET token_hash = encode(sha256(convert_to(?, 'UTF8')), 'hex') WHERE id = ?",
 				token, emitida.json().get("id").asLong());
 
 		Respuesta sinTerminos = post("/api/v1/auth/invitations/accept", null,

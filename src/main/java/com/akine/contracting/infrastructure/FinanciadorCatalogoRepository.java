@@ -18,8 +18,8 @@ public interface FinanciadorCatalogoRepository
 	@Override
 	@Query(value = """
 			SELECT * FROM financiador_catalogo
-			 WHERE (:activoFiltro = -1 OR active = :activoFiltro)
-			   AND (:tipo IS NULL OR tipo = :tipo)
+			 WHERE (:activoFiltro = -1 OR active = (:activoFiltro = 1))
+			   AND (CAST(:tipo AS varchar) IS NULL OR tipo = :tipo)
 			   AND (nombre LIKE :patron OR codigo LIKE :patron OR cuit LIKE :patron)
 			 ORDER BY nombre ASC
 			""", nativeQuery = true)

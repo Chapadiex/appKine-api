@@ -137,7 +137,7 @@ class PlanTratamientoMigrationIT {
 		for (String tabla : tablasDelPlan()) {
 			assertThat(jdbc().queryForObject("""
 					SELECT is_nullable FROM information_schema.columns
-					 WHERE table_schema = DATABASE() AND table_name = ?
+					 WHERE table_schema = current_schema() AND table_name = ?
 					   AND column_name = 'organization_id'
 					""", String.class, tabla))
 					.as("%s tiene que llevar organization_id NOT NULL", tabla)
@@ -155,8 +155,8 @@ class PlanTratamientoMigrationIT {
 		for (String tabla : tablasDelPlan()) {
 			List<String> primeras = jdbc().queryForList("""
 					SELECT DISTINCT s.column_name
-					  FROM information_schema.statistics s
-					 WHERE s.table_schema = DATABASE() AND s.table_name = ?
+					  FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) s
+					 WHERE s.table_schema = current_schema() AND s.table_name = ?
 					   AND s.seq_in_index = 1 AND s.index_name <> 'PRIMARY'
 					   AND NOT EXISTS (
 					       SELECT 1 FROM information_schema.table_constraints tc
@@ -236,8 +236,8 @@ class PlanTratamientoMigrationIT {
 		// crea igual, todos los tests de servicio pasan, y el sistema admite dos planes activos en
 		// el mismo Caso sin que nada falle. Por eso se miran las dos cosas: la forma y el VALOR.
 		assertThat(jdbc().queryForObject("""
-				SELECT extra FROM information_schema.columns
-				 WHERE table_schema = DATABASE() AND table_name = 'plan_tratamiento'
+				SELECT CASE WHEN is_generated = 'ALWAYS' THEN 'STORED GENERATED' ELSE '' END AS extra FROM information_schema.columns
+				 WHERE table_schema = current_schema() AND table_name = 'plan_tratamiento'
 				   AND column_name = 'activo_key'
 				""", String.class))
 				.as("una columna VIRTUAL no puede participar de un indice unico en MySQL")
@@ -379,8 +379,8 @@ class PlanTratamientoMigrationIT {
 		assertThatThrownBy(() -> jdbc().update("""
 				INSERT INTO plan_tratamiento (organization_id, caso_clinico_id, numero_plan, estado,
 				                              creado_en, creado_por, version, created_at, updated_at)
-				 VALUES (?, ?, 9, 'ACTIVO', UTC_TIMESTAMP(6), 1, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, 9, 'ACTIVO', CURRENT_TIMESTAMP, 1, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", ORG_A, casoEnA))
 				.as("ck_plan_tratamiento_activacion: ACTIVO sin activado_en")
 				.isInstanceOf(UncategorizedSQLException.class);
@@ -389,8 +389,8 @@ class PlanTratamientoMigrationIT {
 				INSERT INTO plan_tratamiento (organization_id, caso_clinico_id, numero_plan, estado,
 				                              creado_en, creado_por, activado_en, activado_por,
 				                              version, created_at, updated_at)
-				 VALUES (?, ?, 10, 'BORRADOR', UTC_TIMESTAMP(6), 1, UTC_TIMESTAMP(6), 1, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, 10, 'BORRADOR', CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP, 1, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", ORG_A, casoEnA))
 				.as("ck_plan_tratamiento_activacion: BORRADOR que arrastra la activacion")
 				.isInstanceOf(UncategorizedSQLException.class);
@@ -415,14 +415,14 @@ class PlanTratamientoMigrationIT {
 		long activo = insertarPlan(ORG_A, casoEnA, 1, "ACTIVO");
 
 		assertThatThrownBy(() -> jdbc().update("""
-				UPDATE plan_tratamiento SET estado = 'SUSPENDIDO', suspendido_en = UTC_TIMESTAMP(6)
+				UPDATE plan_tratamiento SET estado = 'SUSPENDIDO', suspendido_en = CURRENT_TIMESTAMP
 				 WHERE id = ?
 				""", activo))
 				.as("ck_plan_tratamiento_suspension: falta el motivo")
 				.isInstanceOf(UncategorizedSQLException.class);
 
 		assertThatThrownBy(() -> jdbc().update("""
-				UPDATE plan_tratamiento SET suspendido_en = UTC_TIMESTAMP(6),
+				UPDATE plan_tratamiento SET suspendido_en = CURRENT_TIMESTAMP,
 				                            motivo_suspension = 'Viaje'
 				 WHERE id = ?
 				""", activo))
@@ -430,7 +430,7 @@ class PlanTratamientoMigrationIT {
 				.isInstanceOf(UncategorizedSQLException.class);
 
 		assertThatCode(() -> jdbc().update("""
-				UPDATE plan_tratamiento SET estado = 'SUSPENDIDO', suspendido_en = UTC_TIMESTAMP(6),
+				UPDATE plan_tratamiento SET estado = 'SUSPENDIDO', suspendido_en = CURRENT_TIMESTAMP,
 				                            motivo_suspension = 'El paciente viaja'
 				 WHERE id = ?
 				""", activo))
@@ -444,14 +444,14 @@ class PlanTratamientoMigrationIT {
 		long activo = insertarPlan(ORG_A, casoEnA, 1, "ACTIVO");
 
 		assertThatThrownBy(() -> jdbc().update("""
-				UPDATE plan_tratamiento SET estado = 'FINALIZADO', finalizado_en = UTC_TIMESTAMP(6)
+				UPDATE plan_tratamiento SET estado = 'FINALIZADO', finalizado_en = CURRENT_TIMESTAMP
 				 WHERE id = ?
 				""", activo))
 				.as("ck_plan_tratamiento_finalizacion: faltan actor y motivo")
 				.isInstanceOf(UncategorizedSQLException.class);
 
 		assertThatThrownBy(() -> jdbc().update("""
-				UPDATE plan_tratamiento SET finalizado_en = UTC_TIMESTAMP(6), finalizado_por = 1,
+				UPDATE plan_tratamiento SET finalizado_en = CURRENT_TIMESTAMP, finalizado_por = 1,
 				                            motivo_finalizacion = 'Alta'
 				 WHERE id = ?
 				""", activo))
@@ -459,7 +459,7 @@ class PlanTratamientoMigrationIT {
 				.isInstanceOf(UncategorizedSQLException.class);
 
 		assertThatCode(() -> jdbc().update("""
-				UPDATE plan_tratamiento SET estado = 'FINALIZADO', finalizado_en = UTC_TIMESTAMP(6),
+				UPDATE plan_tratamiento SET estado = 'FINALIZADO', finalizado_en = CURRENT_TIMESTAMP,
 				                            finalizado_por = 1,
 				                            motivo_finalizacion = 'Alta por objetivos'
 				 WHERE id = ?
@@ -668,7 +668,7 @@ class PlanTratamientoMigrationIT {
 	private List<String> columnasDe(String tabla) {
 		return jdbc().queryForList("""
 				SELECT column_name FROM information_schema.columns
-				 WHERE table_schema = DATABASE() AND table_name = ?
+				 WHERE table_schema = current_schema() AND table_name = ?
 				""", String.class, tabla);
 	}
 
@@ -680,14 +680,14 @@ class PlanTratamientoMigrationIT {
 	/** Un plan con las columnas coherentes con su estado, para no pelear con los tres CHECK. */
 	private long insertarPlan(long organizationId, long casoId, int numero, String estado) {
 		String activacion = switch (estado) {
-			case "ACTIVO", "SUSPENDIDO" -> "UTC_TIMESTAMP(6), 1";
+			case "ACTIVO", "SUSPENDIDO" -> "CURRENT_TIMESTAMP, 1";
 			default -> "NULL, NULL";
 		};
 		String suspension = "SUSPENDIDO".equals(estado)
-				? "UTC_TIMESTAMP(6), 'Motivo sintetico'"
+				? "CURRENT_TIMESTAMP, 'Motivo sintetico'"
 				: "NULL, NULL";
 		String finalizacion = "FINALIZADO".equals(estado)
-				? "UTC_TIMESTAMP(6), 1, 'Motivo sintetico'"
+				? "CURRENT_TIMESTAMP, 1, 'Motivo sintetico'"
 				: "NULL, NULL, NULL";
 
 		return InsertarConId.insertar(jdbc(), """
@@ -696,8 +696,8 @@ class PlanTratamientoMigrationIT {
 				                              suspendido_en, motivo_suspension,
 				                              finalizado_en, finalizado_por, motivo_finalizacion,
 				                              version, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6), 1, %s, %s, %s, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, 1, %s, %s, %s, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""".formatted(activacion, suspension, finalizacion),
 				organizationId, casoId, numero, estado);
 	}
@@ -723,8 +723,8 @@ class PlanTratamientoMigrationIT {
 				                                      frecuencia_semanal, duracion_semanas,
 				                                      motivo_modificacion, registrada_en,
 				                                      registrada_por, created_at, updated_at)
-				 VALUES (?, ?, ?, 'Objetivos sinteticos', NULL, ?, ?, ?, UTC_TIMESTAMP(6), 1,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, 'Objetivos sinteticos', NULL, ?, ?, ?, CURRENT_TIMESTAMP, 1,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, planId, numero, frecuencia, semanas, motivo);
 	}
 
@@ -745,7 +745,7 @@ class PlanTratamientoMigrationIT {
 				                       origen_autorizacion, autorizacion_id,
 				                       created_at, updated_at)
 				 VALUES (?, ?, ?, ?, 'Oferta sintetica', 1, ?, ?, ?, ?,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, versionId, ofertaId, consultorioEnA, planificadas,
 				autorizadas, origen, autorizacionId);
 	}
@@ -758,22 +758,22 @@ class PlanTratamientoMigrationIT {
 				INSERT INTO plan_evento (organization_id, plan_tratamiento_id, tipo,
 				                         estado_anterior, estado_nuevo, motivo, detalle,
 				                         numero_version, ocurrio_en, actor_cuenta_id, created_at)
-				 VALUES (?, ?, ?, ?, ?, ?, NULL, 1, UTC_TIMESTAMP(6), 1, UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, ?, ?, ?, NULL, 1, CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP)
 				""", organizationId, planId, tipo, estadoAnterior, estadoNuevo, motivo);
 	}
 
 	private void crearOrganizacion(long id, String slug) {
 		jdbc().update("""
-				INSERT IGNORE INTO organization (id, name, slug, timezone, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-				""", id, "Centro " + slug, slug, ZONA);
+				INSERT INTO organization (id, name, slug, timezone, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING
+""", id, "Centro " + slug, slug, ZONA);
 	}
 
 	private long crearConsultorio(long organizationId) {
 		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				 VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, "Sede " + SECUENCIA.incrementAndGet(), ZONA);
 	}
 
@@ -784,8 +784,8 @@ class PlanTratamientoMigrationIT {
 				                      requiere_caso_clinico_default,
 				                      genera_registro_clinico_default, active, version,
 				                      created_at, updated_at)
-				 VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', false, false, true, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", codigo, "Servicio " + codigo);
 
 		return InsertarConId.insertar(jdbc(), """
@@ -794,9 +794,9 @@ class PlanTratamientoMigrationIT {
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', 0, 0, 0, 1, 0,
-				         DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', false, false, false, true, false,
+				         CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, servicioId, "Oferta " + codigo);
 	}
 
@@ -807,13 +807,13 @@ class PlanTratamientoMigrationIT {
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				 VALUES (?, 'DNI', ?, ?, 'Sintetica', 'Paciente', 'SINTETICA', 'PACIENTE',
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, documento, documento);
 
 		long historiaId = InsertarConId.insertar(jdbc(), """
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              created_at, updated_at)
-				 VALUES (?, ?, UTC_TIMESTAMP(6), 1, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, personaId);
 
 		return InsertarConId.insertar(jdbc(), """
@@ -821,8 +821,8 @@ class PlanTratamientoMigrationIT {
 				                          oferta_id, oferta_consultorio_id, diagnostico_presuntivo,
 				                          estado, abierto_en, abierto_por, version,
 				                          created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, 'Diagnostico sintetico', 'ACTIVO', UTC_TIMESTAMP(6), 1, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, ?, ?, 'Diagnostico sintetico', 'ACTIVO', CURRENT_TIMESTAMP, 1, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, historiaId, numero, ofertaId, consultorioId);
 	}
 }

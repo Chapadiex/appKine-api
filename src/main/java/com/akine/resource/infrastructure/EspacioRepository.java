@@ -86,11 +86,11 @@ public interface EspacioRepository extends JpaRepository<Espacio, Long>, Espacio
 	/** 1 si el espacio esta activo, 0 si no, con lock COMPARTIDO sobre la fila. Ver el puerto. */
 	@Override
 	@Query(value = """
-			SELECT COUNT(*) FROM espacio
+			SELECT COUNT(*) FROM (SELECT 1 FROM espacio
 			 WHERE id = :id
 			   AND organization_id = :organizationId
-			   AND active = 1
-			 FOR SHARE
+			   AND active = true
+			 FOR SHARE) AS bloqueadas
 			""", nativeQuery = true)
 	long countActivoForShare(
 			@Param("id") Long id,

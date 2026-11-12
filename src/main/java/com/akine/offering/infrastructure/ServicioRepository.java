@@ -28,7 +28,7 @@ public interface ServicioRepository extends JpaRepository<Servicio, Long>, Servi
 	@Query(value = """
 			SELECT * FROM servicio
 			 WHERE owner_key IN (:owners)
-			   AND (:activoFiltro = -1 OR active = :activoFiltro)
+			   AND (:activoFiltro = -1 OR active = (:activoFiltro = 1))
 			   AND (nombre LIKE :patron OR codigo LIKE :patron)
 			 ORDER BY nombre ASC
 			""", nativeQuery = true)

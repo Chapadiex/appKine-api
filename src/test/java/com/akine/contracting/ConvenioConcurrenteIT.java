@@ -245,7 +245,7 @@ class ConvenioConcurrenteIT {
 	private long contarConvenios(Escenario escenario) {
 		return jdbc.queryForObject("""
 				SELECT COUNT(*) FROM convenio
-				 WHERE organization_id = ? AND consultorio_id = ? AND active = 1
+				 WHERE organization_id = ? AND consultorio_id = ? AND active = true
 				""", Long.class, escenario.organizationId(), escenario.consultorioId());
 	}
 }

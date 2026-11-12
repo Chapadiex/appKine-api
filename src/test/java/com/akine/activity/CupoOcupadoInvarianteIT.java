@@ -139,11 +139,10 @@ class CupoOcupadoInvarianteIT {
 			}
 
 			bajaDeA = CompletableFuture.supplyAsync(() -> cancelar(tenant, clase, a));
-			esperarSentencia(sql -> sql.contains("promovida_en") && sql.contains("id=" + w + "and"));
+			esperarSentencias(1, sql -> sql.contains("promovida_en"));
 
 			bajaDeW = CompletableFuture.supplyAsync(() -> cancelar(tenant, clase, w));
-			esperarSentencia(sql -> sql.contains("updateinscripcion_claseset")
-					&& sql.contains("whereid=" + w + "and"));
+			esperarSentencias(2, sql -> sql.contains("updateinscripcion_claseset"));
 
 			candado.commit();
 		}
@@ -188,21 +187,22 @@ class CupoOcupadoInvarianteIT {
 	}
 
 	/**
-	 * Espera a que una sentencia que cumpla el predicado este en curso en el motor —o sea, bloqueada
-	 * por el lock del test—.
+	 * Espera a que {@code cuantas} sentencias que cumplan el predicado esten esperando un lock en el
+	 * motor —el del test, porque es el unico retenido sobre esas filas—.
 	 *
-	 * <p>Lee {@code information_schema.PROCESSLIST}, que muestra las conexiones del mismo usuario sin
-	 * privilegio {@code PROCESS}. El texto se compara en minusculas y sin espacios: Hibernate escribe
-	 * {@code id=?} y la nativa {@code id = :id}, y el driver interpola los valores en el cliente.
+	 * <p>Lee {@code pg_stat_activity}. El texto se compara en minusculas y sin espacios: Hibernate
+	 * escribe {@code id=$1} y la nativa {@code id = $1}. PostgreSQL muestra los parametros como
+	 * {@code $n}, no los valores: por eso se cuentan las sentencias en espera y no se busca el id.
 	 */
-	private void esperarSentencia(Predicate<String> predicado) throws InterruptedException {
+	private void esperarSentencias(int cuantas, Predicate<String> predicado) throws InterruptedException {
 		long limite = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
 		while (System.nanoTime() < limite) {
 			List<String> enCurso = jdbc.queryForList(
-					"SELECT INFO FROM information_schema.PROCESSLIST WHERE INFO IS NOT NULL", String.class);
+					"SELECT query FROM pg_stat_activity WHERE pid <> pg_backend_pid()"
+					+ " AND state = 'active' AND wait_event_type = 'Lock'", String.class);
 			if (enCurso.stream()
 					.map(sql -> sql.toLowerCase(Locale.ROOT).replaceAll("\\s+", ""))
-					.anyMatch(predicado)) {
+					.filter(predicado).count() >= cuantas) {
 				// Margen para que la sentencia termine de encolarse en el gestor de locks.
 				Thread.sleep(200);
 				return;

@@ -155,7 +155,7 @@ class HorarioDelProfesionalDentroDeLaSedeIT {
 						}));
 
 		assertThat(jdbc.queryForObject(
-				"SELECT COUNT(*) FROM consultorio_horario WHERE consultorio_id = ? AND active = 1",
+				"SELECT COUNT(*) FROM consultorio_horario WHERE consultorio_id = ? AND active = true",
 				Long.class, fixture.consultorioId()))
 				.as("el horario de la sede no se guardo")
 				.isZero();
@@ -201,7 +201,7 @@ class HorarioDelProfesionalDentroDeLaSedeIT {
 		assertThat(franjasActivas(fixture)).isEmpty();
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM profesional_disponibilidad
-				 WHERE consultorio_id = ? AND active = 0 AND deactivation_reason = ?
+				 WHERE consultorio_id = ? AND active = false AND deactivation_reason = ?
 				""", Long.class, fixture.consultorioId(), "Fuera del horario general de la sede"))
 				.as("baja logica, no borrado")
 				.isEqualTo(1L);
@@ -226,15 +226,15 @@ class HorarioDelProfesionalDentroDeLaSedeIT {
 
 	private long bloquesActivos(Fixture fixture) {
 		return jdbc.queryForObject(
-				"SELECT COUNT(*) FROM profesional_disponibilidad WHERE consultorio_id = ? AND active = 1",
+				"SELECT COUNT(*) FROM profesional_disponibilidad WHERE consultorio_id = ? AND active = true",
 				Long.class, fixture.consultorioId());
 	}
 
 	private List<Map<String, String>> franjasActivas(Fixture fixture) {
 		return jdbc.query("""
-				SELECT DATE_FORMAT(hora_desde, '%H:%i') AS desde, DATE_FORMAT(hora_hasta, '%H:%i') AS hasta
+				SELECT to_char(hora_desde, 'HH24:MI') AS desde, to_char(hora_hasta, 'HH24:MI') AS hasta
 				  FROM profesional_disponibilidad
-				 WHERE consultorio_id = ? AND active = 1
+				 WHERE consultorio_id = ? AND active = true
 				 ORDER BY hora_desde
 				""", (fila, n) -> Map.of("desde", fila.getString("desde"), "hasta", fila.getString("hasta")),
 				fixture.consultorioId());

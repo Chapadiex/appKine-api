@@ -494,8 +494,8 @@ class AtencionClinicaDp43IT {
 				                   reservado_por_cuenta_id, reservado_en, version,
 				                   created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?,
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 HOUR), UTC_TIMESTAMP(6),
-				        'RESERVADO', ?, UTC_TIMESTAMP(6), 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        (CURRENT_TIMESTAMP - INTERVAL '1 hours'), CURRENT_TIMESTAMP,
+				        'RESERVADO', ?, CURRENT_TIMESTAMP, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", mundo.organizationId(), mundo.consultorioId(), mundo.ofertaId(), persona(mundo),
 				mundo.profesional().membershipId(), mundo.profesional().cuentaId());
 	}
@@ -505,8 +505,8 @@ class AtencionClinicaDp43IT {
 				INSERT INTO oferta_profesional_habilitado
 				    (organization_id, consultorio_id, oferta_id, membership_id,
 				     valid_from, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 DAY), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, (CURRENT_TIMESTAMP - INTERVAL '1 days'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", mundo.organizationId(), mundo.consultorioId(), mundo.ofertaId(), membershipId);
 	}
 

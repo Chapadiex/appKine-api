@@ -217,7 +217,10 @@ for (const [archivo, mods] of ordenModulos) {
 				tocaUpdatedAt.push([t, c.c]);
 			}
 			lineas.push(l);
-			if (c.comment) comentarios.push(`COMMENT ON COLUMN ${t}.${c.c} IS ${lit(c.comment)};`);
+			const comentario = t === 'libro_fragmento' && c.c === 'vector'
+				? 'Embedding de multilingual-e5-base (768 dimensiones). NULL hasta que el worker lo calcula. Invariante: vector IS NULL <=> modelo_embeddings IS NULL'
+				: c.comment;
+			if (comentario) comentarios.push(`COMMENT ON COLUMN ${t}.${c.c} IS ${lit(comentario)};`);
 		}
 		for (const k of cons[t] || []) {
 			const cols = (kcu[`${t}.${k.n}`] || []).map((x) => x.c).join(', ');

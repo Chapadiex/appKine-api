@@ -444,7 +444,7 @@ class AbonoRenovacionYAvisosIT {
 		jdbc.update("""
 				INSERT INTO subscription (organization_id, plan_id, status, started_at, active,
 				                          version, created_at, updated_at)
-				SELECT ?, id, 'ACTIVA', UTC_TIMESTAMP(6), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6)
+				SELECT ?, id, 'ACTIVA', CURRENT_TIMESTAMP, 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 				FROM plan WHERE code = 'BASICO'
 				""", tenant.organizationId());
 	}
@@ -455,15 +455,15 @@ class AbonoRenovacionYAvisosIT {
 		jdbc.update("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Vendedor', 'Sintetico', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Vendedor', 'Sintetico', 'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 		long cuentaId = jdbc.queryForObject("SELECT id FROM cuenta WHERE email_normalizado = ?", Long.class, email);
 		jdbc.update("""
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), tenant.consultorioId(), cuentaId, rol);
 		long membershipId = jdbc.queryForObject(
 				"SELECT id FROM membership WHERE organization_id = ? AND account_id = ?",

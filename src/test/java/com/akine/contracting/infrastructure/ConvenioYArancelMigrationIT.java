@@ -59,7 +59,7 @@ class ConvenioYArancelMigrationIT {
 		for (String tabla : List.of("convenio", "convenio_arancel", "convenio_lock")) {
 			assertThat(jdbc.queryForObject("""
 					SELECT is_nullable FROM information_schema.columns
-					 WHERE table_schema = DATABASE() AND table_name = ?
+					 WHERE table_schema = current_schema() AND table_name = ?
 					   AND column_name = 'organization_id'
 					""", String.class, tabla))
 					.as("%s tiene que llevar organization_id NOT NULL", tabla)
@@ -75,8 +75,8 @@ class ConvenioYArancelMigrationIT {
 		// sostener una FK empiezan por la columna de la FK y no se pueden reordenar.
 		for (String tabla : List.of("convenio", "convenio_arancel", "convenio_lock")) {
 			assertThat(jdbc.queryForList("""
-					SELECT column_name FROM information_schema.statistics
-					 WHERE table_schema = DATABASE() AND table_name = ?
+					SELECT column_name FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) AS statistics
+					 WHERE table_schema = current_schema() AND table_name = ?
 					   AND seq_in_index = 1
 					   AND (index_name LIKE 'uk\\_%' OR index_name LIKE 'ix\\_%')
 					""", String.class, tabla))
@@ -117,7 +117,7 @@ class ConvenioYArancelMigrationIT {
 		long id = insertarConvenio(escenario, "OSDE-210", "2026-01-01", null);
 
 		jdbc.update("""
-				UPDATE convenio SET active = 0, deleted_at = UTC_TIMESTAMP(6),
+				UPDATE convenio SET active = false, deleted_at = CURRENT_TIMESTAMP,
 				                    deactivation_reason = 'Renegociado'
 				 WHERE id = ?
 				""", id);
@@ -166,12 +166,12 @@ class ConvenioYArancelMigrationIT {
 
 		jdbc.update("""
 				INSERT INTO convenio_lock (organization_id, consultorio_id, created_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP)
 				""", escenario.organizationId(), escenario.consultorioId());
 
 		assertThatThrownBy(() -> jdbc.update("""
 				INSERT INTO convenio_lock (organization_id, consultorio_id, created_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP)
 				""", escenario.organizationId(), escenario.consultorioId()))
 				.isInstanceOf(DataIntegrityViolationException.class);
 	}
@@ -207,8 +207,8 @@ class ConvenioYArancelMigrationIT {
 				                              practica_id, importe_total, importe_financiador,
 				                              coseguro, moneda, vigencia_desde, active, version,
 				                              created_at, updated_at)
-				VALUES (?, ?, ?, ?, 12000.00, 9600.00, 2500.00, 'ARS', '2026-01-01', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 12000.00, 9600.00, 2500.00, 'ARS', '2026-01-01', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", escenario.organizationId(), escenario.consultorioId(), convenioId,
 				escenario.practicaId()))
 				.isInstanceOf(UncategorizedSQLException.class);
@@ -236,7 +236,7 @@ class ConvenioYArancelMigrationIT {
 		Escenario escenario = fixtures.crear();
 		long id = insertarConvenio(escenario, "A", "2026-01-01", null);
 
-		assertThatThrownBy(() -> jdbc.update("UPDATE convenio SET active = 0 WHERE id = ?", id))
+		assertThatThrownBy(() -> jdbc.update("UPDATE convenio SET active = false WHERE id = ?", id))
 				.isInstanceOf(UncategorizedSQLException.class);
 	}
 
@@ -250,8 +250,8 @@ class ConvenioYArancelMigrationIT {
 				                      codigo, nombre, modalidad, vigencia_desde, moneda,
 				                      requiere_orden, requiere_autorizacion, requiere_credencial,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'Z', 'Z', 'INVENTADA', '2026-01-01', 'ARS', 0, 0, 1, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'Z', 'Z', 'INVENTADA', '2026-01-01', 'ARS', false, false, true, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", escenario.organizationId(), escenario.consultorioId(),
 				escenario.financiadorId(), escenario.planId()))
 				.isInstanceOf(UncategorizedSQLException.class);
@@ -268,8 +268,8 @@ class ConvenioYArancelMigrationIT {
 				                      limite_sesiones_mensual, requiere_orden,
 				                      requiere_autorizacion, requiere_credencial,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'W', 'W', 'POR_SESION', '2026-01-01', 'ARS', 0, 0, 0, 1, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'W', 'W', 'POR_SESION', '2026-01-01', 'ARS', 0, false, false, true, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", escenario.organizationId(), escenario.consultorioId(),
 				escenario.financiadorId(), escenario.planId()))
 				.isInstanceOf(UncategorizedSQLException.class);
@@ -300,8 +300,8 @@ class ConvenioYArancelMigrationIT {
 				                      codigo, nombre, modalidad, vigencia_desde, vigencia_hasta,
 				                      moneda, requiere_orden, requiere_autorizacion,
 				                      requiere_credencial, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, 'POR_PRESTACION', ?, ?, 'ARS', 0, 0, 1, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, ?, 'POR_PRESTACION', CAST(? AS date), CAST(? AS date), 'ARS', false, false, true, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", escenario.organizationId(), escenario.consultorioId(),
 				escenario.financiadorId(), escenario.planId(), codigo, "Convenio " + codigo,
 				desde, hasta);
@@ -315,8 +315,8 @@ class ConvenioYArancelMigrationIT {
 				                              practica_id, importe_total, importe_financiador,
 				                              coseguro, moneda, vigencia_desde, vigencia_hasta,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, 0.00, 'ARS', ?, ?, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, ?, 0.00, 'ARS', CAST(? AS date), CAST(? AS date), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", escenario.organizationId(), escenario.consultorioId(), convenioId,
 				escenario.practicaId(), importe, importe, desde, hasta);
 	}
@@ -330,7 +330,7 @@ class ConvenioYArancelMigrationIT {
 				                              practica_id, importe_total, importe_financiador,
 				                              coseguro, moneda, vigencia_desde, active, version,
 				                              created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, 'ARS', ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, ?, ?, 'ARS', CAST(? AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", escenario.organizationId(), escenario.consultorioId(), convenioId,
 				escenario.practicaId(), total, financiador, coseguro, desde);
 	}

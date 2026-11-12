@@ -32,7 +32,7 @@ class LibroFragmentoRepository implements LibroFragmentoRepositoryPort {
 				INSERT INTO libro_fragmento
 				  (organization_id, libro_id, orden, pagina_desde, pagina_hasta, texto,
 				   vector, modelo_embeddings, sospechoso)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, CAST(? AS vector), ?, ?)
 				""", fragmentos, LOTE, (ps, f) -> {
 			ps.setLong(1, f.getOrganizationId());
 			ps.setLong(2, libroId);
@@ -40,7 +40,7 @@ class LibroFragmentoRepository implements LibroFragmentoRepositoryPort {
 			ps.setInt(4, f.getPaginaDesde());
 			ps.setInt(5, f.getPaginaHasta());
 			ps.setString(6, f.getTexto());
-			ps.setBytes(7, f.getVector());
+			ps.setString(7, VectorPg.literal(f.getVector()));
 			ps.setString(8, f.getVector() == null ? null : f.getModeloEmbeddings());
 			ps.setBoolean(9, f.isSospechoso());
 		});
@@ -53,7 +53,7 @@ class LibroFragmentoRepository implements LibroFragmentoRepositoryPort {
 
 	@Override
 	public void actualizarVector(long id, byte[] vector, String modelo) {
-		jpa.actualizarVector(id, vector, modelo);
+		jpa.actualizarVector(id, VectorPg.literal(vector), modelo);
 	}
 
 	@Override

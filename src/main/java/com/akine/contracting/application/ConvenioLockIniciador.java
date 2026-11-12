@@ -23,7 +23,7 @@ import org.springframework.transaction.PlatformTransactionManager;
  * <p>Y el {@code try/catch} no salva: atrapar una excepcion de persistencia no des-marca la
  * transaccion, asi que Spring intenta commitear una transaccion marcada para rollback y el llamador
  * recibe {@code UnexpectedRollbackException}. La excepcion hay que EVITARLA, no atraparla — de ahi
- * el {@code INSERT ... ON DUPLICATE KEY UPDATE} del repositorio.
+ * el {@code INSERT ... ON CONFLICT DO NOTHING} del repositorio.
  *
  * <p>Ya se pago con {@code agenda_sede} (05.02, lo encontro {@code TurnoConcurrenteIT} contra MySQL
  * real), con {@code consultorio_calendario} (02.04, corregido en {@code 4e3d666}) y con

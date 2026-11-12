@@ -61,7 +61,7 @@ class ReindexadoIT {
 		String sufijo = UUID.randomUUID().toString().substring(0, 8);
 		jdbc.update("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro " + sufijo, "reindex-it-" + sufijo);
 		orgId = jdbc.queryForObject("SELECT id FROM organization WHERE slug = ?", Long.class,
 				"reindex-it-" + sufijo);
@@ -72,16 +72,16 @@ class ReindexadoIT {
 	void reindexa_los_pedazos_de_otro_modelo_y_no_toca_sospechosos_ni_libros_inactivos() throws Exception {
 		long activo = procesado(pdf(pagina(1), pagina(2), pagina(3)));
 		long inactivo = procesado(pdf(pagina(4), pagina(5)));
-		jdbc.update("UPDATE libro SET activo = 0 WHERE id = ?", inactivo);
+		jdbc.update("UPDATE libro SET activo = false WHERE id = ?", inactivo);
 		// Un pedazo sospechoso del libro activo: sin vector, no se reindexa.
 		Long sospechoso = jdbc.queryForObject(
 				"SELECT id FROM libro_fragmento WHERE libro_id = ? ORDER BY orden LIMIT 1", Long.class, activo);
-		jdbc.update("UPDATE libro_fragmento SET sospechoso = 1, vector = NULL, modelo_embeddings = NULL WHERE id = ?",
+		jdbc.update("UPDATE libro_fragmento SET sospechoso = true, vector = NULL, modelo_embeddings = NULL WHERE id = ?",
 				sospechoso);
-		jdbc.update("UPDATE libro_fragmento SET modelo_embeddings = 'modelo-viejo' WHERE libro_id IN (?, ?) AND sospechoso = 0",
+		jdbc.update("UPDATE libro_fragmento SET modelo_embeddings = 'modelo-viejo' WHERE libro_id IN (?, ?) AND sospechoso = false",
 				activo, inactivo);
 		long normales = jdbc.queryForObject(
-				"SELECT COUNT(*) FROM libro_fragmento WHERE libro_id = ? AND sospechoso = 0", Long.class, activo);
+				"SELECT COUNT(*) FROM libro_fragmento WHERE libro_id = ? AND sospechoso = false", Long.class, activo);
 		assertThat(normales).isPositive();
 		long antes = version.actual(orgId);
 
@@ -93,10 +93,10 @@ class ReindexadoIT {
 		assertThat(total).isGreaterThanOrEqualTo((int) normales);
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM libro_fragmento
-				 WHERE libro_id = ? AND sospechoso = 0
+				 WHERE libro_id = ? AND sospechoso = false
 				   AND (modelo_embeddings <> ? OR vector IS NULL)""", Integer.class, activo, modelo.id())).isZero();
 		assertThat(jdbc.queryForObject(
-				"SELECT COUNT(*) FROM libro_fragmento WHERE libro_id = ? AND sospechoso = 0 AND modelo_embeddings = ?",
+				"SELECT COUNT(*) FROM libro_fragmento WHERE libro_id = ? AND sospechoso = false AND modelo_embeddings = ?",
 				Long.class, activo, modelo.id())).isEqualTo(normales);
 		assertThat(jdbc.queryForMap("SELECT vector, modelo_embeddings FROM libro_fragmento WHERE id = ?", sospechoso))
 				.containsEntry("vector", null).containsEntry("modelo_embeddings", null);

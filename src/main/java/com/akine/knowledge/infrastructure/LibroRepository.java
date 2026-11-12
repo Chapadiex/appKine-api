@@ -12,6 +12,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import com.akine.platform.spi.listado.TextoDeBusqueda;
+
 import java.time.Instant;
 import java.util.Optional;
 
@@ -21,11 +23,21 @@ public interface LibroRepository extends JpaRepository<Libro, Long>, LibroReposi
 	@Query("select l from Libro l where l.id = :id and l.organizationId = :orgId")
 	Optional<Libro> findByIdAndOrganization(@Param("id") long id, @Param("orgId") long orgId);
 
+	/**
+	 * {@code q} busca "contiene" en titulo y autores, sin mayusculas ni tildes: lo resuelve la
+	 * collation {@code akine_ci} con un {@code LIKE} de patron escapado. No {@code locate()}: en
+	 * PostgreSQL las busquedas de subcadena no admiten una collation no determinista.
+	 */
 	@Override
+	default Page<Libro> buscar(long orgId, String q, String area, EstadoLibro estado, Boolean activo,
+			Pageable pageable) {
+		return buscarPorPatron(orgId, TextoDeBusqueda.patronLike(q), area, estado, activo, pageable);
+	}
+
 	@Query(value = """
 			select l from Libro l
 			 where l.organizationId = :orgId
-			   and (:q is null or locate(:q, l.titulo) > 0 or locate(:q, coalesce(l.autores, '')) > 0)
+			   and (:patron is null or l.titulo like :patron or coalesce(l.autores, '') like :patron)
 			   and (:area is null or l.area = :area)
 			   and (:estado is null or l.estado = :estado)
 			   and (:activo is null or l.activo = :activo)
@@ -33,12 +45,12 @@ public interface LibroRepository extends JpaRepository<Libro, Long>, LibroReposi
 			countQuery = """
 			select count(l) from Libro l
 			 where l.organizationId = :orgId
-			   and (:q is null or locate(:q, l.titulo) > 0 or locate(:q, coalesce(l.autores, '')) > 0)
+			   and (:patron is null or l.titulo like :patron or coalesce(l.autores, '') like :patron)
 			   and (:area is null or l.area = :area)
 			   and (:estado is null or l.estado = :estado)
 			   and (:activo is null or l.activo = :activo)
 			""")
-	Page<Libro> buscar(@Param("orgId") long orgId, @Param("q") String q, @Param("area") String area,
+	Page<Libro> buscarPorPatron(@Param("orgId") long orgId, @Param("patron") String patron, @Param("area") String area,
 			@Param("estado") EstadoLibro estado, @Param("activo") Boolean activo, Pageable pageable);
 
 	@Override
@@ -86,7 +98,7 @@ public interface LibroRepository extends JpaRepository<Libro, Long>, LibroReposi
 	@Override
 	@Query(value = """
 			SELECT l.* FROM libro l
-			 WHERE l.estado = 'LISTO' AND l.activo = 1 AND l.reemplaza_libro_id IS NULL
+			 WHERE l.estado = 'LISTO' AND l.activo = true AND l.reemplaza_libro_id IS NULL
 			   AND l.version_procesamiento < :vigente
 			   AND NOT EXISTS (
 			       SELECT 1 FROM libro r

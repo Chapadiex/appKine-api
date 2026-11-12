@@ -24,8 +24,7 @@ import java.util.concurrent.TimeUnit;
  * <ol>
  *   <li>una conexion propia toma la fila con {@code FOR UPDATE} y la retiene ({@link Retencion});</li>
  *   <li>cada tarea se larga y se espera <b>hasta verla bloqueada</b> en esa fila, mirando su
- *       sentencia en {@code information_schema.PROCESSLIST} (el usuario de la aplicacion ve sus
- *       propias conexiones sin privilegio {@code PROCESS});</li>
+ *       sentencia en {@code pg_stat_activity}, esperando un lock ({@code wait_event_type = 'Lock'});</li>
  *   <li>se suelta la fila y todas corren contra lo que commitee la primera.</li>
  * </ol>
  *
@@ -81,8 +80,9 @@ final class CarreraDirigida implements AutoCloseable {
 	 */
 	private int enEspera(String patron) {
 		Integer cuantas = jdbc.queryForObject("""
-				SELECT COUNT(*) FROM information_schema.PROCESSLIST
-				 WHERE ID <> CONNECTION_ID() AND COMMAND = 'Query' AND INFO LIKE ?
+				SELECT COUNT(*) FROM pg_stat_activity
+				 WHERE pid <> pg_backend_pid() AND state = 'active' AND wait_event_type = 'Lock'
+				   AND query ILIKE ?
 				""", Integer.class, patron);
 		return cuantas == null ? 0 : cuantas;
 	}

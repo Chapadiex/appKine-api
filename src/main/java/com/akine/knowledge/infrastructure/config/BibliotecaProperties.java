@@ -29,8 +29,7 @@ public record BibliotecaProperties(
 	public record Busqueda(
 			@DefaultValue("0.818") double minScore,
 			@DefaultValue("0.5") double minScorePalabras,
-			@DefaultValue("2") int minPedazos,
-			@DefaultValue("536870912") long cacheMaxBytes) {
+			@DefaultValue("2") int minPedazos) {
 	}
 
 	/**

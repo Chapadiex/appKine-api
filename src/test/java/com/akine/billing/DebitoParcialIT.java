@@ -217,7 +217,7 @@ class DebitoParcialIT {
 				INSERT INTO orden_medica (organization_id, persona_id, consultorio_id,
 				                          profesional_emisor, fecha_emision, vigencia_desde,
 				                          active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 'Dra. Sintetica', ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'Dra. Sintetica', CAST(? AS date), CAST(? AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), personaId, tenant.consultorioId(),
 				java.sql.Date.valueOf(desde), java.sql.Date.valueOf(desde));
 	}

@@ -361,12 +361,12 @@ class ReportesContraElMotorIT {
 
 		long organizationId = insertar("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro " + sufijo, "motor-it-" + sufijo, zona);
 		long consultorioId = insertar("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, "Sede " + sufijo, zona);
 
 		long cuentaId = crearCuenta("administrativo");
@@ -379,7 +379,7 @@ class ReportesContraElMotorIT {
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "MOTOR-" + sufijo.toUpperCase(), "Servicio " + sufijo);
 		long ofertaId = insertar("""
 				INSERT INTO oferta_servicio_consultorio
@@ -387,20 +387,20 @@ class ReportesContraElMotorIT {
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 30, 1, 1000.00, 'ARS', 0, 0, 0, 1, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 30, 1, 1000.00, 'ARS', false, false, false, true, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, servicioId, "Oferta " + sufijo);
 
 		String apellido = "Paciente" + sufijo;
 		long personaId = insertar("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, apellido, apellido.toUpperCase());
 		long historiaId = insertar("""
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, personaId, cuentaId);
 
 		var actorDeCaja = new com.akine.billing.application.OperatingActor(
@@ -418,8 +418,8 @@ class ReportesContraElMotorIT {
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'BORRADOR', UTC_TIMESTAMP(6), ?, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 'BORRADOR', CURRENT_TIMESTAMP, ?, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", centro.organizationId(), centro.consultorioId(), centro.historiaId(),
 				centro.ofertaId(), centro.membershipProfesional(), centro.cuentaId());
 		return insertar("""
@@ -428,8 +428,8 @@ class ReportesContraElMotorIT {
 				                        oferta_id, snapshot_nombre, snapshot_precio, devengada_en,
 				                        version, created_at, updated_at)
 				VALUES (?, ?, ?, ?, 'PACIENTE', ?, ?, 'ARS', 'PENDIENTE',
-				        ?, 'Sesion sintetica', ?, UTC_TIMESTAMP(6), 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        ?, 'Sesion sintetica', ?, CURRENT_TIMESTAMP, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", centro.organizationId(), centro.consultorioId(), sesionId, centro.personaId(),
 				importe, importe, centro.ofertaId(), importe);
 	}
@@ -441,8 +441,8 @@ class ReportesContraElMotorIT {
 				                   profesional_membership_id, inicio, fin, estado,
 				                   reservado_por_cuenta_id, reservado_en, version,
 				                   created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, 'RESERVADO', ?, UTC_TIMESTAMP(6), 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, CAST(? AS timestamptz), CAST(? AS timestamptz), 'RESERVADO', ?, CURRENT_TIMESTAMP, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", centro.organizationId(), centro.consultorioId(), centro.ofertaId(),
 				centro.personaId(), centro.membershipProfesional(), utc(inicio),
 				utc(inicio.plusSeconds(15 * 60)), centro.cuentaId());
@@ -458,8 +458,8 @@ class ReportesContraElMotorIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, cuenta, rol);
 	}
 
@@ -468,8 +468,8 @@ class ReportesContraElMotorIT {
 		return insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetica', 'DePrueba', 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetica', 'DePrueba', 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 	}
 

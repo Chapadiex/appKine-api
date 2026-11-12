@@ -71,7 +71,7 @@ class AkineApiApplicationIT {
 		JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 		Integer tablas = jdbc.queryForObject(
 				"SELECT COUNT(*) FROM information_schema.tables "
-						+ "WHERE table_schema = DATABASE() AND table_name = 'platform_schema_info'",
+						+ "WHERE table_schema = current_schema() AND table_name = 'platform_schema_info'",
 				Integer.class);
 		assertThat(tablas).isEqualTo(1);
 	}

@@ -84,7 +84,7 @@ class AdjuntoMigrationIT {
 		insertarAdjunto(personaId, checksum, "OTRO", clave);
 		jdbc().update("""
 				UPDATE adjunto_administrativo
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6), deactivation_reason = 'vencido'
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP, deactivation_reason = 'vencido'
 				 WHERE storage_key = ?
 				""", clave);
 
@@ -129,7 +129,7 @@ class AdjuntoMigrationIT {
 				        nombre_archivo, content_type, tamano_bytes, checksum_sha256, storage_key,
 				        subido_por, subido_en, created_at, updated_at)
 				 VALUES (?, ?, 'OTRO', 'x.pdf', 'application/pdf', 0, ?, ?, 1,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", ORG_A, personaId, checksumAlAzar(), clave()))
 				.isInstanceOfAny(
 						DataIntegrityViolationException.class, UncategorizedSQLException.class);
@@ -138,7 +138,7 @@ class AdjuntoMigrationIT {
 		insertarAdjunto(personaId, checksumAlAzar(), "OTRO", clave);
 
 		assertThatThrownBy(() -> jdbc().update("""
-				UPDATE adjunto_administrativo SET active = 0 WHERE storage_key = ?
+				UPDATE adjunto_administrativo SET active = false WHERE storage_key = ?
 				""", clave))
 				.isInstanceOfAny(
 						DataIntegrityViolationException.class, UncategorizedSQLException.class);
@@ -161,7 +161,7 @@ class AdjuntoMigrationIT {
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				 VALUES (?, 'DNI', ?, ?, 'Sintetico', 'Caso', 'SINTETICO', 'CASO',
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, documento, documento);
 	}
 
@@ -173,7 +173,7 @@ class AdjuntoMigrationIT {
 				        nombre_archivo, content_type, tamano_bytes, checksum_sha256, storage_key,
 				        subido_por, subido_en, created_at, updated_at)
 				 VALUES (?, ?, ?, 'x.pdf', 'application/pdf', 1024, ?, ?, 1,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", ORG_A, personaId, categoria, checksum, storageKey);
 	}
 

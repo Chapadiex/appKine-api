@@ -83,7 +83,7 @@ class HabilitacionesVersionForzadaIT {
 		jdbc.update("""
 				INSERT INTO subscription (organization_id, plan_id, status, started_at, active,
 				                          version, created_at, updated_at)
-				SELECT ?, id, 'ACTIVA', UTC_TIMESTAMP(6), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6)
+				SELECT ?, id, 'ACTIVA', CURRENT_TIMESTAMP, 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 				FROM plan WHERE code = 'BASICO'
 				""", fixture.organizationId());
 

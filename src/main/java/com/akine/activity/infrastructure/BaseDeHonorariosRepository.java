@@ -25,7 +25,7 @@ public interface BaseDeHonorariosRepository extends Repository<ClaseProgramada, 
 	String CLASES_DICTADAS = """
 			SELECT c.id,
 			       c.oferta_id,
-			       TIMESTAMPDIFF(MICROSECOND, '1970-01-01', c.inicio) AS inicio_us,
+			       CAST(EXTRACT(EPOCH FROM c.inicio) * 1000000 AS bigint) AS inicio_us,
 			       c.titulo,
 			       c.profesional_membership_id
 			  FROM clase_programada c
