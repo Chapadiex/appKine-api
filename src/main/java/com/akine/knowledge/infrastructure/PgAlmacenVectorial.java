@@ -31,10 +31,10 @@ import java.util.stream.Collectors;
  *
  * <h2>Palabras</h2>
  *
- * <p>Cada palabra de la consulta alcanza (semantica OR, como el modo de lenguaje natural del
- * FULLTEXT de MySQL que reemplaza), en espanol y en ingles, sin tildes ({@code akine_es} y
- * {@code akine_en}, V10). El orden es {@code ts_rank_cd} y el puntaje {@code s / (s + 1)}, en
- * {@code [0,1)}.
+ * <p>Cada palabra de la consulta alcanza (semantica OR), entera y sin mayusculas ni tildes
+ * ({@code akine_simple}, V10), y el orden es la relevancia de InnoDB (TF x IDF^2): el mismo modo de
+ * lenguaje natural del FULLTEXT de MySQL que reemplaza. El puntaje es {@code s / (s + 1)}, en
+ * {@code [0,1)}, en la misma escala que antes: el corte {@code min-score-palabras} no cambia.
  */
 @Repository
 public class PgAlmacenVectorial implements AlmacenVectorial {
@@ -94,23 +94,49 @@ public class PgAlmacenVectorial implements AlmacenVectorial {
 		if (alguna.isEmpty()) {
 			return List.of();
 		}
-		return jdbc.query("WITH q AS (SELECT websearch_to_tsquery('akine_es', ?)"
-						+ " || websearch_to_tsquery('akine_en', ?) AS consulta)"
-						+ " SELECT f.id, ts_rank_cd(f.texto_tsv, q.consulta) AS relevancia"
-						+ " FROM libro_fragmento f JOIN libro l ON l.id = f.libro_id CROSS JOIN q"
-						+ " WHERE f.organization_id = ? AND " + BUSCABLE
-						+ " AND f.texto_tsv @@ q.consulta"
-						+ " ORDER BY relevancia DESC, f.id LIMIT ?",
+		// La relevancia de InnoDB FULLTEXT en modo de lenguaje natural, sobre los fragmentos buscables de
+		// la organizacion: por cada palabra de la consulta que el fragmento nombra, TF x IDF^2, con
+		// TF = veces que la nombra e IDF = log10(N / fragmentos que la nombran). Medido contra MySQL
+		// con el set de evaluacion, da los mismos aciertos en el top-3 y el top-5; ts_rank_cd y una
+		// suma simple de IDF perdian casos, y la politica de evidencia depende de esto: en
+		// "epoc ejercicio" los fragmentos que nombran EPOC (rara) tienen que ganarle a los que solo
+		// dicen "ejercicio".
+		//
+		// Las palabras que nombra mas de la mitad de los fragmentos ("como", "la") no entran salvo que la
+		// consulta no tenga otras: aportan IDF^2 < 0,09 contra 4-9 de una rara, y sumaban miles de pares
+		// que hacian la consulta 100 veces mas lenta. Es el papel de la lista de stopwords de InnoDB. Con
+		// el filtro los aciertos son los mismos que en MySQL (top-3, top-5 y top-10 del set de evaluacion).
+		// Cada CTE se materializa: los pesos se calculan una vez por palabra, no por fila candidata.
+		return jdbc.query("WITH terminos AS MATERIALIZED ("
+						+ "   SELECT DISTINCT lexeme, plainto_tsquery('simple', lexeme) AS q"
+						+ "     FROM unnest(to_tsvector('akine_simple', ?))),"
+						+ " buscables AS MATERIALIZED ("
+						+ "   SELECT f.id, f.texto_tsv FROM libro_fragmento f JOIN libro l ON l.id = f.libro_id"
+						+ "    WHERE f.organization_id = ? AND " + BUSCABLE + "),"
+						+ " total AS MATERIALIZED (SELECT COUNT(*) AS n FROM buscables),"
+						+ " frecuencia AS MATERIALIZED ("
+						+ "   SELECT t.lexeme, t.q, COUNT(b.id) AS df"
+						+ "     FROM terminos t LEFT JOIN buscables b ON b.texto_tsv @@ t.q GROUP BY t.lexeme, t.q),"
+						+ " pesos AS MATERIALIZED ("
+						+ "   SELECT f.lexeme, f.q, power(log(total.n::numeric / f.df), 2) AS idf2"
+						+ "     FROM frecuencia f CROSS JOIN total"
+						+ "    WHERE f.df > 0 AND (f.df * 2 <= total.n OR NOT EXISTS ("
+						+ "          SELECT 1 FROM frecuencia g WHERE g.df > 0 AND g.df * 2 <= total.n)))"
+						+ " SELECT b.id, SUM(tf.veces * p.idf2) AS relevancia"
+						+ "   FROM buscables b JOIN pesos p ON b.texto_tsv @@ p.q"
+						+ "   CROSS JOIN LATERAL (SELECT COALESCE(SUM(cardinality(u.positions)), 1) AS veces"
+						+ "                         FROM unnest(b.texto_tsv) u WHERE u.lexeme = p.lexeme) tf"
+						+ "  GROUP BY b.id"
+						+ "  ORDER BY relevancia DESC, b.id LIMIT ?",
 				(rs, n) -> {
 					double s = rs.getDouble(2);
 					return new Coincidencia(rs.getLong(1), puntaje(s / (s + 1)));
-				}, alguna, alguna, orgId, k);
+				}, alguna, orgId, k);
 	}
 
 	/**
-	 * "rodilla dolor" pasa a "rodilla or dolor": {@code websearch_to_tsquery} une las palabras con AND
-	 * y el FULLTEXT de MySQL las sumaba. Las palabras salen sin signos, asi que el texto del usuario no
-	 * puede armar operadores.
+	 * Las palabras de la consulta separadas por espacios, sin signos: el texto del usuario no llega a
+	 * ninguna sintaxis de busqueda, solo a {@code to_tsvector}.
 	 */
 	static String alMenosUna(String consulta) {
 		if (consulta == null) {
@@ -118,7 +144,7 @@ public class PgAlmacenVectorial implements AlmacenVectorial {
 		}
 		return Arrays.stream(consulta.split("[^\\p{L}\\p{N}]+"))
 				.filter(p -> !p.isBlank())
-				.collect(Collectors.joining(" or "));
+				.collect(Collectors.joining(" "));
 	}
 
 	// ---------------------------------------------------------------- textos

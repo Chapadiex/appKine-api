@@ -30,7 +30,7 @@ pgvector para la recuperación, sin mantener dos motores ni sincronizar bases.
    - las claves `*_key` generadas que sostienen los únicos de la baja lógica (centinela 1970-01-01);
    - `audit_event` append-only por trigger; `updated_at` automático por trigger.
 4. **Biblioteca:** `vector(768)` (multilingual-e5-base) con índice HNSW coseno y recorrido iterativo;
-   texto completo con `tsvector` en español e inglés sin tildes. La fusión RRF y la política de
+   texto completo con `tsvector` de palabras enteras sin tildes y el ranking de InnoDB (TF × IDF²). La fusión RRF y la política de
    evidencia no cambian: cambia el almacén (`PgAlmacenVectorial`).
 5. **La JVM corre en UTC** en cualquier máquina: el driver de PostgreSQL manda la zona de la JVM al
    conectar, y el alias `America/Buenos_Aires` que elige Windows no existe en el tzdata de la imagen.

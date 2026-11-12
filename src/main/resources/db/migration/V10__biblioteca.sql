@@ -90,29 +90,24 @@ COMMENT ON COLUMN libro_fragmento.modelo_embeddings IS 'Modelo que calculo el ve
 -- -------------------------------------------------------------------------------------
 -- Busqueda de la biblioteca en PostgreSQL (reemplaza el FULLTEXT de MySQL y el recorrido en memoria).
 --
--- Texto: los libros son en espanol y en ingles y el libro no declara idioma, asi que cada fragmento
--- se indexa con las dos configuraciones y la consulta se arma con las dos. Las dos ignoran tildes
--- (unaccent), como el FULLTEXT de MySQL con utf8mb4_0900_ai_ci, y reducen cada palabra a su raiz:
--- "rodillas" encuentra "rodilla". Terminos anatomicos y tecnicos que el diccionario no conoce
--- quedan como estan, sin raiz, y se encuentran por igualdad.
+-- Texto: palabras enteras, sin mayusculas ni tildes (unaccent), en cualquier idioma: lo mismo que
+-- indexaba el FULLTEXT de MySQL con utf8mb4_0900_ai_ci. Sin raices a proposito: se midieron las
+-- configuraciones spanish y english con raices y la recuperacion por palabras bajo de 15/16 a
+-- 10-12/16 casos en el top-5 del set de evaluacion ("comunicacion" -> "comun" tambien trae
+-- "comunidad"). El ranking (TF x IDF^2, el de InnoDB) lo calcula PgAlmacenVectorial.
 --
 -- Vector: 768 dimensiones, las de multilingual-e5-base (verificadas en el modelo ONNX instalado).
 -- Los puntajes son coseno, igual que el recorrido en Java que reemplaza. El indice HNSW es
 -- aproximado; la consulta lo usa con recorrido iterativo para no perder filas por el filtro de
 -- organizacion y estado (ver PgAlmacenVectorial).
 -- -------------------------------------------------------------------------------------
-CREATE TEXT SEARCH CONFIGURATION akine_es (COPY = pg_catalog.spanish);
-ALTER TEXT SEARCH CONFIGURATION akine_es
-    ALTER MAPPING FOR hword, hword_part, word WITH unaccent, spanish_stem;
-
-CREATE TEXT SEARCH CONFIGURATION akine_en (COPY = pg_catalog.english);
-ALTER TEXT SEARCH CONFIGURATION akine_en
-    ALTER MAPPING FOR hword, hword_part, word WITH unaccent, english_stem;
+CREATE TEXT SEARCH CONFIGURATION akine_simple (COPY = pg_catalog.simple);
+ALTER TEXT SEARCH CONFIGURATION akine_simple
+    ALTER MAPPING FOR hword, hword_part, word WITH unaccent, simple;
 
 ALTER TABLE libro_fragmento
-    ADD COLUMN texto_tsv tsvector GENERATED ALWAYS AS (
-        to_tsvector('akine_es'::regconfig, texto) || to_tsvector('akine_en'::regconfig, texto)) STORED;
-COMMENT ON COLUMN libro_fragmento.texto_tsv IS 'Texto indexado en espanol e ingles, sin tildes. Lo calcula la base';
+    ADD COLUMN texto_tsv tsvector GENERATED ALWAYS AS (to_tsvector('akine_simple'::regconfig, texto)) STORED;
+COMMENT ON COLUMN libro_fragmento.texto_tsv IS 'Palabras del texto sin mayusculas ni tildes, con posiciones. Lo calcula la base';
 
 CREATE INDEX ix_libro_fragmento_texto_tsv ON libro_fragmento USING gin (texto_tsv);
 CREATE INDEX ix_libro_fragmento_vector ON libro_fragmento USING hnsw (vector vector_cosine_ops);

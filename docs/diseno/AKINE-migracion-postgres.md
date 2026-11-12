@@ -71,7 +71,7 @@ scheduling 8.
    │  triggers: audit_event append-only, updated_at          │
    │  libro_fragmento.vector  vector(768)  ── HNSW coseno    │
    │  libro_fragmento.texto_tsv tsvector   ── GIN            │
-   │      (akine_es + akine_en, unaccent)                    │
+   │      (akine_simple: palabras enteras, unaccent)         │
    └─────────────────────────────────────────────────────────┘
         pgvector 0.8.1 · unaccent · imagen pgvector/pgvector:0.8.1-pg18-trixie
 ```
@@ -89,7 +89,7 @@ scheduling 8.
 | `V7__clinica_y_atencion` | clinical, encounter (27) |
 | `V8__economia` | billing (16) |
 | `V9__actividades_y_clases` | activity (9) |
-| `V10__biblioteca` | knowledge (3) + configuraciones `akine_es`/`akine_en`, `texto_tsv`, GIN, HNSW |
+| `V10__biblioteca` | knowledge (3) + configuración `akine_simple`, `texto_tsv`, GIN, HNSW |
 | `V11__claves_foraneas` | las 325 FK, con sus `ON DELETE CASCADE/SET NULL` |
 | `V12__marcas_de_modificacion` | 24 triggers `updated_at` + 2 de `audit_event` |
 | `V13__datos_iniciales` | las 55 filas sembradas, con sus ids, y las secuencias ajustadas |
@@ -132,8 +132,9 @@ PostgreSQL; los demás, de MySQL):
    no altera ningún horario: la conciliación compara cada instante al microsegundo.
 4. **Biblioteca.** Coseno de pgvector (`1 - (vector <=> consulta)`), el mismo número que el recorrido
    en Java: los cortes no cambian. Índice HNSW con `hnsw.iterative_scan = strict_order` para no
-   perder resultados por el filtro de organización, que va siempre en el `WHERE`. Texto en español e
-   inglés (el libro no declara idioma) con semántica OR, como el modo de lenguaje natural de MySQL.
+   perder resultados por el filtro de organización, que va siempre en el `WHERE`. Texto: palabras
+   enteras sin tildes (`akine_simple`) y el ranking de InnoDB (TF × IDF²), que reproduce los aciertos de
+   MySQL; las configuraciones con raíces (spanish/english) se midieron y recuperaban peor (ver resultados).
 5. **Sin escritura doble ni compatibilidad hacia atrás en la base.** El corte es con la aplicación
    detenida; el rollback es volver a la imagen anterior contra la base MySQL intacta.
 
@@ -153,7 +154,101 @@ Ninguna la mostraba la compilación; las destapó correr la suite de integració
 | Un `UPDATE` cuyo `WHERE` no cumple la versión visible no bloquea | carrera inscripción contra cancelación | el código ya releía con `FOR UPDATE`; el test se adaptó |
 | `information_schema` publica los NOT NULL como CHECK | tests de esquema | se filtran |
 | `CAST(x AS CHAR)` es `char(1)` | tests de auditoría | `CAST(x AS text)` |
+| `ts_rank_cd` no pondera por rareza; el `MATCH ... NATURAL LANGUAGE` de MySQL sí (IDF) | consulta de la biblioteca: con "epoc ejercicio" el top-20 por palabras no traía **ningún** fragmento que nombrara EPOC y la política de evidencia ("la biblioteca tiene que nombrar el tema") respondía sin material. Recall@5 bajó de 78 % a 65 % en la primera medición | la relevancia de InnoDB (TF × IDF², sin los términos que nombra más de la mitad de los fragmentos) sobre palabras enteras sin tildes (`akine_simple`): mismos aciertos que MySQL en top-3, top-5 y top-10. Las raíces de spanish/english empeoraban ("comunicación" → `comun` trae "comunidad"). El corte de palabras 0,5 no cambia |
+| La serie temporal de turnos pasaba el desfase del tramo (`-03:00`) donde la consulta esperaba una zona | reporte de turnos: el turno de las 21:30 de Córdoba contaba en el día siguiente | se pasa el id IANA de la sede; dentro del tramo el desfase es constante |
 
-## Pendientes y límites
+## E. Migración de datos
 
-Ver la sección de resultados.
+Herramienta: `ops/migracion-mysql/TransferirDatos.java` (copia con FK y triggers diferidos, ids
+originales, secuencias ajustadas, verificación de las 325 FK y sumas de control por columna: nulos,
+ids e importes, instantes al microsegundo, fechas, booleanos, largos de texto y distribución de
+`estado`). Reportes completos en [`docs/migracion/`](../migracion/).
+
+| Base | Esquema origen | Filas origen | Filas destino | Sumas de control distintas | Huérfanos |
+|---|---|---:|---:|---:|---:|
+| `akine_local` | V141 | 10.411 | 10.411 | 0 | 0 |
+| `akine_rag` | V145 | 1.218 | 1.218 | 0 | 0 |
+| `akine_turnos` (sólo prueba de volumen, base descartable) | V128 | 54.289 | 54.289 | 0 | 0 |
+
+- Las tablas que el origen no tenía (la biblioteca en `akine_local`) quedan vacías; las columnas
+  nuevas toman su default. Ninguna columna del origen quedó sin lugar en el destino.
+- `flyway_schema_history` no se copia: el destino tiene la suya (V1–V13).
+- **Embeddings:** 972 de 972 iguales bit a bit (`comparar-vectores.mjs`). No se regeneró ninguno.
+- **Contraseñas:** los hashes se copian tal cual; el login con la cuenta de la biblioteca funcionó
+  contra PostgreSQL.
+- **Archivos:** no se mueven. Los 4 PDF de la biblioteca y los 34 adjuntos clínicos de
+  `akine_local` existen en disco con sus claves.
+- **Respaldo de MySQL:** `AKINE/respaldos/mysql-2026-11-11/` (seis bases, con `SHA256SUMS`),
+  restaurado en una base descartable y comparado tabla por tabla sin diferencias. Las bases MySQL
+  originales siguen intactas.
+
+## F. Configuración
+
+- **PostgreSQL:** `pgvector/pgvector:0.8.1-pg18-trixie` (PostgreSQL 18.2, pgvector 0.8.1),
+  `timezone=UTC`, rol de aplicación sin superusuario y dueño de su base; `vector` la crea el init o
+  el DBA. `compose.yaml` con volumen `akine-postgres-data`, healthcheck `pg_isready` y puerto
+  `AKINE_DB_PORT` (5432).
+- **Flyway:** `classpath:db/migration`, V1–V13, `validate-on-migrate`, sin baseline.
+- **Hibernate:** `ddl-auto: validate`, `jdbc.time_zone: UTC`, `hibernate-vector` para `vector(768)`.
+- **Driver:** `org.postgresql:postgresql` 42.7.14 con `options=-c timezone=UTC`,
+  `reWriteBatchedInserts=true` y caché de sentencias preparadas.
+- **Variables:** `AKINE_DB_URL=jdbc:postgresql://host:5432/base`, `AKINE_DB_USER`, `AKINE_DB_PASSWORD`.
+- **JVM:** UTC (`AkineApiApplication`, `TestcontainersConfiguration`).
+- **Tests:** Testcontainers con la misma imagen; una base por contexto de Spring.
+
+## G. Pruebas
+
+| Prueba | Resultado |
+|---|---|
+| Flyway sobre base vacía | 13 migraciones aplicadas; `ddl-auto: validate` sin errores |
+| Unitarias (`./mvnw -o test`) | **4.662, 0 fallos** |
+| Integración contra PostgreSQL 18 (`./mvnw -o verify`, Testcontainers) | **1.150, 0 fallos**: 1.149 en la corrida completa, y `OpenApiContractIT` después de regenerar el contrato, que sólo tenía el drift del merge de las dos ramas. Los 50 de la biblioteca se repitieron con la búsqueda por palabras final |
+| Contrato OpenAPI | 397 operaciones = unión exacta de clases (386) y biblioteca (396); la migración no cambia la API |
+| Respaldo y restauración (`ops/`) | backup → verificación en PostgreSQL efímero → restore con rol sin superusuario: filas de las 126 tablas, triggers, funciones y collation idénticos |
+| Búsqueda vectorial HNSW contra exacta | recall@10 **100 %** (50 consultas reales, filtro por organización); ~5 ms p50 en los dos modos con 972 vectores |
+| Búsqueda por palabras contra MySQL (16 casos, determinista) | top-3 13/16, top-5 15/16, top-10 15/16: **igual que MySQL** |
+| Consulta RAG de punta a punta (38 casos, ONNX e5 + qwen3:4b-instruct, SSE) | Recall@5 **18/23 (78 %)**, repregunta **10/10**, sin material **5/5**, "sin material" falso 0/23, 0 errores: **igual que MySQL (v2)**. Medido con la relevancia InnoDB antes de agregar el filtro de términos comunes (por rendimiento); con el filtro, la comparación determinista da los mismos aciertos. [Resultados](../consulta/evaluacion/resultados-postgres.md) |
+
+### Rendimiento (`ops/migracion-mysql/comparar-rendimiento.sh`)
+
+`EXPLAIN ANALYZE` con los mismos datos (`akine_turnos`, 54 mil filas), sesión caliente, mediana de 7.
+Con este volumen todo queda por debajo de 2,1 ms: la comparación dice más de los planes que del motor.
+
+| Consulta | MySQL 8.4 (ms) | PostgreSQL 18 (ms) |
+|---|---:|---:|
+| Turnos de la sede en un mes (agenda) | 0,125 | 0,086 |
+| Reporte: turnos por día y estado (zona de la sede) | 0,111 | 0,197 |
+| Padrón: búsqueda "gar" sin mayúsculas ni tildes | 0,040 | 0,202 |
+| Auditoría de la organización por período (página 1) | 2,080 | 0,110 |
+| Historial de agenda (eventos de turnos) | 1,850 | 0,212 |
+| Disponibilidad vigente de los profesionales | 0,051 | 0,062 |
+
+- PostgreSQL gana claro en auditoría; pierde en el `LIKE '%gar%'` del padrón, que sobre una collation
+  no determinista compara con ICU.
+- La primera comparación con `akine_ci` en cada conexión carga el collator ICU (~10 ms, una vez por
+  conexión del pool).
+- **Biblioteca:** vectorial ~5–11 ms; por palabras 12–40 ms contra 3–7 ms de MySQL con 972
+  fragmentos. La primera versión por palabras tardaba **5 s** (pesos recalculados por fila) y se
+  corrigió; lo que queda es descomprimir cada `tsvector` que el planificador compara sin el índice GIN
+  a esta escala.
+- **Latencia de la consulta:** el primer evento SSE (después de la recuperación) sale a 0,0–0,2 s,
+  igual que con MySQL. La primera palabra del modelo midió 12 s p50 contra 2,8 s en la medición de
+  MySQL, pero la GPU estaba al 83 % ocupada por otra sesión: no es comparable y no se atribuye a la base.
+
+## H. Pendientes y límites
+
+- **Nada está en `main` ni en GitHub.** Todo vive en la rama local `akine-postgres`; integrarla trae
+  también las ramas de clases y de biblioteca, que no estaban mergeadas.
+- **El frontend no se tocó** y sus E2E no se corrieron contra este backend.
+- **No se construyó la imagen Docker** del backend: `ops/simulacro-restore.sh` y `perf/stack.sh` se
+  probaron hasta la base, sin el backend.
+- **El QA manual (U-01) sigue siendo del usuario**, ahora contra PostgreSQL.
+- **Las bases MySQL siguen vivas** (`akine-mysql`) como contingencia; borrarlas es decisión del
+  usuario después de aceptar la migración.
+- No se transfirieron `akine_qa`, `akine_turnos`, `akine_clases` ni `akine_sede` (decisión del
+  usuario): están respaldadas y se pasan con la misma herramienta.
+- La biblioteca no guarda idioma, capítulo ni fecha de indexación por libro: agregarlos es
+  funcionalidad nueva, no migración.
+- La medición de punta a punta del RAG con el filtro final queda por repetir con la GPU libre.
+- `docs/carga.md` describe todavía el stack de carga con MySQL (historia de G-10).
+- El rol de backup con `pg_read_all_data` está documentado y no probado.
