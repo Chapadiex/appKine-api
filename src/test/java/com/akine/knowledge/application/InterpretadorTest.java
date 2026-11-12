@@ -334,13 +334,98 @@ class InterpretadorTest {
 		assertThat(buscar.independiente()).isTrue();
 		assertThat(buscar.consultas()).noneMatch(c -> c.contains("cadera"));
 
-		// Numero y genero al final si: "fracturas" sigue siendo la fractura de la charla.
+		// "fracturas" es una palabra de tema propia: independiente aunque la charla la nombre (R15), y sin
+		// la cadera que la consulta no dice: como no trae intencion, repregunta sobre "fracturas".
 		modelo.responderJson(json("fracturas de cadera", false, "ejercicios", "¿Qué ejercicios hay para fracturas de cadera?"));
 
-		Buscar plural = (Buscar) conEvidenciaEnTodo().interpretar(
+		Aclarar plural = (Aclarar) conEvidenciaEnTodo().interpretar(
 				ORG, "¿y para las fracturas?", charla, limite());
 
-		assertThat(plural.independiente()).isFalse();
+		assertThat(plural.texto()).isEqualTo("¿Qué buscás sobre fracturas?");
+		assertThat(plural.opciones()).noneMatch(o -> o.pregunta().contains("cadera"));
+	}
+
+	@Test
+	void temaDelModeloSeRecortaALaConsulta() {
+		// C1: el modelo mezcla el tema nuevo con el de la charla.
+		modelo.responderJson(json("manguito rotador y lumbalgia", true, "ejercicios",
+				"¿Qué ejercicios hay para el manguito rotador?"));
+
+		Buscar buscar = (Buscar) conEvidenciaEnTodo().interpretar(
+				ORG, "ejercicios para manguito rotador", CHARLA_LUMBALGIA, limite());
+
+		assertThat(buscar.independiente()).isTrue();
+		assertThat(buscar.tema()).isEqualTo("manguito rotador");
+		assertThat(buscar.consultas()).containsExactly(
+				"¿Qué ejercicios hay para el manguito rotador?", "ejercicios para manguito rotador");
+
+		// Y la repregunta tampoco arrastra la charla en sus botones.
+		modelo.responderJson(json("kinesiofobia en lumbalgia", true, "otra", "¿Qué hay sobre kinesiofobia?"));
+
+		Aclarar aclarar = (Aclarar) conEvidenciaEnTodo().interpretar(ORG, "kinesiofobia", CHARLA_LUMBALGIA, limite());
+
+		assertThat(aclarar.texto()).isEqualTo("¿Qué buscás sobre kinesiofobia?");
+		assertThat(aclarar.opciones()).noneMatch(o -> o.pregunta().contains("lumbalgia"));
+	}
+
+	@Test
+	void temaYaNombradoEnLaCharlaEsIndependiente() {
+		// I1: "lumbalgia" → "manguito" → "ejercicios para lumbalgia", con tema_nuevo=false del modelo.
+		List<TurnoDeConsulta> charla = List.of(
+				new TurnoDeConsulta(TurnoDeConsulta.Rol.USUARIO, "qué es lumbalgia"),
+				new TurnoDeConsulta(TurnoDeConsulta.Rol.ASISTENTE, "- Dolor lumbar."),
+				new TurnoDeConsulta(TurnoDeConsulta.Rol.USUARIO, "qué es manguito rotador"),
+				new TurnoDeConsulta(TurnoDeConsulta.Rol.ASISTENTE, "- Grupo de músculos."));
+		modelo.responderJson(json("lumbalgia", false, "ejercicios", "¿Qué ejercicios hay para la lumbalgia?"));
+
+		Buscar buscar = (Buscar) conEvidenciaEnTodo().interpretar(ORG, "ejercicios para lumbalgia", charla, limite());
+
+		assertThat(buscar.independiente()).isTrue();
+		assertThat(buscar.consultas()).noneMatch(c -> c.contains("manguito"));
+
+		// Con el modelo caido tampoco concatena la pregunta anterior.
+		modelo.fallarEnCompletar(true);
+		Buscar caido = (Buscar) conEvidenciaEnTodo().interpretar(ORG, "ejercicios para lumbalgia", charla, limite());
+
+		assertThat(caido.independiente()).isTrue();
+		assertThat(caido.preguntaCompleta()).isEqualTo("ejercicios para lumbalgia");
+	}
+
+	@Test
+	void siglaDesarrolladaSeConserva() {
+		// I4: el desarrollo de una sigla de la consulta no es un tema inventado.
+		String completa = "¿Qué hay sobre hombro doloroso tras un accidente cerebrovascular?";
+		modelo.responderJson(json("hombro doloroso tras accidente cerebrovascular", true, "otra", completa));
+
+		Buscar buscar = (Buscar) conEvidenciaEnTodo().interpretar(ORG, "acv hombro doloroso", List.of(), limite());
+
+		assertThat(buscar.preguntaCompleta()).isEqualTo(completa);
+		assertThat(buscar.tema()).contains("accidente cerebrovascular");
+
+		// Pero el desarrollo no puede venir de la charla.
+		List<TurnoDeConsulta> charla = List.of(
+				new TurnoDeConsulta(TurnoDeConsulta.Rol.USUARIO, "rehabilitación del accidente cerebrovascular"));
+		modelo.responderJson(json("hombro doloroso", true, "otra", completa));
+
+		Buscar conCharla = (Buscar) conEvidenciaEnTodo().interpretar(ORG, "acv hombro doloroso", charla, limite());
+
+		assertThat(conCharla.preguntaCompleta()).isEqualTo("acv hombro doloroso");
+	}
+
+	@Test
+	void temaTecleadoTrasPedirAfeccionCombinaConElAspecto() {
+		// I3: "ejercicios" → "¿Para qué afección o tema?" → el usuario escribe "lumbalgia".
+		List<TurnoDeConsulta> charla = List.of(
+				new TurnoDeConsulta(TurnoDeConsulta.Rol.USUARIO, "ejercicios"),
+				new TurnoDeConsulta(TurnoDeConsulta.Rol.ASISTENTE, Interpretador.TEXTO_SIN_AFECCION));
+		modelo.responderJson(json("lumbalgia", true, "ejercicios", "¿Qué ejercicios hay para la lumbalgia?"));
+
+		Buscar buscar = (Buscar) conEvidenciaEnTodo().interpretar(ORG, "lumbalgia", charla, limite());
+
+		assertThat(buscar.intencion()).isEqualTo(Intencion.EJERCICIOS);
+		assertThat(buscar.preguntaCompleta()).isEqualTo("¿Qué ejercicios hay para la lumbalgia?");
+		assertThat(buscar.independiente()).isTrue();
+		assertThat(modelo.llamadas()).isEqualTo(1);
 	}
 
 	@Test

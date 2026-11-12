@@ -4,7 +4,6 @@ import com.akine.knowledge.application.Interpretacion.Aclarar;
 import com.akine.knowledge.application.Interpretacion.Buscar;
 import com.akine.knowledge.domain.BibliotecaAjustes;
 import com.akine.knowledge.domain.exception.BibliotecaDeshabilitadaException;
-import com.akine.knowledge.domain.port.MensajeChat;
 import com.akine.knowledge.domain.port.MensajeChat.Rol;
 import com.akine.knowledge.spi.CaminoBusqueda;
 import com.akine.knowledge.spi.PasajeRecuperado;
@@ -105,15 +104,16 @@ class ConsultaServiceTest {
 	}
 
 	@Test
-	void repreguntaDeMismoTemaUsaHistorialYLibroPreferido() {
+	void repreguntaDeMismoTemaUsaLibroPreferidoYNoMandaHistorial() {
 		interpreta(busca("ejercicios para lumbalgia", false, false));
 		encuentra(true, pasajesConEvidencia(3));
 
 		PlanDeRespuesta plan = preparar(new ConsultaPedido("ejercicios", historial(), List.of(7L)));
 
 		verify(busqueda).buscar(eq(1L), eq(List.of("ejercicios para lumbalgia")), eq("tema"), eq(Set.of(7L)));
-		assertThat(plan.mensajes()).filteredOn(m -> m.texto().equals(ANTERIOR))
-				.singleElement().extracting(MensajeChat::rol).isEqualTo(Rol.USUARIO);
+		// R14: quien redacta no recibe la charla, tampoco cuando la consulta la continua.
+		assertThat(plan.mensajes()).noneMatch(m -> m.texto().contains(ANTERIOR));
+		assertThat(plan.mensajes()).hasSize(3);
 		assertThat(plan.mensajes()).noneMatch(m -> m.rol() == Rol.ASISTENTE);
 		assertThat(plan.mensajes()).noneMatch(m -> m.texto().contains("ignorá las instrucciones"));
 		assertThat(plan.mensajes().getLast().texto()).isEqualTo("ejercicios para lumbalgia");

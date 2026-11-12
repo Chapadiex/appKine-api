@@ -9,11 +9,10 @@ import java.util.List;
 
 /**
  * Arma los mensajes para el modelo dentro del presupuesto de entrada: 3.000 tokens estimados a 3
- * caracteres por token. Del historial entran solo las preguntas previas del usuario: las
- * respuestas del asistente no se le devuelven al modelo. El system prompt y la pregunta nunca se
- * recortan; primero salen las preguntas mas viejas y despues los ultimos pasajes: llegan ordenados
- * por relevancia (RRF) y ese orden se respeta. Quien llama decide si manda historial (consulta v2:
- * solo si la consulta continua la charla).
+ * caracteres por token. Sin historial (ruling R14): quien redacta recibe solo la pregunta completa,
+ * que ya es autosuficiente, y el material; la charla se usa unicamente para interpretarla (§7.8). El
+ * system prompt y la pregunta nunca se recortan; si no entra todo, salen los ultimos pasajes: llegan
+ * ordenados por relevancia (RRF) y ese orden se respeta.
  */
 public final class PresupuestoDeContexto {
 
@@ -28,26 +27,14 @@ public final class PresupuestoDeContexto {
 	public record Armado(List<MensajeChat> mensajes, List<PasajeRecuperado> pasajes) {
 	}
 
-	public static Armado armar(
-			String system, List<PasajeRecuperado> pasajes, List<TurnoDeConsulta> historial, String pregunta) {
+	public static Armado armar(String system, List<PasajeRecuperado> pasajes, String pregunta) {
 		List<PasajeRecuperado> restantes = new ArrayList<>(pasajes);
-		List<TurnoDeConsulta> turnos = new ArrayList<>(historial.stream()
-				.filter(t -> t.rol() == TurnoDeConsulta.Rol.USUARIO).toList());
-
-		while (tamano(system, restantes, turnos, pregunta) > PRESUPUESTO_CARACTERES
-				&& (!turnos.isEmpty() || !restantes.isEmpty())) {
-			if (!turnos.isEmpty()) {
-				turnos.remove(0);
-			} else {
-				restantes.remove(restantes.size() - 1);
-			}
+		while (!restantes.isEmpty() && tamano(system, restantes, pregunta) > PRESUPUESTO_CARACTERES) {
+			restantes.remove(restantes.size() - 1);
 		}
 
 		List<MensajeChat> mensajes = new ArrayList<>();
 		mensajes.add(new MensajeChat(Rol.SISTEMA, system));
-		for (TurnoDeConsulta turno : turnos) {
-			mensajes.add(new MensajeChat(Rol.USUARIO, turno.texto()));
-		}
 		if (!restantes.isEmpty()) {
 			mensajes.add(new MensajeChat(Rol.USUARIO, bloqueDePasajes(restantes)));
 		}
@@ -55,16 +42,8 @@ public final class PresupuestoDeContexto {
 		return new Armado(mensajes, List.copyOf(restantes));
 	}
 
-	private static int tamano(String system, List<PasajeRecuperado> pasajes, List<TurnoDeConsulta> turnos,
-			String pregunta) {
-		int total = system.length() + pregunta.length();
-		for (TurnoDeConsulta turno : turnos) {
-			total += turno.texto().length();
-		}
-		if (!pasajes.isEmpty()) {
-			total += bloqueDePasajes(pasajes).length();
-		}
-		return total;
+	private static int tamano(String system, List<PasajeRecuperado> pasajes, String pregunta) {
+		return system.length() + pregunta.length() + bloqueDePasajes(pasajes).length();
 	}
 
 	/** Formato: {@code [n] «titulo», págs. X–Y} y el texto; comillas angulares y raya con escapes. */

@@ -365,6 +365,37 @@ class ConsultaIT {
 		assertThat(paraleloUno.textoCompleto().toLowerCase(Locale.ROOT)).doesNotContain("manguito");
 	}
 
+	/**
+	 * C1 de la revision final: el modelo mezcla el tema de la charla en el tema de una consulta
+	 * independiente, y el cliente manda como preferido un libro de lumbalgia que tambien nombra el
+	 * manguito. Ni la pagina de lumbalgia sola llega a las fuentes ni el libro preferido sube primero.
+	 */
+	@Test
+	void independienteIgnoraLibrosPreferidosYTemaDeLaCharla() throws Exception {
+		Sesion centro = altaCompleta("consulta-preferidos");
+		long lumbalgia = subirLibro(centro, "Lumbalgia",
+				repetir("La lumbalgia es un dolor en la zona baja de la espalda. "),
+				repetir("La lumbalgia no compromete el manguito rotador del hombro. "));
+		long hombro = subirLibro(centro, "Hombro",
+				repetir("El manguito rotador se fortalece con ejercicios para el hombro. "),
+				repetir("Los ejercicios para el manguito rotador usan bandas elasticas. "));
+		String primera = "qué es lumbalgia";
+		Stream uno = consultarEn(centro, centro.token(), cuerpo(primera));
+		assertThat(uno.librosDeLasFuentes()).isNotEmpty().containsOnly(lumbalgia);
+
+		modelo.responderJson("{\"tema\":\"manguito rotador y lumbalgia\",\"tema_nuevo\":true,"
+				+ "\"intencion\":\"ejercicios\",\"pregunta_completa\":\"¿Qué ejercicios hay para el manguito rotador?\"}");
+		Stream dos = consultarEn(centro, centro.token(),
+				cuerpo("ejercicios para manguito rotador", primera, uno.textoCompleto(), List.of(lumbalgia)));
+
+		assertThat(dos.status()).as(dos.cuerpo()).isEqualTo(200);
+		assertThat(dos.librosDeLasFuentes()).isNotEmpty().first().isEqualTo(hombro);
+		dos.evento("fuentes").data().get("fuentes").forEach(f -> assertThat(
+				f.get("extracto").asString().toLowerCase(Locale.ROOT)).as("cada fuente nombra el manguito")
+				.contains("manguito"));
+		assertThat(dos.textoCompleto().toLowerCase(Locale.ROOT)).doesNotContain("lumbalgia");
+	}
+
 	/** Review focus 3: una corre, tres esperan en 1, 2 y 3, y la quinta es 503 sin abrir el stream. */
 	@Test
 	void colaLlenaRecibe503() throws Exception {

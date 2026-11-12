@@ -134,9 +134,9 @@ public class ConsultaService {
 				.map(PasajeFusionado::pasaje)
 				.limit(tope)
 				.toList();
-		List<TurnoDeConsulta> charla = buscar.independiente() ? List.of() : historial;
+		// Quien redacta no recibe la charla, solo la pregunta completa (R14).
 		PresupuestoDeContexto.Armado armado = PresupuestoDeContexto.armar(
-				buscar.profundo() ? promptProfundo : promptBreve, pasajes, charla, buscar.preguntaCompleta());
+				buscar.profundo() ? promptProfundo : promptBreve, pasajes, buscar.preguntaCompleta());
 		if (armado.pasajes().isEmpty()) {
 			log.info("Consulta a la biblioteca sin material: el presupuesto dejo fuera todos los pasajes");
 			return sinMaterial(resultado.camino(), msInterpretar, msBuscar);

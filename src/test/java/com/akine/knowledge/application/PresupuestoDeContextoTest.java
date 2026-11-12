@@ -21,53 +21,27 @@ class PresupuestoDeContextoTest {
 	void systemNuncaSeRecorta() {
 		String system = "s".repeat(8000);
 		List<MensajeChat> mensajes = PresupuestoDeContexto.armar(system,
-				List.of(pasaje(1, 3000, 0.9), pasaje(2, 3000, 0.8)), List.of(), "pregunta?").mensajes();
+				List.of(pasaje(1, 3000, 0.9), pasaje(2, 3000, 0.8)), "pregunta?").mensajes();
 
 		assertThat(mensajes.get(0)).isEqualTo(new MensajeChat(Rol.SISTEMA, system));
 		assertThat(mensajes.get(mensajes.size() - 1).texto()).isEqualTo("pregunta?");
 	}
 
 	@Test
-	void recortaPrimeroHistorialViejo() {
-		List<TurnoDeConsulta> historial = List.of(
-				new TurnoDeConsulta(TurnoDeConsulta.Rol.USUARIO, "viejo" + "a".repeat(3000)),
-				new TurnoDeConsulta(TurnoDeConsulta.Rol.USUARIO, "nuevo" + "b".repeat(500)));
-		List<MensajeChat> mensajes = PresupuestoDeContexto.armar("sistema",
-				List.of(pasaje(1, 3000, 0.9), pasaje(2, 3000, 0.8)), historial, "y ahora?").mensajes();
-
-		assertThat(mensajes).noneMatch(m -> m.texto().startsWith("viejo"));
-		assertThat(mensajes).anyMatch(m -> m.texto().startsWith("nuevo"));
-		assertThat(mensajes).anyMatch(m -> m.texto().contains("Libro 1"));
-		assertThat(mensajes).anyMatch(m -> m.texto().contains("Libro 2"));
-	}
-
-	@Test
-	void sinHistorialSaleElUltimoPasajeYSeRespetaElOrden() {
+	void saleElUltimoPasajeYSeRespetaElOrden() {
 		PresupuestoDeContexto.Armado armado = PresupuestoDeContexto.armar("sistema",
-				List.of(pasaje(1, 3000, 0.5), pasaje(2, 3000, 0.9), pasaje(3, 3000, 0.7)), List.of(), "pregunta?");
+				List.of(pasaje(1, 3000, 0.5), pasaje(2, 3000, 0.9), pasaje(3, 3000, 0.7)), "pregunta?");
 
 		assertThat(armado.pasajes()).extracting(PasajeRecuperado::libroId).containsExactly(1L, 2L);
 		assertThat(armado.mensajes()).noneMatch(m -> m.texto().contains("Libro 3"));
-	}
-
-	@Test
-	void lasRespuestasDelAsistenteNoEntran() {
-		List<TurnoDeConsulta> historial = List.of(
-				new TurnoDeConsulta(TurnoDeConsulta.Rol.USUARIO, "pregunta previa"),
-				new TurnoDeConsulta(TurnoDeConsulta.Rol.ASISTENTE, "respuesta previa"));
-		List<MensajeChat> mensajes = PresupuestoDeContexto.armar("sistema",
-				List.of(pasaje(1, 100, 0.9)), historial, "y ahora?").mensajes();
-
-		assertThat(mensajes).noneMatch(m -> m.rol() == Rol.ASISTENTE);
-		assertThat(mensajes).noneMatch(m -> m.texto().contains("respuesta previa"));
-		assertThat(mensajes.get(1)).isEqualTo(new MensajeChat(Rol.USUARIO, "pregunta previa"));
+		assertThat(armado.mensajes()).hasSize(3);
 	}
 
 	@Test
 	void systemYPreguntaQueNoEntranNoLanza() {
 		String system = "s".repeat(PresupuestoDeContexto.PRESUPUESTO_CARACTERES);
 		PresupuestoDeContexto.Armado armado = PresupuestoDeContexto.armar(system,
-				List.of(pasaje(1, 100, 0.9)), List.of(), "pregunta?");
+				List.of(pasaje(1, 100, 0.9)), "pregunta?");
 
 		assertThat(armado.pasajes()).isEmpty();
 		assertThat(armado.mensajes()).containsExactly(

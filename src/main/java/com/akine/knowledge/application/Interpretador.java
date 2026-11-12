@@ -71,6 +71,11 @@ public class Interpretador {
 			"^(?:ejerc|dosis|eval|trat|defin|profesion|interv|rehab|tiempo|detalle|explic|profundiz|repetic|frecuen"
 					+ "|minut|vez$|veces$|semanas?$|dias?$|horas?$|series?$|duracion$)");
 	private static final Pattern SIGLA = Pattern.compile("\\b\\p{Lu}{2,6}\\b");
+	private static final Pattern ESPACIOS = Pattern.compile("\\s+");
+	/** Hasta cuantas letras puede tener una palabra de la consulta para leerse como sigla ("acv", "epoc"). */
+	private static final int SIGLA_MAXIMA = 5;
+	/** Palabras que pueden ir dentro del desarrollo de una sigla sin aportar letra. */
+	private static final Set<String> CONECTORES = Set.of("de", "del", "la", "el", "los", "las", "y", "e");
 	private static final Pattern NO_PALABRA = Pattern.compile("[^\\p{L}\\p{N}]+");
 	private static final Pattern BORDES = Pattern.compile("^[\\p{Punct}¿¡\\s]+|[\\p{Punct}¿¡\\s]+$");
 	private static final Set<String> VACIAS = Set.of(
@@ -145,6 +150,10 @@ public class Interpretador {
 		long deContenido = palabras.stream().filter(Interpretador::esDeContenido).count();
 		boolean ambigua = deContenido >= 1 && deContenido <= CONTENIDO_AMBIGUA && !conIntencion;
 
+		if (!historial.isEmpty() && ambigua && esAspectoSuelto(palabras(normalizar(ultimaPregunta(historial))))) {
+			// Respuesta tecleada a "¿Para qué afección o tema?": el aspecto de antes y el tema de ahora, sin charla.
+			return interpretar(orgId, ultimaPregunta(historial).strip() + " " + consulta, List.of(), limite);
+		}
 		if (historial.isEmpty()) {
 			// Antes que la intencion: "ejercicios" matchea "ejerc" y nunca seria ambigua.
 			if (esAspectoSuelto(palabras)) {
@@ -175,8 +184,11 @@ public class Interpretador {
 		}
 		Set<String> enCharla = palabrasDeLaCharla(historial);
 		Set<String> enConsulta = Set.copyOf(palabras(normal));
+		Set<String> expandidas = leida == null ? Set.of()
+				: expansiones(enConsulta, enCharla, leida.tema(), leida.preguntaCompleta());
 		Set<String> fuente = new HashSet<>(enCharla);
 		fuente.addAll(enConsulta);
+		fuente.addAll(expandidas);
 		if (leida == null || inventaTema(leida, fuente)) {
 			log.info("Interpretacion descartada, se usa el respaldo");
 			return respaldo(consulta, historial);
@@ -190,18 +202,130 @@ public class Interpretador {
 			// La consulta nombra un tema nuevo y el modelo lo cambio por el de la charla.
 			return respaldo(consulta, historial);
 		}
+		// Con palabras de tema propias es independiente aunque la charla ya las nombrara (R15).
 		boolean independiente = leida.temaNuevo() || historial.isEmpty() || nombraOtroTema
+				|| !profundo && !palabrasDeTema(normal).isEmpty()
 				|| !contenido(normalizar(leida.tema()), enCharla);
+		String tema = leida.tema();
 		String completa = leida.preguntaCompleta();
-		if (independiente && !contenido(normalizar(completa), enConsulta)) {
-			// Independiente: la pregunta completa no suma temas que la consulta no nombra (ni los de la charla).
-			completa = consulta;
+		if (independiente) {
+			// Ni el tema ni la pregunta completa suman temas que la consulta no nombra (ni los de la charla),
+			// salvo el desarrollo de una sigla de la consulta (§4.1).
+			Set<String> admitidas = new HashSet<>(enConsulta);
+			admitidas.addAll(expandidas);
+			tema = recortarTema(tema, consulta, admitidas);
+			if (!contenido(normalizar(completa), admitidas)) {
+				completa = consulta;
+			}
 		}
 		if (independiente && !historial.isEmpty() && ambigua) {
-			return aclararOBuscar(orgId, leida.tema(), completa);
+			return aclararOBuscar(orgId, tema, completa);
 		}
-		return new Buscar(leida.tema(), leida.intencion(), completa,
-				consultas(completa, leida.intencion(), leida.tema()), independiente, profundo);
+		return new Buscar(tema, leida.intencion(), completa,
+				consultas(completa, leida.intencion(), tema), independiente, profundo);
+	}
+
+	/**
+	 * El tema con solo sus palabras de tema admitidas. Las vacias y los aspectos que unian una palabra
+	 * quitada se van con ella: "manguito rotador y lumbalgia" queda "manguito rotador". Si no queda
+	 * ninguna, las palabras de tema de la consulta.
+	 */
+	private static String recortarTema(String tema, String consulta, Set<String> admitidas) {
+		List<String> quedan = new ArrayList<>();
+		boolean trasQuitada = false;
+		for (String token : ESPACIOS.split(tema.strip())) {
+			List<String> deTema = palabrasDeTema(normalizar(token));
+			if (deTema.isEmpty()) {
+				if (!trasQuitada) {
+					quedan.add(token);
+				}
+			}
+			else if (deTema.stream().allMatch(p -> estaEn(p, admitidas))) {
+				quedan.add(token);
+				trasQuitada = false;
+			}
+			else {
+				sinNeutrosAlFinal(quedan);
+				trasQuitada = true;
+			}
+		}
+		sinNeutrosAlFinal(quedan);
+		while (!quedan.isEmpty() && palabrasDeTema(normalizar(quedan.get(0))).isEmpty()) {
+			quedan.remove(0);
+		}
+		if (quedan.isEmpty()) {
+			for (String token : ESPACIOS.split(consulta.strip())) {
+				if (!palabrasDeTema(normalizar(token)).isEmpty()) {
+					quedan.add(token);
+				}
+			}
+		}
+		return sinBordes(String.join(" ", quedan));
+	}
+
+	private static void sinNeutrosAlFinal(List<String> tokens) {
+		while (!tokens.isEmpty() && palabrasDeTema(normalizar(tokens.get(tokens.size() - 1))).isEmpty()) {
+			tokens.remove(tokens.size() - 1);
+		}
+	}
+
+	/**
+	 * Palabras que desarrollan una sigla de la consulta en el tema o la pregunta completa del modelo: una
+	 * corrida de dos o mas palabras cuyas iniciales deletrean la sigla; la ultima puede aportar tambien,
+	 * en orden, las letras que faltan ("accidente cerebrovascular" es "acv"). Una corrida con una palabra
+	 * de la charla que la consulta no nombra no cuenta: la fuga de §7.8 sale de la charla.
+	 */
+	private static Set<String> expansiones(Set<String> enConsulta, Set<String> enCharla, String... textos) {
+		Set<String> expandidas = new HashSet<>();
+		for (String sigla : enConsulta) {
+			if (sigla.length() < 2 || sigla.length() > SIGLA_MAXIMA
+					|| !sigla.chars().allMatch(Character::isLetter) || palabrasDeTema(sigla).isEmpty()) {
+				continue;
+			}
+			for (String texto : textos) {
+				List<String> ws = palabras(normalizar(texto));
+				for (int i = 0; i < ws.size(); i++) {
+					List<String> corrida = new ArrayList<>();
+					if (deletrea(sigla, 0, ws, i, corrida) && corrida.size() >= 2
+							&& corrida.stream().noneMatch(p -> enCharla.contains(p) && !enConsulta.contains(p))) {
+						expandidas.addAll(corrida);
+					}
+				}
+			}
+		}
+		return expandidas;
+	}
+
+	/** {@code ws[wi..]} deletrea {@code sigla[si..]}; deja en {@code corrida} las palabras que aportan. */
+	private static boolean deletrea(String sigla, int si, List<String> ws, int wi, List<String> corrida) {
+		if (wi >= ws.size()) {
+			return false;
+		}
+		String w = ws.get(wi);
+		if (si > 0 && CONECTORES.contains(w)) {
+			return deletrea(sigla, si, ws, wi + 1, corrida);
+		}
+		if (w.charAt(0) != sigla.charAt(si)) {
+			return false;
+		}
+		corrida.add(w);
+		if (si + 1 == sigla.length() || deletrea(sigla, si + 1, ws, wi + 1, corrida)
+				|| esSubsecuencia(sigla.substring(si + 1), w.substring(1))) {
+			return true;
+		}
+		corrida.remove(corrida.size() - 1);
+		return false;
+	}
+
+	private static boolean esSubsecuencia(String letras, String palabra) {
+		int desde = 0;
+		for (char c : letras.toCharArray()) {
+			desde = palabra.indexOf(c, desde) + 1;
+			if (desde == 0) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/** Repregunta con los aspectos que tienen evidencia; sin ninguno, busqueda normal. */
@@ -230,13 +354,13 @@ public class Interpretador {
 	}
 
 	/**
-	 * Respaldo de v1. Sin historial, o si la consulta nombra un tema que la charla no tiene, la
+	 * Respaldo de v1. Sin historial, o si la consulta nombra su propio tema (R15), la
 	 * pregunta tal cual e independiente; si no, la ultima pregunta de la charla mas la nueva.
 	 */
 	private static Buscar respaldo(String consulta, List<TurnoDeConsulta> historial) {
 		String normal = normalizar(consulta);
 		boolean profundo = PROFUNDO.matcher(normal).find();
-		if (historial.isEmpty() || !profundo && !nuevasRespectoDe(normal, palabrasDeLaCharla(historial)).isEmpty()) {
+		if (historial.isEmpty() || !profundo && !palabrasDeTema(normal).isEmpty()) {
 			return new Buscar(consulta, Intencion.OTRA, consulta, List.of(consulta), true, false);
 		}
 		String junta = respaldoConcatenado(historial, consulta);
@@ -245,13 +369,8 @@ public class Interpretador {
 
 	/** Ultima pregunta del historial, un espacio y la nueva; si pasa de 600, se conserva el final. */
 	static String respaldoConcatenado(List<TurnoDeConsulta> historial, String pregunta) {
-		String anterior = null;
-		for (int i = historial.size() - 1; i >= 0 && anterior == null; i--) {
-			if (historial.get(i).rol() == TurnoDeConsulta.Rol.USUARIO) {
-				anterior = historial.get(i).texto();
-			}
-		}
-		String junta = anterior == null || anterior.isBlank() ? pregunta : anterior.strip() + " " + pregunta;
+		String anterior = ultimaPregunta(historial);
+		String junta = anterior.isBlank() ? pregunta : anterior.strip() + " " + pregunta;
 		return ConsultaService.ultimos(junta, ConsultaService.PREGUNTA_MAXIMA);
 	}
 
@@ -267,6 +386,16 @@ public class Interpretador {
 		}
 		usuario.append("\nConsulta: ").append(consulta);
 		return List.of(new MensajeChat(Rol.SISTEMA, prompt), new MensajeChat(Rol.USUARIO, usuario.toString()));
+	}
+
+	/** La ultima pregunta del usuario en el historial, o {@code ""}. */
+	private static String ultimaPregunta(List<TurnoDeConsulta> historial) {
+		for (int i = historial.size() - 1; i >= 0; i--) {
+			if (historial.get(i).rol() == TurnoDeConsulta.Rol.USUARIO) {
+				return historial.get(i).texto();
+			}
+		}
+		return "";
 	}
 
 	private static Set<String> palabrasDeLaCharla(List<TurnoDeConsulta> historial) {
