@@ -80,10 +80,10 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 				INSERT INTO membership_grant (organization_id, membership_id, permission_code,
 				                              granted_by_account_id, reason, valid_from, active,
 				                              version, created_at, updated_at)
-				VALUES (?, ?, 'AUDITORIA_READ_CLINICA', ?, 'sintetico', UTC_TIMESTAMP(6), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6)),
-				       (?, ?, 'AUDITORIA_READ_CLINICA', ?, 'sintetico', UTC_TIMESTAMP(6), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'AUDITORIA_READ_CLINICA', ?, 'sintetico', CURRENT_TIMESTAMP, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+				       (?, ?, 'AUDITORIA_READ_CLINICA', ?, 'sintetico', CURRENT_TIMESTAMP, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), membership, tenant.cuentaId(),
 				tenant.organizationId(), membership, tenant.cuentaId()))
 				.isInstanceOf(DataIntegrityViolationException.class);
@@ -99,7 +99,7 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 				.isInstanceOf(DataIntegrityViolationException.class);
 
 		// Revocado sale del unique: se puede volver a otorgar conservando el historial.
-		jdbc.update("UPDATE platform_role SET active = 0, valid_until = UTC_TIMESTAMP(6) "
+		jdbc.update("UPDATE platform_role SET active = false, valid_until = CURRENT_TIMESTAMP "
 				+ "WHERE account_id = ?", cuenta.cuentaId());
 		assertThatCode(() -> sembrarRolDePlataforma(cuenta.cuentaId()))
 				.doesNotThrowAnyException();
@@ -125,7 +125,7 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 		assertThatThrownBy(() -> jdbc.update(
 				"UPDATE membership SET role_code = 'PLATFORM_ADMIN' WHERE organization_id = ?",
 				tenant.organizationId()))
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_membership_role_code_no_plataforma");
 	}
 
@@ -246,7 +246,12 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						// AKINE-08.07: ajustar y anular pases, permiso reforzado.
 						"pase:adjust",
 						// `reporte:read` lo sumo G-1 (DP-15): la matriz da "Si" al ORG_ADMIN en Ver Reportes.
-						"reporte:read");
+						"reporte:read",
+						// M30: la biblioteca de libros, solo ORG_ADMIN.
+						"biblioteca:manage", "biblioteca:consultar",
+						// Agenda de profesionales: horario habitual y excepciones, separados de
+						// consultorio:manage (docs/diseno/AKINE-agenda-roles.md).
+						"agenda:horario", "agenda:excepciones");
 	}
 
 	@Test
@@ -269,6 +274,8 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						// U-25 (DP-43): enmendar es un permiso propio, con el reparto de Registrar Sesion.
 						"sesion:amend",
 						"hc:read", "hc:write",
+						// Agenda de profesionales: su horario y sus excepciones (alcance propio).
+						"agenda:horario", "agenda:excepciones",
 						// AKINE-DU-6 (DP-22): por base y no por grant, a diferencia de paciente:manage.
 						"paciente:read",
 						// U-07 y U-08: ve coberturas y aranceles, y elige practicas del catalogo.
@@ -281,7 +288,9 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						// AKINE-08.06: sin producto:* ni pase:*. Vender un pack es trabajo del mostrador (RolePermissions).
 						// `reporte:read` lo sumo G-1 (DP-15) con alcance ACTIVIDAD_PROPIA: el profesional
 						// ve solo su propia actividad en los reportes.
-						"reporte:read");
+						"reporte:read",
+						// M30, RF-M30-012: consultar la biblioteca, por base.
+						"biblioteca:consultar");
 
 		membershipService.revoke(actorDe(tenant), tenant.organizationId(), membership, MOTIVO);
 
@@ -352,7 +361,7 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 
 	private long contarGrants(long membershipId, Boolean activo) {
 		String sql = "SELECT COUNT(*) FROM membership_grant WHERE membership_id = ?"
-				+ (activo == null ? "" : " AND active = " + (activo ? 1 : 0));
+				+ (activo == null ? "" : " AND active = " + activo);
 		Long total = jdbc.queryForObject(sql, Long.class, membershipId);
 		return total == null ? 0L : total;
 	}

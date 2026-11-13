@@ -123,6 +123,33 @@ public final class HorarioDeSede {
 				.anyMatch(deLaSede -> deLaSede.contiene(intervalo));
 	}
 
+	/** Las franjas (ya unidas) de ese dia ISO. Vacio: la sede no abre ese dia, o no limita. */
+	public List<IntervaloLocal> delDia(int diaSemana) {
+		return porDia.getOrDefault(diaSemana, List.of());
+	}
+
+	/**
+	 * {@code true} si la franja semanal de un profesional cae ENTERA dentro del horario de la sede
+	 * ese dia. Sin horario cargado, siempre: una sede sin horario no limita nada.
+	 */
+	public boolean admite(int diaSemana, IntervaloLocal franja) {
+		return !limita() || delDia(diaSemana).stream().anyMatch(abierto -> abierto.contiene(franja));
+	}
+
+	/**
+	 * La parte comun de la franja con el horario de la sede ese dia: 0, 1 o varios intervalos
+	 * —varios si la sede cierra al mediodia y la franja lo cruza—. Sin limite, la franja intacta.
+	 */
+	public List<IntervaloLocal> recortar(int diaSemana, IntervaloLocal franja) {
+		if (!limita()) {
+			return List.of(franja);
+		}
+		return delDia(diaSemana).stream()
+				.map(abierto -> abierto.interseccion(franja))
+				.flatMap(java.util.Optional::stream)
+				.toList();
+	}
+
 	private static List<IntervaloLocal> unir(List<IntervaloLocal> intervalos) {
 		List<IntervaloLocal> ordenados = new ArrayList<>(intervalos);
 		ordenados.sort(Comparator.comparing(IntervaloLocal::desde)

@@ -7,6 +7,7 @@ import com.akine.scheduling.spi.OcupacionDeAgenda;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -49,7 +50,7 @@ public class SchedulingAgendaDeSede implements AgendaDeSede {
 	/**
 	 * Delega en {@link AgendaSedeIniciador}, que es quien abre la transaccion propia.
 	 *
-	 * <p>No se reimplementa el {@code INSERT ... ON DUPLICATE KEY UPDATE} aca: una segunda copia
+	 * <p>No se reimplementa el {@code INSERT ... ON CONFLICT DO NOTHING} aca: una segunda copia
 	 * de ese patron es una segunda copia que envejece, y el defecto que evita —deadlock entre las
 	 * primeras N escrituras de una sede— no se manifiesta en ningun test unitario.
 	 */
@@ -76,6 +77,16 @@ public class SchedulingAgendaDeSede implements AgendaDeSede {
 	}
 
 	@Override
+	public List<OcupacionDeAgenda> turnosDeProfesionalesQueCruzan(
+			long organizationId, Collection<Long> membershipIds, Instant inicio, Instant fin) {
+
+		if (membershipIds.isEmpty()) {
+			return List.of();
+		}
+		return proyectar(turnos.findVivosDeProfesionalesQueCruzan(organizationId, membershipIds, inicio, fin));
+	}
+
+	@Override
 	public List<OcupacionDeAgenda> turnosDeEspacioQueCruzan(
 			long organizationId, long espacioId, Instant inicio, Instant fin) {
 
@@ -91,7 +102,8 @@ public class SchedulingAgendaDeSede implements AgendaDeSede {
 						turno.getProfesionalMembershipId(),
 						turno.getEspacioId(),
 						turno.getInicio(),
-						turno.getFin()))
+						turno.getFin(),
+						turno.getConsultorioId()))
 				.toList();
 	}
 }

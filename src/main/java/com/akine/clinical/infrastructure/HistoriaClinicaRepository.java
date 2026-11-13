@@ -62,10 +62,11 @@ public interface HistoriaClinicaRepository
 	@Override
 	@Modifying
 	@Query(value = """
-			INSERT IGNORE INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
+			INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 			                                     active, version, created_at, updated_at)
-			VALUES (:organizationId, :personaId, UTC_TIMESTAMP(6), :abiertaPor, 1, 0,
-			        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+			VALUES (:organizationId, :personaId, CURRENT_TIMESTAMP, :abiertaPor, true, 0,
+			        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			ON CONFLICT DO NOTHING
 			""", nativeQuery = true)
 	int abrirSiFalta(
 			@Param("organizationId") long organizationId,

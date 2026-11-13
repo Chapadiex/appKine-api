@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -124,7 +123,7 @@ class AutorizacionMovimientoMigrationIT {
 	void la_tabla_lleva_tenant() {
 		assertThat(jdbc().queryForObject("""
 				SELECT is_nullable FROM information_schema.columns
-				 WHERE table_schema = DATABASE() AND table_name = 'autorizacion_movimiento'
+				 WHERE table_schema = current_schema() AND table_name = 'autorizacion_movimiento'
 				   AND column_name = 'organization_id'
 				""", String.class))
 				.isEqualTo("NO");
@@ -139,8 +138,8 @@ class AutorizacionMovimientoMigrationIT {
 		// CasoClinicoMigrationIT.
 		List<String> primeras = jdbc().queryForList("""
 				SELECT DISTINCT s.column_name
-				  FROM information_schema.statistics s
-				 WHERE s.table_schema = DATABASE()
+				  FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) s
+				 WHERE s.table_schema = current_schema()
 				   AND s.table_name = 'autorizacion_movimiento'
 				   AND s.seq_in_index = 1 AND s.index_name <> 'PRIMARY'
 				   AND NOT EXISTS (
@@ -191,9 +190,9 @@ class AutorizacionMovimientoMigrationIT {
 	void el_tipo_es_lista_cerrada() {
 		assertThatThrownBy(() -> insertar(ORG_A, autorizacionEnA, personaEnA, "AJUSTE", 1,
 				"SESION", 1L, null, null))
-				.as("ck_movimiento_tipo. Un CHECK de MySQL llega como UncategorizedSQLException, "
-						+ "al reves que el UNIQUE")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.as("ck_movimiento_tipo. Un CHECK llega como DataIntegrityViolationException, "
+						+ "igual que el UNIQUE")
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -219,7 +218,7 @@ class AutorizacionMovimientoMigrationIT {
 		// prueba que una prestacion ocurrio.
 		assertThatThrownBy(() -> insertar(ORG_A, autorizacionEnA, personaEnA, "CONSUMO", 1,
 				"TURNO", 2L, null, null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -230,10 +229,10 @@ class AutorizacionMovimientoMigrationIT {
 		// numeros negativos, todo lector tiene que saber el signo de cada tipo para sumar.
 		assertThatThrownBy(() -> insertar(ORG_A, autorizacionEnA, personaEnA, "CONSUMO", 0,
 				"SESION", 3L, null, null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() -> insertar(ORG_A, autorizacionEnA, personaEnA, "CONSUMO", -1,
 				"SESION", 4L, null, null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -246,7 +245,7 @@ class AutorizacionMovimientoMigrationIT {
 		assertThatThrownBy(() -> insertar(ORG_A, autorizacionEnA, personaEnA, "REVERSION", 1,
 				"SESION", 5L, null, null))
 				.as("ck_movimiento_motivo_exigido")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		// Control negativo: si el CHECK exigiera motivo en todos, cada cierre de sesion tendria
 		// que inventar una explicacion que el requisito no pide.
@@ -267,7 +266,7 @@ class AutorizacionMovimientoMigrationIT {
 		assertThatThrownBy(() -> insertar(ORG_A, autorizacionEnA, personaEnA, "CONSUMO", 1,
 				"SESION", 7L, null, consumoId))
 				.as("ck_movimiento_origen_solo_en_reversion")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() -> insertar(ORG_A, autorizacionEnA, personaEnA, "REVERSION", 1,
 				"SESION", 6L, "Se cargo en el paciente equivocado", consumoId))
@@ -366,8 +365,8 @@ class AutorizacionMovimientoMigrationIT {
 				       (organization_id, autorizacion_id, persona_id, consultorio_id, tipo,
 				        cantidad, tipo_origen, referencia_origen, motivo, movimiento_origen_id,
 				        ocurrio_en, actor_cuenta_id, created_at)
-				 VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6), NULL,
-				         UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, NULL,
+				         CURRENT_TIMESTAMP)
 				""", organizationId, autorizacionId, personaId, tipo, cantidad, tipoOrigen,
 				referenciaOrigen, motivo, movimientoOrigenId);
 	}
@@ -375,22 +374,22 @@ class AutorizacionMovimientoMigrationIT {
 	private List<String> columnasDe(String tabla) {
 		return jdbc().queryForList("""
 				SELECT column_name FROM information_schema.columns
-				 WHERE table_schema = DATABASE() AND table_name = ?
+				 WHERE table_schema = current_schema() AND table_name = ?
 				""", String.class, tabla);
 	}
 
 	private void crearOrganizacion(long id, String slug) {
 		jdbc().update("""
-				INSERT IGNORE INTO organization (id, name, slug, timezone, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-				""", id, "Centro " + slug, slug, ZONA);
+				INSERT INTO organization (id, name, slug, timezone, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING
+""", id, "Centro " + slug, slug, ZONA);
 	}
 
 	private long crearConsultorio(long organizationId) {
 		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				 VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, "Sede " + SECUENCIA.incrementAndGet(), ZONA);
 	}
 
@@ -401,7 +400,7 @@ class AutorizacionMovimientoMigrationIT {
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				 VALUES (?, 'DNI', ?, ?, 'Sintetica', 'Paciente', 'SINTETICA', 'PACIENTE',
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, documento, documento);
 	}
 
@@ -427,8 +426,8 @@ class AutorizacionMovimientoMigrationIT {
 				                          cobertura_id, practica_id, numero, estado,
 				                          cantidad_autorizada, cantidad_consumida, vigencia_desde,
 				                          active, version, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, ?, 'APROBADA', 9999, 0, '2020-01-01', 1, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, ?, ?, ?, 'APROBADA', 9999, 0, '2020-01-01', true, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, personaId, consultorioId, coberturaId, practicaId,
 				"AUT-" + sufijo);
 	}
@@ -437,7 +436,7 @@ class AutorizacionMovimientoMigrationIT {
 		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
-				 VALUES (?, ?, ?, 'PREPAGA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, 'PREPAGA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, codigo, "Financiador " + codigo);
 	}
 
@@ -447,8 +446,8 @@ class AutorizacionMovimientoMigrationIT {
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, active, version,
 				                            created_at, updated_at)
-				 VALUES (?, ?, ?, ?, '2020-01-01', 1, 0, 1, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, ?, '2020-01-01', true, false, true, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, financiadorId, codigo, "Plan " + codigo);
 	}
 
@@ -464,8 +463,8 @@ class AutorizacionMovimientoMigrationIT {
 				        requeria_autorizacion, requeria_credencial, referencia_capturada_el,
 				        numero_afiliado, vigencia_desde, principal, active, version,
 				        created_at, updated_at)
-				 VALUES (?, ?, 'FINANCIADA', ?, ?, ?, 'PREPAGA', ?, ?, ?, 1, 0, UTC_TIMESTAMP(6),
-				         ?, '2020-01-01', 1, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, 'FINANCIADA', ?, ?, ?, 'PREPAGA', ?, ?, ?, true, false, CURRENT_TIMESTAMP,
+				         ?, '2020-01-01', true, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""",
 				organizationId, personaId,
 				financiadorId, "OS-" + sufijo, "Financiador OS-" + sufijo,
@@ -477,8 +476,8 @@ class AutorizacionMovimientoMigrationIT {
 		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO especialidad (organization_id, codigo, name, valid_from, active,
 				                          version, created_at, updated_at)
-				 VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', true, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, codigo, "Especialidad " + codigo);
 	}
 
@@ -486,8 +485,8 @@ class AutorizacionMovimientoMigrationIT {
 		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO practica (organization_id, especialidad_id, codigo, name, valid_from,
 				                      active, version, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', true, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, especialidadId, codigo, "Practica " + codigo);
 	}
 }

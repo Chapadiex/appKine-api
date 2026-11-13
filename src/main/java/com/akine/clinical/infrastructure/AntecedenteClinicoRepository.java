@@ -57,7 +57,7 @@ public interface AntecedenteClinicoRepository
 			SELECT * FROM historia_clinica_antecedente a
 			 WHERE a.organization_id = :organizationId
 			   AND a.historia_clinica_id = :historiaClinicaId
-			   AND a.active = 1
+			   AND a.active = true
 			   AND a.registrado_en <= :hasta
 			 ORDER BY a.registrado_en DESC, a.id DESC
 			 LIMIT :limite

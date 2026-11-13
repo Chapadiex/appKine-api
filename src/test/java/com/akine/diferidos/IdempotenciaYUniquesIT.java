@@ -277,8 +277,8 @@ class IdempotenciaYUniquesIT extends BaseEscenarioDiferido {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '1 minutes'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, accountId, rol);
 	}
 
@@ -301,7 +301,7 @@ class IdempotenciaYUniquesIT extends BaseEscenarioDiferido {
 		jdbc.update("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, nombre);
 	}
 

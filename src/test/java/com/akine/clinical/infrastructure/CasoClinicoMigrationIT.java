@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -125,7 +124,7 @@ class CasoClinicoMigrationIT {
 		for (String tabla : tablasDelCaso()) {
 			assertThat(jdbc().queryForObject("""
 					SELECT is_nullable FROM information_schema.columns
-					 WHERE table_schema = DATABASE() AND table_name = ?
+					 WHERE table_schema = current_schema() AND table_name = ?
 					   AND column_name = 'organization_id'
 					""", String.class, tabla))
 					.as("%s tiene que llevar organization_id NOT NULL", tabla)
@@ -143,8 +142,8 @@ class CasoClinicoMigrationIT {
 		for (String tabla : tablasDelCaso()) {
 			List<String> primeras = jdbc().queryForList("""
 					SELECT DISTINCT s.column_name
-					  FROM information_schema.statistics s
-					 WHERE s.table_schema = DATABASE() AND s.table_name = ?
+					  FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) s
+					 WHERE s.table_schema = current_schema() AND s.table_name = ?
 					   AND s.seq_in_index = 1 AND s.index_name <> 'PRIMARY'
 					   AND NOT EXISTS (
 					       SELECT 1 FROM information_schema.table_constraints tc
@@ -170,8 +169,8 @@ class CasoClinicoMigrationIT {
 		// tabla entera: se miran los dos que esta etapa agrega, por nombre.
 		for (String indice : List.of("uk_sesion_numero_en_caso", "ix_sesion_caso")) {
 			assertThat(jdbc().queryForObject("""
-					SELECT column_name FROM information_schema.statistics
-					 WHERE table_schema = DATABASE() AND table_name = 'sesion'
+					SELECT column_name FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) AS statistics
+					 WHERE table_schema = current_schema() AND table_name = 'sesion'
 					   AND index_name = ? AND seq_in_index = 1
 					""", String.class, indice))
 					.as("%s tiene que empezar por organization_id", indice)
@@ -224,15 +223,15 @@ class CasoClinicoMigrationIT {
 		// muerto, y `SUSPENDIDO` es el que la intuicion pide primero.
 		assertThatThrownBy(() -> insertarCaso(ORG_A, historiaEnA, 1, "SUSPENDIDO"))
 				.as("ck_caso_clinico_estado. Un CHECK de MySQL llega como "
-						+ "UncategorizedSQLException, al reves que el UNIQUE")
-				.isInstanceOf(UncategorizedSQLException.class);
+						+ "DataIntegrityViolationException, igual que el UNIQUE")
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
 	@DisplayName("un numero de caso cero o negativo no entra")
 	void el_correlativo_es_positivo() {
 		assertThatThrownBy(() -> insertarCaso(ORG_A, historiaEnA, 0, "ACTIVO"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -243,19 +242,19 @@ class CasoClinicoMigrationIT {
 		long casoId = insertarCaso(ORG_A, historiaEnA, 1, "ACTIVO");
 
 		assertThatThrownBy(() -> jdbc().update("""
-				UPDATE caso_clinico SET estado = 'CERRADO', cerrado_en = UTC_TIMESTAMP(6),
+				UPDATE caso_clinico SET estado = 'CERRADO', cerrado_en = CURRENT_TIMESTAMP,
 				                        cerrado_por = 1
 				 WHERE id = ?
 				""", casoId))
 				.as("ck_caso_clinico_cierre_coherente: falta el motivo")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatThrownBy(() -> jdbc().update("""
 				UPDATE caso_clinico SET estado = 'CERRADO', motivo_cierre = 'Alta'
 				 WHERE id = ?
 				""", casoId))
 				.as("ck_caso_clinico_cierre_coherente: faltan instante y actor")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -268,11 +267,11 @@ class CasoClinicoMigrationIT {
 		long casoId = insertarCaso(ORG_A, historiaEnA, 1, "ACTIVO");
 
 		assertThatThrownBy(() -> jdbc().update("""
-				UPDATE caso_clinico SET cerrado_en = UTC_TIMESTAMP(6), cerrado_por = 1,
+				UPDATE caso_clinico SET cerrado_en = CURRENT_TIMESTAMP, cerrado_por = 1,
 				                        motivo_cierre = 'Alta'
 				 WHERE id = ?
 				""", casoId))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -283,7 +282,7 @@ class CasoClinicoMigrationIT {
 		long casoId = insertarCaso(ORG_A, historiaEnA, 1, "ACTIVO");
 
 		assertThatCode(() -> jdbc().update("""
-				UPDATE caso_clinico SET estado = 'CERRADO', cerrado_en = UTC_TIMESTAMP(6),
+				UPDATE caso_clinico SET estado = 'CERRADO', cerrado_en = CURRENT_TIMESTAMP,
 				                        cerrado_por = 1, motivo_cierre = 'Alta por objetivos'
 				 WHERE id = ?
 				""", casoId))
@@ -345,7 +344,7 @@ class CasoClinicoMigrationIT {
 		long casoId = insertarCaso(ORG_A, historiaEnA, 1, "ACTIVO");
 
 		assertThatThrownBy(() -> insertarParticipacion(ORG_A, casoId, membershipEnA, "AUXILIAR"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -355,9 +354,9 @@ class CasoClinicoMigrationIT {
 		long participacionId = insertarParticipacion(ORG_A, casoId, membershipEnA, "TRATANTE");
 
 		assertThatThrownBy(() -> jdbc().update("""
-				UPDATE caso_profesional SET hasta = DATE_SUB(desde, INTERVAL 1 DAY) WHERE id = ?
+				UPDATE caso_profesional SET hasta = (desde - INTERVAL '1 days') WHERE id = ?
 				""", participacionId))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -366,8 +365,8 @@ class CasoClinicoMigrationIT {
 		// Aca `hasta IS NULL` significa "sigue en el equipo", que es al reves que deleted_at: sin
 		// la columna generada el unique protegeria el historico y desprotegeria lo vigente.
 		assertThat(jdbc().queryForObject("""
-				SELECT extra FROM information_schema.columns
-				 WHERE table_schema = DATABASE() AND table_name = 'caso_profesional'
+				SELECT CASE WHEN is_generated = 'ALWAYS' THEN 'STORED GENERATED' ELSE '' END AS extra FROM information_schema.columns
+				 WHERE table_schema = current_schema() AND table_name = 'caso_profesional'
 				   AND column_name = 'hasta_key'
 				""", String.class))
 				.as("una columna VIRTUAL no puede participar de un indice unico en MySQL")
@@ -402,7 +401,7 @@ class CasoClinicoMigrationIT {
 		// anterior termino y sigue siendo cierta, y borrarla reescribiria historia.
 		long casoId = insertarCaso(ORG_A, historiaEnA, 1, "ACTIVO");
 		long participacionId = insertarParticipacion(ORG_A, casoId, membershipEnA, "TRATANTE");
-		jdbc().update("UPDATE caso_profesional SET hasta = UTC_TIMESTAMP(6) WHERE id = ?",
+		jdbc().update("UPDATE caso_profesional SET hasta = CURRENT_TIMESTAMP WHERE id = ?",
 				participacionId);
 
 		assertThatCode(() -> insertarParticipacion(ORG_A, casoId, membershipEnA, "TRATANTE"))
@@ -425,7 +424,7 @@ class CasoClinicoMigrationIT {
 
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, casoId, "SUSPENSION", "ACTIVO", "ACTIVO", "motivo"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -437,10 +436,10 @@ class CasoClinicoMigrationIT {
 
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, casoId, "CIERRE", "ACTIVO", "CERRADO", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, casoId, "REAPERTURA", "CERRADO", "ACTIVO", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() ->
 				insertarEvento(ORG_A, casoId, "CIERRE", "ACTIVO", "CERRADO", "Alta por objetivos"))
@@ -468,10 +467,10 @@ class CasoClinicoMigrationIT {
 
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, casoId, "APERTURA", "ACTIVO", "ACTIVO", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, casoId, "EDICION", null, "ACTIVO", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() ->
 				insertarEvento(ORG_A, casoId, "APERTURA", null, "ACTIVO", null))
@@ -485,7 +484,7 @@ class CasoClinicoMigrationIT {
 
 		assertThatThrownBy(() ->
 				insertarEvento(ORG_A, casoId, "EDICION", "ACTIVO", "SUSPENDIDO", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	// =================================================================================
@@ -533,7 +532,7 @@ class CasoClinicoMigrationIT {
 		// tratamiento" y no hay tratamiento al cual pertenezca.
 		assertThatThrownBy(() -> insertarSesion(ORG_A, historiaEnA, null, 1, 3))
 				.as("ck_sesion_numero_en_caso")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -542,7 +541,7 @@ class CasoClinicoMigrationIT {
 		long casoId = insertarCaso(ORG_A, historiaEnA, 1, "ACTIVO");
 
 		assertThatThrownBy(() -> insertarSesion(ORG_A, historiaEnA, casoId, 1, 0))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -610,15 +609,15 @@ class CasoClinicoMigrationIT {
 	private List<String> columnasDe(String tabla) {
 		return jdbc().queryForList("""
 				SELECT column_name FROM information_schema.columns
-				 WHERE table_schema = DATABASE() AND table_name = ?
+				 WHERE table_schema = current_schema() AND table_name = ?
 				""", String.class, tabla);
 	}
 
 	private void crearOrganizacion(long id, String slug) {
 		jdbc().update("""
-				INSERT IGNORE INTO organization (id, name, slug, timezone, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-				""", id, "Centro " + slug, slug, ZONA);
+				INSERT INTO organization (id, name, slug, timezone, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING
+""", id, "Centro " + slug, slug, ZONA);
 	}
 
 	private long crearConsultorio(long organizationId) {
@@ -626,7 +625,7 @@ class CasoClinicoMigrationIT {
 		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				 VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, nombre, ZONA);
 	}
 
@@ -635,16 +634,16 @@ class CasoClinicoMigrationIT {
 		long cuentaId = InsertarConId.insertar(jdbc(), """
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				 VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 
 		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				 VALUES (?, ?, ?, 'PROFESIONAL', 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				         'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, 'PROFESIONAL', false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				         'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, cuentaId);
 	}
 
@@ -655,8 +654,8 @@ class CasoClinicoMigrationIT {
 				                      requiere_caso_clinico_default,
 				                      genera_registro_clinico_default, active, version,
 				                      created_at, updated_at)
-				 VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', false, false, true, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", codigo, "Servicio " + codigo);
 
 		return InsertarConId.insertar(jdbc(), """
@@ -665,9 +664,9 @@ class CasoClinicoMigrationIT {
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', 0, 0, 0, 1, 0,
-				         DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', false, false, false, true, false,
+				         CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, servicioId, "Oferta " + codigo);
 	}
 
@@ -678,13 +677,13 @@ class CasoClinicoMigrationIT {
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				 VALUES (?, 'DNI', ?, ?, 'Perez', 'Ana', 'PEREZ', 'ANA',
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, documento, documento);
 
 		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              created_at, updated_at)
-				 VALUES (?, ?, UTC_TIMESTAMP(6), 1, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, personaId);
 	}
 
@@ -694,8 +693,8 @@ class CasoClinicoMigrationIT {
 				                          oferta_id, oferta_consultorio_id, diagnostico_presuntivo,
 				                          estado, abierto_en, abierto_por, version,
 				                          created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, 'Diagnostico sintetico', ?, UTC_TIMESTAMP(6), 1, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, ?, ?, 'Diagnostico sintetico', ?, CURRENT_TIMESTAMP, 1, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, historiaId, numero, ofertaEnA, consultorioEnA, estado);
 	}
 
@@ -705,7 +704,7 @@ class CasoClinicoMigrationIT {
 		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO caso_profesional (organization_id, caso_id, profesional_membership_id,
 				                              rol, desde, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, casoId, membershipId, rol);
 	}
 
@@ -717,7 +716,7 @@ class CasoClinicoMigrationIT {
 				INSERT INTO caso_evento (organization_id, caso_id, tipo, estado_anterior,
 				                         estado_nuevo, motivo, ocurrio_en, actor_cuenta_id,
 				                         created_at)
-				 VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6), 1, UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP)
 				""", organizationId, casoId, tipo, estadoAnterior, estadoNuevo, motivo);
 	}
 
@@ -743,9 +742,9 @@ class CasoClinicoMigrationIT {
 				                    numero_en_caso, iniciada_en, iniciada_por_cuenta_id,
 				                    cerrada_en, cerrada_por_cuenta_id, ultimo_numero_version, version,
 				                    created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, ?, 'CERRADA', ?, ?, UTC_TIMESTAMP(6), 1,
-				         UTC_TIMESTAMP(6), 1, 1, 0,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, ?, ?, ?, 'CERRADA', ?, ?, CURRENT_TIMESTAMP, 1,
+				         CURRENT_TIMESTAMP, 1, 1, 0,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioEnA, historiaId, casoId, ofertaEnA, membershipEnA,
 				numeroSesion, numeroEnCaso);
 	}

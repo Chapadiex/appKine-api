@@ -69,7 +69,7 @@ class AislamientoDeTenantIT extends BaseEscenarioDiferido {
 				.isEqualTo(200);
 
 		int revocadas = jdbc.update(
-				"UPDATE membership SET active = 0, deleted_at = UTC_TIMESTAMP(6) "
+				"UPDATE membership SET active = false, deleted_at = CURRENT_TIMESTAMP "
 						+ "WHERE organization_id = ? AND account_id = ?",
 				sesion.organizationId(), sesion.cuentaId());
 		assertThat(revocadas).isEqualTo(1);
@@ -105,7 +105,7 @@ class AislamientoDeTenantIT extends BaseEscenarioDiferido {
 		long version = antes.json().get("version").asLong();
 
 		int suspendidas = jdbc.update(
-				"UPDATE subscription SET status = 'SUSPENDIDA', updated_at = UTC_TIMESTAMP(6) "
+				"UPDATE subscription SET status = 'SUSPENDIDA', updated_at = CURRENT_TIMESTAMP "
 						+ "WHERE organization_id = ?",
 				sesion.organizationId());
 		assertThat(suspendidas).isEqualTo(1);

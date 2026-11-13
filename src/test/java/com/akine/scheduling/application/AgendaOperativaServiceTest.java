@@ -71,6 +71,7 @@ class AgendaOperativaServiceTest {
 	@Mock private EventoExternoDeAgenda eventosExternos;
 	@Mock private NombresDeAgenda nombres;
 	@Mock private SoporteEnAgenda soporte;
+	@Mock private OcupacionEntreSedes ocupacionEntreSedes;
 
 	private AgendaOperativaService service;
 	private final OperatingActor actor = new OperatingActor(99L, false, ORG_ID, SEDE_ID);
@@ -78,7 +79,9 @@ class AgendaOperativaServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new AgendaOperativaService(recepcion, consultorios, memberships, disponibilidad, espacios,
-				eventosExternos, nombres, soporte);
+				eventosExternos, nombres, soporte, ocupacionEntreSedes);
+		given(ocupacionEntreSedes.de(anyLong(), anyLong(), any(), any(), any()))
+				.willReturn(new OcupacionEntreSedes.Resultado(List.of(), List.of()));
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(SEDE_ID, ORG_ID, "Sede", ZONA.getId(), true)));

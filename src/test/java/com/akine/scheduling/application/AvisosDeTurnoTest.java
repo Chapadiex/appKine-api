@@ -3,6 +3,8 @@ package com.akine.scheduling.application;
 import com.akine.notification.spi.NotificationEnqueueCommand;
 import com.akine.notification.spi.NotificationOutbox;
 import com.akine.notification.spi.NotificationType;
+import com.akine.organization.spi.ConsultorioMembershipDirectory;
+import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.person.spi.ContactoDePersona;
 import com.akine.person.spi.ContactoDirectory;
@@ -21,6 +23,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -47,12 +50,13 @@ class AvisosDeTurnoTest {
 
 	@Mock private NotificationOutbox outbox;
 	@Mock private ContactoDirectory contactos;
+	@Mock private ConsultorioMembershipDirectory memberships;
 
 	private AvisosDeTurno avisos;
 
 	@BeforeEach
 	void setUp() {
-		avisos = new AvisosDeTurno(outbox, contactos);
+		avisos = new AvisosDeTurno(outbox, contactos, memberships);
 	}
 
 	@Test
@@ -125,9 +129,11 @@ class AvisosDeTurnoTest {
 		conCorreo();
 		Instant antes = LocalDateTime.of(2027, 3, 1, 9, 0).atZone(ZoneId.of(ZONA)).toInstant();
 
-		avisos.avisarReprogramacion(turno(LocalDateTime.of(2027, 3, 8, 10, 30), 2L), SEDE, "Kine", antes);
-		avisos.avisarReprogramacion(turno(LocalDateTime.of(2027, 3, 8, 10, 30), 2L), SEDE, "Kine", antes);
-		avisos.avisarReprogramacion(turno(LocalDateTime.of(2027, 3, 1, 9, 0), 3L), SEDE, "Kine", antes);
+		AvisosDeTurno.Antes previo = new AvisosDeTurno.Antes(TURNO_ID, SEDE, antes, 31L, null);
+
+		avisos.avisarModificacion(turno(LocalDateTime.of(2027, 3, 8, 10, 30), 2L), SEDE, "Kine", previo);
+		avisos.avisarModificacion(turno(LocalDateTime.of(2027, 3, 8, 10, 30), 2L), SEDE, "Kine", previo);
+		avisos.avisarModificacion(turno(LocalDateTime.of(2027, 3, 1, 9, 0), 3L), SEDE, "Kine", previo);
 
 		ArgumentCaptor<NotificationEnqueueCommand> captor =
 				ArgumentCaptor.forClass(NotificationEnqueueCommand.class);
@@ -142,6 +148,87 @@ class AvisosDeTurnoTest {
 				.isEqualTo("turno-reprogramado:" + TURNO_ID + ":v2")
 				.isEqualTo(comandos.get(1).claveIdempotente())
 				.isNotEqualTo(comandos.get(2).claveIdempotente());
+		// Mismo profesional y mismo box: el aviso solo habla del horario.
+		assertThat(comandos.get(0).datosDeRender())
+				.doesNotContainKeys("cambioProfesional", "cambioEspacio", "consultorioNombreAnterior");
+	}
+
+	/**
+	 * El cambio de sede: un aviso con la sede de antes, la hora de antes y la marca de otro
+	 * profesional —comparado por CUENTA: en otra sede la misma persona tiene otra membership—, con
+	 * una clave que nombra el turno nuevo y el original.
+	 */
+	@Test
+	@DisplayName("el cambio de sede es UN aviso con lo que cambio y una clave con los dos turnos")
+	void el_traslado_es_un_aviso_combinado() {
+		conCorreo();
+		ConsultorioSnapshot otra = new ConsultorioSnapshot(4L, ORG_ID, "Sede Norte", ZONA, true);
+		Instant antes = LocalDateTime.of(2027, 3, 1, 9, 0).atZone(ZoneId.of(ZONA)).toInstant();
+		given(memberships.find(ORG_ID, 31L)).willReturn(Optional.of(membership(31L, 900L)));
+		given(memberships.find(ORG_ID, 77L)).willReturn(Optional.of(membership(77L, 901L)));
+		Turno nuevo = turno(LocalDateTime.of(2027, 3, 1, 10, 0), 0L);
+		ReflectionTestUtils.setField(nuevo, "id", 777L);
+		ReflectionTestUtils.setField(nuevo, "consultorioId", otra.id());
+		ReflectionTestUtils.setField(nuevo, "profesionalMembershipId", 77L);
+
+		avisos.avisarModificacion(nuevo, otra, "Kine",
+				new AvisosDeTurno.Antes(TURNO_ID, SEDE, antes, 31L, 5L));
+
+		NotificationEnqueueCommand comando = encolado();
+		assertThat(comando.tipo()).isEqualTo(NotificationType.TURNO_REPROGRAMADO);
+		assertThat(comando.claveIdempotente()).isEqualTo("turno-trasladado:777:desde:" + TURNO_ID);
+		assertThat(comando.datosDeRender()).containsExactlyInAnyOrderEntriesOf(Map.of(
+				"nombre", "Ana",
+				"turnoInicio", "01/03/2027 a las 10:00",
+				"turnoInicioAnterior", "01/03/2027 a las 09:00",
+				"consultorioNombre", "Sede Norte",
+				"consultorioNombreAnterior", "Sede Centro",
+				"servicioNombre", "Kine",
+				"cambioProfesional", "si"));
+	}
+
+	@Test
+	@DisplayName("la misma persona en otra sede no es 'otro profesional'")
+	void la_misma_persona_en_otra_sede_no_cambia_de_profesional() {
+		conCorreo();
+		ConsultorioSnapshot otra = new ConsultorioSnapshot(4L, ORG_ID, "Sede Norte", ZONA, true);
+		Instant inicio = LocalDateTime.of(2027, 3, 1, 9, 0).atZone(ZoneId.of(ZONA)).toInstant();
+		given(memberships.find(ORG_ID, 31L)).willReturn(Optional.of(membership(31L, 900L)));
+		given(memberships.find(ORG_ID, 77L)).willReturn(Optional.of(membership(77L, 900L)));
+		Turno nuevo = turno(LocalDateTime.of(2027, 3, 1, 9, 0), 0L);
+		ReflectionTestUtils.setField(nuevo, "id", 777L);
+		ReflectionTestUtils.setField(nuevo, "profesionalMembershipId", 77L);
+
+		avisos.avisarModificacion(nuevo, otra, "Kine", new AvisosDeTurno.Antes(TURNO_ID, SEDE, inicio, 31L, null));
+
+		assertThat(encolado().datosDeRender())
+				.containsEntry("consultorioNombreAnterior", "Sede Centro")
+				.doesNotContainKeys("cambioProfesional", "turnoInicioAnterior", "cambioEspacio");
+	}
+
+	@Test
+	@DisplayName("reprogramar cambiando de profesional y de box lo dice en el mismo aviso")
+	void la_reprogramacion_con_otro_profesional_y_box() {
+		conCorreo();
+		Instant inicio = LocalDateTime.of(2027, 3, 1, 9, 0).atZone(ZoneId.of(ZONA)).toInstant();
+		given(memberships.find(ORG_ID, 30L)).willReturn(Optional.of(membership(30L, 800L)));
+		given(memberships.find(ORG_ID, 31L)).willReturn(Optional.of(membership(31L, 801L)));
+		Turno movido = turno(LocalDateTime.of(2027, 3, 1, 9, 0), 4L);
+		ReflectionTestUtils.setField(movido, "espacioId", 9L);
+
+		avisos.avisarModificacion(movido, SEDE, "Kine", new AvisosDeTurno.Antes(TURNO_ID, SEDE, inicio, 30L, 8L));
+
+		NotificationEnqueueCommand comando = encolado();
+		assertThat(comando.claveIdempotente()).isEqualTo("turno-reprogramado:" + TURNO_ID + ":v4");
+		assertThat(comando.datosDeRender())
+				.containsEntry("cambioProfesional", "si")
+				.containsEntry("cambioEspacio", "si")
+				.doesNotContainKeys("turnoInicioAnterior", "consultorioNombreAnterior");
+	}
+
+	private static ConsultorioMembershipSnapshot membership(long id, long accountId) {
+		return new ConsultorioMembershipSnapshot(id, accountId, ORG_ID, SEDE.id(), "PROFESIONAL", "ACTIVA",
+				Instant.EPOCH, null, true, true);
 	}
 
 	/**

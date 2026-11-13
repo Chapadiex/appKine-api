@@ -12,6 +12,8 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 
@@ -99,6 +101,11 @@ public class ColaboradorInvitacion {
 
 	@Column(name = "membership_id")
 	private Long membershipId;
+
+	/** Foto del alta manual, si se uso ese camino. No contiene credenciales. */
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "datos_alta_manual", columnDefinition = "jsonb")
+	private String datosAltaManual;
 
 	@Version
 	@Column(name = "version", nullable = false)
@@ -193,6 +200,13 @@ public class ColaboradorInvitacion {
 		this.resueltaEn = ahora;
 	}
 
+	public void registrarDatosAltaManual(String datosJson) {
+		if (datosJson == null || datosJson.isBlank()) {
+			throw new IllegalArgumentException("Los datos del alta manual son obligatorios");
+		}
+		this.datosAltaManual = datosJson;
+	}
+
 	/**
 	 * El invitado dijo que no.
 	 *
@@ -281,6 +295,10 @@ public class ColaboradorInvitacion {
 
 	public Long getMembershipId() {
 		return membershipId;
+	}
+
+	public String getDatosAltaManual() {
+		return datosAltaManual;
 	}
 
 	public Long getVersion() {

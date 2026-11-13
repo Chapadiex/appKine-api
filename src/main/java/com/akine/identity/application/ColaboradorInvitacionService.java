@@ -28,6 +28,7 @@ import com.akine.organization.spi.OrganizationDirectory;
 import com.akine.organization.spi.OrganizationSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.offering.spi.OfertaDirectory;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,6 +43,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Ciclo de vida de la invitacion a colaborar (RF-M05-001, RF-M05-002, AKINE-02.03).
@@ -92,6 +97,7 @@ import java.util.Optional;
 public class ColaboradorInvitacionService {
 
 	private static final Logger log = LoggerFactory.getLogger(ColaboradorInvitacionService.class);
+	private static final ObjectMapper JSON = JsonMapper.builder().build();
 
 	/**
 	 * Permiso de la matriz que habilita administrar colaboradores.
@@ -117,6 +123,7 @@ public class ColaboradorInvitacionService {
 	private final AuditTrail auditTrail;
 	private final IdentityClock clock;
 	private final TerminosService terminosService;
+	private final OfertaDirectory ofertaDirectory;
 
 	@SuppressWarnings("java:S107")
 	public ColaboradorInvitacionService(
@@ -134,7 +141,8 @@ public class ColaboradorInvitacionService {
 			PasswordPolicy passwordPolicy,
 			AuditTrail auditTrail,
 			IdentityClock clock,
-			TerminosService terminosService) {
+			TerminosService terminosService,
+			OfertaDirectory ofertaDirectory) {
 
 		this.invitacionRepository = invitacionRepository;
 		this.cuentaRepository = cuentaRepository;
@@ -151,6 +159,7 @@ public class ColaboradorInvitacionService {
 		this.auditTrail = auditTrail;
 		this.clock = clock;
 		this.terminosService = terminosService;
+		this.ofertaDirectory = ofertaDirectory;
 	}
 
 	// =================================================================================
@@ -174,6 +183,57 @@ public class ColaboradorInvitacionService {
 	 */
 	@Transactional
 	public InvitacionView invitar(DirectMembershipService.Actor actor, InvitacionAltaCommand command) {
+		return emitir(actor, command, null);
+	}
+
+	/** Prepara los datos manuales y emite la misma invitacion de un solo uso. */
+	@Transactional
+	public InvitacionView invitarManual(
+			DirectMembershipService.Actor actor, InvitacionAltaCommand command,
+			DatosAltaManual datos) {
+		if (datos == null || datos.sedeIds() == null) {
+			throw new IllegalArgumentException("Indicá el alcance del colaborador");
+		}
+		boolean administradorOrganizacion = "ORG_ADMIN".equals(command.roleCode());
+		if (administradorOrganizacion ? !datos.sedeIds().isEmpty() || command.consultorioId() != null
+				: datos.sedeIds().isEmpty()) {
+			throw new IllegalArgumentException(administradorOrganizacion
+					? "El administrador de organizacion debe tener alcance de toda la organizacion"
+					: "Elegí al menos una sede");
+		}
+		Set<Long> sedes = new LinkedHashSet<>(datos.sedeIds());
+		if (sedes.size() != datos.sedeIds().size() || sedes.contains(null)
+				|| (!administradorOrganizacion
+					&& !sedes.iterator().next().equals(command.consultorioId()))) {
+			throw new IllegalArgumentException("Las sedes elegidas no son validas");
+		}
+		if (!"PROFESIONAL".equals(command.roleCode()) && !datos.servicios().isEmpty()) {
+			throw new IllegalArgumentException("Solo un profesional puede tener servicios previstos");
+		}
+		long organizationId = exigirContexto(actor);
+		Instant ahora = clock.now();
+		for (long sedeId : sedes) {
+			permissionGuard.requirePermission(new PermissionQuery(
+					actor.accountId(), PERMISO_GESTION_DE_COLABORADORES,
+					organizationId, sedeId, null, ahora));
+			if (consultorioDirectory.find(organizationId, sedeId)
+					.filter(ConsultorioSnapshot::active).isEmpty()) {
+				throw new IllegalArgumentException("Una sede elegida no esta activa en la organizacion");
+			}
+		}
+		for (DatosAltaManual.ServicioElegido servicio : datos.servicios()) {
+			if (!sedes.contains(servicio.sedeId()) || ofertaDirectory
+					.find(organizationId, servicio.sedeId(), servicio.ofertaId())
+					.filter(com.akine.offering.spi.OfertaSnapshot::active).isEmpty()) {
+				throw new IllegalArgumentException("Un servicio elegido no esta activo en las sedes de trabajo");
+			}
+		}
+		return emitir(actor, command, datos);
+	}
+
+	private InvitacionView emitir(
+			DirectMembershipService.Actor actor, InvitacionAltaCommand command,
+			DatosAltaManual datos) {
 		long organizationId = exigirContexto(actor);
 		Instant ahora = clock.now();
 
@@ -207,6 +267,9 @@ public class ColaboradorInvitacionService {
 				TokenDigest.of(tokenPlano),
 				ahora.plus(TipoTokenVerificacion.INVITACION.vigencia()),
 				actor.accountId());
+		if (datos != null) {
+			invitacion.registrarDatosAltaManual(JSON.writeValueAsString(datos));
+		}
 
 		ColaboradorInvitacion persistida = guardarNueva(invitacion, emailNormalizado);
 
@@ -364,7 +427,8 @@ public class ColaboradorInvitacionService {
 				invitacion.getRoleCode(),
 				invitacion.getEmailNormalizado(),
 				invitacion.getExpiraEn(),
-				requiereRegistro);
+				requiereRegistro,
+				Optional.ofNullable(datosManualesDe(invitacion)).map(DatosAltaManual::perfil).orElse(null));
 	}
 
 	/**
@@ -398,6 +462,11 @@ public class ColaboradorInvitacionService {
 	public ResultadoAceptacion aceptar(InvitacionAceptacionCommand command) {
 		Instant ahora = clock.now();
 		ColaboradorInvitacion invitacion = porToken(command.token(), ahora);
+		DatosAltaManual manual = datosManualesDe(invitacion);
+		if (manual != null && command.perfil() != null) {
+			manual = manual.conPerfil(command.perfil());
+			invitacion.registrarDatosAltaManual(JSON.writeValueAsString(manual));
+		}
 
 		Optional<Cuenta> existente = cuentaRepository
 				.findByEmailNormalizado(invitacion.getEmailNormalizado());
@@ -405,18 +474,26 @@ public class ColaboradorInvitacionService {
 		boolean cuentaCreada = existente.isEmpty();
 		Cuenta cuenta = existente.isPresent()
 				? existente.get()
-				: crearCuentaDelInvitado(invitacion, command, ahora);
+				: crearCuentaDelInvitado(invitacion, command, manual, ahora);
 
 		long membershipId;
 		try {
-			membershipId = membershipProvisioning.createFromInvitation(
-					invitacion.getOrganizationId(),
-					new InvitationMembershipCommand(
-							cuenta.getId(),
-							invitacion.getConsultorioId(),
-							invitacion.getRoleCode(),
-							invitacion.getId(),
-							invitacion.getInvitadaPorAccountId()));
+			List<Long> sedes = manual == null || "ORG_ADMIN".equals(invitacion.getRoleCode())
+					? java.util.Collections.singletonList(invitacion.getConsultorioId())
+					: manual.sedeIds();
+			Long primeraMembership = null;
+			for (Long sedeId : sedes) {
+				long creada = membershipProvisioning.createFromInvitation(
+						invitacion.getOrganizationId(),
+						new InvitationMembershipCommand(
+								cuenta.getId(), sedeId, invitacion.getRoleCode(),
+								invitacion.getId(), invitacion.getInvitadaPorAccountId(),
+								manual == null || manual.activo()));
+				if (primeraMembership == null) {
+					primeraMembership = creada;
+				}
+			}
+			membershipId = java.util.Objects.requireNonNull(primeraMembership);
 		} catch (RuntimeException vinculoRechazado) {
 			// El caso concreto que se traduce es "ya tiene vinculo": entre la invitacion y la
 			// respuesta alguien la dio de alta por el camino directo. Se distingue por el
@@ -449,6 +526,13 @@ public class ColaboradorInvitacionService {
 				invitacion.getOrganizationId(),
 				invitacion.getConsultorioId(),
 				cuentaCreada);
+	}
+
+	private static DatosAltaManual datosManualesDe(ColaboradorInvitacion invitacion) {
+		if (invitacion.getDatosAltaManual() == null) {
+			return null;
+		}
+		return JSON.readValue(invitacion.getDatosAltaManual(), DatosAltaManual.class);
 	}
 
 	/**
@@ -513,13 +597,16 @@ public class ColaboradorInvitacionService {
 	 * principal.
 	 */
 	private Cuenta crearCuentaDelInvitado(
-			ColaboradorInvitacion invitacion, InvitacionAceptacionCommand command, Instant ahora) {
+			ColaboradorInvitacion invitacion, InvitacionAceptacionCommand command,
+			DatosAltaManual manual, Instant ahora) {
 
 		// DP-45: la misma regla que el registro self-service, porque nace una cuenta igual. No
 		// abre ningun oraculo: el preview ya le dice al portador del token si hace falta alta.
 		String versionTerminos = terminosService.exigirAceptacion(
 				command.aceptaTerminos(), command.versionTerminos());
-		if (command.nombre() == null || command.nombre().isBlank()) {
+		String nombre = manual == null ? command.nombre() : manual.nombre();
+		String apellido = manual == null ? command.apellido() : manual.apellido();
+		if (nombre == null || nombre.isBlank()) {
 			throw new IllegalArgumentException(
 					"El nombre es obligatorio para crear la cuenta del invitado");
 		}
@@ -527,8 +614,8 @@ public class ColaboradorInvitacionService {
 
 		Cuenta cuenta = new Cuenta(
 				invitacion.getEmailNormalizado(),
-				command.nombre().strip(),
-				command.apellido() == null ? null : command.apellido().strip(),
+				nombre.strip(),
+				apellido == null ? null : apellido.strip(),
 				passwordHasher.hash(command.password()));
 
 		// Nace PENDIENTE_ACTIVACION —lo fija la maquina de estados— y se activa en el acto: el

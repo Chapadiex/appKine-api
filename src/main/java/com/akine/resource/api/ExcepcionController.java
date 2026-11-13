@@ -4,7 +4,9 @@ import com.akine.resource.api.dto.CreateExcepcionRequest;
 import com.akine.resource.api.dto.DeactivateExcepcionRequest;
 import com.akine.resource.api.dto.ExcepcionResponse;
 import com.akine.resource.api.dto.ImpactoDisponibilidadResponse;
+import com.akine.resource.api.dto.UpdateExcepcionRequest;
 import com.akine.resource.application.ExcepcionAltaCommand;
+import com.akine.resource.application.ExcepcionEdicionCommand;
 import com.akine.resource.application.ExcepcionService;
 import com.akine.resource.application.ExcepcionView;
 import io.swagger.v3.oas.annotations.Operation;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -51,8 +54,9 @@ import java.util.List;
  *
  * <h2>Autorizacion</h2>
  *
- * <p>Lectura {@code colaborador:read}, mutacion {@code consultorio:manage}, los mismos dos
- * codigos que el resto de M05. Sin codigos nuevos.
+ * <p>Lectura {@code colaborador:read}, mutacion {@code agenda:excepciones}, los mismos dos
+ * codigos que el resto de M05 desde la agenda de profesionales. La secretaria la tiene sobre la
+ * sede; el {@code PROFESIONAL}, solo sobre las suyas (una excepcion de sede le da 403).
  */
 @RestController
 @RequestMapping("/api/v1/consultorios/{consultorioId}/excepciones")
@@ -162,7 +166,7 @@ public class ExcepcionController {
 			summary = "Alta de un cierre o de una apertura puntual",
 			description = """
 					Carga una excepcion al horario base: una ausencia, una licencia, un bloqueo o \
-					una ampliacion excepcional (RF-M05-004). Exige consultorio:manage sobre ESA \
+					una ampliacion excepcional (RF-M05-004). Exige agenda:excepciones sobre ESA \
 					sede.
 
 					RESPONDE 201 O 200, Y UN CLIENTE QUE SOLO CONTEMPLE 201 SE ROMPE. El alta es \
@@ -212,7 +216,8 @@ public class ExcepcionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:excepciones sobre esa sede (con alcance propio: la excepcion "
+							+ "es de otro profesional o de la sede entera), o no hay contexto",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -224,8 +229,12 @@ public class ExcepcionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "Sede dada de baja (consultorio-inactive), o profesional sin "
-							+ "vinculo vigente en esa sede (profesional-no-vinculado). NUNCA por "
+					description = "Sede dada de baja (consultorio-inactive), profesional sin "
+							+ "vinculo vigente en esa sede (profesional-no-vinculado); un CIERRE que deja turnos o clases "
+							+ "sin confirmar (bloqueo-con-turnos-afectados, con turnos y clases); o una APERTURA de "
+							+ "profesional que choca con un turno o una clase de la misma persona en otra sede "
+							+ "(recurso-ocupado, siempre) o con su horario en otra sede (bloque-solapado, salvo "
+							+ "sustituirDisponibilidadSuperpuesta). Las extensiones conflicto* nombran causa, sede y franja. NUNCA por "
 							+ "solapamiento: dos excepciones que se pisan son las dos validas",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -251,7 +260,8 @@ public class ExcepcionController {
 						request.horaHasta(),
 						request.feriadoId(),
 						request.notes(),
-						Boolean.TRUE.equals(request.confirmaTurnosAfectados())));
+						Boolean.TRUE.equals(request.confirmaTurnosAfectados()),
+						Boolean.TRUE.equals(request.sustituirDisponibilidadSuperpuesta())));
 
 		ExcepcionResponse cuerpo = ExcepcionResponse.from(resultado);
 		if (!resultado.nuevo()) {
@@ -262,6 +272,69 @@ public class ExcepcionController {
 				.created(URI.create("/api/v1/consultorios/" + consultorioId + "/excepciones/"
 						+ resultado.id()))
 				.body(cuerpo);
+	}
+
+	@PutMapping(path = "/{excepcionId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "updateExcepcion",
+			summary = "Edicion de una excepcion de disponibilidad",
+			description = """
+					Reemplaza motivo, fechas, horario y notas de una excepcion ACTIVA. El tipo y el \
+					alcance no se editan: pasar un cierre a apertura, o de un profesional a la sede, es \
+					cargar otra excepcion.
+
+					version es obligatoria y se compara antes de mutar (409 concurrent-modification).
+
+					Si el cambio deja turnos pendientes fuera de la disponibilidad y no viene \
+					confirmaTurnosAfectados=true, responde 409 bloqueo-con-turnos-afectados con la cuenta \
+					y la lista, igual que el alta. Confirmado, los turnos NO se tocan: quedan reservados \
+					y la agenda operativa los marca fuera de disponibilidad.
+
+					Con motivo OTRO las notas son obligatorias: 400 validation-error con el error en \
+					`errors.notes`. Queda auditado con el antes y el despues de cada campo que cambio.
+
+					Exige agenda:excepciones sobre esa sede; con alcance propio, la excepcion tiene que ser del \
+					profesional que opera (la de la sede entera responde 403).""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Excepcion editada",
+					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = ExcepcionResponse.class))),
+			@ApiResponse(responseCode = "400", description = "Datos incoherentes, o motivo OTRO sin notas",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403", description = "Falta agenda:excepciones sobre esa sede (con alcance propio: la excepcion es de otro profesional o de la sede entera), o no hay contexto",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = "La excepcion no existe, es de otra sede o de otro tenant",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409", description = "Ya estaba dada de baja (excepcion-already-inactive), "
+					+ "la version quedo vieja (concurrent-modification), o el cambio deja turnos afuera sin "
+					+ "confirmar (bloqueo-con-turnos-afectados, con turnos y clases), o una APERTURA que choca en otra "
+					+ "sede con lo reservado (recurso-ocupado) o con su horario (bloque-solapado, salvo sustitucion)",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<ExcepcionResponse> update(
+			@Parameter(description = "Identificador de la sede", example = "1")
+			@PathVariable long consultorioId,
+
+			@Parameter(description = "Identificador de la excepcion", example = "1")
+			@PathVariable long excepcionId,
+
+			@Valid @RequestBody UpdateExcepcionRequest request) {
+
+		return ResponseEntity.ok(ExcepcionResponse.from(excepcionService.editar(
+				apiActor.current(), consultorioId, excepcionId,
+				new ExcepcionEdicionCommand(
+						request.motivo(),
+						request.fechaDesde(),
+						request.fechaHasta(),
+						request.horaDesde(),
+						request.horaHasta(),
+						request.notes(),
+						request.version(),
+						Boolean.TRUE.equals(request.confirmaTurnosAfectados()),
+						Boolean.TRUE.equals(request.sustituirDisponibilidadSuperpuesta())))));
 	}
 
 	@DeleteMapping(path = "/{excepcionId}", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -283,7 +356,7 @@ public class ExcepcionController {
 					Dar de baja dos veces es 409 excepcion-already-inactive: "ya estaba dada de \
 					baja" es informacion distinta de "no existe".
 
-					Exige consultorio:manage sobre esa sede.""")
+					Exige agenda:excepciones sobre esa sede.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -308,7 +381,8 @@ public class ExcepcionController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:excepciones sobre esa sede (con alcance propio: la excepcion "
+							+ "es de otro profesional o de la sede entera), o no hay contexto",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -355,7 +429,7 @@ public class ExcepcionController {
 					se miro.
 
 					No adelanta los 409 del alta (sede dada de baja, profesional sin vinculo \
-					vigente): esos los responde el alta. Exige consultorio:manage sobre esa \
+					vigente): esos los responde el alta. Exige agenda:excepciones sobre esa \
 					sede.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Impacto calculado",
@@ -367,7 +441,8 @@ public class ExcepcionController {
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:excepciones sobre esa sede (con alcance propio: la excepcion "
+							+ "es de otro profesional o de la sede entera), o no hay contexto",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404",
@@ -402,13 +477,14 @@ public class ExcepcionController {
 					Consulta previa SIN EFECTOS (A-11, RN-M05-004). Solo quitar una APERTURA \
 					puede dejar turnos afuera; quitar un CIERRE responde cero. Misma cuenta \
 					exacta y misma ventana que la consulta previa del alta. Exige \
-					consultorio:manage sobre esa sede.""")
+					agenda:excepciones sobre esa sede.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Impacto calculado",
 					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = ImpactoDisponibilidadResponse.class))),
 			@ApiResponse(responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:excepciones sobre esa sede (con alcance propio: la excepcion "
+							+ "es de otro profesional o de la sede entera), o no hay contexto",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404",

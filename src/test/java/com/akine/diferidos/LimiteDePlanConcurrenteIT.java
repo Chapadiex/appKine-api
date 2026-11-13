@@ -140,8 +140,8 @@ class LimiteDePlanConcurrenteIT extends BaseEscenarioDiferido {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, active, version,
 				                        created_at, updated_at)
-				VALUES (?, NULL, ?, 'ADMINISTRATIVO', 0, UTC_TIMESTAMP(6), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, NULL, ?, 'ADMINISTRATIVO', false, CURRENT_TIMESTAMP, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, accountId);
 	}
 
@@ -159,7 +159,7 @@ class LimiteDePlanConcurrenteIT extends BaseEscenarioDiferido {
 
 	private long miembrosActivos(long organizationId) {
 		Long total = jdbc.queryForObject(
-				"SELECT COUNT(*) FROM membership WHERE organization_id = ? AND active = 1",
+				"SELECT COUNT(*) FROM membership WHERE organization_id = ? AND active = true",
 				Long.class, organizationId);
 		return total == null ? 0L : total;
 	}

@@ -69,6 +69,15 @@ public final class ActivityRepositoryPorts {
 		List<ClaseProgramada> findVivasDeProfesionalQueCruzan(
 				long organizationId, long profesionalMembershipId, Instant inicio, Instant fin);
 
+		/**
+		 * Clases vivas en las que alguna de esas memberships es profesional principal <b>o instructor
+		 * adicional vigente</b>, que se cruzan con {@code [inicio, fin)}, en cualquier sede de la
+		 * organizacion. Es la pregunta por PERSONA (agenda de clases y avisos): se le pasan todas las
+		 * memberships de la cuenta.
+		 */
+		List<ClaseProgramada> findVivasDeMembershipsQueCruzan(
+				long organizationId, Collection<Long> membershipIds, Instant inicio, Instant fin);
+
 		/** Lo mismo para un espacio. Ver {@link #findVivasDeProfesionalQueCruzan}. */
 		List<ClaseProgramada> findVivasDeEspacioQueCruzan(
 				long organizationId, long espacioId, Instant inicio, Instant fin);

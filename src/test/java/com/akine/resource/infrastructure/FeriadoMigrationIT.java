@@ -8,7 +8,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -68,7 +67,7 @@ class FeriadoMigrationIT {
 	void la_tabla_no_tiene_organization_id() {
 		Integer columnas = jdbc().queryForObject("""
 				SELECT COUNT(*) FROM information_schema.columns
-				 WHERE table_schema = DATABASE()
+				 WHERE table_schema = current_schema()
 				   AND table_name = 'feriado'
 				   AND column_name = 'organization_id'
 				""", Integer.class);
@@ -91,7 +90,7 @@ class FeriadoMigrationIT {
 		// la misma fecha tiene que chocar, sin importar el nombre ni el tipo.
 		assertThatThrownBy(() -> jdbc().update("""
 				INSERT INTO feriado (pais, fecha, nombre, tipo, created_at, updated_at)
-				VALUES ('AR', '2026-01-01', 'Duplicado sintetico', 'INAMOVIBLE', NOW(6), NOW(6))
+				VALUES ('AR', '2026-01-01', 'Duplicado sintetico', 'INAMOVIBLE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				"""))
 				.isInstanceOf(DataIntegrityViolationException.class);
 	}
@@ -106,7 +105,7 @@ class FeriadoMigrationIT {
 		for (int anio : new int[] {2026, 2027}) {
 			Integer inamovibles = jdbc().queryForObject("""
 					SELECT COUNT(*) FROM feriado
-					 WHERE pais = 'AR' AND tipo = 'INAMOVIBLE' AND YEAR(fecha) = ?
+					 WHERE pais = 'AR' AND tipo = 'INAMOVIBLE' AND EXTRACT(YEAR FROM fecha) = ?
 					""", Integer.class, anio);
 
 			assertThat(inamovibles)
@@ -153,9 +152,9 @@ class FeriadoMigrationIT {
 	void el_check_de_tipo_rechaza_un_valor_libre() {
 		assertThatThrownBy(() -> jdbc().update("""
 				INSERT INTO feriado (pais, fecha, nombre, tipo, created_at, updated_at)
-				VALUES ('AR', '2030-01-01', 'Feriado inventado', 'INVENTADO', NOW(6), NOW(6))
+				VALUES ('AR', '2030-01-01', 'Feriado inventado', 'INVENTADO', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				"""))
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_feriado_tipo");
 	}
 }

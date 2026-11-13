@@ -350,8 +350,8 @@ class PoolDeConexionesIT {
 		jdbc.update("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 		long cuenta = jdbc.queryForObject(
 				"SELECT id FROM cuenta WHERE email_normalizado = ?", Long.class, email);
@@ -359,8 +359,8 @@ class PoolDeConexionesIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, 'PROFESIONAL', 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'PROFESIONAL', false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), cuenta);
 		return cuenta;
 	}
@@ -370,7 +370,7 @@ class PoolDeConexionesIT {
 		jdbc.update("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, apellido, apellido.toUpperCase());
 		long persona = jdbc.queryForObject(
 				"SELECT id FROM persona WHERE organization_id = ? AND apellido = ?",
@@ -378,7 +378,7 @@ class PoolDeConexionesIT {
 		jdbc.update("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, persona, activadoPor);
 		return persona;
 	}
@@ -387,7 +387,7 @@ class PoolDeConexionesIT {
 		jdbc.update("""
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, persona, abiertaPor);
 		return jdbc.queryForObject("""
 				SELECT id FROM historia_clinica WHERE organization_id = ? AND persona_id = ?
@@ -403,7 +403,7 @@ class PoolDeConexionesIT {
 				                             checksum_sha256, storage_key, estado, subido_por,
 				                             subido_en, active, version, created_at, updated_at)
 				VALUES (?, ?, ?, 'ESTUDIO', 'perdido.pdf', 'application/pdf', 10, ?, ?, 'DISPONIBLE',
-				        ?, UTC_TIMESTAMP(6), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        ?, CURRENT_TIMESTAMP, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), historia, fixture.consultorioId(),
 				String.format("%064d", n), clave, subidoPor);
 		return jdbc.queryForObject(

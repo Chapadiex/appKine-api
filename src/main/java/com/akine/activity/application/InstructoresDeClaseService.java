@@ -28,7 +28,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import com.akine.platform.spi.transaccion.FilaLockPrevia;
+import com.akine.resource.spi.BloqueoDeAgendaDeProfesional;
+import com.akine.scheduling.spi.AgendaDeSede;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.support.TransactionTemplate;
+import java.util.Objects;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -69,6 +75,10 @@ public class InstructoresDeClaseService {
 	private final PermissionGuard permissionGuard;
 	private final SoporteEnActividad soporte;
 	private final AuditTrail auditTrail;
+	private final AgendaDeSede agenda;
+	private final BloqueoDeAgendaDeProfesional bloqueos;
+	private final ClaseService claseService;
+	private final TransactionTemplate transaccionReadCommitted;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public InstructoresDeClaseService(
@@ -81,7 +91,11 @@ public class InstructoresDeClaseService {
 			AccountIdentityDirectory identidades,
 			PermissionGuard permissionGuard,
 			SoporteEnActividad soporte,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			AgendaDeSede agenda,
+			BloqueoDeAgendaDeProfesional bloqueos,
+			ClaseService claseService,
+			PlatformTransactionManager transactionManager) {
 
 		this.clases = clases;
 		this.instructores = instructores;
@@ -93,6 +107,11 @@ public class InstructoresDeClaseService {
 		this.permissionGuard = permissionGuard;
 		this.soporte = soporte;
 		this.auditTrail = auditTrail;
+		this.agenda = agenda;
+		this.bloqueos = bloqueos;
+		this.claseService = claseService;
+		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
+				transactionManager, Isolation.READ_COMMITTED);
 	}
 
 	/** Los instructores de la clase. Exige {@code clase:read}. */
@@ -116,7 +135,6 @@ public class InstructoresDeClaseService {
 	 * @throws TransicionDeClaseNoPermitidaException   la clase esta cancelada (409)
 	 * @throws ClaseConHonorariosLiquidadosException   la clase tiene honorarios liquidados (409)
 	 */
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public InstructoresDeClaseView reemplazar(
 			OperatingActor actor, long consultorioId, long claseId, List<Long> adicionales) {
 
@@ -124,6 +142,20 @@ public class InstructoresDeClaseService {
 		exigirSede(organizationId, consultorioId);
 		exigir(actor, organizationId, consultorioId, PermissionCodes.CLASE_MANAGE);
 
+		// Agenda de clases y avisos (0.156.0): sumar un instructor lo ocupa en el horario de la clase, asi
+		// que se serializa con los turnos y las clases de esa persona igual que programar. Las filas-lock
+		// se crean antes, cada una en su transaccion (FilaLockPrevia).
+		agenda.asegurar(organizationId, consultorioId);
+		bloqueos.asegurar(organizationId, adicionales.stream().filter(Objects::nonNull).toList());
+		return transaccionReadCommitted.execute(estado ->
+				reemplazarEnTransaccion(actor, organizationId, consultorioId, claseId, adicionales));
+	}
+
+	private InstructoresDeClaseView reemplazarEnTransaccion(
+			OperatingActor actor, long organizationId, long consultorioId, long claseId, List<Long> adicionales) {
+
+		// Orden fijo del modulo y de scheduling: sede, despues la clase, despues las personas.
+		agenda.bloquear(organizationId, consultorioId);
 		// FOR UPDATE antes de leer nada: serializa con otro reemplazo y con la confirmacion de una
 		// liquidacion, que toma las mismas filas.
 		ClaseProgramada clase = clases.lockByIdInScope(organizationId, consultorioId, claseId)
@@ -142,6 +174,22 @@ public class InstructoresDeClaseService {
 		}
 		if (liquidaciones.claseLiquidada(organizationId, claseId)) {
 			throw new ClaseConHonorariosLiquidadosException(claseId);
+		}
+
+		// Solo los que se suman, y solo si la clase todavia no termino: los que ya estaban no se
+		// revalidan (un conflicto heredado no se corrige solo, se ve en la agenda operativa), y cargar
+		// un adicional de una clase ya REALIZADA es registrar quien la dio, para honorarios.
+		List<Long> nuevos = pedidos.stream().filter(id -> !actuales.contains(id)).toList();
+		if (!nuevos.isEmpty() && clase.getEstado() != EstadoClase.REALIZADA) {
+			bloqueos.bloquearEnOrden(organizationId, nuevos);
+			// Disponibilidad central (0.158.0): la misma regla que el principal —turnos, clases, cierres y
+			// franja en esta sede— y el 409 nombra al instructor.
+			Map<Long, String> nombresDeNuevos = nombres(organizationId, nuevos);
+			for (Long membershipId : nuevos) {
+				claseService.exigirPersonaLibre(organizationId, consultorioId, membershipId,
+						clase.getInicio(), clase.getFin(), claseId,
+						clase.getEstado() == EstadoClase.PROGRAMADA, nombresDeNuevos.get(membershipId));
+			}
 		}
 
 		Instant ahora = Instant.now();

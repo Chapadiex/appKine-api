@@ -35,6 +35,16 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			@Param("consultorioId") long consultorioId,
 			@Param("turnoId") long turnoId);
 
+	@Override
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.id IN :turnoIds
+			""")
+	List<Turno> findTodosPorId(
+			@Param("organizationId") long organizationId,
+			@Param("turnoIds") Collection<Long> turnoIds);
+
 	/**
 	 * <p>Sin filtro de baja logica, y a proposito: los turnos cancelados del dia forman parte de
 	 * lo que la recepcion necesita ver. Es la unica consulta de esta clase que los incluye.
@@ -51,6 +61,22 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 	List<Turno> findDeLaSedeEnVentana(
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
+
+	@Override
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.consultorioId = :consultorioId
+			   AND t.profesionalMembershipId IN :profesionalMembershipIds
+			   AND t.inicio >= :desde
+			   AND t.inicio < :hasta
+			""")
+	List<Turno> findDeProfesionalesEnSedeEnVentana(
+			@Param("organizationId") long organizationId,
+			@Param("consultorioId") long consultorioId,
+			@Param("profesionalMembershipIds") Collection<Long> profesionalMembershipIds,
 			@Param("desde") Instant desde,
 			@Param("hasta") Instant hasta);
 
@@ -106,6 +132,21 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 	List<Turno> findVivosDeProfesionalQueCruzan(
 			@Param("organizationId") long organizationId,
 			@Param("profesionalMembershipId") long profesionalMembershipId,
+			@Param("inicio") Instant inicio,
+			@Param("fin") Instant fin);
+
+	@Override
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.profesionalMembershipId IN :profesionalMembershipIds
+			   AND t.deletedAt IS NULL
+			   AND t.inicio < :fin
+			   AND :inicio < t.fin
+			""")
+	List<Turno> findVivosDeProfesionalesQueCruzan(
+			@Param("organizationId") long organizationId,
+			@Param("profesionalMembershipIds") Collection<Long> profesionalMembershipIds,
 			@Param("inicio") Instant inicio,
 			@Param("fin") Instant fin);
 
@@ -454,7 +495,7 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 	 * nadie y queda afuera. Es la MISMA consulta con un filtro mas, no una segunda formula.
 	 */
 	@Query(value = """
-			SELECT DATE(IFNULL(CONVERT_TZ(t.inicio, '+00:00', :zona), t.inicio)) AS dia,
+			SELECT CAST(t.inicio AT TIME ZONE :zona AS date) AS dia,
 			       t.estado AS estado,
 			       COUNT(*) AS cantidad
 			  FROM turno t

@@ -66,7 +66,8 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
-      # Corre unit + arquitectura (ArchUnit) e integracion (Testcontainers sobre MySQL 8.4).
+      # Corre unit + arquitectura (ArchUnit) e integracion (Testcontainers sobre PostgreSQL 18 +
+      # pgvector, imagen pgvector/pgvector:0.8.1-pg18-trixie, la misma del compose.yaml).
       # El runner de GitHub ya trae Docker, que Testcontainers necesita.
       #
       # OpenApiContractIT falla si openapi/akine-api.yaml quedo desactualizado respecto de

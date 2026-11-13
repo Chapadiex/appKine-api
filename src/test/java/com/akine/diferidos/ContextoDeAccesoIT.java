@@ -65,12 +65,12 @@ class ContextoDeAccesoIT extends BaseEscenarioDiferido {
 	@DisplayName("Sede dada de baja y organizacion dada de baja: no se unen")
 	void bajas_logicas() {
 		Sesion a = altaCompleta("ctx-baja-sede");
-		jdbc.update("UPDATE consultorio SET active = 0, deleted_at = UTC_TIMESTAMP(6) WHERE id = ?",
+		jdbc.update("UPDATE consultorio SET active = false, deleted_at = CURRENT_TIMESTAMP WHERE id = ?",
 				a.consultorioId());
 		assertThat(leer(a, a.consultorioId()).get(0).consultorioId()).isNull();
 
 		Sesion b = altaCompleta("ctx-baja-org");
-		jdbc.update("UPDATE organization SET active = 0, deleted_at = UTC_TIMESTAMP(6) WHERE id = ?",
+		jdbc.update("UPDATE organization SET active = false, deleted_at = CURRENT_TIMESTAMP WHERE id = ?",
 				b.organizationId());
 		LecturaDeContexto fila = leer(b, b.consultorioId()).get(0);
 		assertThat(fila.consultorioId()).isEqualTo(b.consultorioId());
@@ -90,8 +90,8 @@ class ContextoDeAccesoIT extends BaseEscenarioDiferido {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, 'PROFESIONAL', 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 DAY),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'PROFESIONAL', false, (CURRENT_TIMESTAMP - INTERVAL '1 days'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", a.organizationId(), a.consultorioId(), a.cuentaId());
 
 		List<LecturaDeContexto> filas = leer(a, a.consultorioId());
@@ -108,7 +108,7 @@ class ContextoDeAccesoIT extends BaseEscenarioDiferido {
 		assertThat(directorio.resolveMembership(a.cuentaId(), a.organizationId(), a.consultorioId(), Instant.now()))
 				.hasValueSatisfying(m -> assertThat(m.roleCode()).isEqualTo("PROFESIONAL"));
 
-		jdbc.update("UPDATE membership SET active = 0, deleted_at = UTC_TIMESTAMP(6) WHERE id = ?", fundadora);
+		jdbc.update("UPDATE membership SET active = false, deleted_at = CURRENT_TIMESTAMP WHERE id = ?", fundadora);
 		assertThat(leer(a, a.consultorioId())).extracting(f -> f.membership().getId())
 				.doesNotContain(fundadora)
 				.hasSize(1);

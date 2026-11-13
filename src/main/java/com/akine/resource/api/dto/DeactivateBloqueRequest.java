@@ -22,5 +22,12 @@ public record DeactivateBloqueRequest(
 				requiredMode = Schema.RequiredMode.REQUIRED)
 		@NotBlank(message = "El motivo de la baja es obligatorio")
 		@Size(max = 280, message = "El motivo no puede superar los 280 caracteres")
-		String reason) {
+		String reason,
+
+		@Schema(
+				description = "Confirma la baja aunque deje turnos pendientes fuera de la disponibilidad. "
+						+ "Sin esto, una baja con turnos afectados responde 409 `bloqueo-con-turnos-afectados` "
+						+ "con la lista. Los turnos nunca se tocan",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		Boolean confirmaTurnosAfectados) {
 }

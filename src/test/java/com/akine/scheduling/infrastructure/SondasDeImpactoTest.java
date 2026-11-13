@@ -163,7 +163,7 @@ class SondasDeImpactoTest {
 			assertThat(new DisponibilidadImpactoSobreTurnos(turnos)
 					.pendientesEn(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID, AHORA, hasta))
 					.containsExactly(new DisponibilidadImpactProbe.TurnoPendiente(
-							501L, MEMBERSHIP_ID, NUEVE, DIEZ));
+							501L, MEMBERSHIP_ID, NUEVE, DIEZ, 128L, "RESERVADO"));
 		}
 
 		@Test

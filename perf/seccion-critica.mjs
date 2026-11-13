@@ -5,13 +5,14 @@
 // Para cada transaccion que toma el lock —el UPDATE del numerador de comprobantes o el
 // SELECT ... FOR UPDATE de agenda_sede— suma lo que pasa desde que lo obtiene hasta el COMMIT o el
 // ROLLBACK, que es cuando lo suelta: cuantas sentencias, cuanto tardan y cuanto de eso es el COMMIT.
-// La espera es la duracion de la sentencia que pide el lock. Tiempos en ms (performance_schema
-// mide en picosegundos). Ver docs/carga.md §10.
+// La espera es la duracion de la sentencia que pide el lock. Tiempos en ms (la foto trae picosegundos,
+// la unidad de performance_schema que conserva stack.sh historia). Ver docs/carga.md §10.
+// Acepta las fotos de MySQL (digest con `backticks`) y las de PostgreSQL (texto de la sentencia).
 import { readFileSync } from 'node:fs';
 
 const LOCKS = [
-  { nombre: 'cobro (comprobante_numerador)', toma: /^UPDATE `comprobante_numerador`/ },
-  { nombre: 'reserva (agenda_sede)', toma: /^SELECT \* FROM `agenda_sede`/ },
+  { nombre: 'cobro (comprobante_numerador)', toma: /^UPDATE `?comprobante_numerador\b/i },
+  { nombre: 'reserva (agenda_sede)', toma: /^SELECT \* FROM `?agenda_sede\b/i },
 ];
 
 const porLock = new Map(LOCKS.map((l) => [l.nombre, []]));
@@ -28,7 +29,7 @@ for (const archivo of process.argv.slice(2)) {
     sentencias.forEach((sentencia, i) => {
       const lock = LOCKS.find((l) => l.toma.test(sentencia.texto));
       if (!lock) return;
-      const cierre = sentencias.findIndex((s, j) => j > i && /^(COMMIT|ROLLBACK)/.test(s.texto));
+      const cierre = sentencias.findIndex((s, j) => j > i && /^(COMMIT|ROLLBACK)/i.test(s.texto));
       if (cierre < 0) return; // la foto corto la transaccion
       const bajoLock = sentencias.slice(i + 1, cierre + 1);
       porLock.get(lock.nombre).push({

@@ -20,6 +20,10 @@ import java.util.List;
  * @param espaciosLibres para ofrecer "Cambiar" el box asignado
  * @param avisos        lo que hay que saber pero no impide reservar
  * @param alternativas  los horarios mas cercanos, si este no se puede
+ * @param admiteSobreturno {@code true} si un sobreturno a esa hora entraria: lo que lo impide es solo
+ *                      ocupacion de ESTA sede (turnos, cupo, box). {@code false} si choca con algo que el
+ *                      sobreturno no salva (un turno de la misma persona en otra sede, una clase, un cierre,
+ *                      fuera de horario) y en un horario libre. Sin mirar el permiso (D-5, 0.158.0)
  */
 public record ValidacionDeHorarioView(
 		String estado,
@@ -33,7 +37,35 @@ public record ValidacionDeHorarioView(
 		Instant conflictoInicio,
 		Instant conflictoFin,
 		List<String> avisos,
-		List<HorarioDisponibleView> alternativas) {
+		List<HorarioDisponibleView> alternativas,
+		String conflictoTipo,
+		Long claseEnConflictoId,
+		Long conflictoConsultorioId,
+		boolean admiteSobreturno) {
+
+	/** Sin {@code admiteSobreturno} (D-5): no lo admite. */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public ValidacionDeHorarioView(
+			String estado, String causa, String motivo, Instant inicio, Instant fin,
+			List<RecursoLibreView> profesionales, List<RecursoLibreView> espaciosLibres, Long turnoEnConflictoId,
+			Instant conflictoInicio, Instant conflictoFin, List<String> avisos,
+			List<HorarioDisponibleView> alternativas, String conflictoTipo, Long claseEnConflictoId,
+			Long conflictoConsultorioId) {
+		this(estado, causa, motivo, inicio, fin, profesionales, espaciosLibres, turnoEnConflictoId,
+				conflictoInicio, conflictoFin, avisos, alternativas, conflictoTipo, claseEnConflictoId,
+				conflictoConsultorioId, false);
+	}
+
+	/** Sin el detalle de 0.156.0 (con que tipo de evento choca y en que sede). */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public ValidacionDeHorarioView(
+			String estado, String causa, String motivo, Instant inicio, Instant fin,
+			List<RecursoLibreView> profesionales, List<RecursoLibreView> espaciosLibres, Long turnoEnConflictoId,
+			Instant conflictoInicio, Instant conflictoFin, List<String> avisos,
+			List<HorarioDisponibleView> alternativas) {
+		this(estado, causa, motivo, inicio, fin, profesionales, espaciosLibres, turnoEnConflictoId,
+				conflictoInicio, conflictoFin, avisos, alternativas, null, null, null);
+	}
 
 	/**
 	 * @param duracionPropiaMinutos lo que tarda ese profesional en la oferta, si no es lo que dura la

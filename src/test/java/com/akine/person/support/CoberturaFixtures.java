@@ -24,7 +24,7 @@ public final class CoberturaFixtures {
 		jdbc.update("""
 				INSERT INTO organization (name, slug, timezone, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro Sintetico " + slug, slug);
 		return jdbc.queryForObject("SELECT id FROM organization WHERE slug = ?", Long.class, slug);
 	}
@@ -42,12 +42,12 @@ public final class CoberturaFixtures {
 				INSERT INTO persona (organization_id, tipo_documento, numero_documento,
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, telefono, telefono_clave, created_at, updated_at)
-				VALUES (?, 'DNI', ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, 'DNI', ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, documento, documento, apellido, nombre, apellido.toUpperCase(),
 				nombre.toUpperCase(), telefonoClave, telefonoClave);
 		if (!activa) {
 			jdbc.update("""
-					UPDATE persona SET active = 0, deleted_at = UTC_TIMESTAMP(6),
+					UPDATE persona SET active = false, deleted_at = CURRENT_TIMESTAMP,
 					       deactivation_reason = 'baja sintetica'
 					 WHERE id = ?
 					""", id);
@@ -59,7 +59,7 @@ public final class CoberturaFixtures {
 		jdbc.update("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), 1, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, 1, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, persona);
 	}
 
@@ -68,7 +68,7 @@ public final class CoberturaFixtures {
 		return InsertarConId.insertar(jdbc, """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 'PREPAGA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'PREPAGA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, codigo, "Financiador " + codigo);
 	}
 
@@ -79,7 +79,7 @@ public final class CoberturaFixtures {
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, active, version,
 				                            created_at, updated_at)
-				VALUES (?, ?, ?, ?, '2020-01-01', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, '2020-01-01', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, financiadorId, codigo, "Plan " + codigo);
 	}
 
@@ -108,8 +108,8 @@ public final class CoberturaFixtures {
 				                                vigencia_desde, vigencia_hasta, principal,
 				                                created_at, updated_at)
 				VALUES (?, ?, 'FINANCIADA', ?, 'OS-SINT', 'Financiador Sintetico', 'PREPAGA',
-				        ?, 'P-SINT', 'Plan Sintetico', 0, 0, '2026-01-01 00:00:00.000000',
-				        ?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        ?, 'P-SINT', 'Plan Sintetico', false, false, '2026-01-01 00:00:00.000000',
+				        ?, CAST(? AS date), CAST(? AS date), CAST(? AS date), CAST(? AS boolean), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, persona, plan.financiadorId(), plan.planId(), afiliado, credencialHasta,
 				desde, hasta, principal ? 1 : 0);
 	}
@@ -120,7 +120,7 @@ public final class CoberturaFixtures {
 		return InsertarConId.insertar(jdbc, """
 				INSERT INTO cobertura_paciente (organization_id, persona_id, tipo, vigencia_desde,
 				                                vigencia_hasta, principal, created_at, updated_at)
-				VALUES (?, ?, 'PARTICULAR', ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'PARTICULAR', CAST(? AS date), CAST(? AS date), CAST(? AS boolean), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, persona, desde, hasta, principal ? 1 : 0);
 	}
 
@@ -128,7 +128,7 @@ public final class CoberturaFixtures {
 	public void darDeBaja(long coberturaId) {
 		jdbc.update("""
 				UPDATE cobertura_paciente
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6), deactivation_reason = 'baja sintetica'
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP, deactivation_reason = 'baja sintetica'
 				 WHERE id = ?
 				""", coberturaId);
 	}

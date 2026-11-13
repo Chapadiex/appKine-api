@@ -17,7 +17,13 @@ public record AgendaOperativaResponse(
 		List<EspacioDeAgendaResponse> espacios,
 		List<TurnoDeCalendarioResponse> turnos,
 		List<ClaseEnAgendaResponse> clases,
-		List<BloqueoEnAgendaResponse> bloqueos) {
+		List<BloqueoEnAgendaResponse> bloqueos,
+		@Schema(description = "Intervalos en que la persona de una columna esta ocupada en OTRA sede de la "
+				+ "organizacion (turno o clase). La celda no esta libre aunque en esta sede no haya nada.")
+		List<OcupacionEnOtraSedeResponse> ocupacionesEnOtrasSedes,
+		@Schema(description = "Conflictos ya guardados: turno y clase de la misma persona que se pisan, clase con un instructor en cierre y doble oferta entre sedes (datos anteriores a la "
+				+ "regla entre sedes). Se calculan al leer; nada se modifica.")
+		List<ConflictoDeAgendaResponse> conflictos) {
 
 	public static AgendaOperativaResponse de(AgendaOperativaView vista) {
 		return new AgendaOperativaResponse(vista.desde(), vista.hasta(), vista.timezone(),
@@ -33,7 +39,43 @@ public record AgendaOperativaResponse(
 						clase.profesionalId(), clase.espacioId(), clase.capacidad(), clase.ocupados())).toList(),
 				vista.bloqueos().stream().map(bloqueo -> new BloqueoEnAgendaResponse(
 						bloqueo.excepcionId(), bloqueo.membershipId(), bloqueo.motivo(), bloqueo.notas(),
-						bloqueo.desde(), bloqueo.hasta())).toList());
+						bloqueo.desde(), bloqueo.hasta())).toList(),
+				vista.ocupacionesEnOtrasSedes().stream().map(o -> new OcupacionEnOtraSedeResponse(
+						o.membershipId(), o.tipo(), o.consultorioId(), o.inicio(), o.fin())).toList(),
+				vista.conflictos().stream().map(c -> new ConflictoDeAgendaResponse(
+						c.membershipId(), c.turnoId(), c.turnoConsultorioId(), c.claseId(), c.claseConsultorioId(),
+						c.inicio(), c.fin(), c.tipo(), c.excepcionId(), c.causa(), c.otraSedeConsultorioId())).toList());
+	}
+
+	@Schema(name = "OcupacionEnOtraSede", description = "La persona de la columna esta ocupada en otra sede. "
+			+ "Sin paciente ni id.")
+	public record OcupacionEnOtraSedeResponse(
+			@Schema(description = "La columna: membership de esta sede", example = "31") Long membershipId,
+			@Schema(allowableValues = {"TURNO", "CLASE"}, example = "CLASE") String tipo,
+			@Schema(example = "12") long consultorioId,
+			Instant inicio,
+			Instant fin) {
+	}
+
+	@Schema(name = "ConflictoDeAgenda", description = "Un conflicto que ya esta guardado, calculado al leer "
+			+ "(nada se modifica). TURNO_CLASE: un turno y una clase de la misma persona que se pisan; el id viaja "
+			+ "solo del lado que es de esta sede. CLASE_EN_CIERRE: una clase de esta sede cuyo instructor "
+			+ "(principal o adicional) tiene un cierre que la alcanza. DISPONIBILIDAD_DOBLE: la persona atiende "
+			+ "a la vez en esta sede y en otra (doble oferta, p. ej. una apertura anterior a 0.158.0).")
+	public record ConflictoDeAgendaResponse(
+			@Schema(description = "La columna: membership de esta sede", example = "31") Long membershipId,
+			@Schema(description = "Ausente si el turno es de otra sede", example = "501") Long turnoId,
+			@Schema(description = "Solo en TURNO_CLASE") Long turnoConsultorioId,
+			@Schema(description = "Ausente si la clase es de otra sede", example = "7") Long claseId,
+			@Schema(description = "En TURNO_CLASE y CLASE_EN_CIERRE") Long claseConsultorioId,
+			@Schema(description = "Comienzo del tramo en que se pisan") Instant inicio,
+			@Schema(description = "Fin del tramo en que se pisan") Instant fin,
+			@Schema(allowableValues = {"TURNO_CLASE", "CLASE_EN_CIERRE", "DISPONIBILIDAD_DOBLE"},
+					example = "CLASE_EN_CIERRE") String tipo,
+			@Schema(description = "CLASE_EN_CIERRE: el cierre", example = "14") Long excepcionId,
+			@Schema(description = "CLASE_EN_CIERRE: BLOQUEO, AUSENCIA o CIERRE_DE_SEDE",
+					allowableValues = {"BLOQUEO", "AUSENCIA", "CIERRE_DE_SEDE"}) String causa,
+			@Schema(description = "DISPONIBILIDAD_DOBLE: la otra sede", example = "12") Long otraSedeConsultorioId) {
 	}
 
 	@Schema(name = "ProfesionalDeAgenda", description = "Una columna de la agenda: quien atiende y cuando.")

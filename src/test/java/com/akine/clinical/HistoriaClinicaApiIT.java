@@ -353,13 +353,13 @@ class HistoriaClinicaApiIT {
 		long personaId = InsertarConId.insertar(jdbc, """
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave,
 				                     nombre_clave, active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), "Paciente" + sufijo, ("PACIENTE" + sufijo).toUpperCase());
 		jdbc.update("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), personaId, tenant.cuentaId());
 		return personaId;
 	}

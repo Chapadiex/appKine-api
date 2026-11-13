@@ -4,6 +4,7 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.ContactoDePersona;
@@ -45,6 +46,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
 
@@ -124,6 +126,7 @@ public class TurnoService {
 	private final ContextoClinicoDeTurno contextoClinico;
 	private final SesionesDelPlan sesionesDelPlan;
 	private final AuditTrail auditTrail;
+	private final AgendaDelProfesional agendaDelProfesional;
 	private final TransactionTemplate transaccionDeReserva;
 
 	public TurnoService(
@@ -141,7 +144,8 @@ public class TurnoService {
 			ContextoClinicoDeTurno contextoClinico,
 			SesionesDelPlan sesionesDelPlan,
 			AuditTrail auditTrail,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			AgendaDelProfesional agendaDelProfesional) {
 
 		this.turnos = turnos;
 		this.eventos = eventos;
@@ -157,6 +161,7 @@ public class TurnoService {
 		this.contextoClinico = contextoClinico;
 		this.sesionesDelPlan = sesionesDelPlan;
 		this.auditTrail = auditTrail;
+		this.agendaDelProfesional = agendaDelProfesional;
 		this.transaccionDeReserva = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -184,7 +189,9 @@ public class TurnoService {
 		// commiteado, asi que leerlas en la suya no cambia lo que ven.
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
+		// Alcance propio (agenda de profesionales): el PROFESIONAL reserva solo en su agenda.
+		agendaDelProfesional.exigirPropio(gestion, actor, organizationId, command.profesionalId());
 		if (command.esSobreturno()) {
 			// El permiso se pide aparte de turno:manage: dar un turno es de recepcion y pisar uno es de
 			// quien puede autorizarlo (TURNO.md §21). El backend lo exige aunque la pantalla esconda la
@@ -196,6 +203,8 @@ public class TurnoService {
 		// esta deadlockea entre las primeras reservas concurrentes de una sede (AgendaSedeIniciador),
 		// y abrirla anidada retiene dos conexiones por pedido y traba el pool (FilaLockPrevia).
 		iniciador.asegurar(organizationId, consultorioId);
+		// Y la de la persona que va a atender (V129), que el revalidador toma despues de la de la sede.
+		iniciador.asegurarProfesionales(organizationId, Arrays.asList(command.profesionalId()));
 
 		ResultadoDeReserva resultado = transaccionDeReserva.execute(estado -> reservarBajoLock(
 				actor, organizationId, sede, consultorioId, ofertaId, command));
@@ -324,6 +333,12 @@ public class TurnoService {
 		}
 
 		// PASO 3. Los rechazos del paso 0, en el orden en que se evaluaban bajo el lock.
+		// V140, primero: una sede activa puede no haber abierto su agenda todavia. Va DESPUES de la
+		// idempotencia por la misma regla que los demas rechazos: si el turno ya se creo y la agenda
+		// se apago despues, el reintento con la misma clave sigue devolviendo ese turno. Se mira sobre
+		// el snapshot, sin relectura: habilitarla es un acto administrativo y una reserva que se cuele
+		// en el instante en que se apaga no rompe ningun invariante.
+		BloqueoDeAgenda.exigirAgendaHabilitada(sede);
 		OfertaSnapshot oferta = preparacion.oferta;
 		if (oferta == null) {
 			throw new OfertaNotAccessibleException(ofertaId);
@@ -381,18 +396,23 @@ public class TurnoService {
 		if (command.esSobreturno()) {
 			nuevo.autorizarSobreturno(command.sobreturnoMotivo(), actor.accountId());
 		}
+		nuevo.anotarObservaciones(command.observaciones());
 		Turno turno = turnos.save(nuevo);
 
 		eventos.registrar(TurnoEvento.de(
 				turno, TipoEventoTurno.RESERVA, null,
 				turno.isSobreturno() ? motivoDeEventoDeSobreturno(turno.getSobreturnoMotivo()) : null,
 				actor.accountId(), ahora));
+		// Toda reserva va al log transversal (checklist de agenda §12.1), no solo el sobreturno: es el
+		// que consulta un administrador buscando que hizo una cuenta sobre la agenda.
+		auditTrail.record(new AuditEntry(
+				organizationId, consultorioId, actor.accountId(), "TURNO_RESERVADO", "Turno", turno.getId(),
+				null, turno.getEstado().name(), DetallesDeAuditoriaDeTurno.de(actor, turno), null, null, ahora));
 		if (turno.isSobreturno()) {
 			auditTrail.record(new AuditEntry(
 					organizationId, consultorioId, actor.accountId(), "TURNO_SOBRETURNO", "Turno", turno.getId(),
 					null, turno.getEstado().name(),
-					Map.of("personaId", String.valueOf(turno.getPersonaId()),
-							"inicio", String.valueOf(turno.getInicio())),
+					DetallesDeAuditoriaDeTurno.de(actor, turno),
 					turno.getSobreturnoMotivo(), null, ahora));
 		}
 		// RF-M26-002. En esta misma transaccion: si la reserva hace rollback, el aviso tambien.
@@ -414,10 +434,11 @@ public class TurnoService {
 	public TurnoView confirmar(OperatingActor actor, long consultorioId, long turnoId) {
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 
 		Turno turno = turnos.findByIdInScope(organizationId, consultorioId, turnoId)
 				.orElseThrow(() -> new TurnoNotAccessibleException(turnoId));
+		agendaDelProfesional.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId());
 
 		EstadoTurno anterior = turno.getEstado();
 		Instant ahora = Instant.now();
@@ -430,6 +451,10 @@ public class TurnoService {
 			eventos.registrar(TurnoEvento.de(
 					confirmado, TipoEventoTurno.CONFIRMACION, anterior, null,
 					actor.accountId(), ahora));
+			auditTrail.record(new AuditEntry(
+					organizationId, consultorioId, actor.accountId(), "TURNO_CONFIRMADO", "Turno",
+					confirmado.getId(), anterior.name(), confirmado.getEstado().name(),
+					DetallesDeAuditoriaDeTurno.de(actor, confirmado), null, null, ahora));
 		}
 
 		log.info("Turno confirmado: turnoId={} consultorioId={}", turnoId, consultorioId);
@@ -447,20 +472,21 @@ public class TurnoService {
 
 		long organizationId = exigirContexto(actor);
 		exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
 		iniciador.asegurar(organizationId, consultorioId);
 		return transaccionDeReserva.execute(estado -> {
 			BloqueoDeAgenda.tomarParaOcupar(agendas, consultorios, organizationId, consultorioId);
-			return asociarContextoBajoLock(actor, organizationId, consultorioId, turnoId, casoId, planId, expectedVersion);
+			return asociarContextoBajoLock(actor, gestion, organizationId, consultorioId, turnoId, casoId, planId, expectedVersion);
 		});
 	}
 
 	private TurnoView asociarContextoBajoLock(
-			OperatingActor actor, long organizationId, long consultorioId, long turnoId, Long casoId, Long planId,
+			OperatingActor actor, PermissionDecision gestion, long organizationId, long consultorioId, long turnoId, Long casoId, Long planId,
 			long expectedVersion) {
 
 		Turno turno = turnos.findByIdInScope(organizationId, consultorioId, turnoId)
 				.orElseThrow(() -> new TurnoNotAccessibleException(turnoId));
+		agendaDelProfesional.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId());
 		if (turno.getVersion() != expectedVersion) {
 			throw new OptimisticLockingFailureException(
 					"El turno " + turnoId + " cambio desde que se leyo");
@@ -477,6 +503,51 @@ public class TurnoService {
 		Turno guardado = turnos.saveAndFlush(turno);
 		eventos.registrar(TurnoEvento.de(
 				guardado, TipoEventoTurno.CAMBIO_DE_CONTEXTO, anterior, null, actor.accountId(), ahora));
+		return TurnoView.de(guardado);
+	}
+
+	/**
+	 * Cambia las observaciones administrativas de un turno vivo (checklist de agenda §1.5). <b>Sin lock
+	 * de sede</b>: no ocupa ni libera nada, igual que confirmar. El control es el optimista de la fila,
+	 * con la version que el cliente leyo. Queda en el historial del turno y en la auditoria, con el texto
+	 * de antes y el de despues.
+	 *
+	 * @throws TurnoNotAccessibleException           el turno no existe en esa sede (404)
+	 * @throws OptimisticLockingFailureException     la version quedo vieja (409)
+	 * @throws com.akine.scheduling.domain.exception.TransicionDeTurnoNoPermitidaException cancelado o ausente (409)
+	 */
+	@Transactional
+	public TurnoView actualizarObservaciones(
+			OperatingActor actor, long consultorioId, long turnoId, String observaciones, long expectedVersion) {
+
+		long organizationId = exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		PermissionDecision gestion = exigirGestion(actor, organizationId, consultorioId);
+
+		Turno turno = turnos.findByIdInScope(organizationId, consultorioId, turnoId)
+				.orElseThrow(() -> new TurnoNotAccessibleException(turnoId));
+		// Alcance propio: el PROFESIONAL anota solo en los turnos de su agenda.
+		agendaDelProfesional.exigirPropio(gestion, actor, organizationId, turno.getProfesionalMembershipId());
+		if (turno.getVersion() != expectedVersion) {
+			throw new OptimisticLockingFailureException(
+					"El turno " + turnoId + " cambio desde que se leyo");
+		}
+
+		String antes = turno.getObservaciones();
+		turno.anotarObservaciones(observaciones);
+		if (java.util.Objects.equals(antes, turno.getObservaciones())) {
+			return TurnoView.de(turno);
+		}
+		Instant ahora = Instant.now();
+		Turno guardado = turnos.saveAndFlush(turno);
+		eventos.registrar(TurnoEvento.de(
+				guardado, TipoEventoTurno.OBSERVACIONES, guardado.getEstado(), null, actor.accountId(), ahora));
+		Map<String, String> detalles = DetallesDeAuditoriaDeTurno.de(actor, guardado);
+		detalles.put("observacionesAntes", antes == null ? "" : antes);
+		detalles.put("observacionesDespues", guardado.getObservaciones() == null ? "" : guardado.getObservaciones());
+		auditTrail.record(new AuditEntry(
+				organizationId, consultorioId, actor.accountId(), "TURNO_OBSERVACIONES", "Turno", guardado.getId(),
+				guardado.getEstado().name(), guardado.getEstado().name(), detalles, null, null, ahora));
 		return TurnoView.de(guardado);
 	}
 
@@ -543,8 +614,8 @@ public class TurnoService {
 	 * <p>Es distinto de {@code turno:read}, que alcanza para mirar la agenda. Reservar compromete
 	 * un recurso del centro y no es una lectura.
 	 */
-	private void exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
-		permissionGuard.requirePermission(new PermissionQuery(
+	private PermissionDecision exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
+		return permissionGuard.requirePermission(new PermissionQuery(
 				actor.accountId(),
 				PermissionCodes.TURNO_MANAGE,
 				organizationId,

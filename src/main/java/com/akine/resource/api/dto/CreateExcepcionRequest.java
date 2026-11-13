@@ -107,5 +107,16 @@ public record CreateExcepcionRequest(
 						+ "Sin esto, un cierre con turnos afectados responde 409 "
 						+ "`bloqueo-con-turnos-afectados`: no se guarda en silencio.",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-		Boolean confirmaTurnosAfectados) {
+		Boolean confirmaTurnosAfectados,
+
+		@Schema(
+				description = "Solo APERTURA de un profesional. Si la franja se superpone con su horario de "
+						+ "atencion en OTRA sede, sin esto responde 409 `bloque-solapado` con cada superposicion "
+						+ "(`superposiciones`). Con `true`, en la misma operacion se carga un CIERRE en la otra "
+						+ "sede para cada franja superpuesta (auditado, motivo BLOQUEO); exige agenda:excepciones "
+						+ "sobre ese profesional en esa sede (403 si no). Nunca sustituye lo reservado: un turno "
+						+ "o una clase de la misma persona en otra sede en esa franja es siempre 409 "
+						+ "`recurso-ocupado`.",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		Boolean sustituirDisponibilidadSuperpuesta) {
 }

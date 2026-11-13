@@ -43,6 +43,8 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import com.akine.resource.spi.BloqueoDeAgendaDeProfesional;
 
 import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,6 +54,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -123,6 +126,8 @@ class DisponibilidadServiceTest {
 	private final OperatingActor actor =
 			new OperatingActor(ACCOUNT_ID, false, ORG_ID, CONSULTORIO_ID);
 
+	private final BloqueoDeAgendaDeProfesional agendasDeProfesional = mock(BloqueoDeAgendaDeProfesional.class);
+
 	@BeforeEach
 	void setUp() {
 		// El iniciador real sobre el puerto mockeado: su transaccion es un no-op con el gestor
@@ -134,7 +139,8 @@ class DisponibilidadServiceTest {
 				permissionGuard, auditTrail,
 				new SimuladorDeImpacto(
 						bloques, excepciones, feriados, calendarios, impactProbe, horarios),
-				transactionManager);
+				transactionManager, agendasDeProfesional);
+		given(agendasDeProfesional.bloquear(anyLong(), anyLong())).willAnswer(inv -> Set.of((Long) inv.getArgument(1)));
 
 		given(consultorioDirectory.find(ORG_ID, CONSULTORIO_ID))
 				.willReturn(Optional.of(new ConsultorioSnapshot(
@@ -186,11 +192,11 @@ class DisponibilidadServiceTest {
 	}
 
 	@Test
-	@DisplayName("Un profesional no puede cargar su propio bloque: el codigo exigido es consultorio:manage")
-	void un_profesional_no_puede_crear_su_propio_bloque() {
-		// La matriz seccion 6 le NIEGA consultorio:manage a PROFESIONAL, asi que el evaluador
-		// rechaza. Lo que este test fija es que el servicio pida ESE codigo y no uno de lectura:
-		// si alguien lo cambiara por colaborador:read, el profesional pasaria.
+	@DisplayName("El alta de un bloque exige agenda:horario, no consultorio:manage ni una lectura")
+	void el_alta_de_un_bloque_exige_agenda_horario() {
+		// Agenda de profesionales (§14.5): el horario habitual tiene codigo propio. Lo que este test
+		// fija es que el servicio pida ESE codigo: con colaborador:read el administrativo pasaria, y
+		// con consultorio:manage el profesional no podria ordenar el suyo.
 		given(permissionGuard.requirePermission(any()))
 				.willThrow(new AccessDeniedException("PROFESIONAL no gestiona la sede"));
 
@@ -199,7 +205,7 @@ class DisponibilidadServiceTest {
 
 		ArgumentCaptor<PermissionQuery> consulta = ArgumentCaptor.forClass(PermissionQuery.class);
 		verify(permissionGuard).requirePermission(consulta.capture());
-		assertThat(consulta.getValue().permissionCode()).isEqualTo("consultorio:manage");
+		assertThat(consulta.getValue().permissionCode()).isEqualTo("agenda:horario");
 		assertThat(consulta.getValue().consultorioId()).isEqualTo(CONSULTORIO_ID);
 	}
 
@@ -253,6 +259,75 @@ class DisponibilidadServiceTest {
 				.isInstanceOf(ProfesionalNoVinculadoException.class);
 
 		verify(bloques, never()).save(any());
+	}
+
+	// =================================================================================
+	// Alta en lote (carga rapida del horario semanal)
+	// =================================================================================
+
+	@Test
+	@DisplayName("Un lote de lunes a viernes guarda cinco bloques y audita cinco, con un solo lock de sede")
+	void un_lote_de_lunes_a_viernes_guarda_un_bloque_por_dia() {
+		given(bloques.findActivosDe(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID)).willReturn(List.of());
+
+		List<BloqueView> vistas = service.crearVarios(actor, CONSULTORIO_ID, MEMBERSHIP_ID,
+				new BloquesAltaCommand(Set.of(5, 3, 1, 4, 2), LocalTime.of(9, 0), LocalTime.of(13, 0),
+						DESDE_MARZO, null));
+
+		assertThat(vistas).hasSize(5);
+		// En orden de dia aunque el conjunto venga desordenado: el 409 nombra "el primer dia que falla".
+		assertThat(vistas).extracting(BloqueView::diaSemana).containsExactly(1, 2, 3, 4, 5);
+		assertThat(vistas).allMatch(BloqueView::nuevo);
+		verify(bloques, times(5)).save(any());
+		// Un bloque, una fila de auditoria, igual que suelto: el historial por bloque no cambia.
+		ArgumentCaptor<AuditEntry> auditadas = ArgumentCaptor.forClass(AuditEntry.class);
+		verify(auditTrail, times(5)).record(auditadas.capture());
+		assertThat(auditadas.getAllValues()).allSatisfy(entrada ->
+				assertThat(entrada.details()).containsEntry("diasDelLote", "1,2,3,4,5"));
+		// Los locks se toman UNA vez para todo el lote, no una por dia.
+		verify(calendarios).lockByScope(ORG_ID, CONSULTORIO_ID);
+		verify(agendasDeProfesional).bloquear(ORG_ID, MEMBERSHIP_ID);
+	}
+
+	@Test
+	@DisplayName("Un lote en el que un dia se pisa lanza el 409 de ESE dia y no sigue con los demas")
+	void un_lote_con_un_dia_solapado_lanza_el_409_de_ese_dia() {
+		// El miercoles ya tiene la manana cargada: lunes y martes pasarian, el miercoles choca.
+		given(bloques.findActivosDe(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID))
+				.willReturn(List.of(bloque(BLOQUE_ID, 3, LocalTime.of(9, 0), LocalTime.of(12, 0))));
+
+		assertThatThrownBy(() -> service.crearVarios(actor, CONSULTORIO_ID, MEMBERSHIP_ID,
+				new BloquesAltaCommand(Set.of(1, 2, 3, 4, 5), LocalTime.of(11, 0), LocalTime.of(13, 0),
+						DESDE_MARZO, null)))
+				.isInstanceOf(BloqueSolapadoException.class)
+				.satisfies(error -> assertThat(((BloqueSolapadoException) error).getDiaSemana()).isEqualTo(3));
+
+		// Lunes y martes se guardaron dentro de la transaccion; jueves y viernes no llegaron. Que lo
+		// del lunes y el martes NO quede en la base es trabajo del rollback, y lo prueba el IT.
+		verify(bloques, times(2)).save(any());
+	}
+
+	@Test
+	@DisplayName("Un dia del lote que ya existe identico se devuelve sin crearlo: el resto si se crea")
+	void un_dia_del_lote_que_ya_existe_no_se_duplica() {
+		given(bloques.findActivosDe(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID))
+				.willReturn(List.of(bloque(BLOQUE_ID, MARTES, LocalTime.of(9, 0), LocalTime.of(12, 0))));
+
+		List<BloqueView> vistas = service.crearVarios(actor, CONSULTORIO_ID, MEMBERSHIP_ID,
+				new BloquesAltaCommand(Set.of(1, 2), LocalTime.of(9, 0), LocalTime.of(12, 0), DESDE_MARZO, null));
+
+		assertThat(vistas).extracting(BloqueView::nuevo).containsExactly(true, false);
+		verify(bloques, times(1)).save(any());
+		verify(auditTrail, times(1)).record(any());
+	}
+
+	@Test
+	@DisplayName("Un lote sin dias es un pedido invalido, antes de tocar nada")
+	void un_lote_sin_dias_es_invalido() {
+		assertThatThrownBy(() -> service.crearVarios(actor, CONSULTORIO_ID, MEMBERSHIP_ID,
+				new BloquesAltaCommand(Set.of(), LocalTime.of(9, 0), LocalTime.of(12, 0), DESDE_MARZO, null)))
+				.isInstanceOf(IllegalArgumentException.class);
+		verifyNoInteractions(bloques);
 	}
 
 	// =================================================================================

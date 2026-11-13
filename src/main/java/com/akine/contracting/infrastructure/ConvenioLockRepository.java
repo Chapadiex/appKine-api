@@ -55,15 +55,15 @@ public interface ConvenioLockRepository
 	 *       {@code UnexpectedRollbackException}. La excepcion hay que EVITARLA, no atraparla.</li>
 	 * </ol>
 	 *
-	 * <p>{@code ON DUPLICATE KEY UPDATE id = id} es un no-op deliberado: el motor resuelve la
+	 * <p>{@code ON CONFLICT DO NOTHING} es un no-op deliberado: el motor resuelve la
 	 * carrera en una sola sentencia atomica, sin excepcion y sin lectura previa. Es especifico de
 	 * MySQL, que es la base fijada por DP-09.
 	 */
 	@Modifying
 	@Query(value = """
 			INSERT INTO convenio_lock (organization_id, consultorio_id, created_at)
-			VALUES (:organizationId, :consultorioId, UTC_TIMESTAMP(6))
-			ON DUPLICATE KEY UPDATE id = id
+			VALUES (:organizationId, :consultorioId, CURRENT_TIMESTAMP)
+			ON CONFLICT DO NOTHING
 			""", nativeQuery = true)
 	@Override
 	void crearSiFalta(

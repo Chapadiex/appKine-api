@@ -53,15 +53,15 @@ public interface CoberturaPersonaLockRepository
 	 *       {@code UnexpectedRollbackException}. La excepcion hay que EVITARLA, no atraparla.</li>
 	 * </ol>
 	 *
-	 * <p>{@code ON DUPLICATE KEY UPDATE id = id} es un no-op deliberado: el motor resuelve la
+	 * <p>{@code ON CONFLICT DO NOTHING} es un no-op deliberado: el motor resuelve la
 	 * carrera en una sola sentencia atomica, sin excepcion y sin lectura previa. Es especifico de
 	 * MySQL, que es la base fijada por DP-09.
 	 */
 	@Modifying
 	@Query(value = """
 			INSERT INTO cobertura_persona_lock (organization_id, persona_id, created_at)
-			VALUES (:organizationId, :personaId, UTC_TIMESTAMP(6))
-			ON DUPLICATE KEY UPDATE id = id
+			VALUES (:organizationId, :personaId, CURRENT_TIMESTAMP)
+			ON CONFLICT DO NOTHING
 			""", nativeQuery = true)
 	@Override
 	void crearSiFalta(

@@ -38,6 +38,9 @@ public interface MembershipRepository extends JpaRepository<Membership, Long>, M
 	List<Membership> findAllByOrganizationIdAndAccountIdAndActiveTrueOrderByIdAsc(
 			Long organizationId, Long accountId);
 
+	/** Todas las memberships de una cuenta en un tenant, vigentes o dadas de baja: el historial de agenda. */
+	List<Membership> findAllByOrganizationIdAndAccountIdOrderByIdAsc(Long organizationId, Long accountId);
+
 	/**
 	 * Ver el puerto. Los {@code LEFT JOIN} no dependen de la membership: cada uno trae a lo sumo
 	 * una fila (la sede por su id, la organizacion por su id y la suscripcion por
@@ -100,15 +103,15 @@ public interface MembershipRepository extends JpaRepository<Membership, Long>, M
 	 * como diff en esta linea.
 	 */
 	@Query(value = """
-			SELECT COUNT(*) FROM membership
+			SELECT COUNT(*) FROM (SELECT 1 FROM membership
 			 WHERE organization_id = :organizationId
 			   AND role_code = 'ORG_ADMIN'
 			   AND estado = 'ACTIVA'
-			   AND active = 1
+			   AND active = true
 			   AND valid_from <= :at
 			   AND (valid_until IS NULL OR valid_until > :at)
 			   AND id <> :excludedMembershipId
-			 FOR SHARE
+			 FOR SHARE) AS bloqueadas
 			""", nativeQuery = true)
 	long countActiveOrgAdminsForShare(
 			@Param("organizationId") Long organizationId,

@@ -126,6 +126,18 @@ public enum ProblemType {
 	LAST_CONSULTORIO_REQUIRED("last-consultorio-required"),
 	/** La sede tiene referencias vigentes que impiden darla de baja. */
 	CONSULTORIO_HAS_ACTIVE_REFERENCES("consultorio-has-active-references"),
+	/**
+	 * La sede existe y esta activa pero todavia no esta habilitada para agenda (409, V140). Reservar
+	 * un turno, crear una serie o trasladar un turno hacia ella se rechaza hasta que
+	 * {@code agendaHabilitada} pase a {@code true}.
+	 */
+	CONSULTORIO_SIN_AGENDA("consultorio-sin-agenda"),
+	/**
+	 * El geocodificador de direcciones no respondio o esta apagado en este despliegue (503, con
+	 * {@code Retry-After}). La sede se puede guardar igual con la direccion escrita y sin
+	 * coordenadas, o fijando la ubicacion a mano.
+	 */
+	GEOCODIFICADOR_NO_DISPONIBLE("geocodificador-no-disponible"),
 
 	// --- Espacios (M04) -------------------------------------------------------------------
 	/** Ya hay un espacio vigente con ese nombre en esa sede. */
@@ -167,6 +179,17 @@ public enum ProblemType {
 	// --- Disponibilidad profesional, excepciones y calendario de sede (M05, AKINE-02.04) -----
 	/** El bloque pedido se pisa con otro bloque activo del mismo profesional en esa sede. */
 	BLOQUE_SOLAPADO("bloque-solapado"),
+	/**
+	 * Una franja del profesional se sale del horario general de la sede (409, regla del 08/11/2026).
+	 * Lleva {@code franjasFueraDeHorario}: indice, dia, horas pedidas y el horario de la sede ese dia.
+	 */
+	FRANJA_FUERA_DEL_HORARIO_DE_SEDE("franja-fuera-del-horario-de-sede"),
+	/**
+	 * El horario nuevo de la sede deja afuera franjas de profesionales y el pedido no dijo que hacer
+	 * con ellas (409). Lleva {@code franjasDeProfesionales}; se reenvia con
+	 * {@code franjasFueraDelHorario = RECORTAR} o {@code CONSERVAR}.
+	 */
+	FRANJAS_DE_PROFESIONALES_FUERA_DEL_HORARIO("franjas-de-profesionales-fuera-del-horario"),
 	/** El bloque esta dado de baja y la operacion exige uno vigente. */
 	BLOQUE_INACTIVO("bloque-inactivo"),
 	/** El bloque ya estaba dado de baja. */
@@ -1394,7 +1417,30 @@ public enum ProblemType {
 	 * filtraba habilitaciones en la reserva— y el reemplazo del profesional. Una oferta sin
 	 * habilitaciones declaradas admite a todos (regla de V28).
 	 */
-	PROFESIONAL_NO_HABILITADO_EN_OFERTA("profesional-no-habilitado-en-oferta");
+	PROFESIONAL_NO_HABILITADO_EN_OFERTA("profesional-no-habilitado-en-oferta"),
+
+	// --- Biblioteca (M30) -------------------------------------------------------------------
+
+	/** La biblioteca esta apagada por configuracion (409). */
+	BIBLIOTECA_DESHABILITADA("biblioteca-deshabilitada"),
+
+	/** El libro no existe o es de otra organizacion (404, nunca 403). */
+	LIBRO_NO_ENCONTRADO("libro-no-encontrado"),
+
+	/** Ya hay un libro con el mismo contenido en la organizacion (409). Lleva {@code libroId}. */
+	LIBRO_DUPLICADO("libro-duplicado"),
+
+	/** El archivo no se acepta (400). Lleva {@code causa}: NO_ES_PDF, MUY_GRANDE o VACIO. */
+	LIBRO_ARCHIVO_NO_ACEPTADO("libro-archivo-no-aceptado"),
+
+	/** El libro se esta procesando y no admite la operacion (409). */
+	LIBRO_EN_PROCESO("libro-en-proceso"),
+
+	/** La cola de consultas a la biblioteca esta llena (503, con {@code Retry-After}). */
+	CONSULTA_OCUPADA("consulta-ocupada"),
+
+	/** El modelo de lenguaje no responde o vencio el plazo (503). */
+	ASISTENTE_NO_DISPONIBLE("asistente-no-disponible");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

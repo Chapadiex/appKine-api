@@ -85,7 +85,7 @@ class PrepagoDeRecepcionIT {
 		assertThat(columna("cobro", "turno_prepago_vigente")).isEqualTo(1);
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
-				 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cobro'
+				 WHERE TABLE_SCHEMA = current_schema() AND TABLE_NAME = 'cobro'
 				   AND CONSTRAINT_NAME = 'uk_cobro_prepago_turno_vigente'
 				""", Integer.class)).isEqualTo(1);
 	}
@@ -361,7 +361,7 @@ class PrepagoDeRecepcionIT {
 				.isInstanceOf(PrepagoNoAdmitidoException.class);
 
 		long cancelado = insertarTurno(f);
-		jdbc.update("UPDATE turno SET estado = 'CANCELADO', deleted_at = UTC_TIMESTAMP(6) WHERE id = ?", cancelado);
+		jdbc.update("UPDATE turno SET estado = 'CANCELADO', deleted_at = CURRENT_TIMESTAMP WHERE id = ?", cancelado);
 		assertThatThrownBy(() -> prepagar(f, cancelado, MedioDePago.EFECTIVO, PRECIO, null))
 				.isInstanceOf(PrepagoNoAdmitidoException.class);
 
@@ -438,7 +438,7 @@ class PrepagoDeRecepcionIT {
 	private int columna(String tabla, String columna) {
 		return jdbc.queryForObject("""
 				SELECT COUNT(*) FROM information_schema.COLUMNS
-				 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+				 WHERE TABLE_SCHEMA = current_schema() AND TABLE_NAME = ? AND COLUMN_NAME = ?
 				""", Integer.class, tabla, columna);
 	}
 
@@ -507,11 +507,11 @@ class PrepagoDeRecepcionIT {
 
 		long org = insertar("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro " + s, "e6-it-" + s, ZONA);
 		long sede = insertar("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, "Sede " + s, ZONA);
 
 		long admin = cuenta("e6-adm-" + s);
@@ -523,14 +523,14 @@ class PrepagoDeRecepcionIT {
 		long historia = insertar("""
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, persona, profesional);
 
 		long servicio = insertar("""
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "E6-" + s.toUpperCase(), "Servicio " + s);
 		long oferta = insertar("""
 				INSERT INTO oferta_servicio_consultorio
@@ -539,8 +539,8 @@ class PrepagoDeRecepcionIT {
 				        exige_prepago, requiere_caso_clinico, genera_registro_clinico,
 				        requiere_profesional, requiere_espacio, vigencia_desde, active, version,
 				        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', 0, ?, 0, 0, 1, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', false, CAST(? AS boolean), false, false, true, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, servicio, "Oferta " + s, exigePrepago ? 1 : 0);
 
 		// Caja abierta en cero: todo el efectivo que la prueba ve en el cajon lo puso la prueba.
@@ -548,8 +548,8 @@ class PrepagoDeRecepcionIT {
 				INSERT INTO jornada_caja (organization_id, consultorio_id, fecha_negocio, moneda,
 				                          estado, saldo_inicial, saldo_arqueo, abierta_en,
 				                          abierta_por_cuenta_id, created_at, updated_at)
-				VALUES (?, ?, ?, 'ARS', 'ABIERTA', 0.00, 0.00, UTC_TIMESTAMP(6), ?,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CAST(? AS date), 'ARS', 'ABIERTA', 0.00, 0.00, CURRENT_TIMESTAMP, ?,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, LocalDate.now(ZoneId.of(ZONA)).toString(), admin);
 
 		return new Fixture(org, sede, admin, profesional, membership, persona, historia, oferta);
@@ -561,9 +561,9 @@ class PrepagoDeRecepcionIT {
 				                   profesional_membership_id, inicio, fin, estado,
 				                   reservado_por_cuenta_id, reservado_en, version,
 				                   created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 1 HOUR),
-				        DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 2 HOUR), 'RESERVADO', ?,
-				        UTC_TIMESTAMP(6), 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, (CURRENT_TIMESTAMP + INTERVAL '1 hours'),
+				        (CURRENT_TIMESTAMP + INTERVAL '2 hours'), 'RESERVADO', ?,
+				        CURRENT_TIMESTAMP, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", f.organizationId(), f.consultorioId(), f.ofertaId(), f.personaId(),
 				f.profesionalMembershipId(), f.adminCuentaId());
 	}
@@ -573,8 +573,8 @@ class PrepagoDeRecepcionIT {
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    turno_id, profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, 'BORRADOR', UTC_TIMESTAMP(6), ?, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, ?, 'BORRADOR', CURRENT_TIMESTAMP, ?, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", f.organizationId(), f.consultorioId(), f.historiaClinicaId(), f.ofertaId(), turno,
 				f.profesionalMembershipId(), f.profesionalCuentaId());
 	}
@@ -583,12 +583,12 @@ class PrepagoDeRecepcionIT {
 		long persona = insertar("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, apellido, apellido.toUpperCase());
 		jdbc.update("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, persona, activadoPor);
 		return persona;
 	}
@@ -598,7 +598,7 @@ class PrepagoDeRecepcionIT {
 		return insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 	}
 
@@ -607,18 +607,17 @@ class PrepagoDeRecepcionIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, cuenta, rol);
 	}
 
 	/**
-	 * Inserta y devuelve el id, en la MISMA conexion: {@code LAST_INSERT_ID()} es por conexion y
-	 * el pool podria darle otra a la consulta siguiente.
+	 * Inserta y devuelve el id generado en la MISMA sentencia (columna {@code id} nombrada).
 	 */
 	private long insertar(String insert, Object... args) {
 		return jdbc.execute((java.sql.Connection conexion) -> {
-			try (var sentencia = conexion.prepareStatement(insert, java.sql.Statement.RETURN_GENERATED_KEYS)) {
+			try (var sentencia = conexion.prepareStatement(insert, new String[] {"id"})) {
 				for (int i = 0; i < args.length; i++) {
 					sentencia.setObject(i + 1, args[i]);
 				}

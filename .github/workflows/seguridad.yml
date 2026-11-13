@@ -7,7 +7,7 @@ name: Seguridad (SAST y DAST)
 # - `codeql`: SAST. El repo es publico, asi que code scanning con CodeQL no cuesta nada ni pide
 #   GitHub Advanced Security. Los hallazgos van a la pestana Security › Code scanning.
 # - `zap`: DAST pasivo (OWASP ZAP baseline) contra el backend real levantado en el runner, con la
-#   misma pila que el job `e2e` de appKine-web: MySQL y Mailpit del compose.yaml y la imagen del
+#   misma pila que el job `e2e` de appKine-web: PostgreSQL y Mailpit del compose.yaml y la imagen del
 #   Dockerfile. El reporte queda como artifact `zap-baseline`.
 
 on:
@@ -78,8 +78,11 @@ jobs:
         uses: actions/checkout@v7
 
       # Proyecto `akine` explicito: la red queda como `akine_default` y el backend se engancha ahi.
-      - name: Levantar MySQL y Mailpit
-        run: docker compose -p akine -f compose.yaml up -d --wait
+      # Solo postgres y mailpit: el compose tambien declara ollama (modelo local de la biblioteca),
+      # que ZAP no necesita y es una imagen de varios GB. `--wait` espera el healthcheck de cada uno
+      # (pg_isready en postgres).
+      - name: Levantar PostgreSQL y Mailpit
+        run: docker compose -p akine -f compose.yaml up -d --wait postgres mailpit
 
       - name: Preparar buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
@@ -100,7 +103,7 @@ jobs:
         run: |
           docker run -d --name akine-api --network akine_default -p 8080:8080 \
             -e SPRING_PROFILES_ACTIVE=local \
-            -e AKINE_DB_URL='jdbc:mysql://mysql:3306/akine_local?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC' \
+            -e AKINE_DB_URL='jdbc:postgresql://postgres:5432/akine_local' \
             -e AKINE_DB_USER=akine -e AKINE_DB_PASSWORD=akine \
             -e AKINE_MAIL_HOST=mailpit -e AKINE_MAIL_PORT=1025 \
             akine-api:zap

@@ -1,13 +1,16 @@
 package com.akine.resource.api;
 
 import com.akine.resource.api.dto.BloqueResponse;
+import com.akine.resource.api.dto.BloquesCreadosResponse;
 import com.akine.resource.api.dto.CreateBloqueRequest;
+import com.akine.resource.api.dto.CreateBloquesRequest;
 import com.akine.resource.api.dto.DeactivateBloqueRequest;
 import com.akine.resource.api.dto.DisponibilidadEfectivaResponse;
 import com.akine.resource.api.dto.ImpactoDisponibilidadResponse;
 import com.akine.resource.api.dto.SimularEdicionBloqueRequest;
 import com.akine.resource.api.dto.UpdateBloqueRequest;
 import com.akine.resource.application.BloqueAltaCommand;
+import com.akine.resource.application.BloquesAltaCommand;
 import com.akine.resource.application.BloqueEdicionCommand;
 import com.akine.resource.application.BloqueView;
 import com.akine.resource.application.DisponibilidadEfectivaService;
@@ -24,6 +27,7 @@ import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -78,9 +82,10 @@ import java.util.List;
  * <h2>Autorizacion: mutar y leer no piden lo mismo</h2>
  *
  * <ul>
- *   <li><b>Mutar</b> exige {@code consultorio:manage} sobre esa sede: pasan {@code ORG_ADMIN} y
- *       el {@code CONSULTORIO_ADMIN} de esa sede. De ahi sale sola la politica "el profesional no
- *       edita su propia disponibilidad": la matriz no le da ese codigo.</li>
+ *   <li><b>Mutar</b> exige {@code agenda:horario} sobre esa sede: pasan {@code ORG_ADMIN} y
+ *       el {@code CONSULTORIO_ADMIN} de esa sede, y el {@code PROFESIONAL} sobre SU horario
+ *       (alcance {@code ACTIVIDAD_PROPIA}, agenda de profesionales). El {@code ADMINISTRATIVO} no,
+ *       salvo por grant.</li>
  *   <li><b>Leer</b> exige {@code colaborador:read} sobre esa sede. Sin esa lectura un profesional
  *       no puede ver su propio horario.</li>
  * </ul>
@@ -119,7 +124,7 @@ public class DisponibilidadController {
 					lectura del RESULTADO —que dias y horas concretas atiende— es \
 					/disponibilidad/efectiva, y las dos conviven a proposito.
 
-					Exige colaborador:read sobre esa sede, no consultorio:manage: sin eso un \
+					Exige colaborador:read sobre esa sede, no agenda:horario: sin eso un \
 					profesional no podria ver su propio horario.
 
 					Un profesional DESVINCULADO se sigue pudiendo consultar: RN-M05-003 dice que \
@@ -170,7 +175,7 @@ public class DisponibilidadController {
 			summary = "Alta de un bloque recurrente de disponibilidad",
 			description = """
 					Carga un tramo del horario semanal del profesional en esa sede: "los martes \
-					de 09 a 13, desde marzo" (RF-M05-003). Exige consultorio:manage sobre ESA \
+					de 09 a 13, desde marzo" (RF-M05-003). Exige agenda:horario sobre ESA \
 					sede.
 
 					RESPONDE 201 O 200, Y UN CLIENTE QUE SOLO CONTEMPLE 201 SE ROMPE. El alta es \
@@ -222,7 +227,8 @@ public class DisponibilidadController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto de "
+					description = "Falta agenda:horario sobre esa sede (con alcance propio: el horario es de otro "
+							+ "profesional), o no hay contexto de "
 							+ "trabajo seleccionado",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -236,7 +242,8 @@ public class DisponibilidadController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "Solapamiento con otro bloque activo (bloque-solapado), sede "
-							+ "dada de baja (consultorio-inactive), o profesional sin vinculo "
+							+ "dada de baja (consultorio-inactive), franja fuera del horario de la sede "
+							+ "(franja-fuera-del-horario-de-sede, con franjasFueraDeHorario), o profesional sin vinculo "
 							+ "vigente en esa sede (profesional-no-vinculado)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
@@ -275,6 +282,96 @@ public class DisponibilidadController {
 				.body(cuerpo);
 	}
 
+	@PostMapping(path = "/lote", consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "createBloquesDisponibilidad",
+			summary = "Alta en lote de bloques de disponibilidad: varios dias, un horario",
+			description = """
+					Carga el mismo tramo horario en VARIOS dias de la semana de una vez: "de lunes \
+					a viernes de 09 a 13, desde marzo" (RF-M05-003). Es la carga rapida del horario \
+					semanal. Exige agenda:horario sobre ESA sede.
+
+					ES ATOMICO. Los dias se procesan en UNA transaccion: si alguno no puede \
+					guardarse —se pisa con otro bloque activo, con el horario de la misma persona \
+					en otra sede o con una apertura—, NO se guarda ninguno y la respuesta es el \
+					409 del dia que fallo, con diaSemana en el cuerpo para que la pantalla lo \
+					senale. Antes, cargar la semana eran cinco pedidos y el cuarto podia fallar \
+					dejando tres.
+
+					Cada dia se valida exactamente como un alta suelta (ver el POST sin /lote): \
+					coincidir EXACTO con un bloque activo devuelve ese bloque sin crear nada ni \
+					volver a auditar, y solapar sin coincidir es 409 bloque-solapado. La respuesta \
+					dice cuantos se crearon y cuantos ya existian.
+
+					RESPONDE 201 SI CREO AL MENOS UNO Y 200 SI TODOS YA EXISTIAN. No trae Location: \
+					son varios recursos.""")
+	@ApiResponses({
+			@ApiResponse(
+					responseCode = "201",
+					description = "Al menos un bloque creado. bloques trae uno por dia, en orden",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = BloquesCreadosResponse.class))),
+			@ApiResponse(
+					responseCode = "200",
+					description = "Todos los dias ya tenian un bloque identico: no se creo ninguno",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = BloquesCreadosResponse.class))),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Sin dias, dia fuera de 1..7, horas ausentes u horario incoherente",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Falta agenda:horario sobre esa sede (con alcance propio: el horario es de otro "
+							+ "profesional), o no hay contexto de trabajo seleccionado",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "La sede o el profesional no existen, o pertenecen a otro tenant",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "Algun dia se solapa con otro bloque activo (bloque-solapado, con "
+							+ "diaSemana), algun dia fuera del horario de la sede "
+							+ "(franja-fuera-del-horario-de-sede, con todos los dias que no entran en "
+							+ "franjasFueraDeHorario), sede dada de baja (consultorio-inactive), o profesional sin "
+							+ "vinculo vigente en esa sede (profesional-no-vinculado). NO se guardo ninguno",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<BloquesCreadosResponse> createVarios(
+			@Parameter(description = "Identificador de la sede", example = "1")
+			@PathVariable long consultorioId,
+
+			@Parameter(description = "Vinculo del profesional", example = "1")
+			@PathVariable long membershipId,
+
+			@Valid @RequestBody CreateBloquesRequest request) {
+
+		log.info("Alta en lote de bloques de disponibilidad solicitada: consultorioId={} membershipId={} dias={}",
+				consultorioId, membershipId, request.diasSemana().size());
+
+		List<BloqueView> resultado = disponibilidadService.crearVarios(
+				apiActor.current(), consultorioId, membershipId,
+				new BloquesAltaCommand(
+						new java.util.LinkedHashSet<>(request.diasSemana()),
+						request.horaDesde(),
+						request.horaHasta(),
+						request.vigenciaDesde(),
+						request.vigenciaHasta()));
+
+		BloquesCreadosResponse cuerpo = BloquesCreadosResponse.from(resultado);
+		return ResponseEntity.status(cuerpo.creados() > 0 ? HttpStatus.CREATED : HttpStatus.OK).body(cuerpo);
+	}
+
 	@PutMapping(path = "/{bloqueId}", consumes = MediaType.APPLICATION_JSON_VALUE)
 	@Operation(
 			operationId = "updateBloqueDisponibilidad",
@@ -294,6 +391,10 @@ public class DisponibilidadController {
 					recarga. Sin eso dos ediciones \
 					simultaneas se pisan y el segundo en guardar borra el cambio del primero sin \
 					que nadie se entere.
+
+					Desde 0.154.0 una edicion que deja turnos pendientes fuera de la disponibilidad y no \
+					trae confirmaTurnosAfectados=true responde 409 bloqueo-con-turnos-afectados con la \
+					lista, igual que el alta de un cierre. Confirmada, los turnos no se tocan.
 
 					AVISO AL CLIENTE: la respuesta trae turnosAfectados, y una edicion que QUITA \
 					disponibilidad deja en conflicto los turnos que caian ahi (RN-M05-004). El \
@@ -321,7 +422,8 @@ public class DisponibilidadController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:horario sobre esa sede (con alcance propio: el horario es de "
+							+ "otro profesional), o no hay contexto",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -335,7 +437,8 @@ public class DisponibilidadController {
 			@ApiResponse(
 					responseCode = "409",
 					description = "Bloque dado de baja (bloque-inactivo), solapamiento con otro "
-							+ "activo (bloque-solapado), version desactualizada "
+							+ "activo (bloque-solapado), franja fuera del horario de la sede "
+							+ "(franja-fuera-del-horario-de-sede), version desactualizada "
 							+ "(concurrent-modification), o profesional sin vinculo vigente en "
 							+ "esa sede (profesional-no-vinculado)",
 					content = @Content(
@@ -362,7 +465,8 @@ public class DisponibilidadController {
 						request.vigenciaDesde(),
 						request.vigenciaHasta(),
 						Boolean.TRUE.equals(request.limpiarVigenciaHasta()),
-						request.version()));
+						request.version(),
+						Boolean.TRUE.equals(request.confirmaTurnosAfectados())));
 
 		return ResponseEntity.ok(BloqueResponse.from(actualizado));
 	}
@@ -382,8 +486,10 @@ public class DisponibilidadController {
 
 					Devuelve el bloque dado de baja, no un 204 vacio, porque el cuerpo trae \
 					turnosAfectados: la baja QUITA disponibilidad y los turnos que caian ahi \
-					quedan en conflicto (RN-M05-004). El impacto se INFORMA, no bloquea —ADR-0011 \
-					prohibe decidir en cascada por el usuario—. Cuenta los turnos pendientes de \
+					quedan en conflicto (RN-M05-004). Desde 0.154.0, si deja turnos afuera y no viene \
+					confirmaTurnosAfectados=true, responde 409 bloqueo-con-turnos-afectados con la \
+					lista; confirmada, los turnos no se tocan (ADR-0011 prohibe decidir en cascada \
+					por el usuario) y la agenda los marca fuera de disponibilidad. Cuenta los turnos pendientes de \
 					ese profesional en esa sede desde ahora hasta el fin de vigencia del bloque \
 					(noventa dias si no tiene fin) que la baja deja fuera de la disponibilidad \
 					efectiva: desde 0.70.0 un turno cubierto por otro bloque suyo no cuenta. \
@@ -399,7 +505,7 @@ public class DisponibilidadController {
 					baja" es informacion distinta de "no existe", y es la unica que le sirve al \
 					administrador que apreto el boton dos veces.
 
-					Exige consultorio:manage sobre esa sede.""")
+					Exige agenda:horario sobre esa sede.""")
 	@ApiResponses({
 			@ApiResponse(
 					responseCode = "200",
@@ -424,7 +530,8 @@ public class DisponibilidadController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:horario sobre esa sede (con alcance propio: el horario es de "
+							+ "otro profesional), o no hay contexto",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
@@ -437,7 +544,8 @@ public class DisponibilidadController {
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(
 					responseCode = "409",
-					description = "Ya estaba dado de baja (bloque-already-inactive)",
+					description = "Ya estaba dado de baja (bloque-already-inactive), o deja turnos afuera "
+							+ "sin confirmar (bloqueo-con-turnos-afectados, con la lista)",
 					content = @Content(
 							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
@@ -454,7 +562,8 @@ public class DisponibilidadController {
 			@Valid @RequestBody DeactivateBloqueRequest request) {
 
 		BloqueView baja = disponibilidadService.darDeBaja(
-				apiActor.current(), consultorioId, membershipId, bloqueId, request.reason());
+				apiActor.current(), consultorioId, membershipId, bloqueId, request.reason(),
+				Boolean.TRUE.equals(request.confirmaTurnosAfectados()));
 
 		return ResponseEntity.ok(BloqueResponse.from(baja));
 	}
@@ -569,7 +678,7 @@ public class DisponibilidadController {
 
 					El cuerpo es el de la edicion sin version. Un turno reservado entre esta \
 					consulta y el PUT lo informa igual la respuesta del PUT. Exige \
-					consultorio:manage sobre esa sede, igual que la edicion.""")
+					agenda:horario sobre esa sede, igual que la edicion.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Impacto calculado",
 					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
@@ -579,7 +688,8 @@ public class DisponibilidadController {
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:horario sobre esa sede (con alcance propio: el horario es de "
+							+ "otro profesional), o no hay contexto",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404",
@@ -625,13 +735,14 @@ public class DisponibilidadController {
 					quedarian fuera de la disponibilidad efectiva si el bloque se diera de baja. \
 					Misma cuenta exacta que la consulta previa de edicion; la ventana va de ahora \
 					al fin de vigencia del bloque, con un horizonte de noventa dias. Exige \
-					consultorio:manage sobre esa sede, igual que la baja.""")
+					agenda:horario sobre esa sede, igual que la baja.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Impacto calculado",
 					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
 							schema = @Schema(implementation = ImpactoDisponibilidadResponse.class))),
 			@ApiResponse(responseCode = "403",
-					description = "Falta consultorio:manage sobre esa sede, o no hay contexto",
+					description = "Falta agenda:horario sobre esa sede (con alcance propio: el horario es de "
+							+ "otro profesional), o no hay contexto",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "404",

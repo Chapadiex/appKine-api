@@ -6,8 +6,12 @@ import com.akine.scheduling.application.AgendaSedeIniciador;
 import com.akine.scheduling.application.CicloDeTurnoService;
 import com.akine.scheduling.application.ReprogramacionCommand;
 import com.akine.scheduling.application.ReservaCommand;
+import com.akine.scheduling.application.TrasladoCommand;
+import com.akine.scheduling.application.TrasladoDeTurnoService;
+import com.akine.scheduling.application.TrasladoView;
 import com.akine.scheduling.application.TurnoService;
 import com.akine.scheduling.application.TurnoView;
+import com.akine.scheduling.domain.exception.RecursoOcupadoException;
 import com.akine.scheduling.domain.exception.SlotCompletoException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -52,6 +56,7 @@ class NotificacionDeTurnoIT {
 	@Autowired private AgendaSedeIniciador agendaSedeIniciador;
 	@Autowired private TurnoService turnoService;
 	@Autowired private CicloDeTurnoService cicloService;
+	@Autowired private TrasladoDeTurnoService traslados;
 	@Autowired private JdbcTemplate jdbc;
 	@Autowired private PlatformTransactionManager transactionManager;
 
@@ -103,6 +108,9 @@ class NotificacionDeTurnoIT {
 		// La fila de agenda_sede tiene que existir antes de abrir la transaccion de afuera: dentro de
 		// una transaccion ajena la reserva no puede crearla sin pedir otra conexion (FilaLockPrevia).
 		agendaSedeIniciador.asegurar(fixture.organizationId(), fixture.consultorioId());
+		// Lo mismo para la fila de agenda_profesional del profesional del turno.
+		agendaSedeIniciador.asegurarProfesionales(
+				fixture.organizationId(), List.of(fixture.profesionalMembershipId()));
 
 		Long turnoId = new TransactionTemplate(transactionManager).execute(estado -> {
 			TurnoView turno = reservar(fixture, fixture.personaA(), a(9, 0), null);
@@ -197,6 +205,109 @@ class NotificacionDeTurnoIT {
 	}
 
 	// =================================================================================
+	// Una operacion, un aviso: cambio de sede y reprogramacion con otro profesional
+	// =================================================================================
+
+	/**
+	 * El defecto: el cambio de sede cancela el original y reserva uno nuevo, y cada mitad avisaba por
+	 * su cuenta. El paciente recibia "se cancelo tu turno" y "te reservamos un turno". Ahora es UN
+	 * aviso con lo que cambio, y ninguno de cancelacion ni de reserva del turno nuevo.
+	 */
+	@Test
+	@DisplayName("cambio de sede: UN aviso con sede, hora y profesional de antes y ahora; ni cancelacion ni reserva")
+	void el_traslado_encola_un_solo_aviso() {
+		Fixture sedeA = fixtures.crear(1);
+		Fixture sedeB = fixtures.agregarSede(sedeA);
+		String email = conCorreo(sedeA.personaA());
+		TurnoView original = reservar(sedeA, sedeA.personaA(), a(9, 0), null);
+
+		TrasladoView traslado = traslados.trasladar(sedeA.actor(), sedeA.consultorioId(), original.id(),
+				new TrasladoCommand(sedeB.consultorioId(), sedeB.ofertaId(), a(10, 0),
+						sedeB.profesionalMembershipId(), null, "dolor lumbar agudo", original.version()));
+
+		long nuevoId = traslado.nuevo().id();
+		assertThat(contar("turno-cancelado:" + original.id())).as("sin aviso de cancelacion").isZero();
+		assertThat(contar("turno-reservado:" + nuevoId)).as("sin aviso de reserva del nuevo").isZero();
+		Map<String, Object> fila = filaDe("turno-trasladado:" + nuevoId + ":desde:" + original.id());
+		assertThat(fila.get("tipo")).isEqualTo("TURNO_REPROGRAMADO");
+		assertThat(fila.get("destinatario")).isEqualTo(email);
+		assertThat(fila.get("turno_inicio")).isEqualTo("01/03/2027 a las 10:00");
+		String nombreA = jdbc.queryForObject("SELECT name FROM consultorio WHERE id = ?", String.class,
+				sedeA.consultorioId());
+		String nombreB = jdbc.queryForObject("SELECT name FROM consultorio WHERE id = ?", String.class,
+				sedeB.consultorioId());
+		assertThat(String.valueOf(fila.get("payload")))
+				.contains("\"consultorioNombreAnterior\": \"" + nombreA + "\"")
+				.contains("\"consultorioNombre\": \"" + nombreB + "\"")
+				.contains("01/03/2027 a las 09:00")
+				.contains("\"cambioProfesional\": \"si\"")
+				.doesNotContain("lumbar");
+		// La reserva del original (antes del traslado) y el unico aviso del traslado.
+		assertThat(contarDeLaOrganizacion(sedeA)).isEqualTo(2);
+	}
+
+	@Test
+	@DisplayName("cambio de sede sin lugar en el destino: rollback y ningun aviso nuevo")
+	void el_traslado_fallido_no_encola() {
+		Fixture sedeA = fixtures.crear(1);
+		Fixture sedeB = fixtures.agregarSede(sedeA);
+		conCorreo(sedeA.personaA());
+		conCorreo(sedeB.personaB());
+		TurnoView original = reservar(sedeA, sedeA.personaA(), a(11, 0), null);
+		reservar(sedeB, sedeB.personaB(), a(11, 0), null);
+
+		assertThatThrownBy(() -> traslados.trasladar(sedeA.actor(), sedeA.consultorioId(), original.id(),
+				new TrasladoCommand(sedeB.consultorioId(), sedeB.ofertaId(), a(11, 0),
+						sedeB.profesionalMembershipId(), null, "Cambio", original.version())))
+				.isInstanceOfAny(SlotCompletoException.class, RecursoOcupadoException.class);
+
+		assertThat(contar("turno-cancelado:" + original.id())).isZero();
+		assertThat(jdbc.queryForObject("""
+				SELECT COUNT(*) FROM notification_outbox
+				 WHERE organization_id = ? AND clave_idempotente LIKE 'turno-trasladado:%'
+				""", Long.class, sedeA.organizationId())).isZero();
+		assertThat(contarDeLaOrganizacion(sedeA)).as("solo las dos reservas").isEqualTo(2);
+	}
+
+	@Test
+	@DisplayName("reintentar el mismo cambio de sede no encola un segundo aviso")
+	void el_reintento_del_traslado_no_duplica() {
+		Fixture sedeA = fixtures.crear(1);
+		Fixture sedeB = fixtures.agregarSede(sedeA);
+		conCorreo(sedeA.personaA());
+		TurnoView original = reservar(sedeA, sedeA.personaA(), a(9, 0), null);
+		TrasladoCommand mismo = new TrasladoCommand(sedeB.consultorioId(), sedeB.ofertaId(), a(10, 0),
+				sedeB.profesionalMembershipId(), null, "Cambio", original.version());
+
+		traslados.trasladar(sedeA.actor(), sedeA.consultorioId(), original.id(), mismo);
+		assertThatThrownBy(() -> traslados.trasladar(sedeA.actor(), sedeA.consultorioId(), original.id(), mismo))
+				.isInstanceOf(RuntimeException.class);
+
+		assertThat(contarDeLaOrganizacion(sedeA)).isEqualTo(2);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM turno WHERE turno_origen_id = ?", Long.class,
+				original.id())).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("reprogramar con otro profesional: UN aviso que dice hora y profesional, sin nombrarlo")
+	void la_reprogramacion_con_otro_profesional_es_un_aviso() {
+		Fixture fixture = fixtures.crear(1);
+		long otro = fixtures.agregarProfesional(fixture);
+		conCorreo(fixture.personaA());
+		TurnoView turno = reservar(fixture, fixture.personaA(), a(9, 0), null);
+
+		TurnoView movido = cicloService.reprogramar(fixture.actor(), fixture.consultorioId(), turno.id(),
+				new ReprogramacionCommand(a(10, 0), otro, "Cambio", turno.version()));
+
+		Map<String, Object> fila = filaDe("turno-reprogramado:" + turno.id() + ":v" + movido.version());
+		assertThat(String.valueOf(fila.get("payload")))
+				.contains("\"cambioProfesional\": \"si\"")
+				.contains("01/03/2027 a las 09:00")
+				.doesNotContain("consultorioNombreAnterior");
+		assertThat(contarDeLaOrganizacion(fixture)).as("la reserva y un aviso de cambio").isEqualTo(2);
+	}
+
+	// =================================================================================
 
 	private TurnoView reservar(Fixture fixture, long personaId, Instant inicio, String clave) {
 		return turnoService.reservar(
@@ -218,8 +329,8 @@ class NotificacionDeTurnoIT {
 	private Map<String, Object> filaDe(String clave) {
 		List<Map<String, Object>> filas = jdbc.queryForList("""
 				SELECT tipo, destinatario, organization_id, referencia_token_id,
-				       CAST(payload_sanitizado AS CHAR) AS payload,
-				       JSON_UNQUOTE(JSON_EXTRACT(payload_sanitizado, '$.turnoInicio')) AS turno_inicio
+				       CAST(payload_sanitizado AS text) AS payload,
+				       payload_sanitizado ->> 'turnoInicio' AS turno_inicio
 				  FROM notification_outbox
 				 WHERE clave_idempotente = ?
 				""", clave);

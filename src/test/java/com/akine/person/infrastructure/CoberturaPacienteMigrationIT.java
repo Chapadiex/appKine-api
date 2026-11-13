@@ -8,7 +8,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -35,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *   <li>Que el borrado FISICO de un plan referenciado por una cobertura sea imposible (RESTRICT).
  *       Es la mitad estructural de "los historicos no se eliminan".</li>
  *   <li>Que el unique del candado exista: es lo que hace idempotente al
- *       {@code INSERT ... ON DUPLICATE KEY UPDATE} y, por lo tanto, lo que evita el deadlock.</li>
+ *       {@code INSERT ... ON CONFLICT DO NOTHING} y, por lo tanto, lo que evita el deadlock.</li>
  * </ol>
  *
  * <p><b>Lo que NO prueba, y conviene saberlo:</b> el no-solapamiento de vigencias y la unicidad de
@@ -70,7 +69,7 @@ class CoberturaPacienteMigrationIT {
 		for (String tabla : List.of("cobertura_paciente", "cobertura_persona_lock")) {
 			String nullable = jdbc().queryForObject("""
 					SELECT is_nullable FROM information_schema.columns
-					 WHERE table_schema = DATABASE() AND table_name = ?
+					 WHERE table_schema = current_schema() AND table_name = ?
 					   AND column_name = 'organization_id'
 					""", String.class, tabla);
 
@@ -81,8 +80,8 @@ class CoberturaPacienteMigrationIT {
 			// Solo los indices DECLARADOS: los que MySQL crea para sostener una FK empiezan por la
 			// columna de la FK y no son una decision de este esquema.
 			List<String> primeras = jdbc().queryForList("""
-					SELECT column_name FROM information_schema.statistics
-					 WHERE table_schema = DATABASE() AND table_name = ?
+					SELECT column_name FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) AS statistics
+					 WHERE table_schema = current_schema() AND table_name = ?
 					   AND seq_in_index = 1
 					   AND (index_name LIKE 'uk\\_%' OR index_name LIKE 'ix\\_%')
 					""", String.class, tabla);
@@ -109,10 +108,10 @@ class CoberturaPacienteMigrationIT {
 		assertThatThrownBy(() -> jdbc().update("""
 				INSERT INTO cobertura_paciente (organization_id, persona_id, tipo, plan_id,
 				                                financiador_id, vigencia_desde, created_at, updated_at)
-				VALUES (?, ?, 'FINANCIADA', ?, ?, '2026-09-01', UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'FINANCIADA', ?, ?, '2026-09-01', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", contexto.org, contexto.persona, contexto.plan, contexto.financiador))
 				.isInstanceOfAny(DataIntegrityViolationException.class,
-						UncategorizedSQLException.class);
+						DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -125,7 +124,7 @@ class CoberturaPacienteMigrationIT {
 		assertThatThrownBy(() -> insertar(contexto, "PARTICULAR", contexto.plan, "62000123456",
 				"2026-09-01", null))
 				.isInstanceOfAny(DataIntegrityViolationException.class,
-						UncategorizedSQLException.class);
+						DataIntegrityViolationException.class);
 	}
 
 	// =================================================================================
@@ -145,7 +144,7 @@ class CoberturaPacienteMigrationIT {
 
 		jdbc().update("""
 				UPDATE cobertura_paciente
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6), deactivation_reason = 'error de carga'
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP, deactivation_reason = 'error de carga'
 				 WHERE id = ?
 				""", primera);
 
@@ -185,7 +184,7 @@ class CoberturaPacienteMigrationIT {
 		assertThatThrownBy(() -> insertar(contexto, "PARTICULAR", null, null,
 				"2026-09-10", "2026-09-01"))
 				.isInstanceOfAny(DataIntegrityViolationException.class,
-						UncategorizedSQLException.class);
+						DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -195,10 +194,10 @@ class CoberturaPacienteMigrationIT {
 		long id = insertar(contexto, "PARTICULAR", null, null, "2026-09-01", null);
 
 		assertThatThrownBy(() -> jdbc().update("""
-				UPDATE cobertura_paciente SET active = 0, deleted_at = UTC_TIMESTAMP(6) WHERE id = ?
+				UPDATE cobertura_paciente SET active = false, deleted_at = CURRENT_TIMESTAMP WHERE id = ?
 				""", id))
 				.isInstanceOfAny(DataIntegrityViolationException.class,
-						UncategorizedSQLException.class);
+						DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -221,20 +220,20 @@ class CoberturaPacienteMigrationIT {
 	@Test
 	@DisplayName("el candado tiene una sola fila por persona: es lo que evita el deadlock")
 	void el_candado_es_idempotente() {
-		// Sin este unique el INSERT ... ON DUPLICATE KEY UPDATE no seria idempotente, y la
+		// Sin este unique el INSERT ... ON CONFLICT DO NOTHING no seria idempotente, y la
 		// creacion perezosa volveria a producir el deadlock que ya se pago tres veces.
 		Contexto contexto = contexto();
 
 		jdbc().update("""
 				INSERT INTO cobertura_persona_lock (organization_id, persona_id, created_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6))
-				ON DUPLICATE KEY UPDATE id = id
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+				ON CONFLICT (organization_id, persona_id) DO NOTHING
 				""", contexto.org, contexto.persona);
 
 		assertThatCode(() -> jdbc().update("""
 				INSERT INTO cobertura_persona_lock (organization_id, persona_id, created_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6))
-				ON DUPLICATE KEY UPDATE id = id
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+				ON CONFLICT (organization_id, persona_id) DO NOTHING
 				""", contexto.org, contexto.persona))
 				.as("la segunda vez no lanza: eso es todo el punto")
 				.doesNotThrowAnyException();
@@ -276,8 +275,8 @@ class CoberturaPacienteMigrationIT {
 				                                referencia_capturada_el,
 				                                numero_afiliado, vigencia_desde, vigencia_hasta,
 				                                created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6),
-				        UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS boolean), CAST(? AS boolean), CAST(? AS timestamptz), ?, CAST(? AS date), CAST(? AS date), CURRENT_TIMESTAMP,
+				        CURRENT_TIMESTAMP)
 				""",
 				contexto.org, contexto.persona, tipo,
 				financiada ? contexto.financiador : null,
@@ -298,7 +297,7 @@ class CoberturaPacienteMigrationIT {
 		jdbc().update("""
 				INSERT INTO organization (name, slug, timezone, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Coberturas Sinteticas " + slug, slug);
 		return jdbc().queryForObject("SELECT id FROM organization WHERE slug = ?", Long.class, slug);
 	}
@@ -310,7 +309,7 @@ class CoberturaPacienteMigrationIT {
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				VALUES (?, 'DNI', ?, ?, 'Sintetica', 'Paciente', 'SINTETICA', 'PACIENTE',
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, documento, documento);
 	}
 
@@ -318,8 +317,8 @@ class CoberturaPacienteMigrationIT {
 		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
-				VALUES (?, 'OSDE', 'OSDE Binario', 'PREPAGA', 1, 0, UTC_TIMESTAMP(6),
-				        UTC_TIMESTAMP(6))
+				VALUES (?, 'OSDE', 'OSDE Binario', 'PREPAGA', true, 0, CURRENT_TIMESTAMP,
+				        CURRENT_TIMESTAMP)
 				""", organizationId);
 	}
 
@@ -329,8 +328,8 @@ class CoberturaPacienteMigrationIT {
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, active, version,
 				                            created_at, updated_at)
-				VALUES (?, ?, '210', 'Plan 210', '2026-01-01', 0, 1, 1, 0, UTC_TIMESTAMP(6),
-				        UTC_TIMESTAMP(6))
+				VALUES (?, ?, '210', 'Plan 210', '2026-01-01', false, true, true, 0, CURRENT_TIMESTAMP,
+				        CURRENT_TIMESTAMP)
 				""", organizationId, financiadorId);
 	}
 }

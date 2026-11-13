@@ -36,4 +36,23 @@ public interface AuditQuery {
 	 * <p>Con {@code consultorioId} no nulo la consulta se acota a esa sede.
 	 */
 	Page<AuditEventSummary> porPeriodo(AuditEventFilter filtro, Pageable pageable);
+
+	/**
+	 * Historial de agenda de una persona: horario habitual, excepciones y turnos donde ella es el
+	 * profesional, o lo era antes de una reprogramacion (V134). Sin orden en el {@code pageable}, del
+	 * mas nuevo al mas viejo.
+	 */
+	Page<AuditEventSummary> deAgenda(AuditAgendaFilter filtro, Pageable pageable);
+
+	/**
+	 * Las filas que {@link #deAgenda} absorbe en un traslado (la cancelacion del turno de origen y la
+	 * reserva del nuevo), para mostrarlas como eventos relacionados de la fila visible. Del mas viejo al
+	 * mas nuevo.
+	 *
+	 * @param entityType     {@code entity_type} del turno
+	 * @param turnosDeOrigen ids de los turnos trasladados
+	 */
+	java.util.List<AuditEventSummary> absorbidasDeTraslados(
+			long organizationId, AuditAgendaFilter.Traslados traslados, String entityType,
+			java.util.Collection<Long> turnosDeOrigen);
 }

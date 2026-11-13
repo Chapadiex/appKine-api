@@ -12,7 +12,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -55,44 +54,28 @@ class ServicioYOfertaMigrationIT {
 	}
 
 	// =================================================================================
-	// servicio — global, sin organization_id y sin owner_key
+	// servicio — catalogo global y servicios propios del centro (ADR-0025, V143)
 	// =================================================================================
 
 	@Test
-	@DisplayName("servicio no tiene organization_id")
-	void servicio_no_tiene_organization_id() {
-		// La quinta excepcion a ADR-0004, declarada en ADR-0023: un Servicio es catalogo global
-		// (RN-M27-001) y la seccion 30.6 no lista organizationId entre sus campos. Lo que si es de
-		// un centro concreto —como lo presta— vive en oferta_servicio_consultorio.
-		assertThat(columnasDe("servicio"))
-				.as("servicio no puede llevar organization_id: es global, y agregarlo reintroduce "
-						+ "en el catalogo la configuracion por centro que ya vive en la Oferta")
-				.doesNotContain("organization_id");
-
-		// El contrapeso, para que este test no pase por el motivo equivocado: la tabla existe y
-		// tiene las columnas que la hacen un catalogo. Sin esto, un `servicio` que nunca se creo
-		// tambien "no tiene organization_id".
+	@DisplayName("servicio admite organization_id nulo: global o propio del centro")
+	void servicio_tiene_organization_id_nullable() {
+		// ADR-0025 supersede la fila de servicio de ADR-0023: NULL es el catalogo global, un valor es
+		// un servicio propio de esa organizacion.
+		assertThat(jdbc().queryForObject("""
+				SELECT is_nullable FROM information_schema.columns
+				 WHERE table_schema = current_schema() AND table_name = 'servicio' AND column_name = 'organization_id'
+				""", String.class)).isEqualTo("YES");
 		assertThat(columnasDe("servicio"))
 				.contains("codigo", "nombre", "naturaleza", "modalidad_default", "active");
 	}
 
 	@Test
-	@DisplayName("servicio no tiene owner_key, pero si deleted_key")
-	void servicio_no_tiene_owner_key() {
-		// La parte facil de copiar mal de ADR-0021: `owner_key` NO es "la forma de las tablas
-		// globales", es la forma de las tablas con DOS poblaciones. especialidad y practica (V20)
-		// lo llevan porque conviven filas globales y filas de tenant, y en MySQL varios NULL no
-		// colisionan en un unique. servicio tiene una sola poblacion: el centinela no distinguiria
-		// nada y seria una columna generada decorativa.
-		assertThat(columnasDe("servicio"))
-				.as("servicio no lleva owner_key: sin segunda poblacion el centinela no protege nada")
-				.doesNotContain("owner_key");
-
-		// deleted_key es un asunto INDEPENDIENTE y si hace falta: RF-M27-002 prohibe el borrado
-		// fisico, asi que un codigo dado de baja tiene que poder reusarse (V18/V19/V20).
-		assertThat(columnasDe("servicio"))
-				.as("servicio si lleva deleted_key: la baja es logica y el codigo se debe poder reusar")
-				.contains("deleted_key");
+	@DisplayName("servicio lleva owner_key y deleted_key")
+	void servicio_tiene_owner_key_y_deleted_key() {
+		// Con dos poblaciones (global y por centro) el unique necesita owner_key, como especialidad y
+		// practica (ADR-0021); deleted_key deja reusar un codigo dado de baja (RF-M27-002).
+		assertThat(columnasDe("servicio")).contains("owner_key", "deleted_key");
 	}
 
 	// =================================================================================
@@ -104,7 +87,7 @@ class ServicioYOfertaMigrationIT {
 	void oferta_lleva_organization_id_not_null() {
 		String esNullable = jdbc().queryForObject("""
 				SELECT is_nullable FROM information_schema.columns
-				 WHERE table_schema = DATABASE()
+				 WHERE table_schema = current_schema()
 				   AND table_name = 'oferta_servicio_consultorio'
 				   AND column_name = 'organization_id'
 				""", String.class);
@@ -133,8 +116,8 @@ class ServicioYOfertaMigrationIT {
 		// tenant no pase inadvertido.
 		List<Map<String, Object>> primeraColumnaPorIndice = jdbc().queryForList("""
 				SELECT s.index_name, s.column_name
-				  FROM information_schema.statistics s
-				 WHERE s.table_schema = DATABASE()
+				  FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) s
+				 WHERE s.table_schema = current_schema()
 				   AND s.table_name = 'oferta_servicio_consultorio'
 				   AND s.index_name <> 'PRIMARY'
 				   AND s.seq_in_index = 1
@@ -177,7 +160,7 @@ class ServicioYOfertaMigrationIT {
 		// como un grupo de una persona.
 		assertThatThrownBy(() -> insertarOferta(fixture, nombre("grupal-1"), "GRUPAL", 1))
 				.as("modalidad GRUPAL con capacidad 1 tiene que violar ck_oferta_grupal_capacidad")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_oferta_grupal_capacidad");
 
 		// Y el borde de arriba: 2 es el minimo aceptable para una grupal. Sin esto, un CHECK que
@@ -204,7 +187,7 @@ class ServicioYOfertaMigrationIT {
 		// sus tres columnas. Mismo criterio que espacio.capacidad en V19.
 		assertThatThrownBy(() -> insertarOferta(fixture, nombre("individual-0"), "INDIVIDUAL", 0))
 				.as("capacidad 0 tiene que violar ck_oferta_capacidad_positiva")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_oferta_capacidad_positiva");
 	}
 
@@ -221,7 +204,7 @@ class ServicioYOfertaMigrationIT {
 				new java.math.BigDecimal("4500.00"), null))
 				.as("4500 no significa nada sin saber de que moneda es: tiene que violar "
 						+ "ck_oferta_precio_con_moneda")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_oferta_precio_con_moneda");
 	}
 
@@ -233,7 +216,7 @@ class ServicioYOfertaMigrationIT {
 		assertThatThrownBy(() -> insertarOfertaConPrecio(fixture, nombre("moneda-sola"), null, "ARS"))
 				.as("una moneda sin importe es un dato a medias: tiene que violar "
 						+ "ck_oferta_precio_con_moneda")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_oferta_precio_con_moneda");
 
 		// Las dos combinaciones validas, para que el CHECK no sea "siempre falso": ninguno de los
@@ -263,12 +246,12 @@ class ServicioYOfertaMigrationIT {
 		// romper nada visible.
 		assertThatThrownBy(() -> insertarOfertaConVigencia(fixture, nombre("vigencia-cero"), 0))
 				.as("vigencia_hasta == vigencia_desde tiene que violar ck_oferta_vigencia_coherente")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_oferta_vigencia_coherente");
 
 		assertThatThrownBy(() -> insertarOfertaConVigencia(fixture, nombre("vigencia-negativa"), -1))
 				.as("una ventana que termina antes de empezar tampoco es una ventana")
-				.isInstanceOf(UncategorizedSQLException.class)
+				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("ck_oferta_vigencia_coherente");
 
 		assertThatCode(() -> insertarOfertaConVigencia(fixture, nombre("vigencia-un-dia"), 1))
@@ -335,7 +318,7 @@ class ServicioYOfertaMigrationIT {
 	private List<String> columnasDe(String tabla) {
 		return jdbc().queryForList("""
 				SELECT column_name FROM information_schema.columns
-				 WHERE table_schema = DATABASE() AND table_name = ?
+				 WHERE table_schema = current_schema() AND table_name = ?
 				""", String.class, tabla);
 	}
 
@@ -358,7 +341,7 @@ class ServicioYOfertaMigrationIT {
 		jdbc().update("""
 				INSERT INTO organization (name, slug, timezone, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Oferta Sintetica " + sufijo, slug);
 		return jdbc().queryForObject(
 				"SELECT id FROM organization WHERE slug = ?", Long.class, slug);
@@ -369,7 +352,7 @@ class ServicioYOfertaMigrationIT {
 		jdbc().update("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, name);
 		return jdbc().queryForObject(
 				"SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
@@ -383,8 +366,8 @@ class ServicioYOfertaMigrationIT {
 				                      requiere_caso_clinico_default,
 				                      genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'Servicio sintetico de prueba', 'CLINICO', 'INDIVIDUAL', 1, 1,
-				        1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Servicio sintetico de prueba', 'CLINICO', 'INDIVIDUAL', true, true,
+				        true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", codigo, "Servicio Sintetico " + sufijo);
 		return jdbc().queryForObject(
 				"SELECT id FROM servicio WHERE codigo = ?", Long.class, codigo);
@@ -398,8 +381,8 @@ class ServicioYOfertaMigrationIT {
 				     duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				     genera_registro_clinico, requiere_profesional, requiere_espacio,
 				     vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 45, ?, 0, 1, 1, 1, 1, CURRENT_DATE(), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 45, ?, false, true, true, true, true, CURRENT_DATE, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.servicioId(),
 				nombreComercial, modalidad, capacidad);
 	}
@@ -412,8 +395,8 @@ class ServicioYOfertaMigrationIT {
 				     duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				     requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				     requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 45, 1, ?, ?, 0, 1, 1, 1, 1, CURRENT_DATE(), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 45, 1, CAST(? AS numeric), ?, false, true, true, true, true, CURRENT_DATE, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.servicioId(),
 				nombreComercial, precioBase, moneda);
 	}
@@ -425,9 +408,9 @@ class ServicioYOfertaMigrationIT {
 				     duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				     genera_registro_clinico, requiere_profesional, requiere_espacio,
 				     vigencia_desde, vigencia_hasta, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 45, 1, 0, 1, 1, 1, 1,
-				        CURRENT_DATE(), DATE_ADD(CURRENT_DATE(), INTERVAL ? DAY), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 45, 1, false, true, true, true, true,
+				        CURRENT_DATE, (CURRENT_DATE + make_interval(days => ?)), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(), fixture.servicioId(),
 				nombreComercial, diasHasta);
 	}
@@ -435,9 +418,9 @@ class ServicioYOfertaMigrationIT {
 	private void darDeBaja(Fixture fixture, String nombreComercial) {
 		jdbc().update("""
 				UPDATE oferta_servicio_consultorio
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6),
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP,
 				       deactivation_reason = 'Baja sintetica de prueba',
-				       updated_at = UTC_TIMESTAMP(6)
+				       updated_at = CURRENT_TIMESTAMP
 				 WHERE organization_id = ? AND consultorio_id = ? AND nombre_comercial = ?
 				""", fixture.organizationId(), fixture.consultorioId(), nombreComercial);
 	}

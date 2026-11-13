@@ -22,7 +22,7 @@ public record ValidacionDeHorarioResponse(
 						"SLOT_COMPLETO", "PROFESIONAL_OCUPADO", "ESPACIO_OCUPADO"})
 		String causa,
 
-		@Schema(description = "La misma causa, para mostrarla", example = "El profesional ya tiene otro turno en ese horario.")
+		@Schema(description = "La misma causa, para mostrarla", example = "El profesional tiene una clase en otra sede en ese horario.")
 		String motivo,
 
 		Instant inicio,
@@ -47,7 +47,25 @@ public record ValidacionDeHorarioResponse(
 		List<String> avisos,
 
 		@Schema(description = "Los horarios mas cercanos, si este no se puede")
-		List<HorarioDisponibleResponse> alternativas) {
+		List<HorarioDisponibleResponse> alternativas,
+
+		@Schema(description = "Con que choca un PROFESIONAL_OCUPADO: un turno o una clase, de esta sede o de "
+				+ "otra de la organizacion (la misma persona). Ausente si no se sabe.",
+				allowableValues = {"TURNO", "CLASE"}, example = "CLASE")
+		String conflictoTipo,
+
+		@Schema(description = "Clase con la que choca, si es una clase", example = "7")
+		Long claseEnConflictoId,
+
+		@Schema(description = "Sede del evento con el que choca (puede ser otra)", example = "12")
+		Long conflictoConsultorioId,
+
+		@Schema(description = "Si un sobreturno a esa hora entraria: lo unico que lo impide es ocupacion de "
+				+ "ESTA sede (otro turno, el cupo o el box). false si choca con algo que el sobreturno no salva "
+				+ "(un turno de la misma persona en otra sede, una clase, un cierre, fuera de horario) y en un "
+				+ "horario libre. Informativo: no mira el permiso turno:sobreturno y la reserva revalida todo.",
+				example = "false")
+		boolean admiteSobreturno) {
 
 	public static ValidacionDeHorarioResponse de(ValidacionDeHorarioView vista) {
 		return new ValidacionDeHorarioResponse(
@@ -56,7 +74,9 @@ public record ValidacionDeHorarioResponse(
 				vista.espaciosLibres().stream().map(RecursoLibreResponse::de).toList(),
 				vista.turnoEnConflictoId(), vista.conflictoInicio(), vista.conflictoFin(),
 				vista.avisos(),
-				vista.alternativas().stream().map(HorarioDisponibleResponse::de).toList());
+				vista.alternativas().stream().map(HorarioDisponibleResponse::de).toList(),
+				vista.conflictoTipo(), vista.claseEnConflictoId(), vista.conflictoConsultorioId(),
+				vista.admiteSobreturno());
 	}
 
 	@Schema(name = "RecursoLibre", description = "Un profesional o un box, con su nombre.")

@@ -104,12 +104,12 @@ public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRep
 			SELECT * FROM egreso
 			 WHERE organization_id = :organizationId
 			   AND consultorio_id = :consultorioId
-			   AND (:estado IS NULL OR estado = :estado)
-			   AND (:categoria IS NULL OR categoria = :categoria)
-			   AND (:beneficiarioClave IS NULL OR beneficiario_clave = :beneficiarioClave)
-			   AND (:desde IS NULL OR registrado_en >= :desde)
-			   AND (:hasta IS NULL OR registrado_en < :hasta)
-			   AND (:patron IS NULL
+			   AND (CAST(:estado AS varchar) IS NULL OR estado = :estado)
+			   AND (CAST(:categoria AS varchar) IS NULL OR categoria = :categoria)
+			   AND (CAST(:beneficiarioClave AS varchar) IS NULL OR beneficiario_clave = :beneficiarioClave)
+			   AND (CAST(:desde AS timestamptz) IS NULL OR registrado_en >= :desde)
+			   AND (CAST(:hasta AS timestamptz) IS NULL OR registrado_en < :hasta)
+			   AND (CAST(:patron AS varchar) IS NULL
 			        OR beneficiario_nombre LIKE :patron
 			        OR beneficiario_documento LIKE :patron
 			        OR concepto LIKE :patron
@@ -242,7 +242,7 @@ public interface EgresoRepository extends JpaRepository<Egreso, Long>, EgresoRep
 	 * @return filas {@code [dia, total]}
 	 */
 	@Query(value = """
-			SELECT DATE(CONVERT_TZ(e.registrado_en, '+00:00', :desfase)) AS dia,
+			SELECT CAST((e.registrado_en AT TIME ZONE 'UTC') + CAST(:desfase AS interval) AS date) AS dia,
 			       SUM(e.importe_total) AS total
 			  FROM egreso e
 			 WHERE e.organization_id = :organizationId

@@ -246,5 +246,20 @@ class SchedulingProblemHandlerTest {
 					.containsEntry("recurso", "profesional")
 					.containsEntry("ocurrenciaInicio", "2027-03-15T12:00:00Z");
 		}
+
+		@Test
+		@DisplayName("El detail escribe la ocurrencia en hora de la sede, sin el instante UTC crudo (D-4)")
+		void ocurrencia_sin_lugar_en_hora_local() {
+			Instant viernes = Instant.parse("2026-11-13T17:30:00Z");
+
+			ProblemDetail problem = handler.handleOcurrenciaSinLugar(new OcurrenciaSinLugarException(
+					viernes, java.time.ZoneId.of("America/Argentina/Cordoba"),
+					new RecursoOcupadoException("profesional")));
+
+			assertThat(problem.getDetail())
+					.startsWith("La ocurrencia del 13/11/2026 14:30 no tiene lugar: ")
+					.doesNotContain("2026-11-13T17:30:00Z");
+			assertThat(problem.getProperties()).containsEntry("ocurrenciaInicio", "2026-11-13T17:30:00Z");
+		}
 	}
 }

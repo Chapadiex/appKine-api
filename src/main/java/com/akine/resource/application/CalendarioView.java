@@ -44,7 +44,8 @@ public record CalendarioView(
 		boolean existePersistida,
 		List<FeriadoView> feriados,
 		List<FranjaHorarioGeneral.Franja> horarioGeneral,
-		ImpactoDeDisponibilidad impactoDelHorario) {
+		ImpactoDeDisponibilidad impactoDelHorario,
+		List<FranjaFueraDeHorario> franjasFueraDelHorario) {
 
 	public CalendarioView {
 		feriados = feriados == null ? List.of() : List.copyOf(feriados);
@@ -52,6 +53,29 @@ public record CalendarioView(
 		impactoDelHorario = impactoDelHorario == null
 				? ImpactoDeDisponibilidad.ninguno(null)
 				: impactoDelHorario;
+		franjasFueraDelHorario = franjasFueraDelHorario == null ? List.of() : List.copyOf(franjasFueraDelHorario);
+	}
+
+	public CalendarioView(
+			long consultorioId,
+			String pais,
+			boolean cierraPorFeriado,
+			long version,
+			boolean existePersistida,
+			List<FeriadoView> feriados,
+			List<FranjaHorarioGeneral.Franja> horarioGeneral,
+			ImpactoDeDisponibilidad impactoDelHorario) {
+		this(consultorioId, pais, cierraPorFeriado, version, existePersistida, feriados,
+				horarioGeneral, impactoDelHorario, null);
+	}
+
+	/**
+	 * La misma vista con las franjas de profesionales que el horario nuevo dejo afuera y lo que se
+	 * hizo con cada una (regla del 08/11/2026). Solo la respuesta del {@code PUT} la lleva.
+	 */
+	public CalendarioView conFranjasFueraDelHorario(List<FranjaFueraDeHorario> franjas) {
+		return new CalendarioView(consultorioId, pais, cierraPorFeriado, version, existePersistida,
+				feriados, horarioGeneral, impactoDelHorario, franjas);
 	}
 
 	/** Sin impacto informado: la lectura, y todo lo anterior a A-8b. */
@@ -73,7 +97,7 @@ public record CalendarioView(
 	 */
 	public CalendarioView conImpacto(ImpactoDeDisponibilidad impacto) {
 		return new CalendarioView(consultorioId, pais, cierraPorFeriado, version, existePersistida,
-				feriados, horarioGeneral, impacto);
+				feriados, horarioGeneral, impacto, franjasFueraDelHorario);
 	}
 
 	/** Sin horario general: la forma de la vista anterior a A-8. */

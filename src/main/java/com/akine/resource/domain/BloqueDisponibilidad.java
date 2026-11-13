@@ -115,6 +115,22 @@ public class BloqueDisponibilidad extends MarcaTemporal {
 	@Column(name = "version", nullable = false)
 	private long version;
 
+	/** Cuenta que cargo el bloque (V132). {@code null} en los anteriores: el dato no existia. */
+	@Column(name = "created_by_cuenta_id", updatable = false)
+	private Long createdByCuentaId;
+
+	/** Fija quien cargo el bloque. Solo antes de persistirlo, y una vez. */
+	public void registrarAutor(long cuentaId) {
+		if (id != null || this.createdByCuentaId != null) {
+			throw new IllegalStateException("El autor de un bloque se fija al cargarlo");
+		}
+		this.createdByCuentaId = cuentaId;
+	}
+
+	public Long getCreatedByCuentaId() {
+		return createdByCuentaId;
+	}
+
 	protected BloqueDisponibilidad() {
 		// Requerido por JPA.
 	}

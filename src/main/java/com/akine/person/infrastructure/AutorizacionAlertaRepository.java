@@ -21,7 +21,7 @@ public interface AutorizacionAlertaRepository
 	/**
 	 * Una alerta por consumo, sin choque.
 	 *
-	 * <p>{@code ON DUPLICATE KEY UPDATE movimiento_id = movimiento_id} es un no-op deliberado: la
+	 * <p>{@code ON CONFLICT DO NOTHING} es un no-op deliberado: la
 	 * primera anulacion que la genero queda como origen, y una segunda anulacion de la misma sesion
 	 * —F-4 va a devengar dos obligaciones por sesion— no la pisa ni lanza. Es la forma de que dos
 	 * anulaciones concurrentes no terminen en un {@code DataIntegrityViolationException} dentro de
@@ -35,7 +35,7 @@ public interface AutorizacionAlertaRepository
 			        sesion_id, obligacion_id, motivo_origen, generada_en, generada_por, created_at)
 			VALUES (:organizationId, :autorizacionId, :personaId, :movimientoId, :tipo,
 			        :sesionId, :obligacionId, :motivoOrigen, :generadaEn, :generadaPor, :generadaEn)
-			ON DUPLICATE KEY UPDATE movimiento_id = movimiento_id
+			ON CONFLICT DO NOTHING
 			""", nativeQuery = true)
 	@SuppressWarnings("java:S107")
 	void registrarSiFalta(

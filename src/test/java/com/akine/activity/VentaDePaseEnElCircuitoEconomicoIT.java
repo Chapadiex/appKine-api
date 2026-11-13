@@ -111,7 +111,7 @@ class VentaDePaseEnElCircuitoEconomicoIT {
 		assertThat(saldoDeCaja(tenant)).isEqualByComparingTo(MITAD);
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM movimiento_caja
-				 WHERE organization_id = ? AND tipo_origen = 'COBRO' AND referencia_origen = ? AND tipo = 'INGRESO'
+				 WHERE organization_id = ? AND tipo_origen = 'COBRO' AND referencia_origen = CAST(? AS bigint) AND tipo = 'INGRESO'
 				""", Integer.class, tenant.organizationId(), cobro.id())).isEqualTo(1);
 
 		// Con cobros la venta no se anula, y lo que se lee por el pase dice cuanto se cobro.
@@ -231,7 +231,7 @@ class VentaDePaseEnElCircuitoEconomicoIT {
 
 	private ResultadoDeVenta vender(Tenant tenant, int persona) {
 		long productoId = jdbc.query("""
-				SELECT id FROM producto_servicio WHERE organization_id = ? AND active = 1 AND tipo = 'PACK'
+				SELECT id FROM producto_servicio WHERE organization_id = ? AND active = true AND tipo = 'PACK'
 				""", rs -> rs.next() ? rs.getLong(1) : 0L, tenant.organizationId());
 		if (productoId == 0L) {
 			productoId = productoService.crear(tenant.actor(), tenant.consultorioId(),
@@ -266,8 +266,8 @@ class VentaDePaseEnElCircuitoEconomicoIT {
 				INSERT INTO jornada_caja (organization_id, consultorio_id, fecha_negocio, moneda,
 				                          estado, saldo_inicial, saldo_arqueo, abierta_en,
 				                          abierta_por_cuenta_id, created_at, updated_at)
-				VALUES (?, ?, ?, 'ARS', 'ABIERTA', 0.00, 0.00, UTC_TIMESTAMP(6), ?,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CAST(? AS date), 'ARS', 'ABIERTA', 0.00, 0.00, CURRENT_TIMESTAMP, ?,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), tenant.consultorioId(),
 				LocalDate.now(ZoneId.of(ActividadItFixture.ZONA)).toString(), tenant.actor().accountId());
 	}
@@ -277,7 +277,7 @@ class VentaDePaseEnElCircuitoEconomicoIT {
 		jdbc.update("""
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 'PREPAGA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'PREPAGA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, codigo, "Financiador " + codigo);
 		return jdbc.queryForObject("SELECT id FROM financiador WHERE organization_id = ? AND codigo = ?",
 				Long.class, organizationId, codigo);

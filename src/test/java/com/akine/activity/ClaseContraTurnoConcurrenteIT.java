@@ -220,7 +220,7 @@ class ClaseContraTurnoConcurrenteIT {
 	private long filaDeAgenda(Fixture sede) {
 		jdbc.update("""
 				INSERT INTO agenda_sede (organization_id, consultorio_id, created_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE id = id
+				VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT (organization_id, consultorio_id) DO NOTHING
 				""", sede.organizationId(), sede.consultorioId());
 		return jdbc.queryForObject(
 				"SELECT id FROM agenda_sede WHERE organization_id = ? AND consultorio_id = ?",
@@ -234,7 +234,7 @@ class ClaseContraTurnoConcurrenteIT {
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'GRUPAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'GRUPAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "EXCL-" + sufijo, "Servicio " + sufijo);
 		long servicio = jdbc.queryForObject("SELECT id FROM servicio WHERE codigo = ?", Long.class,
 				"EXCL-" + sufijo);
@@ -244,8 +244,8 @@ class ClaseContraTurnoConcurrenteIT {
 				        duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				        genera_registro_clinico, requiere_profesional, requiere_espacio,
 				        vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'GRUPAL', 60, 10, 0, 0, 0, ?, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'GRUPAL', 60, 10, false, false, false, CAST(? AS boolean), false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", sede.organizationId(), sede.consultorioId(), servicio, "Grupal " + sufijo,
 				requiereProfesional ? 1 : 0);
 		return jdbc.queryForObject("""
@@ -257,7 +257,7 @@ class ClaseContraTurnoConcurrenteIT {
 		String nombre = "Sede B " + UUID.randomUUID().toString().substring(0, 8);
 		jdbc.update("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, nombre, AgendaFixtures.ZONA);
 		return jdbc.queryForObject("SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
 				Long.class, organizationId, nombre);

@@ -30,6 +30,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -75,13 +76,17 @@ class RevalidadorDeSlotTest {
 	@Mock private DisponibilidadDirectory disponibilidad;
 	@Mock private EspacioDirectory espacios;
 	@Mock private OcupacionExternaProbe ocupacionExterna;
+	@Mock private AgendaDelProfesional agendaDelProfesional;
 
 	private RevalidadorDeSlot revalidador;
 
 	@BeforeEach
 	void setUp() {
 		revalidador = new RevalidadorDeSlot(
-				turnos, ofertas, disponibilidad, espacios, ocupacionExterna);
+				turnos, ofertas, disponibilidad, espacios, ocupacionExterna, agendaDelProfesional);
+		// Una persona con una sola membership: el cruce entre sedes tiene su IT propio.
+		given(agendaDelProfesional.bloquear(anyLong(), anyLong())).willAnswer(inv -> Set.of((Long) inv.getArgument(1)));
+		given(agendaDelProfesional.deLaMismaPersona(anyLong(), anyLong())).willAnswer(inv -> Set.of((Long) inv.getArgument(1)));
 
 		given(ofertas.profesionalesHabilitados(ORG_ID, CONSULTORIO_ID, OFERTA_ID))
 				.willReturn(List.of());
@@ -90,14 +95,14 @@ class RevalidadorDeSlotTest {
 				.willReturn(List.of(diaConFranja(INICIO, FIN)));
 		given(turnos.contarVivosEnSlot(anyLong(), anyLong(), any())).willReturn(0L);
 		given(turnos.contarVivosEnSlotDelProfesional(anyLong(), anyLong(), anyLong(), any())).willReturn(0L);
-		given(turnos.findVivosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any()))
+		given(turnos.findVivosDeProfesionalesQueCruzan(anyLong(), any(), any(), any()))
 				.willReturn(List.of());
 		given(turnos.findVivosDeEspacioQueCruzan(anyLong(), anyLong(), any(), any()))
 				.willReturn(List.of());
 		given(espacios.enServicio(anyLong(), anyLong(), any(), any()))
 				.willReturn(List.of(espacio(true)));
-		given(ocupacionExterna.profesionalOcupado(anyLong(), anyLong(), any(), any()))
-				.willReturn(false);
+		given(ocupacionExterna.ocupacionDeProfesionales(anyLong(), any(), any(), any()))
+				.willReturn(List.of());
 		given(ocupacionExterna.espacioOcupado(anyLong(), anyLong(), any(), any()))
 				.willReturn(false);
 	}
@@ -222,7 +227,7 @@ class RevalidadorDeSlotTest {
 		@Test
 		@DisplayName("Un turno de OTRA oferta que cruza deja al profesional ocupado")
 		void conflicto_real() {
-			given(turnos.findVivosDeProfesionalQueCruzan(ORG_ID, PROFESIONAL_ID, INICIO, FIN))
+			given(turnos.findVivosDeProfesionalesQueCruzan(ORG_ID, Set.of(PROFESIONAL_ID), INICIO, FIN))
 					.willReturn(List.of(turnoDeOtraOferta()));
 
 			assertThatThrownBy(() -> revalidador.revalidar(pedido(null)))
@@ -233,7 +238,7 @@ class RevalidadorDeSlotTest {
 		@DisplayName("Otro turno DEL MISMO slot grupal no es conflicto: por eso existe el cupo")
 		void el_mismo_slot_no_es_conflicto() {
 			// Si contara como solapamiento, una oferta grupal no podria tener dos inscriptos nunca.
-			given(turnos.findVivosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any()))
+			given(turnos.findVivosDeProfesionalesQueCruzan(anyLong(), any(), any(), any()))
 					.willReturn(List.of(turnoVivoEnElSlot()));
 
 			assertThat(revalidador.revalidar(pedidoDe(ofertaCon(3)))).isNotNull();
@@ -244,8 +249,9 @@ class RevalidadorDeSlotTest {
 		void ocupacion_externa() {
 			// La agenda de turnos y la de clases comparten profesional: sin esta sonda, M28 podria
 			// vender la misma hora que M12.
-			given(ocupacionExterna.profesionalOcupado(ORG_ID, PROFESIONAL_ID, INICIO, FIN))
-					.willReturn(true);
+			given(ocupacionExterna.ocupacionDeProfesionales(anyLong(), any(), any(), any()))
+					.willReturn(List.of(new com.akine.scheduling.spi.OcupacionExternaProbe.OcupacionExterna(
+						"CLASE", 9L, 999L, PROFESIONAL_ID, INICIO, FIN)));
 
 			assertThatThrownBy(() -> revalidador.revalidar(pedido(null)))
 					.isInstanceOf(RecursoOcupadoException.class);
@@ -301,7 +307,7 @@ class RevalidadorDeSlotTest {
 			Turno delGrupo = turno(OFERTA_ID, INICIO, TURNO_ID + 5);
 			given(turnos.contarVivosEnSlot(ORG_ID, OFERTA_ID, INICIO)).willReturn(1L);
 			given(turnos.contarVivosEnSlotDelProfesional(anyLong(), anyLong(), anyLong(), any())).willReturn(1L);
-			given(turnos.findVivosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any()))
+			given(turnos.findVivosDeProfesionalesQueCruzan(anyLong(), any(), any(), any()))
 					.willReturn(List.of(delGrupo));
 			given(turnos.findVivosDeEspacioQueCruzan(anyLong(), anyLong(), any(), any()))
 					.willReturn(List.of(delGrupo));
@@ -321,7 +327,7 @@ class RevalidadorDeSlotTest {
 			Turno siguiente = turno(OFERTA_ID + 1, INICIO.plusSeconds(1_800), TURNO_ID + 6);
 			given(turnos.contarVivosEnSlot(ORG_ID, OFERTA_ID, INICIO)).willReturn(1L);
 			given(turnos.contarVivosEnSlotDelProfesional(anyLong(), anyLong(), anyLong(), any())).willReturn(1L);
-			given(turnos.findVivosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any()))
+			given(turnos.findVivosDeProfesionalesQueCruzan(anyLong(), any(), any(), any()))
 					.willReturn(List.of(delGrupo));
 			given(turnos.findVivosDeEspacioQueCruzan(anyLong(), anyLong(), any(), any()))
 					.willReturn(List.of(delGrupo, siguiente));
@@ -412,7 +418,7 @@ class RevalidadorDeSlotTest {
 		@DisplayName("No choca contra si mismo ni por el profesional ni por el box")
 		void no_choca_contra_si_mismo() {
 			Turno elMismo = turno(OFERTA_ID + 1, INICIO.minus(Duration.ofMinutes(30)), TURNO_ID);
-			given(turnos.findVivosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any())).willReturn(List.of(elMismo));
+			given(turnos.findVivosDeProfesionalesQueCruzan(anyLong(), any(), any(), any())).willReturn(List.of(elMismo));
 			given(turnos.findVivosDeEspacioQueCruzan(anyLong(), anyLong(), any(), any())).willReturn(List.of(elMismo));
 
 			assertThat(revalidador.revalidar(pedido(TURNO_ID)).espacioId()).isEqualTo(ESPACIO_ID);
@@ -427,7 +433,7 @@ class RevalidadorDeSlotTest {
 		@DisplayName("Un profesional ocupado por un turno dice con cual y cuando: la pantalla ofrece alternativas con eso")
 		void con_los_datos_del_choque() {
 			Turno otro = turnoDeOtraOferta();
-			given(turnos.findVivosDeProfesionalQueCruzan(ORG_ID, PROFESIONAL_ID, INICIO, FIN)).willReturn(List.of(otro));
+			given(turnos.findVivosDeProfesionalesQueCruzan(ORG_ID, Set.of(PROFESIONAL_ID), INICIO, FIN)).willReturn(List.of(otro));
 
 			assertThatThrownBy(() -> revalidador.revalidar(pedido(null)))
 					.isInstanceOfSatisfying(RecursoOcupadoException.class, ocupado -> {
@@ -457,7 +463,7 @@ class RevalidadorDeSlotTest {
 			assertThatThrownBy(() -> revalidador.revalidar(pedidoDe(oferta(1, false, false))))
 					.isInstanceOf(SlotCompletoException.class);
 			org.mockito.Mockito.verify(turnos, org.mockito.Mockito.never())
-					.findVivosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any());
+					.findVivosDeProfesionalesQueCruzan(anyLong(), any(), any(), any());
 		}
 	}
 
@@ -613,14 +619,44 @@ class RevalidadorDeSlotTest {
 		@DisplayName("Entra con el horario lleno y el profesional ocupado, y sin box libre queda sin box")
 		void salva_la_ocupacion() {
 			given(turnos.contarVivosEnSlotDelProfesional(anyLong(), anyLong(), anyLong(), any())).willReturn(1L);
-			given(turnos.findVivosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any())).willReturn(List.of(turnoDeOtraOferta()));
-			given(ocupacionExterna.profesionalOcupado(anyLong(), anyLong(), any(), any())).willReturn(true);
+			given(turnos.findVivosDeProfesionalesQueCruzan(anyLong(), any(), any(), any())).willReturn(List.of(turnoDeOtraOferta()));
 			given(turnos.findVivosDeEspacioQueCruzan(anyLong(), anyLong(), any(), any())).willReturn(List.of(turnoDeOtraOferta()));
 
 			RevalidadorDeSlot.Asignacion asignacion = revalidador.revalidar(sobreturno());
 
 			assertThat(asignacion.profesionalId()).isEqualTo(PROFESIONAL_ID);
 			assertThat(asignacion.espacioId()).isNull();
+		}
+
+		@Test
+		@DisplayName("No salva una CLASE de la misma persona, ni en otra sede: la persona no se desdobla")
+		void no_salva_una_clase() {
+			given(ocupacionExterna.ocupacionDeProfesionales(anyLong(), any(), any(), any())).willReturn(List.of(
+					new com.akine.scheduling.spi.OcupacionExternaProbe.OcupacionExterna("CLASE", 9L, 999L, PROFESIONAL_ID, INICIO, FIN)));
+
+			assertThatThrownBy(() -> revalidador.revalidar(sobreturno()))
+					.isInstanceOfSatisfying(RecursoOcupadoException.class, e -> {
+						assertThat(e.getConflictoTipo()).isEqualTo("CLASE");
+						assertThat(e.getConflictoConsultorioId()).isEqualTo(999L);
+						assertThat(e.getMessage()).contains("otra sede");
+					});
+		}
+
+		@Test
+		@DisplayName("D-5: no salva un TURNO de la misma persona en otra sede")
+		void no_salva_un_turno_de_otra_sede() {
+			Turno enOtraSede = new Turno(ORG_ID, 999L, OFERTA_ID + 1, PERSONA_ID, PROFESIONAL_ID, null, INICIO,
+					INICIO.plus(Duration.ofMinutes(45)), CUENTA, Instant.EPOCH, null, null);
+			ReflectionTestUtils.setField(enOtraSede, "id", TURNO_ID + 7);
+			given(turnos.findVivosDeProfesionalesQueCruzan(anyLong(), any(), any(), any())).willReturn(List.of(enOtraSede));
+
+			assertThatThrownBy(() -> revalidador.revalidar(sobreturno()))
+					.isInstanceOfSatisfying(RecursoOcupadoException.class, e -> {
+						assertThat(e.getConflictoTipo()).isEqualTo("TURNO");
+						assertThat(e.getTurnoEnConflictoId()).isEqualTo(TURNO_ID + 7);
+						assertThat(e.getConflicto().mismaSede()).isFalse();
+						assertThat(e.getConflictoConsultorioId()).isEqualTo(999L);
+					});
 		}
 
 		@Test

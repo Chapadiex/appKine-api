@@ -278,7 +278,7 @@ class PersonaBusquedaAfiliadoIT {
 				.isEqualTo(eventosAntes);
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM audit_event
-				 WHERE details LIKE '%62000123456%' OR reason LIKE '%62000123456%'
+				 WHERE CAST(details AS text) LIKE '%62000123456%' OR reason LIKE '%62000123456%'
 				""", Integer.class)).isZero();
 	}
 

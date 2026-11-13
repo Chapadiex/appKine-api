@@ -283,9 +283,9 @@ class ActividadAislamientoIT extends BaseEscenarioDiferido {
 				                            granted_by_account_id, valid_from, valid_until,
 				                            active, version, created_at, updated_at)
 				VALUES (?, ?, 'Incidente sintetico de test de integracion', ?,
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE),
-				        DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 1 HOUR), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        (CURRENT_TIMESTAMP - INTERVAL '1 minutes'),
+				        (CURRENT_TIMESTAMP + INTERVAL '1 hours'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", a.organizationId(), soporte, soporte);
 
 		assertThat(inscripcionService.participantes(
@@ -352,7 +352,7 @@ class ActividadAislamientoIT extends BaseEscenarioDiferido {
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'GRUPAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'GRUPAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "AISL-" + sufijo, "Servicio " + sufijo);
 		long servicio = jdbc.queryForObject("SELECT id FROM servicio WHERE codigo = ?", Long.class,
 				"AISL-" + sufijo);
@@ -363,8 +363,8 @@ class ActividadAislamientoIT extends BaseEscenarioDiferido {
 				        genera_registro_clinico, requiere_profesional, requiere_espacio,
 				        esquema_cobro, momento_devengo,
 				        vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'GRUPAL', 60, 10, 0, 0, 0, 0, 0, 'POR_PACK', 'VENTA',
-				        DATE_SUB(CURDATE(), INTERVAL 1 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'GRUPAL', 60, 10, false, false, false, false, false, 'POR_PACK', 'VENTA',
+				        CAST(CURRENT_DATE - INTERVAL '1 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, servicio, "Oferta " + sufijo);
 		return jdbc.queryForObject(
 				"SELECT id FROM oferta_servicio_consultorio WHERE organization_id = ? AND nombre_comercial = ?",
@@ -375,7 +375,7 @@ class ActividadAislamientoIT extends BaseEscenarioDiferido {
 		String nombre = "Sede A2 " + UUID.randomUUID().toString().substring(0, 8);
 		jdbc.update("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, 'America/Argentina/Cordoba', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'America/Argentina/Cordoba', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, nombre);
 		return jdbc.queryForObject("SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
 				Long.class, org, nombre);

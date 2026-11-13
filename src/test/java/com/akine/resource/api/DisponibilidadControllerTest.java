@@ -33,6 +33,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
@@ -275,14 +276,14 @@ class DisponibilidadControllerTest {
 				.andExpect(status().isBadRequest());
 
 		verify(disponibilidadService, never())
-				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any());
+				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any(), anyBoolean());
 	}
 
 	@Test
 	@DisplayName("La baja devuelve el bloque con turnosAfectados, no un 204 vacio: el impacto se "
 			+ "informa y no bloquea (RN-M05-004)")
 	void la_baja_devuelve_el_bloque_con_el_impacto() throws Exception {
-		given(disponibilidadService.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any()))
+		given(disponibilidadService.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any(), anyBoolean()))
 				.willReturn(bloqueDadoDeBaja());
 
 		mockMvc.perform(delete(RUTA + "/50")
@@ -295,7 +296,7 @@ class DisponibilidadControllerTest {
 				.andExpect(jsonPath("$.turnosAfectados").value(0));
 
 		verify(disponibilidadService)
-				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any());
+				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any(), anyBoolean());
 	}
 
 	@Test
@@ -306,7 +307,7 @@ class DisponibilidadControllerTest {
 				.andExpect(status().isUnsupportedMediaType());
 
 		verify(disponibilidadService, never())
-				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any());
+				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any(), anyBoolean());
 	}
 
 	// =====================================================================================
@@ -334,7 +335,7 @@ class DisponibilidadControllerTest {
 	void la_baja_repetida_dice_bloque_already_inactive() throws Exception {
 		willThrow(new BloqueInactivoException(50L, BloqueInactivoException.Operacion.BAJA))
 				.given(disponibilidadService)
-				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any());
+				.darDeBaja(any(), anyLong(), anyLong(), anyLong(), any(), anyBoolean());
 
 		mockMvc.perform(delete(RUTA + "/50")
 						.contentType(MediaType.APPLICATION_JSON)
@@ -449,6 +450,67 @@ class DisponibilidadControllerTest {
 	// =====================================================================================
 	// Fixtures sinteticas
 	// =====================================================================================
+
+	// =====================================================================================
+	// POST /lote — varios dias, un horario, una transaccion
+	// =====================================================================================
+
+	@Test
+	@DisplayName("El alta en lote devuelve 201 con un bloque por dia y las dos cuentas")
+	void el_alta_en_lote_devuelve_201_con_las_cuentas() throws Exception {
+		given(disponibilidadService.crearVarios(any(), anyLong(), anyLong(), any()))
+				.willReturn(java.util.List.of(
+						bloque(50L, LocalTime.of(9, 0), LocalTime.of(13, 0), true),
+						bloque(51L, LocalTime.of(9, 0), LocalTime.of(13, 0), false)));
+
+		mockMvc.perform(post(RUTA + "/lote")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"diasSemana":[1,2],"horaDesde":"09:00","horaHasta":"13:00"}""")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isCreated())
+				.andExpect(header().doesNotExist("Location"))
+				.andExpect(jsonPath("$.bloques.length()").value(2))
+				.andExpect(jsonPath("$.bloques[0].id").value(50))
+				.andExpect(jsonPath("$.creados").value(1))
+				.andExpect(jsonPath("$.existentes").value(1));
+	}
+
+	@Test
+	@DisplayName("Un lote en el que todos los dias ya existian responde 200, no 201")
+	void un_lote_sin_nada_nuevo_devuelve_200() throws Exception {
+		given(disponibilidadService.crearVarios(any(), anyLong(), anyLong(), any()))
+				.willReturn(java.util.List.of(bloque(50L, LocalTime.of(9, 0), LocalTime.of(13, 0), false)));
+
+		mockMvc.perform(post(RUTA + "/lote")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"diasSemana":[2],"horaDesde":"09:00","horaHasta":"13:00"}""")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.creados").value(0))
+				.andExpect(jsonPath("$.existentes").value(1));
+	}
+
+	@Test
+	@DisplayName("Un lote sin dias, o con un dia fuera de 1..7, es 400 y no llega al servicio")
+	void un_lote_sin_dias_o_con_un_dia_invalido_es_400() throws Exception {
+		mockMvc.perform(post(RUTA + "/lote")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"diasSemana":[],"horaDesde":"09:00","horaHasta":"13:00"}""")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isBadRequest());
+
+		mockMvc.perform(post(RUTA + "/lote")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"diasSemana":[1,8],"horaDesde":"09:00","horaHasta":"13:00"}""")
+						.with(ResourceApiActors.miembro(7L)))
+				.andExpect(status().isBadRequest());
+
+		org.mockito.Mockito.verifyNoInteractions(disponibilidadService);
+	}
 
 	private static BloqueView bloque(long id, LocalTime desde, LocalTime hasta, boolean nuevo) {
 		return new BloqueView(id, 10L, 20L, 30L, 2, desde, hasta,

@@ -9,8 +9,9 @@ import java.util.function.Function;
  * El parametro {@code q} de los listados (DP-45, punto 1): busca "contiene", sin distinguir
  * mayusculas ni acentos.
  *
- * <p>En la base lo resuelve la collation {@code utf8mb4_0900_ai_ci} de las tablas —acento y caso
- * insensibles— con el patron de {@link #patronLike}. En memoria lo resuelve {@link #contiene},
+ * <p>En la base lo resuelve la collation {@code akine_ci} de las columnas de texto —acento y caso
+ * insensibles, la semantica que tenia {@code utf8mb4_0900_ai_ci} en MySQL— con el patron de
+ * {@link #patronLike}. En memoria lo resuelve {@link #contiene},
  * que pliega los dos lados de la misma forma.
  */
 public final class TextoDeBusqueda {

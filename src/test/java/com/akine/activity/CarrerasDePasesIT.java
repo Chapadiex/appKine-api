@@ -292,11 +292,11 @@ class CarrerasDePasesIT {
 			// La clase fue hace dos dias, el ultimo dia de vigencia del pase: la asistencia se marca
 			// tarde, mientras el job de vencimiento corre. Las fechas no se pueden esperar: se corren
 			// como dato de prueba, igual que en PaseAbonoAjusteYVencimientoIT.
-			jdbc.update("UPDATE clase_programada SET inicio = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 2 DAY), "
-					+ "fin = DATE_ADD(DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 2 DAY), INTERVAL 1 HOUR) WHERE id = ?", clase);
+			jdbc.update("UPDATE clase_programada SET inicio = (CURRENT_TIMESTAMP - INTERVAL '2 days'), "
+					+ "fin = ((CURRENT_TIMESTAMP - INTERVAL '2 days') + INTERVAL '1 hours') WHERE id = ?", clase);
 			LocalDate diaDeLaClase = jdbc.queryForObject("SELECT inicio FROM clase_programada WHERE id = ?",
 					java.sql.Timestamp.class, clase).toInstant().atZone(ZoneId.of(ActividadItFixture.ZONA)).toLocalDate();
-			jdbc.update("UPDATE pase_servicio SET vigencia_desde = ?, vigencia_hasta = ? WHERE id = ?",
+			jdbc.update("UPDATE pase_servicio SET vigencia_desde = CAST(? AS date), vigencia_hasta = CAST(? AS date) WHERE id = ?",
 					diaDeLaClase.minusDays(30), diaDeLaClase, pase);
 
 			List<Desenlace<Object>> desenlaces = ActividadItFixture.enParalelo(List.of(
@@ -337,7 +337,7 @@ class CarrerasDePasesIT {
 			LocalDate hoy = LocalDate.now(ZoneId.of(ActividadItFixture.ZONA));
 			long pase = ventaService.vender(tenant.actor(), tenant.consultorioId(),
 					new VenderPaseCommand(producto, tenant.persona(0), null, hoy.minusDays(20), null, true)).pase().id();
-			jdbc.update("UPDATE pase_servicio SET vigencia_desde = ?, vigencia_hasta = ? WHERE id = ?",
+			jdbc.update("UPDATE pase_servicio SET vigencia_desde = CAST(? AS date), vigencia_hasta = CAST(? AS date) WHERE id = ?",
 					hoy.minusDays(29), hoy, pase);
 			long version = version(pase);
 
@@ -392,8 +392,8 @@ class CarrerasDePasesIT {
 	/** Sentencias de otras conexiones en curso que contienen el patron. */
 	private int enCurso(String patron) {
 		return jdbc.queryForObject("""
-				SELECT COUNT(*) FROM information_schema.PROCESSLIST
-				 WHERE ID <> CONNECTION_ID() AND COMMAND = 'Query' AND INFO LIKE ?
+				SELECT COUNT(*) FROM pg_stat_activity
+				 WHERE pid <> pg_backend_pid() AND state = 'active' AND query ILIKE ?
 				""", Integer.class, patron);
 	}
 

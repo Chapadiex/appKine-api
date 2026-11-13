@@ -194,7 +194,7 @@ class EnmiendaDeSesionIT {
 		assertThat(contarAuditoria(sesionId)).isEqualTo(antes + 1);
 		Map<String, Object> fila = jdbc.queryForMap("""
 				SELECT organization_id, consultorio_id, actor_account_id, event_type, entity_type,
-				       entity_id, previous_state, new_state, CAST(details AS CHAR) AS details,
+				       entity_id, previous_state, new_state, CAST(details AS text) AS details,
 				       reason, correlation_id
 				  FROM audit_event WHERE event_type = ? AND entity_id = ?
 				""", EVENTO, sesionId);

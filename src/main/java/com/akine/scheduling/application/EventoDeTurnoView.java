@@ -14,6 +14,9 @@ import java.time.Instant;
  * @param estadoAnterior {@code null} en el evento de reserva, que es el unico sin estado previo
  * @param inicioAnterior no nulo solo en una reprogramacion: de donde vino el turno
  * @param actorNombre {@code null} si lo hizo el sistema o la cuenta ya no resuelve
+ * @param turnoId     el turno del evento: el pedido, o uno de sus turnos de origen si llego por un
+ *                    cambio de sede (el historial sigue la cadena)
+ * @param consultorioId sede de ese turno
  */
 public record EventoDeTurnoView(
 		long id,
@@ -27,7 +30,13 @@ public record EventoDeTurnoView(
 		Instant finNuevo,
 		Long actorCuentaId,
 		String actorNombre,
-		Instant ocurridoEn) {
+		Instant ocurridoEn,
+		Long profesionalAnteriorId,
+		Long profesionalNuevoId,
+		Long espacioAnteriorId,
+		Long espacioNuevoId,
+		Long turnoId,
+		Long consultorioId) {
 
 	public static EventoDeTurnoView de(TurnoEvento evento, String actorNombre) {
 		return new EventoDeTurnoView(
@@ -42,6 +51,12 @@ public record EventoDeTurnoView(
 				evento.getFinNuevo(),
 				evento.getActorCuentaId(),
 				actorNombre,
-				evento.getOcurridoEn());
+				evento.getOcurridoEn(),
+				evento.getProfesionalAnteriorId(),
+				evento.getProfesionalNuevoId(),
+				evento.getEspacioAnteriorId(),
+				evento.getEspacioNuevoId(),
+				evento.getTurnoId(),
+				evento.getConsultorioId());
 	}
 }

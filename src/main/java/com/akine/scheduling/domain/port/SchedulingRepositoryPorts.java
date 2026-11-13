@@ -82,6 +82,12 @@ public final class SchedulingRepositoryPorts {
 		Optional<Turno> findByIdInScope(long organizationId, long consultorioId, long turnoId);
 
 		/**
+		 * Turnos por id en cualquier sede de la organizacion, cancelados incluidos. Para seguir la
+		 * cadena de traslados ({@code turno_origen_id}) y resolver el turno nuevo de un traslado.
+		 */
+		List<Turno> findTodosPorId(long organizationId, Collection<Long> turnoIds);
+
+		/**
 		 * Los turnos de una sede que empiezan dentro de {@code [desde, hasta)}, del mas temprano
 		 * al mas tarde. Es la agenda del dia de la recepcion (M13).
 		 *
@@ -96,6 +102,15 @@ public final class SchedulingRepositoryPorts {
 		 */
 		List<Turno> findDeLaSedeEnVentana(
 				long organizationId, long consultorioId, Instant desde, Instant hasta);
+
+		/**
+		 * Los turnos de esas memberships en la sede que EMPIEZAN en {@code [desde, hasta)}, en cualquier
+		 * estado y aunque esten cancelados: para el historial de agenda, que pregunta si un cierre de sede
+		 * toco a la persona y cuantos turnos suyos cayeron adentro.
+		 */
+		List<Turno> findDeProfesionalesEnSedeEnVentana(
+				long organizationId, long consultorioId, Collection<Long> profesionalMembershipIds,
+				Instant desde, Instant hasta);
 
 		/**
 		 * El turno creado con esa clave de idempotencia, si existe.
@@ -117,6 +132,13 @@ public final class SchedulingRepositoryPorts {
 		 */
 		List<Turno> findVivosDeProfesionalQueCruzan(
 				long organizationId, long profesionalMembershipId, Instant inicio, Instant fin);
+
+		/**
+		 * Lo mismo para todas las memberships de una misma persona, en cualquier sede: es el cruce
+		 * que impide darle dos turnos a la misma hora en dos sedes (agenda de profesionales §9.2).
+		 */
+		List<Turno> findVivosDeProfesionalesQueCruzan(
+				long organizationId, Collection<Long> profesionalMembershipIds, Instant inicio, Instant fin);
 
 		/** Lo mismo para un espacio. Ver {@link #findVivosDeProfesionalQueCruzan}. */
 		List<Turno> findVivosDeEspacioQueCruzan(
@@ -271,6 +293,18 @@ public final class SchedulingRepositoryPorts {
 
 		/** Los eventos de un turno, del mas viejo al mas nuevo. */
 		List<TurnoEvento> historial(long organizationId, long turnoId);
+
+		/**
+		 * Los eventos de varios turnos (de cualquier sede de la organizacion), del mas viejo al mas
+		 * nuevo. Una consulta para todo el lote: el historial que sigue la cadena de traslados.
+		 */
+		List<TurnoEvento> historialDe(long organizationId, Collection<Long> turnoIds);
+
+		/**
+		 * Las reprogramaciones y las reservas de varios turnos en UNA consulta, del mas viejo al mas
+		 * nuevo: lo que necesita el indicador "reprogramado" de la agenda (sin N+1).
+		 */
+		List<TurnoEvento> reprogramacionesYReservas(long organizationId, Collection<Long> turnoIds);
 	}
 
 	/** Reglas de serie de turnos (AKINE E-3). Sin {@code delete}: una serie no se borra nunca. */

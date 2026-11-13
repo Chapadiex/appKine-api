@@ -1,6 +1,7 @@
 package com.akine.activity.application;
 
 import com.akine.activity.domain.ClaseEvento;
+import com.akine.activity.domain.ClaseInstructor;
 import com.akine.activity.domain.ClaseProgramada;
 import com.akine.activity.domain.EstadoClase;
 import com.akine.activity.domain.InscripcionClase;
@@ -16,6 +17,7 @@ import com.akine.activity.domain.exception.RecursoOcupadoException;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseEventoRepositoryPort;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.ClaseProgramadaRepositoryPort;
 import com.akine.activity.domain.port.ActivityRepositoryPorts.InscripcionClaseRepositoryPort;
+import com.akine.activity.domain.port.HonorariosRepositoryPorts.ClaseInstructorRepositoryPort;
 import com.akine.offering.spi.HabilitacionSnapshot;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
@@ -26,11 +28,13 @@ import com.akine.organization.spi.PermissionQuery;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
+import com.akine.resource.spi.BloqueoDeAgendaDeProfesional;
 import com.akine.resource.spi.DisponibilidadDirectory;
 import com.akine.resource.spi.EspacioDirectory;
 import com.akine.resource.spi.EspacioSnapshot;
 import com.akine.scheduling.spi.AgendaDeSede;
-import com.akine.scheduling.spi.OcupacionDeAgenda;
+import com.akine.scheduling.spi.OcupacionDePersona;
+import com.akine.platform.spi.problem.ConflictoDeAgenda;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -45,9 +49,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Programar, reprogramar y cancelar clases (M28, RF-M28-001, RF-M28-005 y RF-M28-006).
@@ -120,6 +129,9 @@ public class ClaseService {
 	private final ProyeccionDeClase proyeccion;
 	private final ConsumoDePaseService consumoDePases;
 	private final DevengoPorClaseService devengoPorClase;
+	private final BloqueoDeAgendaDeProfesional bloqueos;
+	private final ClaseInstructorRepositoryPort instructores;
+	private final OcupacionDePersona ocupacion;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	public ClaseService(
@@ -138,6 +150,9 @@ public class ClaseService {
 			ProyeccionDeClase proyeccion,
 			ConsumoDePaseService consumoDePases,
 			DevengoPorClaseService devengoPorClase,
+			BloqueoDeAgendaDeProfesional bloqueos,
+			ClaseInstructorRepositoryPort instructores,
+			OcupacionDePersona ocupacion,
 			PlatformTransactionManager transactionManager) {
 
 		this.clases = clases;
@@ -155,6 +170,9 @@ public class ClaseService {
 		this.proyeccion = proyeccion;
 		this.consumoDePases = consumoDePases;
 		this.devengoPorClase = devengoPorClase;
+		this.bloqueos = bloqueos;
+		this.instructores = instructores;
+		this.ocupacion = ocupacion;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -185,6 +203,8 @@ public class ClaseService {
 		// con la plantilla: anidada, el pedido retenia dos conexiones y trababa el pool
 		// (FilaLockPrevia). Ver la cabecera para por que no puede crearse adentro.
 		agenda.asegurar(organizationId, consultorioId);
+		// Y la fila de la persona (agenda_profesional, V129), por lo mismo: se bloquea adentro.
+		bloqueos.asegurar(organizationId, Arrays.asList(command.profesionalId()));
 
 		return transaccionReadCommitted.execute(estado -> programarEnTransaccion(
 				actor, consultorioId, ofertaId, command, organizationId, sede));
@@ -225,7 +245,7 @@ public class ClaseService {
 				organizationId, oferta, espacioId, command.capacidad(), command.inicio(), 0);
 
 		exigirRecursosLibres(
-				organizationId, consultorioId, profesionalId, espacioId,
+				organizationId, consultorioId, profesionalId, personas(profesionalId, List.of()), espacioId,
 				command.inicio(), command.fin(), null);
 
 		Instant ahora = Instant.now();
@@ -246,6 +266,106 @@ public class ClaseService {
 		return new ResultadoDeProgramacion(
 				proyectar(organizationId, consultorioId, clase), true);
 	}
+
+	// =================================================================================
+	// Programar una serie semanal (RF-M28-001 repetido; pedido del usuario del 09/11/2026)
+	// =================================================================================
+
+	/**
+	 * Programa una clase en cada fecha del rango que cae en uno de los dias pedidos.
+	 *
+	 * <p><b>Cada fecha es una clase suelta</b>: pasa por {@link #programar}, con su propia
+	 * transaccion, su lock de {@code agenda_sede} y exactamente las mismas validaciones (oferta
+	 * vigente, profesional habilitado y dentro de su horario, cierres, box libre, cupo). No hay una
+	 * segunda copia de las reglas que se pueda desincronizar.
+	 *
+	 * <p><b>No es todo o nada</b>, al reves que el alta de una serie de turnos: una fecha que falla se
+	 * informa en {@link ResultadoDeSerieDeClases#omitidas()} con su motivo y las demas se programan. Lo
+	 * que hace fallar la serie entera es lo que fallaria en TODAS las fechas: sede u oferta ajenas
+	 * (404), oferta no grupal (409), sin permiso (403) o un pedido mal formado (400).
+	 *
+	 * <p><b>Por que una transaccion por fecha y no una para todas:</b> una sola retendria el lock de la
+	 * sede —que comparten turnos y clases— durante toda la serie, y un rollback por la fecha 40 tiraria
+	 * las 39 anteriores, que es justo lo que se pidio evitar. La contracara: una serie que se corta a la
+	 * mitad (proceso caido) deja creadas las fechas ya procesadas. Reintentar con la misma
+	 * {@code idempotencyKey} las devuelve sin duplicarlas y sigue con las que faltan.
+	 *
+	 * <p>Feriados: se omiten antes de intentar, con la misma regla que las series de turnos (U-22): un
+	 * dia que la disponibilidad efectiva del profesional deja vacio por feriado. Sin profesional, la
+	 * clase suelta no mira feriados y la serie tampoco.
+	 */
+	public ResultadoDeSerieDeClases programarSerie(
+			OperatingActor actor, long consultorioId, long ofertaId, ProgramarSerieDeClasesCommand command) {
+
+		long organizationId = exigirContexto(actor);
+		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId);
+
+		OfertaSnapshot oferta = ofertas.find(organizationId, consultorioId, ofertaId)
+				.orElseThrow(() -> new OfertaNotAccessibleException(ofertaId));
+		if (!oferta.grupal()) {
+			throw new ClaseNoProgramableException(ofertaId, "no es una oferta grupal");
+		}
+
+		ZoneId zona = ZoneId.of(sede.timezone());
+		Set<LocalDate> feriados = oferta.requiereProfesional() && command.profesionalId() != null
+				? disponibilidad.efectiva(organizationId, sede, command.profesionalId(),
+								command.desde(), command.hasta().plusDays(1)).stream()
+						.filter(dia -> RAZON_FERIADO.equals(dia.razonVacio()))
+						.map(DisponibilidadDirectory.DiaDisponible::fecha)
+						.collect(Collectors.toUnmodifiableSet())
+				: Set.of();
+		Instant ahora = Instant.now();
+
+		List<ClaseView> programadas = new ArrayList<>();
+		List<ResultadoDeSerieDeClases.FechaOmitida> omitidas = new ArrayList<>();
+		for (LocalDate fecha = command.desde(); !fecha.isAfter(command.hasta()); fecha = fecha.plusDays(1)) {
+			if (!command.diasSemana().contains(fecha.getDayOfWeek().getValue())) {
+				continue;
+			}
+			Instant inicio = fecha.atTime(command.horaInicio()).atZone(zona).toInstant();
+			Instant fin = fecha.atTime(command.horaFin()).atZone(zona).toInstant();
+			if (inicio.isBefore(ahora)) {
+				omitidas.add(omitida(fecha, ResultadoDeSerieDeClases.MotivoDeOmision.PASADO,
+						"La fecha ya paso"));
+				continue;
+			}
+			if (feriados.contains(fecha)) {
+				omitidas.add(omitida(fecha, ResultadoDeSerieDeClases.MotivoDeOmision.FERIADO,
+						"Feriado: la sede no atiende ese dia"));
+				continue;
+			}
+			ProgramarClaseCommand unaClase = new ProgramarClaseCommand(
+					inicio, fin, command.profesionalId(), command.capacidad(), command.titulo(),
+					command.idempotencyKey() == null ? null : command.idempotencyKey() + ":" + fecha,
+					command.espacioId());
+			try {
+				programadas.add(programar(actor, consultorioId, ofertaId, unaClase).clase());
+			} catch (ClaseNoProgramableException rechazo) {
+				omitidas.add(omitida(fecha, ResultadoDeSerieDeClases.MotivoDeOmision.OFERTA_NO_VIGENTE, rechazo.getMessage()));
+			} catch (HorarioNoDisponibleException rechazo) {
+				omitidas.add(omitida(fecha, ResultadoDeSerieDeClases.MotivoDeOmision.HORARIO_NO_DISPONIBLE, rechazo.getMessage()));
+			} catch (RecursoOcupadoException rechazo) {
+				omitidas.add(omitida(fecha, ResultadoDeSerieDeClases.MotivoDeOmision.RECURSO_OCUPADO, rechazo.getMessage()));
+			} catch (CapacidadNoAdmitidaException rechazo) {
+				omitidas.add(omitida(fecha, ResultadoDeSerieDeClases.MotivoDeOmision.CAPACIDAD, rechazo.getMessage()));
+			} catch (IdempotencyKeyConflictException rechazo) {
+				omitidas.add(omitida(fecha, ResultadoDeSerieDeClases.MotivoDeOmision.CLAVE_REUSADA, rechazo.getMessage()));
+			}
+		}
+
+		log.info("Serie de clases: consultorioId={} ofertaId={} programadas={} omitidas={}",
+				consultorioId, ofertaId, programadas.size(), omitidas.size());
+		return new ResultadoDeSerieDeClases(programadas, omitidas);
+	}
+
+	private static ResultadoDeSerieDeClases.FechaOmitida omitida(
+			LocalDate fecha, ResultadoDeSerieDeClases.MotivoDeOmision motivo, String detalle) {
+		return new ResultadoDeSerieDeClases.FechaOmitida(fecha, motivo, detalle);
+	}
+
+	/** El {@code razonVacio} con que M05 marca un dia que la sede cierra por feriado (U-22). */
+	private static final String RAZON_FERIADO = "FERIADO";
 
 	// =================================================================================
 	// Reprogramar (RF-M12-012, RF-M28-005)
@@ -271,6 +391,13 @@ public class ClaseService {
 
 		// Mismo orden que programar, y por los mismos motivos. Ver la cabecera.
 		agenda.asegurar(organizationId, consultorioId);
+		// Las personas que la clase ocupa en el horario nuevo: el profesional pedido y los instructores
+		// adicionales que tiene hoy. Si un adicional cambia entre esta lectura y la transaccion y su fila
+		// no existe, el bloqueo responde concurrent-modification: recargar y reintentar.
+		List<Long> aAsegurar = new ArrayList<>();
+		aAsegurar.add(command.profesionalId());
+		instructores.vigentesDe(organizationId, claseId).forEach(i -> aAsegurar.add(i.getMembershipId()));
+		bloqueos.asegurar(organizationId, aAsegurar);
 
 		return transaccionReadCommitted.execute(estado -> reprogramarEnTransaccion(
 				actor, consultorioId, claseId, command, organizationId, sede));
@@ -310,8 +437,10 @@ public class ClaseService {
 				organizationId, oferta, espacioId, command.capacidad(), command.inicio(), ocupados);
 
 		exigirRecursosLibres(
-				organizationId, consultorioId, profesionalId, espacioId,
-				command.inicio(), command.fin(), claseId);
+				organizationId, consultorioId, profesionalId,
+				personas(profesionalId, instructores.vigentesDe(organizationId, claseId).stream()
+						.map(ClaseInstructor::getMembershipId).toList()),
+				espacioId, command.inicio(), command.fin(), claseId);
 
 		Instant inicioAnterior = clase.getInicio();
 		Instant finAnterior = clase.getFin();
@@ -586,7 +715,11 @@ public class ClaseService {
 				// Contiene, no se cruza: media clase fuera del horario no es una clase valida.
 				.anyMatch(franja -> !franja.desde().isAfter(inicio) && !franja.hasta().isBefore(fin));
 		if (!dentroDeFranja) {
-			throw new HorarioNoDisponibleException("el profesional no atiende en ese horario");
+			// Disponibilidad central (0.158.0): si lo que la recorta es un cierre, se nombra con su franja.
+			throw ocupacion.cierres(OcupacionDePersona.Consulta.de(organizationId, consultorioId, profesionalId, inicio, fin))
+					.stream().findFirst()
+					.map(HorarioNoDisponibleException::por)
+					.orElseGet(() -> new HorarioNoDisponibleException("el profesional no atiende en ese horario"));
 		}
 
 		return profesionalId;
@@ -771,25 +904,45 @@ public class ClaseService {
 	 * mitad de las clases, dos clases se pisan. Las dos consultas son necesarias y ninguna alcanza
 	 * sola.
 	 */
+	/** Principal (si hay) y adicionales, sin repetir: las memberships que la clase ocupa. */
+	private static List<Long> personas(Long profesionalId, List<Long> adicionales) {
+		Set<Long> todas = new LinkedHashSet<>();
+		if (profesionalId != null) {
+			todas.add(profesionalId);
+		}
+		todas.addAll(adicionales);
+		return List.copyOf(todas);
+	}
+
+	/**
+	 * El profesional, cada instructor y el box tienen que estar libres en {@code [inicio, fin)}.
+	 *
+	 * <p><b>Por persona y en toda la organizacion.</b> Se toma la fila de cada persona en
+	 * {@code agenda_profesional} —despues del lock de la sede y, al reprogramar, del de la clase; en orden
+	 * de cuenta, el mismo orden que usan los turnos— y cada instructor pasa por la logica central
+	 * ({@link OcupacionDePersona}, disponibilidad central 0.158.0): turnos y clases de cualquier sede,
+	 * como principal o adicional, y los cierres de esta sede (bloqueo, ausencia, cierre de sede).
+	 *
+	 * <p><b>Los adicionales con la misma regla que el principal</b>: tambien tienen que tener la clase
+	 * entera dentro de su disponibilidad efectiva en esta sede (habitual o apertura). Antes de 0.158.0 a
+	 * un adicional solo se le miraban turnos y clases: un bloqueo suyo de 18:30 a 19:30 no impedia
+	 * sumarlo a una clase de 18:00 a 19:00. Del principal la franja ya la exigio {@link #resolverProfesional}.
+	 */
 	private void exigirRecursosLibres(
 			long organizationId,
 			long consultorioId,
-			Long profesionalId,
+			Long principalId,
+			List<Long> instructoresDeLaClase,
 			Long espacioId,
 			Instant inicio,
 			Instant fin,
 			Long claseExcluidaId) {
 
-		if (profesionalId != null) {
-			List<OcupacionDeAgenda> turnos = agenda.turnosDeProfesionalQueCruzan(
-					organizationId, profesionalId, inicio, fin);
-			boolean otraClase = clases
-					.findVivasDeProfesionalQueCruzan(organizationId, profesionalId, inicio, fin)
-					.stream()
-					.anyMatch(otra -> !otra.getId().equals(claseExcluidaId));
-			if (!turnos.isEmpty() || otraClase) {
-				throw new RecursoOcupadoException("profesional");
-			}
+		bloqueos.bloquearEnOrden(organizationId, instructoresDeLaClase);
+		Map<Long, String> nombres = proyeccion.nombresDeProfesionales(organizationId, instructoresDeLaClase);
+		for (Long membershipId : instructoresDeLaClase) {
+			exigirPersonaLibre(organizationId, consultorioId, membershipId, inicio, fin, claseExcluidaId,
+					!membershipId.equals(principalId), nombres.get(membershipId));
 		}
 
 		if (espacioId != null && !espacioLibre(
@@ -799,6 +952,55 @@ public class ClaseService {
 		}
 
 		log.debug("Recursos libres para la clase en {} de la sede {}", inicio, consultorioId);
+	}
+
+	/**
+	 * Un instructor puede dar la clase: sin turnos ni otras clases de la misma persona en ninguna sede,
+	 * sin cierres que lo alcancen en esta sede y, si {@code exigirFranja}, con la clase dentro de su
+	 * disponibilidad efectiva aca. Paquete-privado para que {@link InstructoresDeClaseService} aplique la
+	 * misma regla al sumar un adicional. Se llama con la fila de la persona ya bloqueada.
+	 *
+	 * @throws RecursoOcupadoException      turno o clase que se cruza, con el instructor y la sede (409)
+	 * @throws HorarioNoDisponibleException un cierre o fuera de su horario en esta sede (409)
+	 */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	void exigirPersonaLibre(
+			long organizationId, long consultorioId, long membershipId, Instant inicio, Instant fin,
+			Long claseExcluidaId, boolean exigirFranja, String nombre) {
+
+		OcupacionDePersona.Consulta consulta = OcupacionDePersona.Consulta
+				.de(organizationId, consultorioId, membershipId, inicio, fin)
+				.excluyendoClase(claseExcluidaId);
+		Optional<ConflictoDeAgenda> reservado = ocupacion.actividadReservada(consulta).stream().findFirst();
+		if (reservado.isPresent()) {
+			throw new RecursoOcupadoException("profesional", reservado.get().conInstructor(membershipId, nombre));
+		}
+		Optional<ConflictoDeAgenda> cierre = ocupacion.cierres(consulta).stream().findFirst();
+		if (cierre.isPresent()) {
+			throw HorarioNoDisponibleException.por(cierre.get().conInstructor(membershipId, nombre));
+		}
+		if (!exigirFranja) {
+			return;
+		}
+		Optional<ConsultorioSnapshot> sede = consultorios.find(organizationId, consultorioId);
+		if (sede.isEmpty() || !dentroDeFranja(organizationId, sede.get(), membershipId, inicio, fin)) {
+			// D-6 (QA del 05/11/2026): con las mismas extensiones que el resto de los conflictos de agenda
+			// (instructor, conflictoTipo DISPONIBILIDAD, sede y la franja de la clase), no solo en el texto.
+			ConflictoDeAgenda fueraDeHorario = new ConflictoDeAgenda(ConflictoDeAgenda.Tipo.DISPONIBILIDAD, null,
+					consultorioId, sede.map(ConsultorioSnapshot::name).orElse(null), true, inicio, fin,
+					sede.map(ConsultorioSnapshot::timezone).orElse(null), membershipId, nombre);
+			throw new HorarioNoDisponibleException("El instructor "
+					+ (nombre == null ? "#" + membershipId : nombre) + " no atiende en esta sede en todo el horario "
+					+ "de la clase. No es posible asignarle la clase en ese horario.", fueraDeHorario);
+		}
+	}
+
+	private boolean dentroDeFranja(
+			long organizationId, ConsultorioSnapshot sede, long membershipId, Instant inicio, Instant fin) {
+		LocalDate fecha = inicio.atZone(ZoneId.of(sede.timezone())).toLocalDate();
+		return disponibilidad.efectiva(organizationId, sede, membershipId, fecha, fecha.plusDays(1)).stream()
+				.flatMap(dia -> dia.franjas().stream())
+				.anyMatch(franja -> !franja.desde().isAfter(inicio) && !franja.hasta().isBefore(fin));
 	}
 
 	private boolean espacioLibre(

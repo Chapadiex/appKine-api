@@ -9,6 +9,7 @@ import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.resource.domain.CalendarioSede;
 import com.akine.resource.domain.FranjaHorarioGeneral;
 import com.akine.resource.domain.FranjaHorarioGeneral.Franja;
+import com.akine.resource.domain.HorarioDeSede;
 import com.akine.resource.domain.PermissionCodes;
 import com.akine.resource.domain.exception.ConsultorioNotAccessibleException;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
@@ -72,6 +73,7 @@ public class CalendarioService {
 	private final HorarioGeneralRepositoryPort horarios;
 	private final SimuladorDeImpacto simulador;
 	private final TransactionTemplate transaccionReadCommitted;
+	private final RecorteAlHorarioDeSede recorte;
 
 	public CalendarioService(
 			CalendarioSedeRepositoryPort calendarios,
@@ -82,8 +84,10 @@ public class CalendarioService {
 			AuditTrail auditTrail,
 			HorarioGeneralRepositoryPort horarios,
 			SimuladorDeImpacto simulador,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			RecorteAlHorarioDeSede recorte) {
 
+		this.recorte = recorte;
 		this.calendarios = calendarios;
 		this.calendarioIniciador = calendarioIniciador;
 		this.feriados = feriados;
@@ -186,6 +190,37 @@ public class CalendarioService {
 			String pais,
 			Boolean cierraPorFeriado,
 			List<Franja> horarioGeneral) {
+		return actualizar(actor, consultorioId, pais, cierraPorFeriado, horarioGeneral, null);
+	}
+
+	/** Que hacer con las franjas de profesionales que el horario nuevo de la sede deja afuera. */
+	public enum FranjasFuera {
+		/** Cada franja queda en su parte comun con el horario nuevo; las que quedan vacias se dan de baja. */
+		RECORTAR,
+		/** Se guarda el horario sin tocarlas, para ajustarlas a mano. La agenda igual las recorta al leer. */
+		CONSERVAR
+	}
+
+	/**
+	 * Igual que la sobrecarga sin {@code franjasFuera}, y ademas decide que pasa con las franjas de
+	 * profesionales que el horario nuevo deja afuera (regla del 08/11/2026: el horario del
+	 * profesional queda dentro del de la sede).
+	 *
+	 * <p>Con {@code franjasFuera} nulo y alguna franja afuera <b>no se guarda nada</b>: responde el
+	 * aviso, 409 con la lista. Es lo que impide achicar la sede sin que nadie vea a quien deja
+	 * afuera. Se mira cada vez que el pedido trae horario, cambie o no: lo cargado afuera antes de la
+	 * regla aparece en el proximo guardado. Recortar va en esta misma transaccion y bajo el mismo
+	 * lock que el reemplazo del horario.
+	 *
+	 * @throws FranjasFueraDelHorarioException si hay franjas afuera y no se dijo que hacer (409)
+	 */
+	public CalendarioView actualizar(
+			OperatingActor actor,
+			long consultorioId,
+			String pais,
+			Boolean cierraPorFeriado,
+			List<Franja> horarioGeneral,
+			FranjasFuera franjasFuera) {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
@@ -195,13 +230,15 @@ public class CalendarioService {
 		calendarioIniciador.asegurar(organizationId, consultorioId);
 
 		return transaccionReadCommitted.execute(estado -> actualizarEnTransaccion(
-				actor, consultorioId, pais, cierraPorFeriado, horarioGeneral, organizationId,
-				sede));
+				actor, consultorioId, pais, cierraPorFeriado, horarioGeneral, franjasFuera,
+				organizationId, sede));
 	}
 
+	@SuppressWarnings("checkstyle:ParameterNumber")
 	private CalendarioView actualizarEnTransaccion(
 			OperatingActor actor, long consultorioId, String pais, Boolean cierraPorFeriado,
-			List<Franja> horarioGeneral, long organizationId, ConsultorioSnapshot sede) {
+			List<Franja> horarioGeneral, FranjasFuera franjasFuera, long organizationId,
+			ConsultorioSnapshot sede) {
 
 		// Antes del lock: un horario invalido no tiene por que esperar a nadie.
 		List<Franja> nuevoHorario = horarioGeneral == null
@@ -210,6 +247,15 @@ public class CalendarioService {
 
 		Instant ahora = Instant.now();
 		CalendarioSede politica = bloquearOCrear(organizationId, consultorioId);
+
+		// Despues del lock y antes de escribir nada: el aviso no deja rastro.
+		List<FranjaFueraDeHorario> fuera = nuevoHorario == null
+				? List.of()
+				: recorte.afectadas(organizationId, consultorioId, HorarioDeSede.de(nuevoHorario),
+						LocalDate.ofInstant(ahora, ZonaSede.de(sede)));
+		if (!fuera.isEmpty() && franjasFuera == null) {
+			throw new FranjasFueraDelHorarioException(fuera);
+		}
 
 		Map<String, String> detalles = cambios(politica, pais, cierraPorFeriado);
 		politica.actualizarPolitica(pais, cierraPorFeriado);
@@ -223,6 +269,15 @@ public class CalendarioService {
 		ImpactoDeDisponibilidad impacto = nuevoHorario == null || anterior.equals(nuevoHorario)
 				? ImpactoDeDisponibilidad.ninguno(null)
 				: simulador.deCambioDeHorarioDeSede(sede, anterior, nuevoHorario, ahora);
+
+		// El recorte DESPUES del impacto: el simulador relee las franjas de la base, y recortadas
+		// antes, los turnos de la parte cortada ya no contarian como cubiertos por el horario anterior.
+		List<FranjaFueraDeHorario> resueltas = franjasFuera == FranjasFuera.RECORTAR
+				? recorte.recortar(actor, organizationId, consultorioId, fuera, ahora)
+				: fuera.stream().map(franja -> franja.con(FranjaFueraDeHorario.AccionSobreFranja.CONSERVADA)).toList();
+		if (!resueltas.isEmpty()) {
+			detalles.put("franjasFueraDelHorario", franjasFuera + " " + resueltas.size());
+		}
 
 		List<Franja> horario = nuevoHorario == null
 				? anterior
@@ -247,7 +302,8 @@ public class CalendarioService {
 				consultorioId, guardada.isCierraPorFeriado());
 
 		// Sin ventana no hay feriados que devolver: ver CalendarioView.
-		return CalendarioView.de(guardada, List.of(), horario).conImpacto(impacto);
+		return CalendarioView.de(guardada, List.of(), horario).conImpacto(impacto)
+				.conFranjasFueraDelHorario(resueltas);
 	}
 
 	// =================================================================================

@@ -4,6 +4,7 @@ import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.resource.domain.exception.ConsultorioNotAccessibleException;
@@ -171,20 +172,56 @@ final class AutorizacionDeSede {
 	 * {@code consultorio:manage}, esta sola linea es tambien la que implementa "el profesional no
 	 * edita su propia disponibilidad", sin inventar ningun codigo nuevo.
 	 */
-	static void exigirPermiso(
+	static PermissionDecision exigirPermiso(
 			PermissionGuard permissionGuard,
 			OperatingActor actor,
 			String permissionCode,
 			long organizationId,
 			long consultorioId) {
 
-		permissionGuard.requirePermission(new PermissionQuery(
+		return permissionGuard.requirePermission(new PermissionQuery(
 				actor.accountId(),
 				permissionCode,
 				organizationId,
 				consultorioId,
 				null,
 				Instant.now()));
+	}
+
+	/**
+	 * {@link #exigirPermiso} sobre la agenda de UN profesional (agenda de profesionales, §14).
+	 *
+	 * <p>Si el permiso se concedio con alcance {@code ACTIVIDAD_PROPIA} —el {@code PROFESIONAL} con
+	 * {@code agenda:horario} o {@code agenda:excepciones}—, la membership sobre la que se opera tiene
+	 * que ser de la MISMA CUENTA que el actor: su propio horario, sus propias excepciones. Una
+	 * excepcion de sede ({@code membershipId == null}) no es de nadie y exige un alcance que no sea
+	 * el propio. Se compara por cuenta y no por id porque con memberships por sede la misma persona
+	 * tiene un id en cada una.
+	 *
+	 * @throws AccessDeniedException si el alcance es el propio y la agenda es ajena o de sede (403)
+	 */
+	static PermissionDecision exigirPermisoSobreProfesional(
+			PermissionGuard permissionGuard,
+			ConsultorioMembershipDirectory memberships,
+			OperatingActor actor,
+			String permissionCode,
+			long organizationId,
+			long consultorioId,
+			Long membershipId) {
+
+		PermissionDecision decision =
+				exigirPermiso(permissionGuard, actor, permissionCode, organizationId, consultorioId);
+		if (decision != null && decision.limitadaAActividadPropia()) {
+			boolean propia = membershipId != null && memberships.find(organizationId, membershipId)
+					.map(m -> m.accountId() == actor.accountId())
+					.orElse(false);
+			if (!propia) {
+				throw new AccessDeniedException(membershipId == null
+						? "Con este perfil no se gestiona la agenda de la sede entera"
+						: "Con este perfil solo se gestiona la propia agenda");
+			}
+		}
+		return decision;
 	}
 
 	// =================================================================================

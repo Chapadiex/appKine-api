@@ -4,6 +4,7 @@ import com.akine.TestcontainersConfiguration;
 import com.akine.organization.spi.ColaboradorDesvinculacionProbe;
 import com.akine.resource.infrastructure.ResourceDesvinculacionProbe;
 import com.akine.resource.application.BloqueAltaCommand;
+import com.akine.resource.application.BloquesAltaCommand;
 import com.akine.resource.application.BloqueView;
 import com.akine.resource.application.CalendarioService;
 import com.akine.resource.application.DisponibilidadEfectivaService;
@@ -89,7 +90,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>Los servicios se inyectan como beans REALES —con su proxy transaccional, que es lo que hace
  * posible el escenario de concurrencia— y el {@code PermissionGuard} tambien es el real: el actor
  * que opera es el fundador {@code ORG_ADMIN} de un tenant sintetico, y la matriz seccion 6 le
- * concede {@code consultorio:manage} con alcance ORGANIZACION sin ningun caso especial. No hace
+ * concede {@code agenda:horario} con alcance ORGANIZACION sin ningun caso especial. No hace
  * falta simular la autorizacion porque se cumple de verdad.
  *
  * <p>Tampoco se pasa por HTTP: el token, el filtro de contexto y el mapeo de excepciones a codigos
@@ -331,6 +332,59 @@ class DisponibilidadIT {
 	 * <p>La hora normal esta en la misma prueba a proposito: un converter que arregla la
 	 * medianoche rompiendo el caso comun es peor que el bug que arregla.
 	 */
+	// =================================================================================
+	// Alta en lote: o entran todos los dias o no entra ninguno
+	// =================================================================================
+
+	/**
+	 * Un lote de lunes a viernes con el miercoles ya ocupado no deja NADA en la base.
+	 *
+	 * <p>Es la garantia que el unitario no puede dar: el servicio guarda lunes y martes dentro de la
+	 * transaccion antes de que el miercoles lance el 409, y lo unico que impide que esos dos queden
+	 * es que la transaccion haga rollback de verdad. Sin ella, la carga rapida de la semana dejaria
+	 * tres dias cargados y un error en pantalla que no lo dice: justo la carga parcial silenciosa
+	 * que el lote existe para evitar.
+	 */
+	@Test
+	@DisplayName("un lote con un dia solapado no guarda ninguno de los otros dias")
+	void un_lote_con_un_dia_solapado_no_guarda_ninguno() {
+		Fixture fixture = crearFixture();
+		LocalDate vigencia = LocalDate.of(2026, 9, 1);
+
+		BloqueView miercoles = disponibilidadService.crear(
+				fixture.admin(), fixture.consultorioId(), fixture.profesionalMembershipId(),
+				new BloqueAltaCommand(3, LocalTime.of(9, 0), LocalTime.of(12, 0), vigencia, null));
+
+		assertThatThrownBy(() -> disponibilidadService.crearVarios(
+				fixture.admin(), fixture.consultorioId(), fixture.profesionalMembershipId(),
+				new BloquesAltaCommand(java.util.Set.of(1, 2, 3, 4, 5),
+						LocalTime.of(11, 0), LocalTime.of(13, 0), vigencia, null)))
+				.isInstanceOf(BloqueSolapadoException.class);
+
+		// Solo el miercoles original: ni lunes ni martes, que el servicio habia guardado antes del 409.
+		assertThat(contar("""
+				SELECT COUNT(*) FROM profesional_disponibilidad
+				 WHERE membership_id = ? AND active = true
+				""", fixture.profesionalMembershipId())).isEqualTo(1L);
+		assertThat(contar("""
+				SELECT COUNT(*) FROM audit_event
+				 WHERE entity_type = 'BloqueDisponibilidad' AND organization_id = ?
+				   AND event_type = 'DISPONIBILIDAD_BLOQUE_CREATED'
+				""", fixture.organizationId())).isEqualTo(1L);
+
+		// Y sin el choque, el mismo lote entra entero.
+		List<BloqueView> creados = disponibilidadService.crearVarios(
+				fixture.admin(), fixture.consultorioId(), fixture.profesionalMembershipId(),
+				new BloquesAltaCommand(java.util.Set.of(1, 2, 4, 5),
+						LocalTime.of(11, 0), LocalTime.of(13, 0), vigencia, null));
+		assertThat(creados).hasSize(4).allMatch(BloqueView::nuevo);
+		assertThat(contar("""
+				SELECT COUNT(*) FROM profesional_disponibilidad
+				 WHERE membership_id = ? AND active = true
+				""", fixture.profesionalMembershipId())).isEqualTo(5L);
+		assertThat(leerDeLaBase(fixture, miercoles.id()).isOperable()).isTrue();
+	}
+
 	@Test
 	@DisplayName("el fin de dia y una hora normal sobreviven el viaje de ida y vuelta a MySQL")
 	void el_fin_de_dia_sobrevive_el_viaje_de_ida_y_vuelta() {
@@ -835,7 +889,7 @@ class DisponibilidadIT {
 	/** La columna tal cual la tiene MySQL, sin pasar por el converter. */
 	private String horaHastaCruda(long bloqueId) {
 		return jdbc.queryForObject(
-				"SELECT CAST(hora_hasta AS CHAR) FROM profesional_disponibilidad WHERE id = ?",
+				"SELECT CAST(hora_hasta AS text) FROM profesional_disponibilidad WHERE id = ?",
 				String.class, bloqueId);
 	}
 
@@ -873,10 +927,10 @@ class DisponibilidadIT {
 	 * Un tenant sintetico completo: una sede, un {@code ORG_ADMIN} que opera y un
 	 * {@code PROFESIONAL} cuyo horario se administra.
 	 *
-	 * <p>Hacen falta dos personas distintas y no una: la matriz seccion 6 le niega
-	 * {@code consultorio:manage} a {@code PROFESIONAL}, o sea que un profesional NO edita su
-	 * propia disponibilidad. Un fixture con una sola cuenta que hiciera las dos cosas escondria
-	 * esa regla.
+	 * <p>Hacen falta dos personas distintas y no una: desde la agenda de profesionales el
+	 * {@code PROFESIONAL} tiene {@code agenda:horario} solo sobre SU horario (alcance propio), y el
+	 * administrador lo edita sobre la sede. Un fixture con una sola cuenta que hiciera las dos cosas
+	 * esconderia esa diferencia.
 	 */
 	private record Fixture(
 			long organizationId,
@@ -913,7 +967,7 @@ class DisponibilidadIT {
 		jdbc.update("""
 				INSERT INTO organization (name, slug, timezone, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro Sintetico " + sufijo, slug, ZONA);
 		return jdbc.queryForObject("SELECT id FROM organization WHERE slug = ?", Long.class, slug);
 	}
@@ -923,7 +977,7 @@ class DisponibilidadIT {
 		jdbc.update("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, nombre, ZONA);
 		return jdbc.queryForObject(
 				"SELECT id FROM consultorio WHERE organization_id = ? AND name = ?",
@@ -935,8 +989,8 @@ class DisponibilidadIT {
 		jdbc.update("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado,
 				                    active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 		return jdbc.queryForObject(
 				"SELECT id FROM cuenta WHERE email_normalizado = ?", Long.class, email);
@@ -971,8 +1025,8 @@ class DisponibilidadIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR), 'ACTIVA',
-				        1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '5 years'), 'ACTIVA',
+				        true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, accountId, rol);
 		return jdbc.queryForObject("""
 				SELECT id FROM membership
@@ -984,9 +1038,9 @@ class DisponibilidadIT {
 	private void desvincular(long membershipId) {
 		int filas = jdbc.update("""
 				UPDATE membership
-				   SET valid_until = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE),
+				   SET valid_until = (CURRENT_TIMESTAMP - INTERVAL '1 minutes'),
 				       estado = 'REVOCADA',
-				       updated_at = UTC_TIMESTAMP(6)
+				       updated_at = CURRENT_TIMESTAMP
 				 WHERE id = ?
 				""", membershipId);
 		assertThat(filas).isEqualTo(1);
@@ -1003,8 +1057,8 @@ class DisponibilidadIT {
 				    (organization_id, consultorio_id, membership_id, dia_semana, hora_desde,
 				     hora_hasta, vigencia_desde, vigencia_hasta, active, version,
 				     created_at, updated_at)
-				VALUES (?, ?, ?, 3, '09:00:00', '13:00:00', ?, ?, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 3, '09:00:00', '13:00:00', CAST(? AS date), CAST(? AS date), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.consultorioId(),
 				fixture.profesionalMembershipId(), desde, hasta);
 	}

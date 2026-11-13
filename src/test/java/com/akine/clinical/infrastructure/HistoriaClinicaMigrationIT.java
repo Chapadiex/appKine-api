@@ -13,7 +13,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -92,7 +91,7 @@ class HistoriaClinicaMigrationIT {
 		for (String tabla : List.of("historia_clinica", "historia_clinica_antecedente")) {
 			String nullable = jdbc().queryForObject("""
 					SELECT is_nullable FROM information_schema.columns
-					 WHERE table_schema = DATABASE() AND table_name = ?
+					 WHERE table_schema = current_schema() AND table_name = ?
 					   AND column_name = 'organization_id'
 					""", String.class, tabla);
 
@@ -111,8 +110,8 @@ class HistoriaClinicaMigrationIT {
 		for (String tabla : List.of("historia_clinica", "historia_clinica_antecedente")) {
 			List<String> primeras = jdbc().queryForList("""
 					SELECT DISTINCT s.column_name
-					  FROM information_schema.statistics s
-					 WHERE s.table_schema = DATABASE() AND s.table_name = ?
+					  FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) s
+					 WHERE s.table_schema = current_schema() AND s.table_name = ?
 					   AND s.seq_in_index = 1 AND s.index_name <> 'PRIMARY'
 					   AND NOT EXISTS (
 					       SELECT 1 FROM information_schema.table_constraints tc
@@ -182,7 +181,7 @@ class HistoriaClinicaMigrationIT {
 		abrirHistoria(ORG_A, personaEnA);
 		jdbc().update("""
 				UPDATE historia_clinica
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6),
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP,
 				       deactivation_reason = 'ficha fusionada'
 				 WHERE organization_id = ? AND persona_id = ?
 				""", ORG_A, personaEnA);
@@ -203,8 +202,8 @@ class HistoriaClinicaMigrationIT {
 				UPDATE historia_clinica SET resumen = 'dolor lumbar' WHERE id = ?
 				""", historiaId))
 				.as("tiene que violar ck_historia_clinica_resumen_trazable. El CHECK de MySQL llega "
-						+ "como UncategorizedSQLException, al reves que el UNIQUE")
-				.isInstanceOf(UncategorizedSQLException.class);
+						+ "como DataIntegrityViolationException, igual que el UNIQUE")
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -215,10 +214,10 @@ class HistoriaClinicaMigrationIT {
 
 		assertThatThrownBy(() -> jdbc().update("""
 				UPDATE historia_clinica_antecedente
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6)
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP
 				 WHERE id = ?
 				""", antecedenteId))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -227,7 +226,7 @@ class HistoriaClinicaMigrationIT {
 		long historiaId = abrirHistoria(ORG_A, personaEnA);
 
 		assertThatThrownBy(() -> registrarAntecedente(ORG_A, historiaId, "VACUNA"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -249,15 +248,15 @@ class HistoriaClinicaMigrationIT {
 	private List<String> columnasDe(String tabla) {
 		return jdbc().queryForList("""
 				SELECT column_name FROM information_schema.columns
-				 WHERE table_schema = DATABASE() AND table_name = ?
+				 WHERE table_schema = current_schema() AND table_name = ?
 				""", String.class, tabla);
 	}
 
 	private void crearOrganizacion(long id, String slug) {
 		jdbc().update("""
-				INSERT IGNORE INTO organization (id, name, slug, created_at, updated_at)
-				 VALUES (?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-				""", id, "Centro " + slug, slug);
+				INSERT INTO organization (id, name, slug, created_at, updated_at)
+				 VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING
+""", id, "Centro " + slug, slug);
 	}
 
 	private long crearPersona(long organizationId) {
@@ -267,7 +266,7 @@ class HistoriaClinicaMigrationIT {
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				 VALUES (?, 'DNI', ?, ?, 'Perez', 'Ana', 'PEREZ', 'ANA',
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, documento, documento);
 	}
 
@@ -275,7 +274,7 @@ class HistoriaClinicaMigrationIT {
 		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              created_at, updated_at)
-				 VALUES (?, ?, UTC_TIMESTAMP(6), 1, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, personaId);
 	}
 
@@ -284,8 +283,8 @@ class HistoriaClinicaMigrationIT {
 				INSERT INTO historia_clinica_antecedente (organization_id, historia_clinica_id, tipo,
 				                                          descripcion, registrado_en, registrado_por,
 				                                          created_at, updated_at)
-				 VALUES (?, ?, ?, 'penicilina', UTC_TIMESTAMP(6), 1,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, 'penicilina', CURRENT_TIMESTAMP, 1,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, historiaId, tipo);
 	}
 }

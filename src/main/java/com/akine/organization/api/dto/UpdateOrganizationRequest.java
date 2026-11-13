@@ -37,6 +37,30 @@ public record UpdateOrganizationRequest(
 		String timezone,
 
 		@Schema(
+				description = "Razon social del tenant (V140). La heredan las sedes sin datos fiscales "
+						+ "propios. Omitirla la deja; cadena vacia la borra",
+				example = "Centro Kinesico Belgrano SRL",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		@Size(max = 200, message = "La razon social no puede superar los 200 caracteres")
+		String legalName,
+
+		@Schema(
+				description = "Identificacion fiscal del tenant. Si tiene forma de CUIT (11 digitos, "
+						+ "guiones opcionales) el digito verificador tiene que ser correcto: si no, 400 con "
+						+ "errors.taxId. Cualquier otro formato se acepta como texto. Cadena vacia la borra",
+				example = "30-71234567-1",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		@Size(max = 32, message = "La identificacion fiscal no puede superar los 32 caracteres")
+		String taxId,
+
+		@Schema(
+				description = "Domicilio fiscal del tenant, en una linea. Cadena vacia lo borra",
+				example = "Av. Colon 1234, Cordoba",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		@Size(max = 240, message = "La direccion fiscal no puede superar los 240 caracteres")
+		String fiscalAddressLine,
+
+		@Schema(
 				description = "Version que el cliente cree vigente, tal como la devolvio el GET",
 				example = "0",
 				requiredMode = Schema.RequiredMode.REQUIRED)

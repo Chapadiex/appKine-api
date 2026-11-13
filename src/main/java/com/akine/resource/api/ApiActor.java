@@ -50,7 +50,8 @@ class ApiActor {
 				principal.accountId(),
 				principal.platformAdmin(),
 				contexto == null ? null : contexto.organizationId(),
-				contexto == null ? null : contexto.consultorioId());
+				contexto == null ? null : contexto.consultorioId(),
+				contexto == null ? null : contexto.roleCode());
 	}
 
 	/**

@@ -30,8 +30,8 @@ public interface PlanNumeradorRepository
 	@Query(value = """
 			INSERT INTO plan_numerador (organization_id, caso_clinico_id, ultimo_numero,
 			                            created_at, updated_at)
-			VALUES (:organizationId, :casoClinicoId, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-			ON DUPLICATE KEY UPDATE id = id
+			VALUES (:organizationId, :casoClinicoId, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			ON CONFLICT DO NOTHING
 			""", nativeQuery = true)
 	@Override
 	void crearSiFalta(

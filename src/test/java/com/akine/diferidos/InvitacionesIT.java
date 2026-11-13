@@ -117,6 +117,39 @@ class InvitacionesIT extends BaseEscenarioDiferido {
 				.isEqualTo("https://akine.app/problems/colaborador-ya-vinculado");
 	}
 
+	@Test
+	@DisplayName("Alta manual: los datos precargados viajan en la vista previa, el invitado los "
+			+ "corrige al aceptar y la cuenta nace con su nombre corregido")
+	void el_alta_manual_de_punta_a_punta() {
+		Sesion centro = altaCompleta("invitacion-manual");
+		String email = "manual-" + UUID.randomUUID() + "@ejemplo.test";
+
+		Respuesta emitida = post(invitaciones(centro) + "/manual", centro.token(), """
+				{"nombre":" Juan ","apellido":"Perez","tipoDocumento":"DNI","numeroDocumento":"30111222",
+				 "email":"%s","roleCode":"PROFESIONAL","profesion":"Kinesiologia",
+				 "especialidadesAdicionales":["Deportiva"],"sedeIds":[%d],
+				 "fechaIncorporacion":"2026-11-01","recibeTurnos":true,"instructorDeActividades":false,
+				 "activo":true}"""
+				.formatted(email, centro.consultorioId()));
+		assertThat(emitida.status()).as("alta manual: %s", emitida.body()).isEqualTo(201);
+		long invitacionId = emitida.json().get("id").asLong();
+		String token = tokenDe(invitacionId);
+
+		Respuesta preview = post(PUBLICAS + "/preview", null, "{\"token\":\"" + token + "\"}");
+		assertThat(preview.status()).as("preview: %s", preview.body()).isEqualTo(200);
+		assertThat(preview.json().get("perfil").get("nombre").asString()).isEqualTo("Juan");
+		assertThat(preview.json().get("perfil").get("profesion").asString()).isEqualTo("Kinesiologia");
+
+		Respuesta aceptada = post(PUBLICAS + "/accept", null, """
+				{"token":"%s","password":"%s","perfil":{"nombre":"Juan Carlos","telefono":"3511234567"}}"""
+				.formatted(token, PASSWORD));
+		assertThat(aceptada.status()).as("accept: %s", aceptada.body()).isEqualTo(200);
+		long cuentaId = aceptada.json().get("cuentaId").asLong();
+		assertThat(jdbc.queryForObject("SELECT nombre FROM cuenta WHERE id = ?", String.class, cuentaId))
+				.isEqualTo("Juan Carlos");
+		assertThat(rolDeMembership(aceptada.json().get("membershipId").asLong())).isEqualTo("PROFESIONAL");
+	}
+
 	// =================================================================================
 	// 2. El unique de invitacion pendiente (migracion V21)
 	// =================================================================================
@@ -380,7 +413,7 @@ class InvitacionesIT extends BaseEscenarioDiferido {
 	private String tokenDe(long invitacionId) {
 		String token = "token-de-prueba-" + UUID.randomUUID();
 		int filas = jdbc.update(
-				"UPDATE colaborador_invitacion SET token_hash = SHA2(?, 256) WHERE id = ?",
+				"UPDATE colaborador_invitacion SET token_hash = encode(sha256(convert_to(?, 'UTF8')), 'hex') WHERE id = ?",
 				token, invitacionId);
 		assertThat(filas).isEqualTo(1);
 		return token;

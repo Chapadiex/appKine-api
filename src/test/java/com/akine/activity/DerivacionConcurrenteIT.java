@@ -129,7 +129,7 @@ class DerivacionConcurrenteIT {
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'GRUPAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'GRUPAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "DEC-" + sufijo.toUpperCase(), "Servicio " + sufijo);
 		return InsertarConId.insertar(jdbc, """
 				INSERT INTO oferta_servicio_consultorio
@@ -137,8 +137,8 @@ class DerivacionConcurrenteIT {
 				        duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
 				        genera_registro_clinico, requiere_profesional, requiere_espacio,
 				        vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'GRUPAL', 60, 8, 0, 1, 1, 0, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'GRUPAL', 60, 8, false, true, true, false, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", mundo.organizationId(), mundo.consultorioId(), servicioId, "Grupal " + sufijo);
 	}
 
@@ -148,9 +148,9 @@ class DerivacionConcurrenteIT {
 				                              inicio, fin, capacidad, estado,
 				                              programado_por_cuenta_id, programado_en, version)
 				VALUES (?, ?, ?, 'Clase sintetica',
-				        DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 7 DAY),
-				        DATE_ADD(DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 7 DAY), INTERVAL 1 HOUR),
-				        8, 'PROGRAMADA', ?, UTC_TIMESTAMP(6), 0)
+				        (CURRENT_TIMESTAMP + INTERVAL '7 days'),
+				        ((CURRENT_TIMESTAMP + INTERVAL '7 days') + INTERVAL '1 hours'),
+				        8, 'PROGRAMADA', ?, CURRENT_TIMESTAMP, 0)
 				""", mundo.organizationId(), mundo.consultorioId(), ofertaId, actor.accountId());
 	}
 

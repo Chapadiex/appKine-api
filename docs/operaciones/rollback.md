@@ -90,7 +90,7 @@ Se completa en las release notes y lo firma quien despliega.
 - [ ] Números de versión mayores que la última aplicada en el entorno (sin `outOfOrder`, una
       versión menor no corre nunca).
 - [ ] Probadas contra una copia del esquema del entorno: `ops/verificar-backup.sh` deja la base
-      restaurada en un MySQL efímero; correr la imagen nueva contra eso es la prueba más honesta
+      restaurada en un PostgreSQL efímero; correr la imagen nueva contra eso es la prueba más honesta
       de que las migraciones ejecutan sobre datos reales.
 - [ ] Plan de rollback declarado: **imagen anterior** o **restore**.
 

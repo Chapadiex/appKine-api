@@ -2,19 +2,27 @@
 # Stack AISLADO para la prueba de carga (AKINE G-10). Ver docs/carga.md.
 #
 #   perf/stack.sh build     # imagenes <P>-akine-api:carga (este repo) y <P>-akine-web:carga
-#   perf/stack.sh up        # red <P>-net + MySQL 3324 + Mailpit 8040/1040 + backend 8094 + web 4294
+#   perf/stack.sh up        # red <P>-net + PostgreSQL 5424 + Mailpit 8040/1040 + backend 8094 + web 4294
+#   perf/stack.sh base      # solo la red y PostgreSQL (lo mismo que `up` hasta antes del backend)
 #   perf/stack.sh api       # recrea SOLO el backend (p. ej. con otro AKINE_CARGA_POOL), misma base
 #   perf/stack.sh sembrar   # k6 sembrado.js  -> perf/salida/sembrado.json
 #   perf/stack.sh carga     # k6 carga.js     -> perf/salida/carga-resumen.{md,json} + latencia-servidor.md
 #   perf/stack.sh sembrar-actividad  # k6 sembrado-actividad.js (F9, despues de sembrar)
 #   perf/stack.sh actividad # k6 actividad.js -> perf/salida/actividad-resumen.{md,json} (F9, 09.03)
-#   perf/stack.sh metricas  # digest del performance_schema -> perf/salida/digest.tsv
+#   perf/stack.sh metricas  # digest de pg_stat_statements -> perf/salida/digest.tsv
 #   perf/stack.sh historia  # sentencias recientes por conexion (`historia on` antes de la carga)
+#   perf/stack.sh por-pedido      # sentencias y transacciones por pedido -> perf/salida/por-pedido.md
 #   perf/stack.sh cpu-por-pedido  # ms de CPU del backend por pedido de cada endpoint -> perf/salida/cpu-por-pedido.md
 #   perf/stack.sh down      # baja y BORRA todo lo <P>-* (contenedores, volumenes, red; imagenes con --imagenes)
 #
-# Todo lleva el prefijo <P>- (g10 por defecto) y puertos propios: no toca akine-mysql,
+# Todo lleva el prefijo <P>- (g10 por defecto) y puertos propios: no toca akine-postgres (5432),
 # akine-mailpit, el 8080 ni el 4200 de desarrollo. La base es efimera (volumen anonimo): `down` la borra.
+#
+# PostgreSQL con la misma imagen que compose.yaml y los tests, inicializado con el mismo
+# ops/postgres/init (rol akine sin superusuario, base akine_carga, extension vector). Para medir:
+#   - pg_stat_statements (shared_preload_libraries) reemplaza al digest del performance_schema;
+#   - log_min_duration_statement=100 es el slow log: va en JSON a $PGDATA/log/postgresql.json,
+#     dentro del contenedor, como antes iba a /var/lib/mysql/slow.log.
 set -euo pipefail
 
 # En Git Bash, `pwd -W` da C:/...: con MSYS_NO_PATHCONV, docker build no encuentra /c/...
@@ -27,7 +35,8 @@ PLATAFORMA_EMAIL="${AKINE_CARGA_PLATAFORMA_EMAIL:-plataforma.carga@ejemplo.test}
 # Prefijo y puertos: el default es el de G-10. Otra corrida en paralelo usa los suyos
 # (p. ej. AKINE_CARGA_PREFIJO=perf2 AKINE_CARGA_PUERTO_API=8098 ...) sin pisar este stack.
 P="${AKINE_CARGA_PREFIJO:-g10}"
-PUERTO_MYSQL="${AKINE_CARGA_PUERTO_MYSQL:-3324}"
+PUERTO_DB="${AKINE_CARGA_PUERTO_DB:-5424}"
+IMG_DB="${AKINE_CARGA_IMAGEN_DB:-pgvector/pgvector:0.8.1-pg18-trixie}"
 PUERTO_MAILPIT_WEB="${AKINE_CARGA_PUERTO_MAILPIT_WEB:-8040}"
 PUERTO_MAILPIT_SMTP="${AKINE_CARGA_PUERTO_MAILPIT_SMTP:-1040}"
 PUERTO_API="${AKINE_CARGA_PUERTO_API:-8094}"
@@ -50,6 +59,35 @@ POOL="${AKINE_CARGA_POOL:-}"
 export MSYS_NO_PATHCONV=1
 montaje_perf() {
 	if command -v cygpath >/dev/null 2>&1; then cygpath -w "$PERF"; else echo "$PERF"; fi
+}
+
+# psql como superusuario dentro del contenedor, por socket (el pg_hba de la imagen confia en el
+# socket local): las vistas de medicion y ALTER SYSTEM lo exigen. Credenciales sinteticas.
+psql_su() {
+	docker exec -i "$P-postgres" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d akine_carga "$@"
+}
+
+levantar_base() {
+	docker network create "$RED" >/dev/null 2>&1 || true
+	docker run -d --name "$P-postgres" --network "$RED" -p "127.0.0.1:$PUERTO_DB:5432" \
+		-v "$RAIZ/ops/postgres/init:/docker-entrypoint-initdb.d:ro" \
+		-e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
+		-e AKINE_DB_NAME=akine_carga -e AKINE_DB_USER=akine -e AKINE_DB_PASSWORD=akine \
+		-e TZ=UTC -e PGTZ=UTC "$IMG_DB" \
+		postgres -c timezone=UTC -c max_connections=300 \
+		-c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all \
+		-c pg_stat_statements.max=10000 -c track_io_timing=on \
+		-c logging_collector=on -c log_destination=jsonlog -c log_directory=log \
+		-c log_filename=postgresql -c log_rotation_age=0 -c log_rotation_size=0
+	# Por TCP y con el usuario de la aplicacion en SU base: pg_isready responde durante el arranque
+	# temporal del entrypoint, antes de que corra el init y del reinicio final, y el backend que
+	# arranca en ese momento muere con "Connection refused".
+	until docker exec -e PGPASSWORD=akine "$P-postgres" \
+		psql -h 127.0.0.1 -U akine -d akine_carga -XAtqc "SELECT 1" >/dev/null 2>&1; do sleep 2; done
+	# El slow log (100 ms) va por ALTER SYSTEM y no por -c: lo que se pasa en la linea de comandos le
+	# gana a ALTER SYSTEM, y `historia on` tiene que poder bajarlo a 0 sin reiniciar.
+	psql_su -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements" \
+		-c "ALTER SYSTEM SET log_min_duration_statement = 100" -c "SELECT pg_reload_conf()" >/dev/null
 }
 
 esperar_salud() {
@@ -79,7 +117,7 @@ levantar_api() {
 		--cpus "$API_CPUS" --memory "$API_MEMORIA" \
 		-e SPRING_PROFILES_ACTIVE=local \
 		-e LOGGING_LEVEL_COM_AKINE=INFO \
-		-e "AKINE_DB_URL=jdbc:mysql://$P-mysql:3306/akine_carga?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC" \
+		-e "AKINE_DB_URL=jdbc:postgresql://$P-postgres:5432/akine_carga" \
 		-e AKINE_DB_USER=akine -e AKINE_DB_PASSWORD=akine \
 		-e AKINE_MAIL_HOST="$P-mailpit" -e AKINE_MAIL_PORT=1025 \
 		-e AKINE_PUBLIC_BASE_URL="http://localhost:$PUERTO_WEB" \
@@ -101,23 +139,16 @@ build)
 		echo "sin $WEB_DIR: no se construye el frontend (solo hace falta para el LCP)"
 	fi
 	;;
+base)
+	levantar_base
+	echo "PostgreSQL $P-postgres en 127.0.0.1:$PUERTO_DB, base akine_carga"
+	;;
 up)
-	docker network create "$RED" >/dev/null 2>&1 || true
-	docker run -d --name "$P-mysql" --network "$RED" -p "127.0.0.1:$PUERTO_MYSQL:3306" \
-		-e MYSQL_DATABASE=akine_carga -e MYSQL_USER=akine -e MYSQL_PASSWORD=akine \
-		-e MYSQL_ROOT_PASSWORD=root -e TZ=UTC mysql:8.4 \
-		--character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci \
-		--default-time-zone=+00:00 --log-bin-trust-function-creators=1 \
-		--max-connections=300 \
-		--slow-query-log=1 --long-query-time=0.1 --slow-query-log-file=/var/lib/mysql/slow.log
+	levantar_base
 	docker run -d --name "$P-mailpit" --network "$RED" \
 		-p "127.0.0.1:$PUERTO_MAILPIT_WEB:8025" -p "127.0.0.1:$PUERTO_MAILPIT_SMTP:1025" \
 		-e MP_MAX_MESSAGES=2000 -e MP_SMTP_AUTH_ACCEPT_ANY=true -e MP_SMTP_AUTH_ALLOW_INSECURE=true \
 		axllent/mailpit:v1.21.8
-	# Por TCP y con el usuario de la aplicacion: el ping por socket responde durante la
-	# inicializacion del contenedor, cuando el servidor todavia no acepta conexiones de red, y el
-	# backend que arranca en ese momento muere con "Connection refused".
-	until docker exec "$P-mysql" mysql -h127.0.0.1 -uakine -pakine akine_carga -e "SELECT 1" >/dev/null 2>&1; do sleep 2; done
 	if docker image inspect "$IMG_WEB" >/dev/null 2>&1; then
 		docker run -d --name "$P-web" --network "$RED" -p "127.0.0.1:$PUERTO_WEB:8080" \
 			-e AKINE_API_URL="http://$P-api:8080" "$IMG_WEB"
@@ -143,7 +174,7 @@ actividad)
 	# `carga`, con la latencia del lado del servidor restando dos fotos de Prometheus.
 	shift
 	mkdir -p "$PERF/salida"
-	docker exec "$P-mysql" mysql -uroot -proot -e "TRUNCATE performance_schema.events_statements_summary_by_digest" 2>/dev/null
+	psql_su -c "SELECT pg_stat_statements_reset()" >/dev/null
 	curl -fsS "http://localhost:$PUERTO_API/actuator/prometheus" >"$PERF/salida/prometheus-antes.txt"
 	docker run --rm --network "$RED" -v "$(montaje_perf):/perf" "${K6_ENV[@]}" "$@" "$K6_IMAGE" run -q /perf/k6/actividad.js || true
 	curl -fsS "http://localhost:$PUERTO_API/actuator/prometheus" >"$PERF/salida/prometheus-despues.txt"
@@ -154,7 +185,7 @@ carga)
 	shift
 	mkdir -p "$PERF/salida"
 	# El digest de consultas y la foto de Prometheus cubren SOLO la corrida, no el sembrado.
-	docker exec "$P-mysql" mysql -uroot -proot -e "TRUNCATE performance_schema.events_statements_summary_by_digest" 2>/dev/null
+	psql_su -c "SELECT pg_stat_statements_reset()" >/dev/null
 	curl -fsS "http://localhost:$PUERTO_API/actuator/prometheus" >"$PERF/salida/prometheus-antes.txt"
 	# Muestreo de saturacion cada 5 s mientras corre k6: pool de conexiones, hilos de la JVM y CPU
 	# del proceso. Si el backend esta trabado, la propia foto tarda: la hora real queda en la fila.
@@ -175,15 +206,25 @@ carga)
 		| tee "$PERF/salida/latencia-servidor.md"
 	;;
 por-pedido)
-	# Sentencias y transacciones por pedido de cada endpoint: contadores de MySQL y conexiones
-	# pedidas a Hikari, antes y despues de N pedidos en serie de un solo usuario. Con el backend
-	# quieto (sin carga): el resto de lo que corre —el outbox— entra como ruido y es chico.
+	# Sentencias y transacciones por pedido de cada endpoint: llamadas de pg_stat_statements por tipo
+	# y conexiones pedidas a Hikari, antes y despues de N pedidos en serie de un solo usuario. Con el
+	# backend quieto (sin carga): el resto de lo que corre —el outbox— entra como ruido y es chico.
+	# La columna "BEGIN/SET" es la que en MySQL era SET autocommit: con PostgreSQL el driver abre la
+	# transaccion con BEGIN, y SET queda para el modo de solo lectura.
 	mkdir -p "$PERF/salida"
 	N="${AKINE_POR_PEDIDO_N:-100}"
 	contadores() {
-		docker exec "$P-mysql" mysql -uroot -proot -N -e "SHOW GLOBAL STATUS WHERE Variable_name IN
-			('Questions','Com_select','Com_insert','Com_update','Com_commit','Com_set_option')" 2>/dev/null \
-			| awk '{printf "%s ", $2} END {print ""}'
+		# Mismo orden que daba MySQL (Com_commit Com_insert Com_select Com_set_option Com_update
+		# Questions), para que el awk de abajo no cambie.
+		psql_su -At -F ' ' -c "SELECT
+			COALESCE(sum(calls) FILTER (WHERE query ~* '^\s*commit'), 0),
+			COALESCE(sum(calls) FILTER (WHERE query ~* '^\s*insert'), 0),
+			COALESCE(sum(calls) FILTER (WHERE query ~* '^\s*select'), 0),
+			COALESCE(sum(calls) FILTER (WHERE query ~* '^\s*(begin|start|set)'), 0),
+			COALESCE(sum(calls) FILTER (WHERE query ~* '^\s*update'), 0),
+			COALESCE(sum(calls), 0)
+			FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid
+			WHERE d.datname = 'akine_carga'"
 		curl -fsS "http://localhost:$PUERTO_API/actuator/prometheus" \
 			| awk '/^hikaricp_connections_acquire_seconds_count\{/ {print $2}'
 	}
@@ -193,7 +234,7 @@ por-pedido)
 	}
 	k6_por_pedido token 1 >/dev/null
 	{
-	echo "| Endpoint | Pedidos | Sentencias | SELECT | INSERT | UPDATE | SET | COMMIT | Conexiones del pool |"
+	echo "| Endpoint | Pedidos | Sentencias | SELECT | INSERT | UPDATE | BEGIN/SET | COMMIT | Conexiones del pool |"
 	echo "|---|---:|---:|---:|---:|---:|---:|---:|---:|"
 	for e in ${AKINE_POR_PEDIDO_ENDPOINTS:-agenda_dia buscar_slots recepcion_dia paciente_360 cobro reporte reserva login}; do
 		n="$N"; [ "$e" = login ] && n=20
@@ -201,8 +242,7 @@ por-pedido)
 		k6_por_pedido "$e" "$n" >&2
 		despues=$(contadores | tr '\n' ' ')
 		echo "$antes $despues" | awk -v e="$e" -v n="$n" '{
-			# MySQL devuelve las variables en orden alfabetico: Com_commit Com_insert Com_select
-			# Com_set_option Com_update Questions; despues, las conexiones pedidas a Hikari.
+			# commit insert select begin/set update total; despues, las conexiones pedidas a Hikari.
 			c=$8-$1; i=$9-$2; s=$10-$3; so=$11-$4; u=$12-$5; q=$13-$6; h=$14-$7
 			printf "| %s | %d | %.1f | %.1f | %.1f | %.1f | %.1f | %.1f | %.1f |\n", e, n, q/n, s/n, i/n, u/n, so/n, c/n, h/n }'
 	done
@@ -250,35 +290,57 @@ cpu-por-pedido)
 	} | tee "$PERF/salida/cpu-por-pedido.md"
 	;;
 historia)
-	# Las ultimas 10 000 sentencias de todas las conexiones (events_statements_history_long), para
-	# medir que corre bajo un lock con perf/seccion-critica.mjs (docs/carga.md §10). `historia on`
-	# habilita el consumidor (antes de la carga); sin argumento, vuelca una foto con la hora en el nombre.
+	# Las ultimas 10 000 sentencias de todas las conexiones, para medir que corre bajo un lock con
+	# perf/seccion-critica.mjs (docs/carga.md §10). PostgreSQL no tiene un equivalente de
+	# events_statements_history_long: `historia on` (antes de la carga) baja
+	# log_min_duration_statement a 0, y el log JSON pasa a tener cada sentencia con su duracion; sin
+	# argumento, vuelca una foto con la hora en el nombre, en el mismo TSV que antes (conexion,
+	# orden, inicio, fin en picosegundos relativos a la foto, texto de 90 caracteres), que es lo que
+	# lee seccion-critica.mjs. Se toman las lineas `execute` y `statement`: el parse y el bind del
+	# protocolo extendido quedan afuera (son cortos y contarlos triplicaria cada sentencia).
 	mkdir -p "$PERF/salida"
 	if [ "${2:-}" = "on" ]; then
-		docker exec "$P-mysql" mysql -uroot -proot -e "UPDATE performance_schema.setup_consumers
-			SET ENABLED = 'YES' WHERE NAME = 'events_statements_history_long'" 2>/dev/null
+		psql_su -c "ALTER SYSTEM SET log_min_duration_statement = 0" -c "SELECT pg_reload_conf()" >/dev/null
 		exit 0
 	fi
-	docker exec "$P-mysql" mysql -uroot -proot -N -e "
-		SELECT THREAD_ID, EVENT_ID, TIMER_START, TIMER_END, LEFT(REPLACE(DIGEST_TEXT, CHAR(9), ' '), 90)
-		FROM performance_schema.events_statements_history_long ORDER BY THREAD_ID, EVENT_ID" 2>/dev/null \
-		>"$PERF/salida/historia-$(date +%H%M%S).tsv"
+	docker exec "$P-postgres" sh -c 'cat "$PGDATA/log/postgresql.json"' | node -e '
+		const lineas = require("fs").readFileSync(0, "utf8").split("\n");
+		const re = /^duration: ([\d.]+) ms  (?:statement|execute [^:]*): ([\s\S]*)$/;
+		const filas = [];
+		for (const l of lineas) {
+			if (!l) continue;
+			let r; try { r = JSON.parse(l); } catch { continue; }
+			const m = re.exec(r.message || "");
+			if (!m) continue;
+			const finMs = Date.parse(r.timestamp.replace(" UTC", "Z").replace(" ", "T"));
+			filas.push({ pid: r.pid, finMs, durMs: Number(m[1]), texto: m[2].replace(/\s+/g, " ").trim().slice(0, 90) });
+		}
+		const ultimas = filas.slice(-10000);
+		const t0 = Math.min(...ultimas.map((f) => f.finMs - f.durMs));
+		const ps = (ms) => Math.round((ms - t0) * 1e9);
+		ultimas.map((f, i) => ({ ...f, i })).sort((a, b) => a.pid - b.pid || a.i - b.i)
+			.forEach((f) => console.log([f.pid, f.i, ps(f.finMs - f.durMs), ps(f.finMs), f.texto].join("\t")));
+	' >"$PERF/salida/historia-$(date +%H%M%S).tsv"
 	;;
 metricas)
+	# Las 40 consultas que mas tiempo sumaron, de pg_stat_statements (lo vacian `carga` y `actividad`
+	# antes de correr). Lo que el digest de MySQL daba y PostgreSQL no lleva por sentencia —filas
+	# examinadas, uso sin indice, tiempo de lock— se reemplaza por bloques leidos de cache y de disco
+	# y tiempo de E/S; el plan de una consulta sospechosa se mira con EXPLAIN (ANALYZE, BUFFERS).
 	mkdir -p "$PERF/salida"
-	docker exec "$P-mysql" mysql -uroot -proot -e "
-		SELECT LEFT(DIGEST_TEXT, 160) AS consulta, COUNT_STAR AS veces,
-		       ROUND(SUM_TIMER_WAIT/1e12, 2) AS total_s, ROUND(AVG_TIMER_WAIT/1e9, 2) AS prom_ms,
-		       SUM_ROWS_EXAMINED AS filas_examinadas, SUM_ROWS_SENT AS filas_enviadas,
-		       SUM_NO_INDEX_USED AS sin_indice, ROUND(SUM_LOCK_TIME/1e12, 2) AS lock_s
-		FROM performance_schema.events_statements_summary_by_digest
-		WHERE SCHEMA_NAME = 'akine_carga'
-		ORDER BY SUM_TIMER_WAIT DESC LIMIT 40" >"$PERF/salida/digest.tsv"
+	psql_su -A -F "	" -P footer=off -c "
+		SELECT left(regexp_replace(query, '\s+', ' ', 'g'), 160) AS consulta, calls AS veces,
+		       round((total_exec_time / 1e3)::numeric, 2) AS total_s, round(mean_exec_time::numeric, 2) AS prom_ms,
+		       rows AS filas, shared_blks_hit AS bloques_cache, shared_blks_read AS bloques_disco,
+		       round(((shared_blk_read_time + shared_blk_write_time) / 1e3)::numeric, 2) AS io_s
+		FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid
+		WHERE d.datname = 'akine_carga'
+		ORDER BY total_exec_time DESC LIMIT 40" >"$PERF/salida/digest.tsv"
 	echo "perf/salida/digest.tsv"
 	;;
 down)
-	# -v: el volumen anonimo de /var/lib/mysql se va con el contenedor.
-	docker rm -f -v "$P-web" "$P-api" "$P-mailpit" "$P-mysql" >/dev/null 2>&1 || true
+	# -v: el volumen anonimo de /var/lib/postgresql se va con el contenedor.
+	docker rm -f -v "$P-web" "$P-api" "$P-mailpit" "$P-postgres" >/dev/null 2>&1 || true
 	docker network rm "$RED" >/dev/null 2>&1 || true
 	if [ "${2:-}" = "--imagenes" ]; then
 		docker rmi "$IMG_API" "$IMG_WEB" >/dev/null 2>&1 || true
@@ -286,7 +348,7 @@ down)
 	echo "stack $P borrado"
 	;;
 *)
-	sed -n '2,17p' "$0"
+	sed -n '2,26p' "$0"
 	exit 1
 	;;
 esac

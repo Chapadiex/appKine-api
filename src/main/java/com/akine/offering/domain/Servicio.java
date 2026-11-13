@@ -78,6 +78,14 @@ public class Servicio extends MarcaTemporal {
 	private Long id;
 
 	/**
+	 * Duenio del servicio (V143, ADR-0025). {@code null} = catalogo global de la plataforma, que ven
+	 * todos los centros; valor = servicio propio de esa organizacion. No se cambia despues del alta:
+	 * pasar un servicio de un centro al catalogo global (o al reves) reescribiria quien ve sus ofertas.
+	 */
+	@Column(name = "organization_id", updatable = false)
+	private Long organizationId;
+
+	/**
 	 * Codigo estable del servicio en el catalogo global. {@code updatable = false}: renombrar es
 	 * cambiar {@link #nombre}, no el codigo. Un codigo mutable haria que una referencia vieja a
 	 * "KINE-DEPORTIVA" pase a significar otra cosa sin que nadie lo haya pedido explicitamente.
@@ -122,6 +130,7 @@ public class Servicio extends MarcaTemporal {
 		// Requerido por JPA.
 	}
 
+	/** Servicio del catalogo global de la plataforma. */
 	public Servicio(
 			String codigo,
 			String nombre,
@@ -131,6 +140,22 @@ public class Servicio extends MarcaTemporal {
 			boolean requiereCasoClinicoDefault,
 			boolean generaRegistroClinicoDefault) {
 
+		this(null, codigo, nombre, descripcion, naturaleza, modalidadDefault,
+				requiereCasoClinicoDefault, generaRegistroClinicoDefault);
+	}
+
+	/** Servicio de {@code organizationId}, o del catalogo global si es {@code null}. */
+	public Servicio(
+			Long organizationId,
+			String codigo,
+			String nombre,
+			String descripcion,
+			Naturaleza naturaleza,
+			Modalidad modalidadDefault,
+			boolean requiereCasoClinicoDefault,
+			boolean generaRegistroClinicoDefault) {
+
+		this.organizationId = organizationId;
 		this.codigo = exigirTexto(codigo, "El codigo del servicio es obligatorio");
 		this.nombre = exigirTexto(nombre, "El nombre del servicio es obligatorio");
 		this.descripcion = vacioEsNulo(descripcion);
@@ -222,6 +247,15 @@ public class Servicio extends MarcaTemporal {
 
 	public Long getId() {
 		return id;
+	}
+
+	public Long getOrganizationId() {
+		return organizationId;
+	}
+
+	/** Del catalogo global de la plataforma, y no propio de un centro. */
+	public boolean isGlobal() {
+		return organizationId == null;
 	}
 
 	public String getCodigo() {

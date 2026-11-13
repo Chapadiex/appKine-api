@@ -78,7 +78,7 @@ class BajaDeSedeContraReservaIT extends BaseEscenarioDiferido {
 			baja.setAutoCommit(false);
 			// Lo que hace ConsultorioService.deactivate entre el paso 3 y el commit.
 			ejecutar(baja, "SELECT id FROM consultorio WHERE id = ? FOR UPDATE", sedeId);
-			ejecutar(baja, "UPDATE consultorio SET active = 0 WHERE id = ?", sedeId);
+			ejecutar(baja, "UPDATE consultorio SET active = false WHERE id = ?", sedeId);
 
 			CompletableFuture<Object> reserva = CompletableFuture.supplyAsync(() -> reservar(
 					fixture, fixture.personaA(), proximoLunesALas(9)));
@@ -191,7 +191,7 @@ class BajaDeSedeContraReservaIT extends BaseEscenarioDiferido {
 
 	private boolean activa(long sedeId) {
 		Long activa = jdbc.queryForObject(
-				"SELECT active FROM consultorio WHERE id = ?", Long.class, sedeId);
+				"SELECT CAST(active AS integer) FROM consultorio WHERE id = ?", Long.class, sedeId);
 		return activa != null && activa == 1L;
 	}
 

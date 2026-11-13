@@ -45,9 +45,9 @@ class AltaDeSedeEnUnActoIT extends BaseEscenarioDiferido {
 				.containsEntry("capacidad", 2)
 				.containsEntry("organization_id", sesion.organizationId());
 		assertThat(jdbc.queryForList(
-				"SELECT CONCAT(dia_semana, ' ', TIME_FORMAT(hora_desde, '%H:%i'), '-', "
-						+ "TIME_FORMAT(hora_hasta, '%H:%i')) FROM consultorio_horario "
-						+ "WHERE consultorio_id = ? AND organization_id = ? AND active = 1 "
+				"SELECT CONCAT(dia_semana, ' ', to_char(hora_desde, 'HH24:MI'), '-', "
+						+ "to_char(hora_hasta, 'HH24:MI')) FROM consultorio_horario "
+						+ "WHERE consultorio_id = ? AND organization_id = ? AND active = true "
 						+ "ORDER BY dia_semana, hora_desde",
 				String.class, sedeId, sesion.organizationId()))
 				.as("la medianoche se guarda como 24:00, no como 00:00 del dia siguiente")

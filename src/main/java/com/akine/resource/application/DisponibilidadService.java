@@ -8,6 +8,13 @@ import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.resource.domain.BloqueDisponibilidad;
+import com.akine.resource.domain.DisponibilidadExcepcion;
+import com.akine.resource.domain.FranjaHorarioGeneral;
+import com.akine.resource.domain.HorarioDeSede;
+import com.akine.resource.domain.exception.FranjaFueraDelHorarioDeSedeException;
+import com.akine.resource.domain.exception.FranjaFueraDelHorarioDeSedeException.FranjaFuera;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.HorarioGeneralRepositoryPort;
+import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import com.akine.resource.domain.IntervaloLocal;
 import com.akine.resource.domain.PermissionCodes;
 import com.akine.resource.domain.exception.BloqueInactivoException;
@@ -18,6 +25,7 @@ import com.akine.resource.domain.exception.ConsultorioNotOperableException;
 import com.akine.resource.domain.exception.ProfesionalNoVinculadoException;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.BloqueDisponibilidadRepositoryPort;
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSedeRepositoryPort;
+import com.akine.resource.spi.BloqueoDeAgendaDeProfesional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,11 +40,14 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Administracion de la disponibilidad semanal de un profesional en una sede (M05).
@@ -124,6 +135,9 @@ public class DisponibilidadService {
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 	private final SimuladorDeImpacto simulador;
+	private final BloqueoDeAgendaDeProfesional agendasDeProfesional;
+	private final DisponibilidadExcepcionRepositoryPort excepciones;
+	private final HorarioGeneralRepositoryPort horarios;
 	private final TransactionTemplate transaccionReadCommitted;
 
 	public DisponibilidadService(
@@ -135,8 +149,47 @@ public class DisponibilidadService {
 			PermissionGuard permissionGuard,
 			AuditTrail auditTrail,
 			SimuladorDeImpacto simulador,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			BloqueoDeAgendaDeProfesional agendasDeProfesional) {
+		this(bloques, calendarios, calendarioIniciador, consultorioDirectory, membershipDirectory, permissionGuard,
+				auditTrail, simulador, transactionManager, agendasDeProfesional, null);
+	}
 
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public DisponibilidadService(
+			BloqueDisponibilidadRepositoryPort bloques,
+			CalendarioSedeRepositoryPort calendarios,
+			CalendarioSedeIniciador calendarioIniciador,
+			ConsultorioDirectory consultorioDirectory,
+			ConsultorioMembershipDirectory membershipDirectory,
+			PermissionGuard permissionGuard,
+			AuditTrail auditTrail,
+			SimuladorDeImpacto simulador,
+			PlatformTransactionManager transactionManager,
+			BloqueoDeAgendaDeProfesional agendasDeProfesional,
+			DisponibilidadExcepcionRepositoryPort excepciones) {
+		this(bloques, calendarios, calendarioIniciador, consultorioDirectory, membershipDirectory, permissionGuard,
+				auditTrail, simulador, transactionManager, agendasDeProfesional, excepciones, null);
+	}
+
+	@org.springframework.beans.factory.annotation.Autowired
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public DisponibilidadService(
+			BloqueDisponibilidadRepositoryPort bloques,
+			CalendarioSedeRepositoryPort calendarios,
+			CalendarioSedeIniciador calendarioIniciador,
+			ConsultorioDirectory consultorioDirectory,
+			ConsultorioMembershipDirectory membershipDirectory,
+			PermissionGuard permissionGuard,
+			AuditTrail auditTrail,
+			SimuladorDeImpacto simulador,
+			PlatformTransactionManager transactionManager,
+			BloqueoDeAgendaDeProfesional agendasDeProfesional,
+			DisponibilidadExcepcionRepositoryPort excepciones,
+			HorarioGeneralRepositoryPort horarios) {
+
+		this.excepciones = excepciones;
+		this.horarios = horarios;
 		this.bloques = bloques;
 		this.calendarios = calendarios;
 		this.calendarioIniciador = calendarioIniciador;
@@ -145,6 +198,7 @@ public class DisponibilidadService {
 		this.permissionGuard = permissionGuard;
 		this.auditTrail = auditTrail;
 		this.simulador = simulador;
+		this.agendasDeProfesional = agendasDeProfesional;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -190,28 +244,127 @@ public class DisponibilidadService {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		ConsultorioSnapshot sede = exigirSedeOperable(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId, membershipId);
 
 		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
 		calendarioIniciador.asegurar(organizationId, consultorioId);
+		// Y la de la persona (V129), que se toma despues de la de la sede: el horario habitual de la
+		// misma persona no puede pisarse entre sedes.
+		agendasDeProfesional.asegurar(organizationId, List.of(membershipId));
 
-		return transaccionReadCommitted.execute(estado -> crearEnTransaccion(
-				actor, consultorioId, membershipId, command, organizationId, sede));
+		return transaccionReadCommitted.execute(estado -> {
+			AltaAbierta alta = abrirAlta(organizationId, consultorioId, membershipId, sede);
+			exigirDentroDelHorarioDeSede(organizationId, consultorioId,
+					List.of(new FranjaPedida(command.diaSemana(), command.horaDesde(), command.horaHasta())));
+			return altaDeUnDia(actor, alta, command, null);
+		});
 	}
 
-	private BloqueView crearEnTransaccion(
-			OperatingActor actor, long consultorioId, long membershipId,
-			BloqueAltaCommand command, long organizationId, ConsultorioSnapshot sede) {
+	/**
+	 * Da de alta VARIOS bloques del mismo horario y la misma vigencia, uno por dia, en UNA
+	 * transaccion: "de lunes a viernes de 09 a 13" (RF-M05-003, carga rapida del horario).
+	 *
+	 * <p>Mismo protocolo que {@link #crear}: los locks de la sede y de la persona se toman una vez
+	 * y cada dia pasa por exactamente las mismas comprobaciones que un alta suelta —coincidencia
+	 * exacta devuelve el bloque que ya existe, solapamiento es 409—. Lo que agrega el lote es la
+	 * atomicidad: <b>si un dia no puede guardarse, no se guarda ninguno</b>. Antes, cargar la
+	 * semana eran cinco pedidos y el cuarto podia fallar dejando tres, sin que nada lo dijera.
+	 *
+	 * <p>Los dias se procesan en orden ISO (lunes primero): el 409 de solapamiento nombra el dia
+	 * que lo produjo y la pantalla lo senala. Los bloques de distintos dias no se pisan entre si,
+	 * asi que el orden no cambia el desenlace, solo cual dia se reporta primero.
+	 *
+	 * <p>Cada bloque se audita por separado, como siempre: el historial por bloque tiene que leerse
+	 * igual haya nacido solo o en lote. El detalle {@code diasDelLote} deja constancia de que fue
+	 * una carga rapida.
+	 *
+	 * @return una vista por dia, en el orden de los dias. {@code nuevo()} dice cuales se crearon y
+	 *         cuales ya existian
+	 * @throws BloqueSolapadoException si algun dia se pisa con otro bloque activo (409); no se
+	 *         guarda ninguno
+	 */
+	public List<BloqueView> crearVarios(
+			OperatingActor actor, long consultorioId, long membershipId, BloquesAltaCommand lote) {
+
+		if (lote.diasSemana() == null || lote.diasSemana().isEmpty()) {
+			throw new IllegalArgumentException("El lote tiene que incluir al menos un dia de la semana");
+		}
+
+		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
+		ConsultorioSnapshot sede = exigirSedeOperable(organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId, membershipId);
+
+		calendarioIniciador.asegurar(organizationId, consultorioId);
+		agendasDeProfesional.asegurar(organizationId, List.of(membershipId));
+
+		List<Integer> dias = lote.diasSemana().stream().sorted().toList();
+		String diasDelLote = dias.stream().map(String::valueOf).collect(Collectors.joining(","));
+
+		return transaccionReadCommitted.execute(estado -> {
+			AltaAbierta alta = abrirAlta(organizationId, consultorioId, membershipId, sede);
+			// Todos los dias antes de guardar ninguno: si uno no entra en el horario de la sede no se
+			// guarda el lote, y el 409 nombra todos los que no entran.
+			exigirDentroDelHorarioDeSede(organizationId, consultorioId, dias.stream()
+					.map(dia -> new FranjaPedida(dia, lote.horaDesde(), lote.horaHasta()))
+					.toList());
+			List<BloqueView> resultado = new ArrayList<>(dias.size());
+			for (int dia : dias) {
+				resultado.add(altaDeUnDia(actor, alta, lote.paraElDia(dia), diasDelLote));
+			}
+			return resultado;
+		});
+	}
+
+	/** Lo que un alta —de un dia o de varios— resuelve una sola vez, ya dentro de la transaccion. */
+	private record AltaAbierta(
+			long organizationId,
+			long consultorioId,
+			long membershipId,
+			Instant ahora,
+			LocalDate hoy,
+			Set<Long> mismaPersona) {
+	}
+
+	/**
+	 * Primer tramo del alta dentro de la transaccion: vinculo vigente y los dos locks, en ese orden
+	 * (sede y despues persona). Se hace UNA vez por transaccion, tenga uno o siete dias.
+	 */
+	private AltaAbierta abrirAlta(
+			long organizationId, long consultorioId, long membershipId, ConsultorioSnapshot sede) {
 
 		Instant ahora = Instant.now();
 		exigirProfesionalDeLaSede(organizationId, consultorioId, membershipId, ahora);
 
 		bloquearLaSede(organizationId, consultorioId);
+		Set<Long> mismaPersona = agendasDeProfesional.bloquear(organizationId, membershipId);
+
+		return new AltaAbierta(organizationId, consultorioId, membershipId, ahora,
+				LocalDate.ofInstant(ahora, zonaDe(sede)), mismaPersona);
+	}
+
+	/**
+	 * El alta de UN dia, con los locks ya tomados: leer los activos, coincidencia exacta,
+	 * solapamientos, guardar y auditar.
+	 *
+	 * <p>Los activos se releen en cada dia a proposito. En un lote, el dia anterior acaba de
+	 * guardar un bloque en esta misma transaccion, y aunque dos dias distintos no pueden pisarse,
+	 * leer siempre el estado actual es lo que mantiene a este metodo identico al alta suelta.
+	 *
+	 * @param diasDelLote los dias del lote, para la auditoria; {@code null} en un alta suelta
+	 */
+	private BloqueView altaDeUnDia(
+			OperatingActor actor, AltaAbierta alta, BloqueAltaCommand command, String diasDelLote) {
+
+		long organizationId = alta.organizationId();
+		long consultorioId = alta.consultorioId();
+		long membershipId = alta.membershipId();
+		Instant ahora = alta.ahora();
+		LocalDate hoy = alta.hoy();
+		Set<Long> mismaPersona = alta.mismaPersona();
 
 		int dia = command.diaSemana();
 		LocalTime horaDesde = command.horaDesde();
 		LocalTime horaHasta = command.horaHasta();
-		LocalDate hoy = LocalDate.ofInstant(ahora, zonaDe(sede));
 		LocalDate vigenciaDesde =
 				command.vigenciaDesde() == null ? hoy : command.vigenciaDesde();
 		LocalDate vigenciaHasta = command.vigenciaHasta();
@@ -232,20 +385,31 @@ public class DisponibilidadService {
 			return BloqueView.de(yaCargado.get());
 		}
 
-		exigirSinSolapamiento(
+		exigirSinSolapamiento(consultorioId,
 				activos, null, dia, horaDesde, horaHasta, vigenciaDesde, vigenciaHasta);
+		exigirSinSolapamiento(consultorioId,
+				deLaMismaPersonaEnOtrasSedes(organizationId, consultorioId, membershipId, mismaPersona),
+				null, dia, horaDesde, horaHasta, vigenciaDesde, vigenciaHasta);
+		exigirSinAperturasEnOtrasSedes(organizationId, consultorioId, mismaPersona, dia, horaDesde, horaHasta,
+				vigenciaDesde, vigenciaHasta, hoy);
 
-		BloqueDisponibilidad guardado = bloques.save(new BloqueDisponibilidad(
+		BloqueDisponibilidad nuevo = new BloqueDisponibilidad(
 				organizationId, consultorioId, membershipId,
-				dia, horaDesde, horaHasta, vigenciaDesde, vigenciaHasta));
+				dia, horaDesde, horaHasta, vigenciaDesde, vigenciaHasta);
+		nuevo.registrarAutor(actor.accountId());
+		BloqueDisponibilidad guardado = bloques.save(nuevo);
 
 		Map<String, String> detalles = new LinkedHashMap<>();
 		detalles.put("membershipId", String.valueOf(membershipId));
 		detalles.put("diaSemana", String.valueOf(dia));
 		detalles.put("horario", horaDesde + " -> " + horaHasta);
 		detalles.put("vigenciaDesde", String.valueOf(vigenciaDesde));
+		if (diasDelLote != null) {
+			detalles.put("diasDelLote", diasDelLote);
+		}
+		ResumenDeAgendaParaAuditoria.con(detalles, null, ResumenDeAgendaParaAuditoria.de(guardado));
 		auditar(AuditEvents.DISPONIBILIDAD_BLOQUE_CREATED, guardado, actor.accountId(),
-				null, "ACTIVO", null, detalles, ahora);
+				null, "ACTIVO", null, AuditEvents.conActor(actor, guardado.getMembershipId(), detalles), ahora);
 
 		log.info("Bloque de disponibilidad creado: consultorioId={} membershipId={} bloqueId={}",
 				consultorioId, membershipId, guardado.getId());
@@ -291,10 +455,13 @@ public class DisponibilidadService {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId, membershipId);
 
 		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
 		calendarioIniciador.asegurar(organizationId, consultorioId);
+		// Y la de la persona (V129), que se toma despues de la de la sede: el horario habitual de la
+		// misma persona no puede pisarse entre sedes.
+		agendasDeProfesional.asegurar(organizationId, List.of(membershipId));
 
 		return transaccionReadCommitted.execute(estado -> editarEnTransaccion(
 				actor, consultorioId, membershipId, bloqueId, command, organizationId, sede));
@@ -310,6 +477,7 @@ public class DisponibilidadService {
 		// El lock ANTES de la primera lectura de bloques, igual que en el alta: el bloque que se
 		// esta por editar tambien es un bloque.
 		bloquearLaSede(organizationId, consultorioId);
+		Set<Long> mismaPersona = agendasDeProfesional.bloquear(organizationId, membershipId);
 
 		BloqueDisponibilidad bloque = cargar(organizationId, consultorioId, membershipId, bloqueId);
 		if (!bloque.isOperable()) {
@@ -320,32 +488,54 @@ public class DisponibilidadService {
 					"El bloque de disponibilidad fue modificado por otra operacion");
 		}
 
+		// Antes del impacto: pedir que se confirmen los turnos afectados de una edicion que igual se
+		// rechaza seria pedir una decision que no sirve para nada.
+		exigirDentroDelHorarioDeSede(organizationId, consultorioId, List.of(new FranjaPedida(
+				command.diaSemana() == null ? bloque.getDiaSemana() : command.diaSemana(),
+				command.horaDesde() == null ? bloque.getHoraDesde() : command.horaDesde(),
+				command.horaHasta() == null ? bloque.getHoraHasta() : command.horaHasta())));
+
 		Map<String, String> detalles = cambios(bloque, command);
+		String resumenAntes = ResumenDeAgendaParaAuditoria.de(bloque);
 
 		// El impacto se calcula ANTES de mutar: el simulador compara la disponibilidad con el
 		// bloque como esta y con una copia editada, y la ventana llega al fin de vigencia MAS
 		// LEJANO de los dos —los turnos que una edicion deja huerfanos son justamente los que caen
 		// despues del nuevo fin—. Despues de mutar, "antes" ya no existiria.
 		ImpactoDeDisponibilidad impacto = simulador.deEdicion(sede, bloque, command, ahora);
+		// Checklist de agenda §6.6: el mismo control que el alta de un cierre. Un cambio de horario que
+		// deja turnos afuera no se guarda sin que nadie lo haya visto; vuelve el 409 con la lista.
+		if (impacto.hayAlgo() && !command.confirmaTurnosAfectados()) {
+			throw impacto.comoRechazo();
+		}
 
 		bloque.updateDatos(
 				command.diaSemana(), command.horaDesde(), command.horaHasta(),
 				command.vigenciaDesde(), command.vigenciaHasta(), command.limpiarVigenciaHasta());
 
 		// El propio bloque se excluye de la comparacion: solapa consigo mismo por definicion.
-		exigirSinSolapamiento(
+		exigirSinSolapamiento(consultorioId,
 				bloques.findActivosDe(organizationId, consultorioId, membershipId),
 				bloqueId,
 				bloque.getDiaSemana(), bloque.getHoraDesde(), bloque.getHoraHasta(),
 				bloque.getVigenciaDesde(), bloque.getVigenciaHasta());
+		exigirSinSolapamiento(consultorioId,
+				deLaMismaPersonaEnOtrasSedes(organizationId, consultorioId, membershipId, mismaPersona),
+				bloqueId,
+				bloque.getDiaSemana(), bloque.getHoraDesde(), bloque.getHoraHasta(),
+				bloque.getVigenciaDesde(), bloque.getVigenciaHasta());
+		exigirSinAperturasEnOtrasSedes(organizationId, consultorioId, mismaPersona, bloque.getDiaSemana(),
+				bloque.getHoraDesde(), bloque.getHoraHasta(), bloque.getVigenciaDesde(), bloque.getVigenciaHasta(),
+				LocalDate.ofInstant(ahora, zonaDe(sede)));
 
 		BloqueDisponibilidad guardado = bloques.save(bloque);
 		if (impacto.hayAlgo()) {
 			detalles.put("turnosAfectados", String.valueOf(impacto.turnosAfectados()));
 		}
+		ResumenDeAgendaParaAuditoria.con(detalles, resumenAntes, ResumenDeAgendaParaAuditoria.de(guardado));
 
 		auditar(AuditEvents.DISPONIBILIDAD_BLOQUE_UPDATED, guardado, actor.accountId(),
-				null, null, null, detalles, ahora);
+				null, null, null, AuditEvents.conActor(actor, guardado.getMembershipId(), detalles), ahora);
 
 		return BloqueView.de(guardado, impacto);
 	}
@@ -377,21 +567,41 @@ public class DisponibilidadService {
 			long membershipId,
 			long bloqueId,
 			String motivo) {
+		// La forma anterior a la agenda operativa: quien la llama ya decidio. La API pasa por la de abajo.
+		return darDeBaja(actor, consultorioId, membershipId, bloqueId, motivo, true);
+	}
+
+	/**
+	 * Da de baja un bloque. Si deja turnos fuera de la disponibilidad y no se confirmo, 409
+	 * {@code bloqueo-con-turnos-afectados} con la lista (checklist de agenda §6.6), igual que el alta de
+	 * un cierre. Los turnos no se tocan: quedan reservados y la agenda los marca fuera de disponibilidad.
+	 */
+	public BloqueView darDeBaja(
+			OperatingActor actor,
+			long consultorioId,
+			long membershipId,
+			long bloqueId,
+			String motivo,
+			boolean confirmaTurnosAfectados) {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId, membershipId);
 
 		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
 		calendarioIniciador.asegurar(organizationId, consultorioId);
+		// Y la de la persona (V129), que se toma despues de la de la sede: el horario habitual de la
+		// misma persona no puede pisarse entre sedes.
+		agendasDeProfesional.asegurar(organizationId, List.of(membershipId));
 
 		return transaccionReadCommitted.execute(estado -> darDeBajaEnTransaccion(
-				actor, consultorioId, membershipId, bloqueId, motivo, organizationId, sede));
+				actor, consultorioId, membershipId, bloqueId, motivo, organizationId, sede,
+				confirmaTurnosAfectados));
 	}
 
 	private BloqueView darDeBajaEnTransaccion(
 			OperatingActor actor, long consultorioId, long membershipId, long bloqueId,
-			String motivo, long organizationId, ConsultorioSnapshot sede) {
+			String motivo, long organizationId, ConsultorioSnapshot sede, boolean confirmaTurnosAfectados) {
 
 		exigirMotivo(motivo);
 
@@ -408,14 +618,18 @@ public class DisponibilidadService {
 		// El impacto se calcula ANTES de la baja: despues, la disponibilidad de "antes" ya no
 		// contendria la franja y la comparacion perderia su referencia.
 		ImpactoDeDisponibilidad impacto = simulador.deBaja(sede, bloque, ahora);
+		if (impacto.hayAlgo() && !confirmaTurnosAfectados) {
+			throw impacto.comoRechazo();
+		}
 
 		bloque.deactivate(ahora, motivo);
 		BloqueDisponibilidad guardado = bloques.save(bloque);
 
 		Map<String, String> detalles = new LinkedHashMap<>();
 		detalles.put("turnosAfectados", String.valueOf(impacto.turnosAfectados()));
+		ResumenDeAgendaParaAuditoria.con(detalles, ResumenDeAgendaParaAuditoria.de(guardado), null);
 		auditar(AuditEvents.DISPONIBILIDAD_BLOQUE_DEACTIVATED, guardado, actor.accountId(),
-				"ACTIVO", "INACTIVO", motivo, detalles, ahora);
+				"ACTIVO", "INACTIVO", motivo, AuditEvents.conActor(actor, guardado.getMembershipId(), detalles), ahora);
 
 		log.info("Bloque de disponibilidad dado de baja: consultorioId={} membershipId={} bloqueId={}",
 				consultorioId, membershipId, bloqueId);
@@ -481,7 +695,7 @@ public class DisponibilidadService {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId, membershipId);
 		exigirProfesionalDelTenant(organizationId, membershipId);
 
 		BloqueDisponibilidad bloque = cargar(organizationId, consultorioId, membershipId, bloqueId);
@@ -565,9 +779,23 @@ public class DisponibilidadService {
 	 * propia disponibilidad" sin inventar ningun codigo nuevo. Ver
 	 * {@link AutorizacionDeSede#exigirPermiso}.
 	 */
-	private void exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
-		AutorizacionDeSede.exigirPermiso(permissionGuard, actor,
-				PermissionCodes.CONSULTORIO_MANAGE, organizationId, consultorioId);
+	private void exigirGestion(
+			OperatingActor actor, long organizationId, long consultorioId, long membershipId) {
+		AutorizacionDeSede.exigirPermisoSobreProfesional(permissionGuard, membershipDirectory, actor,
+				PermissionCodes.AGENDA_HORARIO, organizationId, consultorioId, membershipId);
+	}
+
+	/**
+	 * Los bloques activos de la MISMA PERSONA en las otras sedes de la organizacion, o con otra
+	 * membership suya en esta (agenda de profesionales §9.3). Los de esta membership en esta sede ya
+	 * los mira el control de siempre, que ademas resuelve la idempotencia.
+	 */
+	private List<BloqueDisponibilidad> deLaMismaPersonaEnOtrasSedes(
+			long organizationId, long consultorioId, long membershipId, Set<Long> mismaPersona) {
+		return bloques.findActivosDeLasMemberships(organizationId, mismaPersona).stream()
+				.filter(otro -> otro.getConsultorioId() != consultorioId
+						|| otro.getMembershipId() != membershipId)
+				.toList();
 	}
 
 	/**
@@ -624,7 +852,8 @@ public class DisponibilidadService {
 	 * "martes de 09 a 13" cargado para marzo y para septiembre no es un conflicto, es un horario
 	 * que cambia de temporada.
 	 */
-	private static void exigirSinSolapamiento(
+	private void exigirSinSolapamiento(
+			long consultorioId,
 			List<BloqueDisponibilidad> activos,
 			Long bloqueEditadoId,
 			int dia,
@@ -651,8 +880,54 @@ public class DisponibilidadService {
 					vigenciaDesde, vigenciaHasta, otro.getVigenciaDesde(), otro.getVigenciaHasta())) {
 				continue;
 			}
-			throw new BloqueSolapadoException(otro.getId(), dia, horaDesde, horaHasta);
+			// Disponibilidad central (0.158.0): con la sede real del choque, que puede ser otra.
+			throw new BloqueSolapadoException(otro.getId(), dia, horaDesde, horaHasta,
+					BloqueSolapadoException.Origen.BLOQUE, otro.getConsultorioId(),
+					nombreDeSede(otro.getOrganizationId(), otro.getConsultorioId()),
+					otro.getConsultorioId() == consultorioId, otro.getHoraDesde(), otro.getHoraHasta(), null);
 		}
+	}
+
+	/**
+	 * Las APERTURAS de la misma persona en OTRAS sedes que caen en ese dia de la semana, dentro de la
+	 * vigencia y se pisan con el horario (disponibilidad central, 0.158.0). Un horario habitual en Centro
+	 * de lunes de 8 a 14 no puede convivir con una apertura en Norte el lunes 10/03 de 10 a 12: seria
+	 * doble oferta. Una apertura de dia completo se pisa con cualquier horario de ese dia.
+	 */
+	private void exigirSinAperturasEnOtrasSedes(
+			long organizationId, long consultorioId, Set<Long> mismaPersona, int dia, LocalTime horaDesde,
+			LocalTime horaHasta, LocalDate vigenciaDesde, LocalDate vigenciaHasta, LocalDate hoy) {
+
+		if (excepciones == null) {
+			return;
+		}
+		IntervaloLocal intervalo = new IntervaloLocal(horaDesde, horaHasta);
+		for (DisponibilidadExcepcion apertura
+				: excepciones.findAperturasActivasDeLasMemberships(organizationId, mismaPersona, hoy)) {
+			if (apertura.getConsultorioId() == consultorioId) {
+				continue;
+			}
+			boolean seCruzaEnHorario = apertura.intervalo().map(intervalo::solapaCon).orElse(true);
+			if (!seCruzaEnHorario) {
+				continue;
+			}
+			for (LocalDate fecha = apertura.getFechaDesde(); fecha.isBefore(apertura.getFechaHasta());
+					fecha = fecha.plusDays(1)) {
+				boolean enVigencia = !fecha.isBefore(vigenciaDesde)
+						&& (vigenciaHasta == null || fecha.isBefore(vigenciaHasta));
+				if (fecha.getDayOfWeek().getValue() == dia && enVigencia && !fecha.isBefore(hoy)) {
+					throw new BloqueSolapadoException(apertura.getId(), dia, horaDesde, horaHasta,
+							BloqueSolapadoException.Origen.APERTURA, apertura.getConsultorioId(),
+							nombreDeSede(organizationId, apertura.getConsultorioId()), false,
+							apertura.getHoraDesde() == null ? LocalTime.MIDNIGHT : apertura.getHoraDesde(),
+							apertura.getHoraHasta() == null ? LocalTime.MIDNIGHT : apertura.getHoraHasta(), fecha);
+				}
+			}
+		}
+	}
+
+	private String nombreDeSede(long organizationId, long consultorioId) {
+		return consultorioDirectory.find(organizationId, consultorioId).map(ConsultorioSnapshot::name).orElse(null);
 	}
 
 	/**
@@ -746,6 +1021,49 @@ public class DisponibilidadService {
 			throw new BloqueNotAccessibleException(bloqueId);
 		}
 		return bloque;
+	}
+
+	/** Dia y horas de una franja pedida, en el orden del pedido. */
+	private record FranjaPedida(int diaSemana, LocalTime horaDesde, LocalTime horaHasta) {
+	}
+
+	/**
+	 * Regla del 08/11/2026: el horario del profesional queda DENTRO del horario general de la sede.
+	 * Se lee bajo el lock de la sede, el mismo que toma el {@code PUT} del calendario para reemplazar
+	 * el horario: achicar la sede y cargar una franja no se cruzan.
+	 *
+	 * <p>Una sede sin horario no limita nada ({@link HorarioDeSede#limita()}). Las horas incoherentes
+	 * no se miran aca: las rechaza el bloque con su propio 400.
+	 *
+	 * @throws FranjaFueraDelHorarioDeSedeException con todas las franjas que no entran (409)
+	 */
+	private void exigirDentroDelHorarioDeSede(
+			long organizationId, long consultorioId, List<FranjaPedida> pedidas) {
+
+		if (horarios == null) {
+			return;
+		}
+		HorarioDeSede horario = HorarioDeSede.de(horarios.findVigentes(organizationId, consultorioId).stream()
+				.map(FranjaHorarioGeneral::franja)
+				.toList());
+		if (!horario.limita()) {
+			return;
+		}
+		List<FranjaFuera> fuera = new ArrayList<>();
+		for (int indice = 0; indice < pedidas.size(); indice++) {
+			FranjaPedida pedida = pedidas.get(indice);
+			if (pedida.horaDesde() == null || pedida.horaHasta() == null
+					|| !pedida.horaHasta().isAfter(pedida.horaDesde())) {
+				continue;
+			}
+			if (!horario.admite(pedida.diaSemana(), new IntervaloLocal(pedida.horaDesde(), pedida.horaHasta()))) {
+				fuera.add(new FranjaFuera(indice, pedida.diaSemana(), pedida.horaDesde(), pedida.horaHasta(),
+						horario.delDia(pedida.diaSemana())));
+			}
+		}
+		if (!fuera.isEmpty()) {
+			throw new FranjaFueraDelHorarioDeSedeException(fuera);
+		}
 	}
 
 	private ConsultorioSnapshot exigirSedeDelTenant(long organizationId, long consultorioId) {

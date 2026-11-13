@@ -36,7 +36,7 @@ jobs:
       - name: Imagen del backend
         run: AKINE_WEB_DIR=/inexistente perf/stack.sh build
 
-      - name: Stack aislado (MySQL, Mailpit, backend)
+      - name: Stack aislado (base, Mailpit, backend)
         env:
           AKINE_CARGA_POOL: ${{ inputs.pool }}
         run: perf/stack.sh up

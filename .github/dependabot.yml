@@ -2,11 +2,11 @@
 #
 # Criterio: una corrida por semana, los lunes a la mañana de Argentina, y las versiones menores y
 # de parche AGRUPADAS en un solo PR por ecosistema. Las mayores llegan de a una, porque cada una
-# es una decisión (Spring Boot 4 -> 5, Java, MySQL) y merece su propio CI y su propio review.
+# es una decisión (Spring Boot 4 -> 5, Java, PostgreSQL) y merece su propio CI y su propio review.
 #
 # `main` está protegida: ningún PR de Dependabot entra sin el CI verde, incluidos los ITs contra
-# MySQL real y el gate de drift del contrato. Si un bump cambia el OpenAPI generado (springdoc),
-# el CI lo frena y hay que regenerar el contrato en la rama del PR.
+# PostgreSQL real (Testcontainers) y el gate de drift del contrato. Si un bump cambia el OpenAPI
+# generado (springdoc), el CI lo frena y hay que regenerar el contrato en la rama del PR.
 #
 # Las actualizaciones de SEGURIDAD no respetan el agrupado ni el horario: Dependabot las abre
 # apenas sale el advisory, y cuentan aparte del límite de PRs abiertos.
@@ -61,8 +61,12 @@ updates:
       timezone: America/Argentina/Cordoba
     open-pull-requests-limit: 2
 
-  # MySQL y Mailpit del compose.yaml, que también usa el job E2E del frontend. De MySQL sólo
-  # entran parches: saltar de 8.4 (LTS) a otra serie es una decisión de motor, no un bump.
+  # PostgreSQL (pgvector) y Mailpit del compose.yaml, que también usa el job E2E del frontend. De la
+  # imagen de PostgreSQL sólo entran parches: el tag `0.8.1-pg18-trixie` es la versión de pgvector
+  # más la serie de PostgreSQL, y pasar de pgvector 0.8 a 0.9 o de pg18 a otra serie es una decisión
+  # de motor (extensión, formato de datos, ventana de migración), no un bump. La imagen la fijan
+  # además los tests de integración (Testcontainers) y ops/lib.sh (AKINE_OPS_IMAGE), que Dependabot
+  # no ve: se cambian juntas.
   - package-ecosystem: docker-compose
     directory: /
     schedule:
@@ -72,7 +76,7 @@ updates:
       timezone: America/Argentina/Cordoba
     open-pull-requests-limit: 2
     ignore:
-      - dependency-name: mysql
+      - dependency-name: pgvector/pgvector
         update-types:
           - version-update:semver-major
           - version-update:semver-minor

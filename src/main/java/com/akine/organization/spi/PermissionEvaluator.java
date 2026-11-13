@@ -55,6 +55,14 @@ public interface PermissionEvaluator {
 	Set<String> effectivePermissions(long accountId, long organizationId, Long consultorioId);
 
 	/**
+	 * Los permisos de {@link #effectivePermissions} que el actor tiene SOLO sobre su propia
+	 * actividad ({@code ACTIVIDAD_PROPIA}): por ejemplo, el {@code turno:manage} del
+	 * {@code PROFESIONAL}, que opera unicamente sus turnos. Un permiso que un grant amplia a la sede
+	 * no aparece. Igual que la otra lista, es insumo de UX: la autorizacion es server-side.
+	 */
+	Set<String> ownScopedPermissions(long accountId, long organizationId, Long consultorioId);
+
+	/**
 	 * Indica si la cuenta tiene el rol de plataforma vigente en ese instante.
 	 *
 	 * <p>Sale de {@code platform_role}, revalidado contra la base. <b>No</b> del claim

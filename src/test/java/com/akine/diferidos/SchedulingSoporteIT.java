@@ -81,9 +81,9 @@ class SchedulingSoporteIT extends BaseEscenarioDiferido {
 				                            granted_by_account_id, valid_from, valid_until,
 				                            active, version, created_at, updated_at)
 				VALUES (?, ?, 'Incidente sintetico de test de integracion', ?,
-				        DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 MINUTE),
-				        DATE_ADD(UTC_TIMESTAMP(6), INTERVAL 1 HOUR), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        (CURRENT_TIMESTAMP - INTERVAL '1 minutes'),
+				        (CURRENT_TIMESTAMP + INTERVAL '1 hours'), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, cuentaId, cuentaId);
 	}
 

@@ -54,6 +54,7 @@ import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -106,6 +107,8 @@ class ClaseServiceTest {
 	@Mock private AccountIdentityDirectory identidades;
 	@Mock private ConsumoDePaseService consumoDePases;
 	@Mock private DevengoPorClaseService devengoPorClase;
+	@Mock private com.akine.resource.spi.BloqueoDeAgendaDeProfesional bloqueos;
+	@Mock private com.akine.activity.domain.port.HonorariosRepositoryPorts.ClaseInstructorRepositoryPort instructores;
 
 	private ClaseService service;
 
@@ -115,7 +118,7 @@ class ClaseServiceTest {
 				consultorios, permissionGuard,
 				new SoporteEnActividad(Mockito.mock(AuditoriaAparte.class)), auditTrail,
 				new ProyeccionDeClase(ofertas, espacios, memberships, identidades),
-				consumoDePases, devengoPorClase,
+				consumoDePases, devengoPorClase, bloqueos, instructores, ocupacionSobreLosMocks(),
 				mock(PlatformTransactionManager.class));
 
 		given(consultorios.find(ORG_ID, SEDE_ID)).willReturn(Optional.of(sede()));
@@ -135,15 +138,17 @@ class ClaseServiceTest {
 						.map(espacio -> Map.of(espacio.id(), espacio)).orElse(Map.of()));
 		given(disponibilidad.efectiva(anyLong(), any(), anyLong(), any(), any()))
 				.willReturn(List.of(diaConFranjaDe(INICIO, FIN)));
-		given(agenda.turnosDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any()))
+		given(agenda.turnosDeProfesionalesQueCruzan(anyLong(), anyCollection(), any(), any()))
 				.willReturn(List.of());
 		given(agenda.turnosDeEspacioQueCruzan(anyLong(), anyLong(), any(), any()))
 				.willReturn(List.of());
-		given(clases.findVivasDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any()))
+		given(clases.findVivasDeMembershipsQueCruzan(anyLong(), anyCollection(), any(), any()))
 				.willReturn(List.of());
 		given(clases.findVivasDeEspacioQueCruzan(anyLong(), anyLong(), any(), any()))
 				.willReturn(List.of());
 		given(clases.save(any())).willAnswer(invocacion -> conId(invocacion.getArgument(0), 77L));
+		given(bloqueos.deLaMismaPersona(anyLong(), anyLong()))
+				.willAnswer(llamada -> Set.of((Long) llamada.getArgument(1)));
 	}
 
 	/**
@@ -165,7 +170,7 @@ class ClaseServiceTest {
 		InOrder orden = inOrder(agenda, clases);
 		orden.verify(agenda).asegurar(ORG_ID, SEDE_ID);
 		orden.verify(agenda).bloquear(ORG_ID, SEDE_ID);
-		orden.verify(agenda).turnosDeProfesionalQueCruzan(ORG_ID, PROFESIONAL_ID, INICIO, FIN);
+		orden.verify(agenda).turnosDeProfesionalesQueCruzan(ORG_ID, Set.of(PROFESIONAL_ID), INICIO, FIN);
 		orden.verify(clases).save(any());
 	}
 
@@ -179,14 +184,17 @@ class ClaseServiceTest {
 	@Test
 	@DisplayName("Un turno que se cruza impide programar la clase: recurso-ocupado")
 	void un_turno_bloquea_la_clase() {
-		given(agenda.turnosDeProfesionalQueCruzan(ORG_ID, PROFESIONAL_ID, INICIO, FIN))
+		given(agenda.turnosDeProfesionalesQueCruzan(ORG_ID, Set.of(PROFESIONAL_ID), INICIO, FIN))
 				.willReturn(List.of(new OcupacionDeAgenda(
 						"TURNO", 5L, PROFESIONAL_ID, ESPACIO_ID,
 						INICIO.plusSeconds(1800), FIN.plusSeconds(1800))));
 
 		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID, comando(8, null)))
-				.isInstanceOf(RecursoOcupadoException.class)
-				.hasMessageContaining("profesional");
+				.isInstanceOfSatisfying(RecursoOcupadoException.class, error -> {
+					assertThat(error.getRecurso()).isEqualTo("profesional");
+					assertThat(error.getConflictoTipo()).isEqualTo("TURNO");
+					assertThat(error.getMessage()).contains("ya tiene un turno");
+				});
 	}
 
 	/**
@@ -717,7 +725,7 @@ class ClaseServiceTest {
 	@Test
 	@DisplayName("Otra clase viva del mismo profesional en ese horario lo ocupa")
 	void otra_clase_ocupa_al_profesional() {
-		given(clases.findVivasDeProfesionalQueCruzan(ORG_ID, PROFESIONAL_ID, INICIO, FIN))
+		given(clases.findVivasDeMembershipsQueCruzan(ORG_ID, Set.of(PROFESIONAL_ID), INICIO, FIN))
 				.willReturn(List.of(conId(nuevaClase(8), 90L)));
 
 		assertThatThrownBy(() -> service.programar(actor(), SEDE_ID, OFERTA_ID, comando(8, null)))
@@ -775,7 +783,7 @@ class ClaseServiceTest {
 		given(clases.lockByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
 		given(clases.findByIdInScope(ORG_ID, SEDE_ID, 77L)).willReturn(Optional.of(clase));
 		given(clases.saveAndFlush(any())).willAnswer(invocacion -> invocacion.getArgument(0));
-		given(clases.findVivasDeProfesionalQueCruzan(anyLong(), anyLong(), any(), any()))
+		given(clases.findVivasDeMembershipsQueCruzan(anyLong(), anyCollection(), any(), any()))
 				.willReturn(List.of(clase));
 		given(clases.findVivasDeEspacioQueCruzan(anyLong(), anyLong(), any(), any()))
 				.willReturn(List.of(clase));
@@ -901,5 +909,42 @@ class ClaseServiceTest {
 				LocalDate.ofInstant(desde, java.time.ZoneOffset.UTC),
 				null,
 				List.of(new DisponibilidadDirectory.Franja(desde, hasta)));
+	}
+
+	/**
+	 * La logica central (scheduling.spi.OcupacionDePersona) contestada con los mismos mocks de turnos y
+	 * clases que ya usan estos tests: lo que se prueba aca es como ClaseService la usa, no la logica.
+	 */
+	private com.akine.scheduling.spi.OcupacionDePersona ocupacionSobreLosMocks() {
+		return new com.akine.scheduling.spi.OcupacionDePersona() {
+			@Override
+			public List<com.akine.platform.spi.problem.ConflictoDeAgenda> actividadReservada(Consulta consulta) {
+				Set<Long> persona = bloqueos.deLaMismaPersona(consulta.organizationId(), consulta.membershipId());
+				List<com.akine.platform.spi.problem.ConflictoDeAgenda> conflictos = new java.util.ArrayList<>();
+				agenda.turnosDeProfesionalesQueCruzan(consulta.organizationId(), persona, consulta.inicio(),
+						consulta.fin()).forEach(turno -> conflictos.add(conflicto(
+						com.akine.platform.spi.problem.ConflictoDeAgenda.Tipo.TURNO, turno.eventoId(),
+						turno.consultorioId(), turno.inicio(), turno.fin())));
+				clases.findVivasDeMembershipsQueCruzan(consulta.organizationId(), persona, consulta.inicio(),
+								consulta.fin()).stream()
+						.filter(clase -> !clase.getId().equals(consulta.claseExcluidaId()))
+						.forEach(clase -> conflictos.add(conflicto(
+								com.akine.platform.spi.problem.ConflictoDeAgenda.Tipo.CLASE, clase.getId(),
+								clase.getConsultorioId(), clase.getInicio(), clase.getFin())));
+				return conflictos;
+			}
+
+			@Override
+			public List<com.akine.platform.spi.problem.ConflictoDeAgenda> cierres(Consulta consulta) {
+				return List.of();
+			}
+		};
+	}
+
+	private static com.akine.platform.spi.problem.ConflictoDeAgenda conflicto(
+			com.akine.platform.spi.problem.ConflictoDeAgenda.Tipo tipo, long id, Long sede, Instant desde,
+			Instant hasta) {
+		return new com.akine.platform.spi.problem.ConflictoDeAgenda(tipo, id, sede, null,
+				sede != null && sede == SEDE_ID, desde, hasta, "UTC", null, null);
 	}
 }

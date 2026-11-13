@@ -80,15 +80,20 @@ class InscripcionContraCancelacionIT {
 		try (CarreraDirigida carrera = new CarreraDirigida(jdbc);
 				Retencion fila = Retencion.de(dataSource, "clase_programada", clase)) {
 			// Primero la cancelacion, en la cola del lock; despues la inscripcion, que ya leyo la
-			// clase PROGRAMADA y espera en el UPDATE del cupo. Al soltar, la cancelacion es la
-			// primera en la cola.
+			// clase PROGRAMADA sin lock. Al soltar, la cancelacion es la primera en la cola.
+			//
+			// Donde espera la inscripcion depende del motor. InnoDB bloquea la fila en el UPDATE del
+			// cupo aunque el WHERE no la cumpla; PostgreSQL evalua el WHERE sobre la version visible
+			// —la clase esta llena—, no pide lock y devuelve cero filas. Ese cero es justo el caso que
+			// el servicio relee BLOQUEADO, asi que la inscripcion termina esperando en el FOR UPDATE
+			// de la clase, detras de la cancelacion: el mismo orden que este test necesita.
 			Future<Desenlace<ClaseView>> cancelar = carrera.largarHastaBloquearse(
 					() -> claseService.cancelar(tenant.actor(), tenant.consultorioId(), clase, "Lluvia"),
 					BLOQUEAR_CLASE);
 			Future<Desenlace<ResultadoDeInscripcion>> inscribir = carrera.largarHastaBloquearse(
 					() -> inscripcionService.inscribir(tenant.actor(), tenant.consultorioId(), clase,
 							new InscribirCommand(tenant.persona(2), aceptaEspera, null)),
-					TOMAR_CUPO);
+					BLOQUEAR_CLASE);
 			fila.soltar();
 			cancelacion = CarreraDirigida.resultado(cancelar);
 			inscripcion = CarreraDirigida.resultado(inscribir);

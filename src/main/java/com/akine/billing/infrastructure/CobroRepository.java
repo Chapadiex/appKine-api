@@ -217,7 +217,7 @@ public interface CobroRepository extends JpaRepository<Cobro, Long>, CobroReposi
 	 * @return filas {@code [dia, total]}
 	 */
 	@Query(value = """
-			SELECT DATE(CONVERT_TZ(c.cobrado_en, '+00:00', :desfase)) AS dia, SUM(c.total) AS total
+			SELECT CAST((c.cobrado_en AT TIME ZONE 'UTC') + CAST(:desfase AS interval) AS date) AS dia, SUM(c.total) AS total
 			  FROM cobro c
 			 WHERE c.organization_id = :organizationId
 			   AND c.consultorio_id = :consultorioId

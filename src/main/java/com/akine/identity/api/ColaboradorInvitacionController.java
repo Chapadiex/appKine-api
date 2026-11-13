@@ -2,6 +2,7 @@ package com.akine.identity.api;
 
 import com.akine.identity.api.dto.CancelInvitacionRequest;
 import com.akine.identity.api.dto.CreateInvitacionRequest;
+import com.akine.identity.api.dto.CreateAltaManualRequest;
 import com.akine.identity.api.dto.InvitacionResponse;
 import com.akine.identity.application.ColaboradorInvitacionService;
 import com.akine.identity.application.DirectMembershipService;
@@ -135,6 +136,39 @@ public class ColaboradorInvitacionController {
 		URI ubicacion = URI.create("/api/v1/organizations/" + orgId
 				+ "/colaborador-invitaciones/" + respuesta.id());
 
+		return ResponseEntity.created(ubicacion).body(respuesta);
+	}
+
+	@PostMapping(path = "/manual", consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "createAltaManualColaborador",
+			summary = "Preparar colaborador e invitarlo a completar su cuenta",
+			description = "Guarda los datos de incorporacion junto a la invitacion. "
+					+ "El acceso se crea cuando la persona acepta el enlace. "
+					+ "Requiere colaborador:manage en cada sede elegida.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "201", description = "Alta preparada e invitacion encolada",
+					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = InvitacionResponse.class))),
+			@ApiResponse(responseCode = "400", description = "Datos invalidos",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403", description = "Sin permiso para una sede elegida",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<InvitacionResponse> createManual(
+			@PathVariable long orgId,
+			@Valid @RequestBody CreateAltaManualRequest request) {
+		Long primeraSede = request.sedeIds().isEmpty() ? null : request.sedeIds().getFirst();
+		if ("ORG_ADMIN".equals(request.roleCode())) {
+			primeraSede = null;
+		}
+		InvitacionResponse respuesta = InvitacionResponse.de(invitacionService.invitarManual(
+				actor(orgId),
+				new InvitacionAltaCommand(request.email(), request.roleCode(), primeraSede),
+				request.datos()));
+		URI ubicacion = URI.create("/api/v1/organizations/" + orgId
+				+ "/colaborador-invitaciones/" + respuesta.id());
 		return ResponseEntity.created(ubicacion).body(respuesta);
 	}
 

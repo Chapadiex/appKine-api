@@ -22,11 +22,16 @@ public record InvitacionAceptacionCommand(
 		String apellido,
 		String password,
 		Boolean aceptaTerminos,
-		String versionTerminos) {
+		String versionTerminos,
+		PerfilDeInvitacion perfil) {
+	public InvitacionAceptacionCommand(String token, String nombre, String apellido, String password,
+			Boolean aceptaTerminos, String versionTerminos) {
+		this(token, nombre, apellido, password, aceptaTerminos, versionTerminos, null);
+	}
 
 	/** Aceptacion sin datos de terminos, la de antes de DP-45. */
 	public InvitacionAceptacionCommand(
 			String token, String nombre, String apellido, String password) {
-		this(token, nombre, apellido, password, null, null);
+		this(token, nombre, apellido, password, null, null, null);
 	}
 }

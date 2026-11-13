@@ -73,7 +73,7 @@ class OrdenYAutorizacionMigrationIT {
 
 		// El discriminador deleted_key: el numero de un documento dado de baja se puede reusar.
 		jdbc.update("""
-				UPDATE orden_medica SET active = 0, deleted_at = UTC_TIMESTAMP(6),
+				UPDATE orden_medica SET active = false, deleted_at = CURRENT_TIMESTAMP,
 				       deactivation_reason = 'cargada por error'
 				 WHERE organization_id = ? AND persona_id = ?
 				""", fixture.organizationId(), fixture.personaId());
@@ -144,8 +144,8 @@ class OrdenYAutorizacionMigrationIT {
 				INSERT INTO autorizacion (organization_id, persona_id, consultorio_id, cobertura_id,
 				        practica_id, numero, estado, cantidad_autorizada, vigencia_desde,
 				        convenio_id, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'AUT-MEDIA', 'APROBADA', 5, '2027-01-01', 12, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 'AUT-MEDIA', 'APROBADA', 5, '2027-01-01', 12, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.personaId(), fixture.consultorioId(),
 				fixture.coberturaId(), fixture.practicaId()))
 				.isInstanceOf(DataAccessException.class)
@@ -211,15 +211,15 @@ class OrdenYAutorizacionMigrationIT {
 	}
 
 	@Test
-	@DisplayName("el candado es unico por persona y su INSERT ... ON DUPLICATE KEY es idempotente")
+	@DisplayName("el candado es unico por persona y su INSERT ... ON CONFLICT es idempotente")
 	void candado_idempotente() {
 		Fixture fixture = crearFixture();
 
 		for (int i = 0; i < 3; i++) {
 			jdbc.update("""
 					INSERT INTO autorizacion_persona_lock (organization_id, persona_id, created_at)
-					VALUES (?, ?, UTC_TIMESTAMP(6))
-					ON DUPLICATE KEY UPDATE id = id
+					VALUES (?, ?, CURRENT_TIMESTAMP)
+					ON CONFLICT (organization_id, persona_id) DO NOTHING
 					""", fixture.organizationId(), fixture.personaId());
 		}
 
@@ -237,7 +237,7 @@ class OrdenYAutorizacionMigrationIT {
 		insertarOrden(fixture, "OM-1", "2027-01-01", "2027-01-01", null);
 
 		assertThatThrownBy(() -> jdbc.update("""
-				UPDATE orden_medica SET active = 0 WHERE organization_id = ?
+				UPDATE orden_medica SET active = false WHERE organization_id = ?
 				""", fixture.organizationId()))
 				.isInstanceOf(DataAccessException.class)
 				.hasMessageContaining("ck_orden_baja_coherente");
@@ -259,12 +259,12 @@ class OrdenYAutorizacionMigrationIT {
 		String sufijo = UUID.randomUUID().toString().substring(0, 12);
 		long organizationId = insertar("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro " + sufijo, "v44-" + sufijo, ZONA);
 		long consultorioId = insertar("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, "Sede " + sufijo, ZONA);
 		String documento = String.valueOf(10000000 + Math.abs(sufijo.hashCode()) % 80000000);
 		long personaId = insertar("""
@@ -272,19 +272,19 @@ class OrdenYAutorizacionMigrationIT {
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				VALUES (?, 'DNI', ?, ?, 'Sintetica', 'Paciente', 'SINTETICA', 'PACIENTE',
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, documento, documento);
 		long financiadorId = insertar("""
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 'PREPAGA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'PREPAGA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, "OS-" + sufijo, "Financiador " + sufijo);
 		long planId = insertar("""
 				INSERT INTO plan_cobertura (organization_id, financiador_id, codigo, nombre,
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, active, version,
 				                            created_at, updated_at)
-				VALUES (?, ?, ?, ?, '2020-01-01', 1, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, '2020-01-01', true, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, financiadorId, "P-" + sufijo, "Plan " + sufijo);
 		long coberturaId = insertar("""
 				INSERT INTO cobertura_paciente (
@@ -293,21 +293,21 @@ class OrdenYAutorizacionMigrationIT {
 				        plan_id, plan_codigo, plan_nombre,
 				        requeria_autorizacion, requeria_credencial, referencia_capturada_el,
 				        vigencia_desde, principal, active, version, created_at, updated_at)
-				VALUES (?, ?, 'FINANCIADA', ?, ?, ?, 'PREPAGA', ?, ?, ?, 1, 0, UTC_TIMESTAMP(6),
-				        '2020-01-01', 1, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'FINANCIADA', ?, ?, ?, 'PREPAGA', ?, ?, ?, true, false, CURRENT_TIMESTAMP,
+				        '2020-01-01', true, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, personaId, financiadorId, "OS-" + sufijo,
 				"Financiador " + sufijo, planId, "P-" + sufijo, "Plan " + sufijo);
 		long especialidadId = insertar("""
 				INSERT INTO especialidad (organization_id, codigo, name, valid_from, active,
 				                          version, created_at, updated_at)
-				VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, "E-" + sufijo, "Especialidad " + sufijo);
 		long practicaId = insertar("""
 				INSERT INTO practica (organization_id, especialidad_id, codigo, name, valid_from,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, especialidadId, "PR-" + sufijo, "Practica " + sufijo);
 
 		return new Fixture(organizationId, consultorioId, personaId, coberturaId, practicaId);
@@ -324,8 +324,8 @@ class OrdenYAutorizacionMigrationIT {
 				INSERT INTO orden_medica (organization_id, persona_id, consultorio_id, numero,
 				        profesional_emisor, fecha_emision, vigencia_desde, vigencia_hasta,
 				        active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'Dra. Sintetica', ?, ?, ?, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'Dra. Sintetica', CAST(? AS date), CAST(? AS date), CAST(? AS date), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.personaId(), fixture.consultorioId(),
 				numero, emision, desde, hasta);
 	}
@@ -345,8 +345,8 @@ class OrdenYAutorizacionMigrationIT {
 				INSERT INTO autorizacion (organization_id, persona_id, consultorio_id, cobertura_id,
 				        orden_medica_id, practica_id, numero, estado, motivo, cantidad_autorizada,
 				        vigencia_desde, vigencia_hasta, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS date), CAST(? AS date), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.personaId(), fixture.consultorioId(),
 				fixture.coberturaId(), ordenMedicaId, fixture.practicaId(), numero, estado,
 				conMotivo ? "motivo sintetico" : null, cantidad, desde, hasta);

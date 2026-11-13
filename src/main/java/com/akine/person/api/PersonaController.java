@@ -8,6 +8,7 @@ import com.akine.person.api.dto.PersonaPageResponse;
 import com.akine.person.api.dto.PersonaResponse;
 import com.akine.person.api.dto.ResumenDePersonaResponse;
 import com.akine.person.api.dto.UpdatePersonaRequest;
+import com.akine.person.application.ActividadFiltro;
 import com.akine.person.application.OperatingActor;
 import com.akine.person.application.PerfilFiltro;
 import com.akine.person.application.PerfilPacienteService;
@@ -151,7 +152,8 @@ public class PersonaController {
 
 					estado filtra por ciclo de vida y por defecto trae solo las ACTIVAS. perfil \
 					filtra por perfil clinico y por defecto no filtra: la busqueda del mostrador \
-					no sabe de antemano si quien busca es paciente.
+					no sabe de antemano si quien busca es paciente. actividad separa a quien hoy \
+					hace actividades del centro (clases, pases, abonos) y se combina con perfil.
 
 					OJO: esPaciente es DERIVADO y de solo lectura. Una persona sin perfil clinico \
 					es una persona valida y completa —RN-M07-006—, no una ficha a medio cargar.
@@ -180,6 +182,11 @@ public class PersonaController {
 			@Parameter(description = "Filtro por perfil clinico. Por defecto indistinto")
 			@RequestParam(required = false) PerfilFiltro perfil,
 
+			@Parameter(description = "Filtro por actividades vigentes hoy: una inscripcion "
+					+ "reservada o confirmada a una clase que no termino, o un pase o abono activo. "
+					+ "Por defecto indistinto. Se combina con perfil")
+			@RequestParam(required = false) ActividadFiltro actividad,
+
 			@Parameter(description = "Pagina, base cero")
 			@RequestParam(defaultValue = PAGINA_POR_DEFECTO) int page,
 
@@ -199,7 +206,7 @@ public class PersonaController {
 				OrdenDeListado.leer(sort, PersonaBusqueda.CAMPOS_DE_ORDEN));
 
 		PersonaPagina resultado = personaService.buscar(
-				actor, new PersonaBusqueda(q, estado, perfil, orden), pagina, tamano);
+				actor, new PersonaBusqueda(q, estado, perfil, orden, actividad), pagina, tamano);
 
 		return PersonaPageResponse.of(resultado, pagina, tamano);
 	}

@@ -34,7 +34,7 @@ public interface EspecialidadRepository
 	@Query(value = """
 			SELECT * FROM especialidad
 			 WHERE owner_key IN (:owners)
-			   AND (:activoFiltro = -1 OR active = :activoFiltro)
+			   AND (:activoFiltro = -1 OR active = (:activoFiltro = 1))
 			   AND (name LIKE :patron OR codigo LIKE :patron)
 			 ORDER BY name ASC
 			""", nativeQuery = true)

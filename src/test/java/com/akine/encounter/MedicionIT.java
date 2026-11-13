@@ -234,7 +234,7 @@ class MedicionIT {
 
 		jdbc.update("""
 				UPDATE medicion_definicion
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6), deactivation_reason = 'obsoleta'
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP, deactivation_reason = 'obsoleta'
 				 WHERE id = ?
 				""", mundo.medicionDefinicionId());
 
@@ -385,7 +385,7 @@ class MedicionIT {
 		// 06.03 §5: el delta se calcula al leer, nunca se guarda.
 		Mundo mundo = fixtures.crearMundo();
 		long anterior = fixtures.crearSesion(mundo);
-		jdbc.update("UPDATE sesion SET iniciada_en = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 7 DAY) WHERE id = ?",
+		jdbc.update("UPDATE sesion SET iniciada_en = (CURRENT_TIMESTAMP - INTERVAL '7 days') WHERE id = ?",
 				anterior);
 		registrar(mundo, anterior, LateralidadMedicion.DERECHA, "90", null);
 		registrar(mundo, anterior, LateralidadMedicion.IZQUIERDA, "70", null);
@@ -418,7 +418,7 @@ class MedicionIT {
 		// 06.03 §5.
 		Mundo mundo = fixtures.crearMundo();
 		long anterior = fixtures.crearSesion(mundo);
-		jdbc.update("UPDATE sesion SET iniciada_en = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 7 DAY) WHERE id = ?",
+		jdbc.update("UPDATE sesion SET iniciada_en = (CURRENT_TIMESTAMP - INTERVAL '7 days') WHERE id = ?",
 				anterior);
 		registrar(mundo, anterior, LateralidadMedicion.DERECHA, "90", null);
 		long actual = fixtures.crearSesion(mundo);
@@ -460,8 +460,8 @@ class MedicionIT {
 				        definicion_unidad, definicion_tipo, definicion_version, lateralidad,
 				        valor_numerico, valor_texto, registrada_en, registrada_por_cuenta_id,
 				        version, created_at, updated_at)
-				VALUES (?, ?, ?, 'ROM', 'Rango', 'grados', ?, 0, ?, ?, ?, UTC_TIMESTAMP(6), ?, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'ROM', 'Rango', 'grados', ?, 0, ?, CAST(? AS numeric), ?, CURRENT_TIMESTAMP, ?, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", mundo.organizationId(), sesionId, mundo.medicionDefinicionId(), tipo, lateralidad,
 				numerico, texto, mundo.profesional().cuentaId());
 	}

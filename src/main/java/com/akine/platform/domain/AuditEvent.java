@@ -75,6 +75,24 @@ public class AuditEvent {
 	@Column(name = "occurred_at", nullable = false, updatable = false)
 	private Instant occurredAt;
 
+	/**
+	 * Columnas GENERADAS por MySQL desde {@code details} (V134): el profesional de un evento de agenda,
+	 * y el de antes en una reprogramacion. Nunca se escriben —la base rechaza un valor explicito—; solo
+	 * se mapean para filtrar el historial de agenda por profesional con un indice.
+	 */
+	@Column(name = "agenda_membership_ref", insertable = false, updatable = false, length = 32)
+	private String agendaMembershipRef;
+
+	@Column(name = "agenda_membership_anterior_ref", insertable = false, updatable = false, length = 32)
+	private String agendaMembershipAnteriorRef;
+
+	/**
+	 * Generada desde {@code details.turnoOrigenId} (V139): en la reserva de un turno trasladado, el turno
+	 * de origen. Une esa reserva con el {@code TURNO_TRASLADADO} del original en el historial de agenda.
+	 */
+	@Column(name = "agenda_turno_origen_ref", insertable = false, updatable = false, length = 32)
+	private String agendaTurnoOrigenRef;
+
 	protected AuditEvent() {
 		// Requerido por JPA.
 	}

@@ -91,7 +91,7 @@ class ConsumoPorAutorizacionIT {
 
 		assertThat(consumida(kinesio)).isEqualTo(1);
 		assertThat(consumida(fono)).isEqualTo(1);
-		assertThat(consumosDeLaSesion(sesion)).isEqualTo(2);
+		assertThat(consumosDeLaSesion(f, sesion)).isEqualTo(2);
 		assertLedgerCoherente(kinesio, fono);
 	}
 
@@ -107,7 +107,7 @@ class ConsumoPorAutorizacionIT {
 		cerrar(f, sesion);
 
 		assertThat(consumida(kinesio)).isEqualTo(1);
-		assertThat(consumosDeLaSesion(sesion)).isEqualTo(1);
+		assertThat(consumosDeLaSesion(f, sesion)).isEqualTo(1);
 		assertLedgerCoherente(kinesio);
 	}
 
@@ -294,7 +294,7 @@ class ConsumoPorAutorizacionIT {
 	void cobertura_vencida_no_consume() {
 		Fixture f = crearFixture();
 		long kinesio = autorizar(f, f.coberturaId(), f.practica1(), "C-1", 10, 0);
-		jdbc.update("UPDATE cobertura_paciente SET vigencia_hasta = ? WHERE id = ?",
+		jdbc.update("UPDATE cobertura_paciente SET vigencia_hasta = CAST(? AS date) WHERE id = ?",
 				hoy().minusDays(1), f.coberturaId());
 
 		List<ResultadoDeConsumo> resultado = consumir(f, 870_001L, Set.of(f.practica1()));
@@ -385,11 +385,13 @@ class ConsumoPorAutorizacionIT {
 				autorizacionId);
 	}
 
-	private int consumosDeLaSesion(long sesionId) {
+	// Por organizacion: referencia_origen es el id de la sesion, y otro IT de la misma base puede haber
+	// dejado un movimiento con el mismo numero en su propio tenant.
+	private int consumosDeLaSesion(Fixture f, long sesionId) {
 		return jdbc.queryForObject("""
 				SELECT COUNT(*) FROM autorizacion_movimiento
-				 WHERE tipo = 'CONSUMO' AND tipo_origen = 'SESION' AND referencia_origen = ?
-				""", Integer.class, sesionId);
+				 WHERE tipo = 'CONSUMO' AND tipo_origen = 'SESION' AND referencia_origen = CAST(? AS bigint) AND organization_id = ?
+				""", Integer.class, sesionId, f.organizationId());
 	}
 
 	/** El ledger es la fuente de verdad y la columna el saldo materializado: tienen que coincidir. */
@@ -487,11 +489,11 @@ class ConsumoPorAutorizacionIT {
 
 		long org = insertar("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{"Centro " + s, "c4-it-" + s, ZONA});
 		long sede = insertar("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{org, "Sede " + s, ZONA});
 
 		long profesional = cuenta("c4-pro-" + s);
@@ -504,24 +506,24 @@ class ConsumoPorAutorizacionIT {
 		long persona = insertar("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{org, apellido, apellido.toUpperCase()});
 		jdbc.update("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, persona, admin);
 		long historia = insertar("""
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{org, persona, profesional});
 
 		long servicio = insertar("""
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{"C4-" + s.toUpperCase(), "Servicio " + s});
 		long oferta = insertar("""
 				INSERT INTO oferta_servicio_consultorio
@@ -529,21 +531,21 @@ class ConsumoPorAutorizacionIT {
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', 0, 0, 0, 1, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', false, false, false, true, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{org, sede, servicio, "Oferta " + s});
 
 		long financiador = insertar("""
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 'PREPAGA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'PREPAGA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{org, "OS-" + s, "Financiador " + s});
 		long plan = insertar("""
 				INSERT INTO plan_cobertura (organization_id, financiador_id, codigo, nombre,
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, active, version,
 				                            created_at, updated_at)
-				VALUES (?, ?, ?, ?, '2020-01-01', 1, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, '2020-01-01', true, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{org, financiador, "P-" + s, "Plan " + s});
 		long cobertura = cobertura(org, persona, financiador, plan, s, true);
 		long otraCobertura = cobertura(org, persona, financiador, plan, s + "b", false);
@@ -551,8 +553,8 @@ class ConsumoPorAutorizacionIT {
 		long especialidad = insertar("""
 				INSERT INTO especialidad (organization_id, codigo, name, valid_from, active,
 				                          version, created_at, updated_at)
-				VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{org, "E-" + s, "Especialidad " + s});
 		long practica1 = practica(org, especialidad, "P1-" + s);
 		long practica2 = practica(org, especialidad, "P2-" + s);
@@ -566,7 +568,7 @@ class ConsumoPorAutorizacionIT {
 		return insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{email, email});
 	}
 
@@ -575,8 +577,8 @@ class ConsumoPorAutorizacionIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{org, sede, cuenta, rol});
 	}
 
@@ -591,8 +593,8 @@ class ConsumoPorAutorizacionIT {
 				        requeria_autorizacion, requeria_credencial, referencia_capturada_el,
 				        numero_afiliado, vigencia_desde, principal, active, version,
 				        created_at, updated_at)
-				VALUES (?, ?, 'FINANCIADA', ?, ?, ?, 'PREPAGA', ?, ?, ?, 1, 0, UTC_TIMESTAMP(6),
-				        ?, '2020-01-01', ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'FINANCIADA', ?, ?, ?, 'PREPAGA', ?, ?, ?, true, false, CURRENT_TIMESTAMP,
+				        ?, '2020-01-01', CAST(? AS boolean), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{org, persona, financiador, "OS-" + s, "Financiador OS-" + s,
 				plan, "P-" + s, "Plan P-" + s, "AF-" + s, principal ? 1 : 0});
 	}
@@ -601,8 +603,8 @@ class ConsumoPorAutorizacionIT {
 		return insertar("""
 				INSERT INTO practica (organization_id, especialidad_id, codigo, name, valid_from,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{org, especialidad, codigo, "Practica " + codigo});
 	}
 
@@ -611,8 +613,8 @@ class ConsumoPorAutorizacionIT {
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    caso_id, profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, 'BORRADOR', UTC_TIMESTAMP(6), ?, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, ?, 'BORRADOR', CURRENT_TIMESTAMP, ?, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{f.organizationId(), f.consultorioId(), f.historiaClinicaId(),
 				f.ofertaId(), casoId, f.profesionalMembershipId(), f.profesionalCuentaId()});
 	}
@@ -626,8 +628,8 @@ class ConsumoPorAutorizacionIT {
 				        practica_id, practica_codigo, practica_nombre, profesional_membership_id,
 				        registrado_en, registrado_por_cuenta_id, active, version,
 				        created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'COD', 'Practica sintetica', ?, UTC_TIMESTAMP(6), ?, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 'COD', 'Practica sintetica', ?, CURRENT_TIMESTAMP, ?, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", f.organizationId(), f.consultorioId(), sesionId, orden, practicaId,
 				f.profesionalMembershipId(), f.profesionalCuentaId());
 	}
@@ -637,8 +639,8 @@ class ConsumoPorAutorizacionIT {
 				INSERT INTO caso_clinico (organization_id, historia_clinica_id, numero_caso, oferta_id,
 				                          oferta_consultorio_id, diagnostico_presuntivo, abierto_en,
 				                          abierto_por, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'Lumbalgia sintetica', UTC_TIMESTAMP(6), ?,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 'Lumbalgia sintetica', CURRENT_TIMESTAMP, ?,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{f.organizationId(), f.historiaClinicaId(), numero, f.ofertaId(),
 				f.consultorioId(), f.profesionalCuentaId()});
 	}
@@ -648,14 +650,14 @@ class ConsumoPorAutorizacionIT {
 		long plan = insertar("""
 				INSERT INTO plan_tratamiento (organization_id, caso_clinico_id, numero_plan,
 				                              creado_en, creado_por, created_at, updated_at)
-				VALUES (?, ?, 1, UTC_TIMESTAMP(6), ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 1, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{f.organizationId(), casoId, f.profesionalCuentaId()});
 		long version = insertar("""
 				INSERT INTO plan_tratamiento_version (organization_id, plan_tratamiento_id,
 				        numero_version, objetivos, registrada_en, registrada_por,
 				        created_at, updated_at)
-				VALUES (?, ?, 1, 'Objetivo sintetico', UTC_TIMESTAMP(6), ?,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 1, 'Objetivo sintetico', CURRENT_TIMESTAMP, ?,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{f.organizationId(), plan, f.profesionalCuentaId()});
 		jdbc.update("""
 				INSERT INTO plan_item (organization_id, plan_tratamiento_version_id, oferta_id,
@@ -663,7 +665,7 @@ class ConsumoPorAutorizacionIT {
 				        origen_autorizacion, autorizacion_id, cantidad_autorizada,
 				        created_at, updated_at)
 				VALUES (?, ?, ?, ?, 'Oferta sintetica', ?, 10, 'AUTORIZACION', ?, 10,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", f.organizationId(), version, f.ofertaId(), f.consultorioId(), f.servicioId(),
 				autorizacionId);
 	}

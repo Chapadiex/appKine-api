@@ -9,11 +9,22 @@
 # Reglas, todas a proposito:
 #   - El backend tiene que estar DETENIDO. Restaurar debajo de una aplicacion viva mezcla dos
 #     historias en la misma base.
-#   - La base destino tiene que existir y estar VACIA. Este script no hace DROP de nada: si hay
-#     que pisar una base, se vacia a mano y con nombre propio (docs/operaciones/backup-y-restore.md).
+#   - La base destino tiene que existir y estar VACIA (sin tablas, funciones, tipos ni collations
+#     propias en `public`; las extensiones si pueden estar). Este script no hace DROP de nada: si
+#     hay que pisar una base, se vacia a mano y con nombre propio (docs/operaciones/backup-y-restore.md).
 #   - AKINE_RESTORE_CONFIRM tiene que repetir el nombre de la base destino.
-#   - El servidor destino necesita log_bin_trust_function_creators=1 (o binlog apagado): los
-#     triggers de V14 no se crean sin eso y el restore quedaria a medias.
+#   - AKINE_DB_USER pasa a ser el dueño de todo lo restaurado (el dump no trae dueños): tiene que
+#     ser el dueño de la base destino y el rol con el que despues corre el backend.
+#   - Las extensiones del MANIFEST (hoy vector y unaccent) se crean ANTES de cargar el dump.
+#     `unaccent` es "trusted" y la puede crear el dueño de la base; `vector` NO: exige
+#     superusuario. O el restore corre con un usuario que puede crearla, o —lo recomendado, el
+#     mismo reparto que compose.yaml y ops/postgres/init— el DBA corre `CREATE EXTENSION vector;`
+#     en la base destino antes y el restore corre con el rol de la aplicacion. Si falta y no se
+#     puede crear, el script corta antes de cargar nada.
+#   - El servidor destino tiene que ser PostgreSQL de la misma version mayor que el origen o mas
+#     nueva (MANIFEST postgres_version), con pgvector e ICU (la collation akine_ci).
+#   - Todo el dump entra en UNA transaccion: si algo falla, la base queda vacia como estaba, no a
+#     medias.
 #
 # Adjuntos:
 #   AKINE_RESTORE_ADJUNTOS_MODO=vacio (default)  el destino tiene que estar vacio
@@ -34,7 +45,11 @@ case "$alcance" in todo|--solo-db|--solo-adjuntos) ;; *) fail "alcance desconoci
 log "verificando integridad de $origen"
 ( cd "$origen" && sha256sum -c --quiet SHA256SUMS ) || fail "SHA256SUMS no coincide: el backup esta corrupto"
 manifiesto() { grep "^$1=" "$origen/MANIFEST" | cut -d= -f2-; }
-log "backup del $(manifiesto creado_utc), base $(manifiesto base), flyway $(manifiesto flyway_version)"
+# akine-backup/1 son los dumps de MySQL de antes de la migracion y no se cargan en PostgreSQL: los
+# datos de MySQL pasan con la herramienta de ops/migracion-mysql, no con este script.
+[[ "$(manifiesto formato)" == akine-backup/2 ]] \
+	|| fail "formato '$(manifiesto formato)': este script restaura akine-backup/2 (PostgreSQL). akine-backup/1 es un dump de MySQL"
+log "backup del $(manifiesto creado_utc), base $(manifiesto base), flyway $(manifiesto flyway_version), PostgreSQL $(manifiesto postgres_version)"
 
 # ---- Base -------------------------------------------------------------------------------------
 if [[ "$alcance" != --solo-adjuntos ]]; then
@@ -42,31 +57,44 @@ if [[ "$alcance" != --solo-adjuntos ]]; then
 	[[ "${AKINE_RESTORE_CONFIRM:-}" == "$AKINE_DB_NAME" ]] \
 		|| fail "AKINE_RESTORE_CONFIRM tiene que ser exactamente '$AKINE_DB_NAME'"
 
-	existentes="$(mysql_query "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()")"
-	[[ "$existentes" == 0 ]] || fail "la base $AKINE_DB_NAME tiene $existentes tablas: restaurar exige una base vacia"
+	existentes="$(db_query "$SQL_OBJETOS_PROPIOS")"
+	[[ "$existentes" == 0 ]] || fail "la base $AKINE_DB_NAME tiene $existentes objetos propios en public: restaurar exige una base vacia"
 
-	binlog="$(mysql_query 'SELECT @@log_bin')"
-	confianza="$(mysql_query 'SELECT @@log_bin_trust_function_creators')"
-	if [[ "$binlog" == 1 && "$confianza" != 1 ]]; then
-		fail "el servidor tiene binlog y log_bin_trust_function_creators=0: los triggers de V14 no se van a crear. Arrancar MySQL con --log-bin-trust-function-creators=1"
-	fi
+	zona="$(db_query "SELECT current_setting('TimeZone')")"
+	[[ "$zona" == UTC ]] || log "AVISO: la zona de la sesion en $AKINE_DB_NAME es $zona, no UTC. El dump no la trae (es de la base o del servidor): ALTER DATABASE $AKINE_DB_NAME SET timezone TO 'UTC', como hace ops/postgres/init"
 
-	# DEFINER fuera: el dump trae el usuario que creo los triggers en el ORIGEN. Si el usuario del
-	# destino es otro, crear un trigger con DEFINER ajeno exige SET_USER_ID/SYSTEM_USER. Sin la
-	# clausula, el definer pasa a ser quien restaura, que es el dueño de la base.
+	# Extensiones primero y por separado: si vector falta y este usuario no puede crearla, el error
+	# es este, claro, y no un CREATE EXTENSION perdido en la mitad del dump.
+	IFS=',' read -r -a requeridas <<< "$(manifiesto extensiones)"
+	for item in "${requeridas[@]}"; do
+		[[ -n "$item" ]] || continue
+		ext="${item%%:*}"
+		db_query "CREATE EXTENSION IF NOT EXISTS \"$ext\" WITH SCHEMA public" >/dev/null \
+			|| fail "no se pudo crear la extension $ext en $AKINE_DB_NAME con el usuario $AKINE_DB_USER. Si exige superusuario (vector), el DBA corre antes 'CREATE EXTENSION $ext;' en esa base, o se restaura con un usuario que pueda crearla"
+	done
+
+	# COMMENT ON EXTENSION fuera: comentar una extension exige ser su dueño, y si la creo el DBA el
+	# dueño es otro. Es lo unico que se descarta, y es el texto descriptivo de la extension.
 	log "restaurando base $AKINE_DB_NAME en $AKINE_DB_HOST:$AKINE_DB_PORT"
 	gunzip -c "$origen/db.sql.gz" \
-		| sed -E 's/DEFINER=`[^`]+`@`[^`]+`//g' \
-		| mysql_exec
+		| sed -E '/^COMMENT ON EXTENSION /d' \
+		| db_exec >/dev/null   # la salida son los SELECT setval/set_config del dump; los errores van a stderr
 
 	esperado_flyway="$(manifiesto flyway_version)"
-	flyway="$(mysql_query "SELECT version FROM flyway_schema_history WHERE success = 1 AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1")"
-	tablas="$(mysql_query "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'")"
-	triggers="$(mysql_query "SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE()")"
+	flyway="$(db_query "$SQL_FLYWAY_VERSION")"
+	tablas="$(db_query "$SQL_TABLAS")"
+	triggers="$(db_query "$SQL_TRIGGERS")"
+	funciones="$(db_query "$SQL_FUNCIONES")"
+	extensiones="$(db_query "$SQL_EXTENSIONES")"
 	[[ "$flyway" == "$esperado_flyway" ]] || fail "flyway restaurado $flyway, el backup decia $esperado_flyway"
 	[[ "$tablas" == "$(manifiesto tablas)" ]] || fail "tablas restauradas $tablas, el backup decia $(manifiesto tablas)"
 	[[ "$triggers" == "$(manifiesto triggers)" ]] || fail "triggers restaurados $triggers, el backup decia $(manifiesto triggers)"
-	log "base restaurada: flyway $flyway, $tablas tablas, $triggers triggers"
+	[[ "$funciones" == "$(manifiesto funciones)" ]] || fail "funciones restauradas $funciones, el backup decia $(manifiesto funciones)"
+	# Se comparan los nombres: una version mas nueva de la extension en el destino es valida.
+	nombres() { tr ',' '\n' | cut -d: -f1 | sort | tr '\n' ' '; }
+	[[ "$(nombres <<< "$extensiones")" == "$(manifiesto extensiones | nombres)" ]] \
+		|| fail "extensiones restauradas '$extensiones', el backup decia '$(manifiesto extensiones)'"
+	log "base restaurada: flyway $flyway, $tablas tablas, $triggers triggers, $funciones funciones, extensiones $extensiones"
 fi
 
 # ---- Adjuntos ---------------------------------------------------------------------------------

@@ -22,12 +22,18 @@ public record ReprogramacionCommand(
 		Instant inicio,
 		Long profesionalId,
 		String motivo,
-		long expectedVersion) {
+		long expectedVersion,
+		Long espacioId) {
 
 	public ReprogramacionCommand {
 		if (motivo == null || motivo.isBlank()) {
 			throw new IllegalArgumentException("El motivo de reprogramacion es obligatorio (DP-04)");
 		}
 		motivo = motivo.strip();
+	}
+
+	/** Sin box elegido: el sistema asigna el primero libre, como hasta la agenda operativa. */
+	public ReprogramacionCommand(Instant inicio, Long profesionalId, String motivo, long expectedVersion) {
+		this(inicio, profesionalId, motivo, expectedVersion, null);
 	}
 }

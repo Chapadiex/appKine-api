@@ -56,8 +56,8 @@ public interface AdjuntoRepository
 			SELECT * FROM adjunto_administrativo a
 			 WHERE a.organization_id = :organizationId
 			   AND a.persona_id = :personaId
-			   AND (:categoria IS NULL OR a.categoria = :categoria)
-			   AND (:activoFiltro = -1 OR a.active = :activoFiltro)
+			   AND (CAST(:categoria AS varchar) IS NULL OR a.categoria = :categoria)
+			   AND (:activoFiltro = -1 OR a.active = (:activoFiltro = 1))
 			 ORDER BY
 			   CASE WHEN :orden = 'subidoEn,asc' THEN a.subido_en END ASC,
 			   CASE WHEN :orden = 'titulo,asc' THEN a.titulo END ASC,
@@ -83,8 +83,8 @@ public interface AdjuntoRepository
 			SELECT COUNT(*) FROM adjunto_administrativo a
 			 WHERE a.organization_id = :organizationId
 			   AND a.persona_id = :personaId
-			   AND (:categoria IS NULL OR a.categoria = :categoria)
-			   AND (:activoFiltro = -1 OR a.active = :activoFiltro)
+			   AND (CAST(:categoria AS varchar) IS NULL OR a.categoria = :categoria)
+			   AND (:activoFiltro = -1 OR a.active = (:activoFiltro = 1))
 			""", nativeQuery = true)
 	long contar(
 			@Param("organizationId") Long organizationId,
@@ -97,7 +97,7 @@ public interface AdjuntoRepository
 			SELECT a.categoria, COUNT(*) FROM adjunto_administrativo a
 			 WHERE a.organization_id = :organizationId
 			   AND a.persona_id = :personaId
-			   AND a.active = 1
+			   AND a.active = true
 			 GROUP BY a.categoria
 			 ORDER BY a.categoria
 			""", nativeQuery = true)

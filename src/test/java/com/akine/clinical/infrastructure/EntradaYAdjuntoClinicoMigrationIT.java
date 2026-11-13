@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -114,7 +113,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 
 			assertThat(jdbc().queryForObject("""
 					SELECT is_nullable FROM information_schema.columns
-					 WHERE table_schema = DATABASE() AND table_name = ?
+					 WHERE table_schema = current_schema() AND table_name = ?
 					   AND column_name = 'organization_id'
 					""", String.class, tabla))
 					.as("%s tiene que llevar organization_id NOT NULL", tabla)
@@ -137,8 +136,8 @@ class EntradaYAdjuntoClinicoMigrationIT {
 
 			List<String> primeras = jdbc().queryForList("""
 					SELECT DISTINCT s.column_name
-					  FROM information_schema.statistics s
-					 WHERE s.table_schema = DATABASE() AND s.table_name = ?
+					  FROM (SELECT n.nspname AS table_schema, t.relname AS table_name, CASE WHEN ix.indisprimary THEN 'PRIMARY' ELSE i.relname END AS index_name, k.ord AS seq_in_index, a.attname AS column_name, CASE WHEN ix.indisunique THEN 0 ELSE 1 END AS non_unique FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum) s
+					 WHERE s.table_schema = current_schema() AND s.table_name = ?
 					   AND s.seq_in_index = 1 AND s.index_name <> 'PRIMARY'
 					   AND s.index_name <> 'uk_adjunto_clinico_storage_key'
 					   AND NOT EXISTS (
@@ -185,8 +184,8 @@ class EntradaYAdjuntoClinicoMigrationIT {
 	void el_centinela_de_la_baja_logica() {
 		for (String tabla : List.of("entrada_clinica", "adjunto_clinico")) {
 			assertThat(jdbc().queryForObject("""
-					SELECT extra FROM information_schema.columns
-					 WHERE table_schema = DATABASE() AND table_name = ?
+					SELECT CASE WHEN is_generated = 'ALWAYS' THEN 'STORED GENERATED' ELSE '' END AS extra FROM information_schema.columns
+					 WHERE table_schema = current_schema() AND table_name = ?
 					   AND column_name = 'deleted_key'
 					""", String.class, tabla))
 					.as("%s.deleted_key tiene que ser una columna generada STORED: una VIRTUAL no "
@@ -215,8 +214,8 @@ class EntradaYAdjuntoClinicoMigrationIT {
 	void una_manual_no_puede_referenciar_nada() {
 		assertThatThrownBy(() -> insertarEntrada(ORG_A, historiaEnA, "EVOLUCION", "MANUAL", 77L))
 				.as("ck_entrada_clinica_origen_trazable. El CHECK de MySQL llega como "
-						+ "UncategorizedSQLException, al reves que el UNIQUE")
-				.isInstanceOf(UncategorizedSQLException.class);
+						+ "DataIntegrityViolationException, igual que el UNIQUE")
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -226,7 +225,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 		// puede ir a verificar. Hoy este camino no lo escribe nadie —solo se escribe MANUAL— y el
 		// CHECK esta igual: el dia que otro modulo genere entradas, el invariante ya esta puesto.
 		assertThatThrownBy(() -> insertarEntrada(ORG_A, historiaEnA, "EVOLUCION", "SESION", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -242,7 +241,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 	@DisplayName("un tipo de entrada fuera del catalogo no entra")
 	void el_tipo_de_entrada_es_lista_cerrada() {
 		assertThatThrownBy(() -> insertarEntrada(ORG_A, historiaEnA, "DIAGNOSTICO", "MANUAL", null))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	// =================================================================================
@@ -255,7 +254,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 		long entradaId = insertarEntrada(ORG_A, historiaEnA, "EVOLUCION", "MANUAL", null);
 
 		assertThatThrownBy(() -> insertarVersion(ORG_A, entradaId, 1, "Motivo indebido"))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -267,7 +266,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 		assertThatThrownBy(() -> insertarVersion(ORG_A, entradaId, 2, null))
 				.as("ck_entrada_version_motivo_de_enmienda: RN-M09-004 pide que el cambio clinico "
 						+ "sea trazable, y un cambio sin motivo no lo es")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatCode(() -> insertarVersion(ORG_A, entradaId, 2, "Se corrige la lateralidad"))
 				.doesNotThrowAnyException();
@@ -307,11 +306,11 @@ class EntradaYAdjuntoClinicoMigrationIT {
 		long entradaId = insertarEntrada(ORG_A, historiaEnA, "EVOLUCION", "MANUAL", null);
 
 		assertThatThrownBy(() -> jdbc().update("""
-				UPDATE entrada_clinica SET active = 0, deleted_at = UTC_TIMESTAMP(6) WHERE id = ?
+				UPDATE entrada_clinica SET active = false, deleted_at = CURRENT_TIMESTAMP WHERE id = ?
 				""", entradaId))
 				.as("una entrada clinica que desaparece sin explicacion es lo que RN-M09-004 "
 						+ "quiere impedir")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -321,10 +320,10 @@ class EntradaYAdjuntoClinicoMigrationIT {
 
 		assertThatThrownBy(() -> jdbc().update("""
 				UPDATE entrada_clinica
-				   SET active = 1, deleted_at = UTC_TIMESTAMP(6), deactivation_reason = 'x'
+				   SET active = true, deleted_at = CURRENT_TIMESTAMP, deactivation_reason = 'x'
 				 WHERE id = ?
 				""", entradaId))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -333,9 +332,9 @@ class EntradaYAdjuntoClinicoMigrationIT {
 		long adjuntoId = insertarAdjunto(ORG_A, historiaEnA, "ESTUDIO", CHECKSUM);
 
 		assertThatThrownBy(() -> jdbc().update("""
-				UPDATE adjunto_clinico SET active = 0, deleted_at = UTC_TIMESTAMP(6) WHERE id = ?
+				UPDATE adjunto_clinico SET active = false, deleted_at = CURRENT_TIMESTAMP WHERE id = ?
 				""", adjuntoId))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	// =================================================================================
@@ -351,7 +350,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 			assertThatThrownBy(() ->
 					insertarAdjunto(ORG_A, historiaEnA, administrativa, nuevoChecksum()))
 					.as("%s es una categoria administrativa y no puede entrar acá", administrativa)
-					.isInstanceOf(UncategorizedSQLException.class);
+					.isInstanceOf(DataIntegrityViolationException.class);
 		}
 	}
 
@@ -362,11 +361,11 @@ class EntradaYAdjuntoClinicoMigrationIT {
 
 		assertThatThrownBy(() -> jdbc().update(
 				"UPDATE adjunto_clinico SET estado = 'BORRADO' WHERE id = ?", adjuntoId))
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() -> jdbc().update(
 				"UPDATE adjunto_clinico SET tamano_bytes = 0 WHERE id = ?", adjuntoId))
 				.as("un adjunto de cero bytes es un archivo que no se subio")
-				.isInstanceOf(UncategorizedSQLException.class);
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -389,7 +388,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 		long adjuntoId = insertarAdjunto(ORG_A, historiaEnA, "ESTUDIO", CHECKSUM);
 		jdbc().update("""
 				UPDATE adjunto_clinico
-				   SET active = 0, deleted_at = UTC_TIMESTAMP(6),
+				   SET active = false, deleted_at = CURRENT_TIMESTAMP,
 				       deactivation_reason = 'cargado en la historia que no era'
 				 WHERE id = ?
 				""", adjuntoId);
@@ -417,15 +416,15 @@ class EntradaYAdjuntoClinicoMigrationIT {
 	private List<String> columnasDe(String tabla) {
 		return jdbc().queryForList("""
 				SELECT column_name FROM information_schema.columns
-				 WHERE table_schema = DATABASE() AND table_name = ?
+				 WHERE table_schema = current_schema() AND table_name = ?
 				""", String.class, tabla);
 	}
 
 	private void crearOrganizacion(long id, String slug) {
 		jdbc().update("""
-				INSERT IGNORE INTO organization (id, name, slug, created_at, updated_at)
-				 VALUES (?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-				""", id, "Centro " + slug, slug);
+				INSERT INTO organization (id, name, slug, created_at, updated_at)
+				 VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING
+""", id, "Centro " + slug, slug);
 	}
 
 	private long abrirHistoria(long organizationId) {
@@ -435,13 +434,13 @@ class EntradaYAdjuntoClinicoMigrationIT {
 				                     documento_clave, apellido, nombre, apellido_clave,
 				                     nombre_clave, created_at, updated_at)
 				 VALUES (?, 'DNI', ?, ?, 'Perez', 'Ana', 'PEREZ', 'ANA',
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, documento, documento);
 
 		return InsertarConId.insertar(jdbc(), """
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              created_at, updated_at)
-				 VALUES (?, ?, UTC_TIMESTAMP(6), 1, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, personaId);
 	}
 
@@ -452,8 +451,8 @@ class EntradaYAdjuntoClinicoMigrationIT {
 				INSERT INTO entrada_clinica (organization_id, historia_clinica_id, tipo, ocurrio_en,
 				                             origen, referencia_origen, ultimo_numero_version,
 				                             registrada_en, registrada_por, created_at, updated_at)
-				 VALUES (?, ?, ?, UTC_TIMESTAMP(6), ?, ?, 1, UTC_TIMESTAMP(6), 1,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, 1, CURRENT_TIMESTAMP, 1,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, historiaId, tipo, origen, referencia);
 	}
 
@@ -465,8 +464,8 @@ class EntradaYAdjuntoClinicoMigrationIT {
 				                                     numero_version, cuerpo, motivo_enmienda,
 				                                     registrada_en, registrada_por,
 				                                     created_at, updated_at)
-				 VALUES (?, ?, ?, 'cuerpo sintetico', ?, UTC_TIMESTAMP(6), 1,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				 VALUES (?, ?, ?, 'cuerpo sintetico', ?, CURRENT_TIMESTAMP, 1,
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, entradaId, numero, motivo);
 	}
 
@@ -479,7 +478,7 @@ class EntradaYAdjuntoClinicoMigrationIT {
 				                             checksum_sha256, storage_key, subido_por, subido_en,
 				                             created_at, updated_at)
 				 VALUES (?, ?, ?, 'estudio.pdf', 'application/pdf', 1024, ?, ?, 1,
-				         UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, historiaId, categoria, checksum,
 				UUID.randomUUID().toString().replace("-", ""));
 	}

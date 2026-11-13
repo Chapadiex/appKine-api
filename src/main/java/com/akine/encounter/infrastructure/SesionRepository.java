@@ -29,7 +29,7 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 	@Query(value = """
 			SELECT s.historia_clinica_id,
 			       s.oferta_id,
-			       TIMESTAMPDIFF(MICROSECOND, '1970-01-01', s.cerrada_en) AS cerrada_micros
+			       CAST(EXTRACT(EPOCH FROM s.cerrada_en) * 1000000 AS bigint) AS cerrada_micros
 			  FROM sesion s
 			 WHERE s.organization_id = :organizationId
 			   AND s.consultorio_id = :consultorioId
@@ -49,7 +49,7 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 	@Query(value = """
 			SELECT s.historia_clinica_id,
 			       s.oferta_id,
-			       TIMESTAMPDIFF(MICROSECOND, '1970-01-01', s.cerrada_en) AS cerrada_micros
+			       CAST(EXTRACT(EPOCH FROM s.cerrada_en) * 1000000 AS bigint) AS cerrada_micros
 			  FROM sesion s
 			 WHERE s.organization_id = :organizationId
 			   AND s.historia_clinica_id IN (:historias)
@@ -220,7 +220,7 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			   AND s.cerrada_en IS NOT NULL
 			   AND s.cerrada_en <= :hasta
 			   AND s.deleted_at IS NULL
-			   AND (:casoId IS NULL OR s.caso_id = :casoId)
+			   AND (CAST(:casoId AS bigint) IS NULL OR s.caso_id = :casoId)
 			 ORDER BY s.cerrada_en DESC, s.id DESC
 			 LIMIT :limite
 			""", nativeQuery = true)
@@ -322,7 +322,7 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 	 * @return filas {@code [dia, cantidad]}
 	 */
 	@Query(value = """
-			SELECT DATE(CONVERT_TZ(s.cerrada_en, '+00:00', :desfase)) AS dia, COUNT(*) AS cantidad
+			SELECT CAST((s.cerrada_en AT TIME ZONE 'UTC') + CAST(:desfase AS interval) AS date) AS dia, COUNT(*) AS cantidad
 			  FROM sesion s
 			 WHERE s.organization_id = :organizationId
 			   AND s.consultorio_id = :consultorioId

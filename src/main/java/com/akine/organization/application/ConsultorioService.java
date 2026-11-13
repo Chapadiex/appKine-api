@@ -2,6 +2,7 @@ package com.akine.organization.application;
 
 import com.akine.organization.domain.Consultorio;
 import com.akine.organization.domain.ConsultorioAlta;
+import com.akine.organization.domain.Cuit;
 import com.akine.organization.domain.Organization;
 import com.akine.organization.domain.PermissionCode;
 import com.akine.organization.domain.exception.ConsultorioHasActiveReferencesException;
@@ -156,7 +157,7 @@ public class ConsultorioService {
 	@Transactional(readOnly = true)
 	public ConsultorioView find(OperatingActor actor, long organizationId, long consultorioId) {
 		exigirSobreLaSedeEnLectura(actor, organizationId, consultorioId);
-		return ConsultorioView.de(cargar(organizationId, consultorioId));
+		return vistaDe(cargar(organizationId, consultorioId));
 	}
 
 	// =================================================================================
@@ -235,12 +236,14 @@ public class ConsultorioService {
 						? organization.getTimezone()
 						: command.timezone());
 
+		exigirCuitSiParece(command.taxId());
 		Consultorio consultorio = new Consultorio(
 				organizationId, nombre, zona, exigirSlotValido(command.slotMinutes()));
 		consultorio.updateDatos(
 				null, null, null,
 				command.legalName(), command.taxId(), command.addressLine(),
 				command.phone(), command.contactEmail());
+		aplicarDatos(consultorio, command.datos());
 
 		Consultorio persistido;
 		try {
@@ -269,6 +272,7 @@ public class ConsultorioService {
 		Map<String, String> detalles = new LinkedHashMap<>();
 		detalles.put("timezone", zona);
 		detalles.put("slotMinutes", String.valueOf(persistido.getSlotMinutes()));
+		detalles.put("agendaHabilitada", String.valueOf(persistido.isAgendaHabilitada()));
 		auditar(AuditEvents.CONSULTORIO_CREATED, persistido, actor.accountId(),
 				null, ConsultorioView.de(persistido).estado(), null, detalles, ahora);
 		auditarSoporte(decision, organizationId, persistido.getId(), actor, ahora);
@@ -278,7 +282,7 @@ public class ConsultorioService {
 		log.info("Sede creada: organizationId={} consultorioId={}",
 				organizationId, persistido.getId());
 
-		return ConsultorioView.de(persistido);
+		return ConsultorioView.de(persistido, organization);
 	}
 
 	/**
@@ -354,10 +358,23 @@ public class ConsultorioService {
 			detalles.put("slotMinutes", consultorio.getSlotMinutes() + " -> " + slot);
 		}
 
+		exigirCuitSiParece(command.taxId());
 		consultorio.updateDatos(
 				nombre, zona, slot,
 				command.legalName(), command.taxId(), command.addressLine(),
 				command.phone(), command.contactEmail());
+		CambiosDeSede cambios = aplicarDatos(consultorio, command.datos());
+		// Solo "que" cambio y no la direccion en si: la fila de auditoria responde si hubo mudanza
+		// o reubicacion sin copiar un dato que ya esta en la sede.
+		if (cambios.direccion()) {
+			detalles.put("direccionCambiada", "true");
+		}
+		if (cambios.ubicacion()) {
+			detalles.put("ubicacionCambiada", "true");
+		}
+		if (cambios.agenda()) {
+			detalles.put("agendaHabilitada", String.valueOf(consultorio.isAgendaHabilitada()));
+		}
 
 		Consultorio guardado;
 		try {
@@ -374,7 +391,7 @@ public class ConsultorioService {
 				null, null, null, detalles, ahora);
 		auditarSoporte(decision, organizationId, consultorioId, actor, ahora);
 
-		return ConsultorioView.de(guardado);
+		return vistaDe(guardado);
 	}
 
 	// =================================================================================
@@ -490,7 +507,7 @@ public class ConsultorioService {
 
 		log.info("Sede dada de baja: organizationId={} consultorioId={}", organizationId, consultorioId);
 
-		return ConsultorioView.de(guardado);
+		return vistaDe(guardado);
 	}
 
 	// =================================================================================
@@ -591,9 +608,66 @@ public class ConsultorioService {
 						// creo lo que pidio ahora.
 						throw new IdempotencyKeyConflictException(command.idempotencyKey());
 					}
-					return ConsultorioView.de(
-							cargar(organizationId, registro.getConsultorioId()));
+					return vistaDe(cargar(organizationId, registro.getConsultorioId()));
 				});
+	}
+
+	/**
+	 * La vista con los datos fiscales EFECTIVOS resueltos: para eso hace falta la organizacion.
+	 * Una sede con datos propios no la necesita, pero se lee igual —una consulta por clave— para no
+	 * tener dos caminos.
+	 */
+	private ConsultorioView vistaDe(Consultorio consultorio) {
+		Organization organization = organizationRepository
+				.findByIdAndActiveTrue(consultorio.getOrganizationId())
+				.orElse(null);
+		return ConsultorioView.de(consultorio, organization);
+	}
+
+	/**
+	 * Aplica la direccion fisica, la ubicacion y las opciones (V140) y dice que cambio, para la
+	 * auditoria.
+	 *
+	 * @throws CampoInvalidoException una sola coordenada (400 {@code validation-error} con el campo
+	 *                                {@code ubicacion})
+	 */
+	private static CambiosDeSede aplicarDatos(Consultorio consultorio, SedeDatosCommand datos) {
+		if (datos.vacio()) {
+			return new CambiosDeSede(false, false, false);
+		}
+		boolean direccion = consultorio.updateDireccion(
+				datos.alias(), datos.pais(), datos.provincia(), datos.ciudad(), datos.calle(),
+				datos.numero(), datos.codigoPostal(), datos.piso(), datos.referencias());
+		boolean ubicacion = false;
+		SedeDatosCommand.UbicacionCommand pedida = datos.ubicacion();
+		if (pedida != null) {
+			if (pedida.borrar()) {
+				ubicacion = consultorio.borrarUbicacion();
+			} else if (pedida.latitud() == null || pedida.longitud() == null) {
+				throw new CampoInvalidoException("ubicacion",
+						"La ubicacion necesita latitud y longitud juntas; para borrarla se mandan las dos vacias");
+			} else {
+				ubicacion = consultorio.fijarUbicacion(pedida.latitud(), pedida.longitud(), pedida.origen());
+			}
+		}
+		boolean agenda = consultorio.updateOpciones(
+				datos.agendaHabilitada(), datos.direccionPublica(), datos.datosFiscalesPropios());
+		return new CambiosDeSede(direccion, ubicacion, agenda);
+	}
+
+	private record CambiosDeSede(boolean direccion, boolean ubicacion, boolean agenda) {
+	}
+
+	/**
+	 * Si la identificacion fiscal PARECE un CUIT, su digito verificador tiene que cerrar. Lo que no
+	 * tiene esa forma —un RUT, un NIF— se acepta como texto. Ver {@link Cuit}.
+	 *
+	 * @throws CampoInvalidoException 400 {@code validation-error} con {@code errors.taxId}
+	 */
+	static void exigirCuitSiParece(String taxId) {
+		if (taxId != null && Cuit.pareceCuit(taxId) && !Cuit.esValido(taxId)) {
+			throw new CampoInvalidoException("taxId", "El CUIT no es valido");
+		}
 	}
 
 	private void exigirSinReferenciasVigentes(

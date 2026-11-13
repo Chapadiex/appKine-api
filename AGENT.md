@@ -67,12 +67,12 @@ la ficha lo que cerrás, en el mismo commit.
 | Lenguaje | Java 21 |
 | Framework | Spring Boot 4.1.x — fijar la última revisión estable en AKINE-00.01 |
 | Build | Maven Wrapper (`mvnw`, `mvnw.cmd`, `pom.xml`) |
-| Base de datos | MySQL 8.4 LTS |
+| Base de datos | PostgreSQL 18 + pgvector 0.8.1 (imagen `pgvector/pgvector:0.8.1-pg18-trixie`). Único motor desde el 11/11/2026 (ADR-0026) |
 | Migraciones | Flyway — `src/main/resources/db/migration/` |
 | API | REST, OpenAPI 3 |
 | Auth | JWT con refresh tokens |
-| Tests | JUnit, Spring Boot Test, Testcontainers/MySQL, ArchUnit |
-| Runtime local | Docker — `compose.yaml` para MySQL y dependencias |
+| Tests | JUnit, Spring Boot Test, Testcontainers/PostgreSQL (misma imagen pgvector), ArchUnit |
+| Runtime local | Docker — `compose.yaml` para PostgreSQL y dependencias |
 | CI/CD | GitHub Actions + SonarQube |
 | Observabilidad | Logging JSON, Prometheus, OpenTelemetry |
 
@@ -153,7 +153,22 @@ Las reglas 1–4 y 6 **se verifican automáticamente** en
 - Fechas: se persisten como **instantes UTC**. Las reglas locales usan una zona IANA explícita.
 - **Baja lógica siempre.** Información histórica relevante no se elimina físicamente
   (regla maestra 10). Vigencias, snapshots históricos y auditoría.
-- Migraciones Flyway versionadas, nunca editadas después de aplicadas.
+- Migraciones Flyway versionadas, nunca editadas después de aplicadas. El baseline PostgreSQL es
+  V1–V13; las 145 de MySQL quedan como historia en `ops/migracion-mysql/mysql-historico`.
+- **PostgreSQL, lo que cambia respecto de MySQL** (detalle en `docs/diseno/AKINE-migracion-postgres.md`):
+  - Toda columna de texto lleva `COLLATE akine_ci` (ICU no determinista: sin mayúsculas ni tildes,
+    la semántica de `utf8mb4_0900_ai_ci`). Regex y búsquedas de subcadena (`position`, `strpos`,
+    `locate`) no la admiten: usar `LIKE` con patrón escapado o `COLLATE "C"`.
+  - Instantes en `timestamptz`, fechas en `date`, horas de agenda en `time` (admite `24:00:00`).
+  - Booleanos son `boolean`: nada de `= 1`/`= 0` en SQL nativo; un filtro -1/0/1 se escribe
+    `(:f = -1 OR col = (:f = 1))`.
+  - Un parámetro nativo que puede ser `null` en `(:x IS NULL OR ...)` necesita `CAST(:x AS tipo)`.
+  - Filas-lock con `INSERT ... ON CONFLICT DO NOTHING`; no se bloquea un agregado (`COUNT(*) ... FOR
+    UPDATE` va como subconsulta que bloquea y se cuenta afuera).
+  - Después de un error, la transacción queda abortada hasta el rollback: una relectura que
+    resuelve un choque contra un unique va en otra transacción (ya era la regla en MySQL).
+  - Un `UPDATE` cuyo `WHERE` no cumple la versión visible no bloquea la fila (InnoDB sí).
+  - La JVM corre en UTC (`AkineApiApplication`): el driver manda su zona al conectar.
 
 ## 6. Multi-tenancy
 
@@ -235,7 +250,7 @@ Obligación → Cobro → Caja → Presentación/Reportes`.
 | Tipo | Herramienta | Qué cubre |
 |---|---|---|
 | Unit | JUnit | Reglas de negocio en `application`/`domain` |
-| Integración | Spring Boot Test + Testcontainers/MySQL | Repositorios, migraciones, transacciones |
+| Integración | Spring Boot Test + Testcontainers/PostgreSQL | Repositorios, migraciones, transacciones |
 | Arquitectura | ArchUnit | Ciclos entre módulos, acceso a repos ajenos, capas |
 | Contrato | validación OpenAPI en CI | Implementación vs `akine-api.yaml` |
 
@@ -251,7 +266,7 @@ Creados por **AKINE-00.01** y verificados en esta máquina.
 ```
 appKine-api/
 ├── pom.xml · mvnw · mvnw.cmd · .mvn/wrapper/
-├── compose.yaml                          # MySQL 8.4 local
+├── compose.yaml                          # PostgreSQL 18 + pgvector local
 ├── openapi/akine-api.yaml                # contrato canónico (generado + commiteado)
 ├── .github/workflows/ci.yml
 ├── src/main/java/com/akine/
@@ -296,9 +311,9 @@ Todo lo anterior + integración (Testcontainers) + **gate de drift del contrato*
 Regenera `openapi/akine-api.yaml`. Correr después de cualquier cambio de API.
 
 ```bash
-docker compose exec mysql mysql -u akine -pakine akine_local -e "SELECT 1;"
+docker compose exec postgres psql -U akine -d akine_local -c "SELECT 1;"
 ```
-Consultas de validación durante el QA. No hace falta cliente MySQL en la máquina.
+Consultas de validación durante el QA. No hace falta cliente PostgreSQL en la máquina.
 
 **Bandeja de correo de desarrollo: <http://localhost:8025>**
 `docker compose up -d` levanta también un Mailpit (SMTP en `localhost:1025`, sin credenciales
@@ -317,14 +332,14 @@ lleva configuración de entorno ni secretos**: todo llega por variable de entorn
 docker build -t akine-api:local .
 ```
 
-Correrla contra el MySQL y el Mailpit de `compose.yaml` (`docker compose up -d` antes). Desde
+Correrla contra el PostgreSQL y el Mailpit de `compose.yaml` (`docker compose up -d` antes). Desde
 el contenedor, la máquina se alcanza como `host.docker.internal` (Docker Desktop; en Linux
 agregar `--add-host=host.docker.internal:host-gateway`):
 
 ```bash
 docker run --rm --name akine-api -p 8080:8080 \
   -e SPRING_PROFILES_ACTIVE=local \
-  -e AKINE_DB_URL='jdbc:mysql://host.docker.internal:3306/akine_local?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC' \
+  -e AKINE_DB_URL='jdbc:postgresql://host.docker.internal:5432/akine_local' \
   -e AKINE_DB_USER=akine -e AKINE_DB_PASSWORD=akine \
   -e AKINE_MAIL_HOST=host.docker.internal \
   akine-api:local

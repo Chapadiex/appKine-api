@@ -71,17 +71,17 @@ class CoberturaPorOfertaIT {
 	void v80_ejecuta() {
 		assertThat(jdbc.queryForObject("""
 				SELECT IS_NULLABLE FROM information_schema.COLUMNS
-				 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'convenio_arancel'
+				 WHERE TABLE_SCHEMA = current_schema() AND TABLE_NAME = 'convenio_arancel'
 				   AND COLUMN_NAME = 'oferta_id'
 				""", String.class)).isEqualTo("YES");
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM information_schema.COLUMNS
-				 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'oferta_precio_particular'
+				 WHERE TABLE_SCHEMA = current_schema() AND TABLE_NAME = 'oferta_precio_particular'
 				   AND COLUMN_NAME = 'organization_id' AND IS_NULLABLE = 'NO'
 				""", Integer.class)).isEqualTo(1);
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
-				 WHERE TABLE_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'fk_convenio_arancel_oferta'
+				 WHERE TABLE_SCHEMA = current_schema() AND CONSTRAINT_NAME = 'fk_convenio_arancel_oferta'
 				""", Integer.class)).isEqualTo(1);
 	}
 
@@ -95,7 +95,7 @@ class CoberturaPorOfertaIT {
 	void oferta_con_varias_practicas() {
 		Fixture f = crear(true);
 		// El arancel del fixture es de KINE (la principal). Se da de baja y se carga uno de FONO.
-		jdbc.update("UPDATE convenio_arancel SET active = 0, deleted_at = UTC_TIMESTAMP(6), "
+		jdbc.update("UPDATE convenio_arancel SET active = false, deleted_at = CURRENT_TIMESTAMP, "
 				+ "deactivation_reason = 'IT' WHERE id = ?", f.arancel());
 		arancelGeneral(f, f.fono(), "9000.00", "8000.00", "1000.00");
 		long sinConvenio = coberturaSinConvenio(f);
@@ -194,7 +194,7 @@ class CoberturaPorOfertaIT {
 				.as("y el otro recibe arancel-solapado. Desenlaces: %s", desenlaces).isEqualTo(1);
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM convenio_arancel
-				 WHERE convenio_id = ? AND practica_id = ? AND active = 1
+				 WHERE convenio_id = ? AND practica_id = ? AND active = true
 				""", Integer.class, f.convenio(), f.kine()))
 				.as("el general del fixture + uno de la oferta").isEqualTo(2);
 	}
@@ -295,11 +295,11 @@ class CoberturaPorOfertaIT {
 		String s = UUID.randomUUID().toString().substring(0, 10);
 		long org = insertar("""
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro " + s, "b3-it-" + s, ZONA);
 		long sede = insertar("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, "Sede " + s, ZONA);
 		long profesional = cuenta("b3-pro-" + s);
 		long membership = membership(org, sede, profesional, "PROFESIONAL");
@@ -311,24 +311,24 @@ class CoberturaPorOfertaIT {
 		long persona = insertar("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, apellido, apellido.toUpperCase());
 		jdbc.update("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, persona, admin);
 		long historia = insertar("""
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, persona, profesional);
 
 		long servicio = insertar("""
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "B3-" + s.toUpperCase(), "Servicio " + s);
 		long oferta = insertar("""
 				INSERT INTO oferta_servicio_consultorio
@@ -336,29 +336,29 @@ class CoberturaPorOfertaIT {
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', ?, 0, 0, 1, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', CAST(? AS boolean), false, false, true, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, servicio, "Oferta " + s, admiteObraSocial ? 1 : 0);
 
 		long financiador = insertar("""
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 'OBRA_SOCIAL', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'OBRA_SOCIAL', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, "OS-" + s, "Financiador " + s);
 		long plan = insertar("""
 				INSERT INTO plan_cobertura (organization_id, financiador_id, codigo, nombre,
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, active, version,
 				                            created_at, updated_at)
-				VALUES (?, ?, ?, ?, '2020-01-01', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, '2020-01-01', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, financiador, "P-" + s, "Plan " + s);
 		long cobertura = cobertura(org, persona, financiador, plan, "Plan " + s, s, true);
 
 		long especialidad = insertar("""
 				INSERT INTO especialidad (organization_id, codigo, name, valid_from, active,
 				                          version, created_at, updated_at)
-				VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, '2020-01-01 00:00:00.000000', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, "E-" + s, "Especialidad " + s);
 		long kine = practica(org, especialidad, "K-" + s);
 		long fono = practica(org, especialidad, "F-" + s);
@@ -370,16 +370,16 @@ class CoberturaPorOfertaIT {
 				                      codigo, nombre, modalidad, vigencia_desde, moneda,
 				                      requiere_orden, requiere_autorizacion, requiere_credencial,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, 'POR_PRESTACION', '2020-01-01', 'ARS', 0, 0, 0, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, ?, 'POR_PRESTACION', '2020-01-01', 'ARS', false, false, false, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, financiador, plan, "CONV-" + s, "Convenio " + s);
 		long arancel = insertar("""
 				INSERT INTO convenio_arancel (organization_id, consultorio_id, convenio_id,
 				                              practica_id, importe_total, importe_financiador,
 				                              coseguro, moneda, vigencia_desde, active, version,
 				                              created_at, updated_at)
-				VALUES (?, ?, ?, ?, 12000.00, 10500.00, 1500.00, 'ARS', '2020-01-01', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 12000.00, 10500.00, 1500.00, 'ARS', '2020-01-01', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, convenio, kine);
 
 		return new Fixture(org, sede, profesional, membership, admin, persona, historia, oferta,
@@ -391,14 +391,14 @@ class CoberturaPorOfertaIT {
 		long financiador = insertar("""
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 'OBRA_SOCIAL', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'OBRA_SOCIAL', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", f.org(), "OS2-" + s, "Otro financiador " + s);
 		long plan = insertar("""
 				INSERT INTO plan_cobertura (organization_id, financiador_id, codigo, nombre,
 				                            vigencia_desde, requiere_autorizacion,
 				                            requiere_credencial, active, version,
 				                            created_at, updated_at)
-				VALUES (?, ?, ?, ?, '2020-01-01', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, '2020-01-01', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", f.org(), financiador, "P2-" + s, "Plan " + s);
 		return cobertura(f.org(), f.persona(), financiador, plan, "Plan " + s, s, false);
 	}
@@ -413,8 +413,8 @@ class CoberturaPorOfertaIT {
 				        requeria_autorizacion, requeria_credencial, referencia_capturada_el,
 				        numero_afiliado, vigencia_desde, principal,
 				        active, version, created_at, updated_at)
-				VALUES (?, ?, 'FINANCIADA', ?, ?, ?, 'OBRA_SOCIAL', ?, ?, ?, 0, 0, UTC_TIMESTAMP(6),
-				        ?, '2020-01-01', ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'FINANCIADA', ?, ?, ?, 'OBRA_SOCIAL', ?, ?, ?, false, false, CURRENT_TIMESTAMP,
+				        ?, '2020-01-01', CAST(? AS boolean), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, persona, financiador, "OS-" + s, "Financiador " + s, plan, "P-" + s,
 				planNombre, "AF-" + s, principal ? 1 : 0);
 	}
@@ -435,8 +435,8 @@ class CoberturaPorOfertaIT {
 		return insertar("""
 				INSERT INTO practica (organization_id, especialidad_id, codigo, name, valid_from,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, '2020-01-01 00:00:00.000000', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, especialidad, codigo, "Practica " + codigo);
 	}
 
@@ -444,7 +444,7 @@ class CoberturaPorOfertaIT {
 		jdbc.update("""
 				INSERT INTO oferta_practica (organization_id, consultorio_id, oferta_id, practica_id,
 				                             principal, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, CAST(? AS boolean), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, oferta, practica, principal ? 1 : 0);
 	}
 
@@ -453,7 +453,7 @@ class CoberturaPorOfertaIT {
 		return insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 	}
 
@@ -462,8 +462,8 @@ class CoberturaPorOfertaIT {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, ?, 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, cuenta, rol);
 	}
 
@@ -472,8 +472,8 @@ class CoberturaPorOfertaIT {
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'BORRADOR', UTC_TIMESTAMP(6), ?, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 'BORRADOR', CURRENT_TIMESTAMP, ?, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", f.org(), f.sede(), f.historia(), f.oferta(), f.profesionalMembership(),
 				f.profesionalCuenta());
 	}

@@ -6,6 +6,7 @@ import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionDecision;
 import com.akine.person.spi.PacienteDirectory;
 import com.akine.person.spi.PacienteSnapshot;
 import com.akine.platform.spi.audit.AuditEntry;
@@ -56,11 +57,13 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -190,19 +193,38 @@ public class SerieDeTurnosService {
 	public ResultadoDeSerie crear(OperatingActor actor, long consultorioId, AltaDeSerieCommand command) {
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		exigirPermiso(actor, organizationId, consultorioId, PermissionCodes.TURNO_MANAGE);
+		PermissionDecision gestion =
+				exigirPermiso(actor, organizationId, consultorioId, PermissionCodes.TURNO_MANAGE);
+		// Alcance propio: la serie y cada ocurrencia elegida van con el propio profesional.
+		List<Long> profesionales = profesionalesDe(command);
+		soporte.exigirPropio(gestion, actor, organizationId, profesionales.toArray(Long[]::new));
 
 		iniciador.asegurar(organizationId, consultorioId);
+		iniciador.asegurarProfesionales(organizationId, profesionales);
 
 		return transaccionReadCommitted.execute(estado -> crearEnTransaccion(
-				actor, consultorioId, command, organizationId, sede));
+				actor, consultorioId, command, organizationId, sede, profesionales));
+	}
+
+	/** El profesional de la serie y los de las ocurrencias elegidas; puede tener {@code null}. */
+	private static List<Long> profesionalesDe(AltaDeSerieCommand command) {
+		List<Long> profesionales = new ArrayList<>();
+		profesionales.add(command.profesionalId());
+		if (command.conOcurrenciasElegidas()) {
+			command.ocurrencias().stream()
+					.map(AltaDeSerieCommand.OcurrenciaElegida::profesionalId)
+					.filter(Objects::nonNull)
+					.forEach(profesionales::add);
+		}
+		return profesionales;
 	}
 
 	private ResultadoDeSerie crearEnTransaccion(
 			OperatingActor actor, long consultorioId, AltaDeSerieCommand command,
-			long organizationId, ConsultorioSnapshot sede) {
+			long organizationId, ConsultorioSnapshot sede, List<Long> profesionales) {
 
 		BloqueoDeAgenda.tomarParaOcupar(agendas, consultorios, organizationId, consultorioId);
+		revalidador.bloquearProfesionales(organizationId, profesionales);
 
 		// Bajo el lock, como en la reserva: fuera de el dos peticiones con la misma clave leerian
 		// "no existe" las dos.
@@ -215,6 +237,10 @@ public class SerieDeTurnosService {
 				return new ResultadoDeSerie(vista(yaCreada.get()), false);
 			}
 		}
+
+		// V140: misma puerta que reservar un turno, y en el mismo lugar: despues de la idempotencia,
+		// para que el reintento de una serie ya creada no choque contra una agenda que se apago despues.
+		BloqueoDeAgenda.exigirAgendaHabilitada(sede);
 
 		OfertaSnapshot oferta = ofertas.find(organizationId, consultorioId, command.ofertaId())
 				.orElseThrow(() -> new OfertaNotAccessibleException(command.ofertaId()));
@@ -259,7 +285,7 @@ public class SerieDeTurnosService {
 				: inicios.stream().filter(inicio -> !feriados.contains(fechaLocal(inicio, zona))).toList();
 		if (aReservar.isEmpty()) {
 			// Una serie sin un solo turno no es una serie: no se crea nada, como en todo o nada.
-			throw new OcurrenciaSinLugarException(inicios.getFirst(), new SlotNoDisponibleException(
+			throw new OcurrenciaSinLugarException(inicios.getFirst(), zona, new SlotNoDisponibleException(
 					"todas las ocurrencias de la serie caen en dias que la sede cierra por feriado"));
 		}
 
@@ -289,7 +315,7 @@ public class SerieDeTurnosService {
 			// Una ocurrencia puede ir con otro profesional que el de la serie, y dura lo que dura con el.
 			Long profesional = profesionalElegido.getOrDefault(inicio, command.profesionalId());
 			Instant fin = inicio.plusSeconds(oferta.duracionCon(duracionesPropias, profesional) * 60L);
-			RevalidadorDeSlot.Asignacion asignacion = sinLugarNombraLaOcurrencia(inicio, () -> {
+			RevalidadorDeSlot.Asignacion asignacion = sinLugarNombraLaOcurrencia(inicio, zona, () -> {
 				exigirVigencia(oferta, inicio, zona);
 				return revalidador.revalidar(new RevalidadorDeSlot.Pedido(
 						organizationId, consultorioId, sede, oferta, inicio, fin, profesional, null));
@@ -457,7 +483,7 @@ public class SerieDeTurnosService {
 				candidatas.stream().map(TurnoSerie::getOfertaId).distinct().toList());
 		Map<Long, ConsultorioMembershipSnapshot> profesionales = membresias.findTodas(organizationId,
 				candidatas.stream().map(TurnoSerie::getProfesionalMembershipId)
-						.filter(java.util.Objects::nonNull).distinct().toList());
+						.filter(Objects::nonNull).distinct().toList());
 		Map<Long, AccountIdentity> cuentas = identidades.identidadesDe(profesionales.values().stream()
 				.map(ConsultorioMembershipSnapshot::accountId).distinct().toList());
 
@@ -549,17 +575,19 @@ public class SerieDeTurnosService {
 
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		exigirPermiso(actor, organizationId, consultorioId, PermissionCodes.TURNO_MANAGE);
+		PermissionDecision gestion =
+				exigirPermiso(actor, organizationId, consultorioId, PermissionCodes.TURNO_MANAGE);
 
 		iniciador.asegurar(organizationId, consultorioId);
 
 		return transaccionReadCommitted.execute(estado -> cancelarEnTransaccion(
-				actor, consultorioId, serieId, command, organizationId, sede));
+				actor, consultorioId, serieId, command, organizationId, sede, gestion));
 	}
 
 	private AlcanceDeSerieView cancelarEnTransaccion(
 			OperatingActor actor, long consultorioId, long serieId,
-			OperacionDeSerieCommand command, long organizationId, ConsultorioSnapshot sede) {
+			OperacionDeSerieCommand command, long organizationId, ConsultorioSnapshot sede,
+			PermissionDecision gestion) {
 
 		BloqueoDeAgenda.tomar(agendas, organizationId, consultorioId);
 
@@ -567,6 +595,8 @@ public class SerieDeTurnosService {
 		Instant ahora = Instant.now();
 		SeleccionDeAlcance seleccion = seleccionar(serie, command.alcance(), command.turnoId(), ahora);
 		exigirConfirmacion(seleccion, command, serie);
+		// Alcance propio: todos los turnos que se cancelan tienen que ser de su agenda.
+		soporte.exigirPropio(gestion, actor, organizationId, profesionalesDe(seleccion.afectados()));
 
 		List<Turno> cancelados = seleccion.afectados().stream()
 				.map(turno -> ciclo.aplicarCancelacion(actor, sede, turno, command.motivo(), ahora))
@@ -599,21 +629,40 @@ public class SerieDeTurnosService {
 
 		long organizationId = exigirContexto(actor);
 		ConsultorioSnapshot sede = exigirSedeDelTenant(organizationId, consultorioId);
-		exigirPermiso(actor, organizationId, consultorioId, PermissionCodes.TURNO_MANAGE);
+		PermissionDecision gestion =
+				exigirPermiso(actor, organizationId, consultorioId, PermissionCodes.TURNO_MANAGE);
 		if (command.turnoId() == null || command.inicio() == null) {
 			throw new IllegalArgumentException(
 					"Reprogramar una serie necesita el turno pivote y su horario nuevo");
 		}
 
 		iniciador.asegurar(organizationId, consultorioId);
+		// Las personas que van a atender los turnos movidos (V129): la del pedido o las que ya
+		// tienen. Se leen sin lock; si cambian en el medio, el revalidador responde 409.
+		iniciador.asegurarProfesionales(organizationId, command.profesionalId() != null
+				? Arrays.asList(command.profesionalId())
+				: profesionalesDeLaSerieSinLock(organizationId, serieId));
 
 		return transaccionReadCommitted.execute(estado -> reprogramarEnTransaccion(
-				actor, consultorioId, serieId, command, organizationId, sede));
+				actor, consultorioId, serieId, command, organizationId, sede, gestion));
+	}
+
+	private List<Long> profesionalesDeLaSerieSinLock(long organizationId, long serieId) {
+		return turnos.findDeLaSerie(organizationId, serieId).stream()
+				.map(Turno::getProfesionalMembershipId)
+				.filter(Objects::nonNull)
+				.distinct()
+				.toList();
+	}
+
+	private static Long[] profesionalesDe(List<Turno> afectados) {
+		return afectados.stream().map(Turno::getProfesionalMembershipId).toArray(Long[]::new);
 	}
 
 	private AlcanceDeSerieView reprogramarEnTransaccion(
 			OperatingActor actor, long consultorioId, long serieId,
-			OperacionDeSerieCommand command, long organizationId, ConsultorioSnapshot sede) {
+			OperacionDeSerieCommand command, long organizationId, ConsultorioSnapshot sede,
+			PermissionDecision gestion) {
 
 		BloqueoDeAgenda.tomarParaOcupar(agendas, consultorios, organizationId, consultorioId);
 
@@ -621,6 +670,14 @@ public class SerieDeTurnosService {
 		Instant ahora = Instant.now();
 		SeleccionDeAlcance seleccion = seleccionar(serie, command.alcance(), command.turnoId(), ahora);
 		exigirConfirmacion(seleccion, command, serie);
+		// Alcance propio: los turnos movidos y el destino tienen que ser de su agenda.
+		soporte.exigirPropio(gestion, actor, organizationId, profesionalesDe(seleccion.afectados()));
+		if (command.profesionalId() != null) {
+			soporte.exigirPropio(gestion, actor, organizationId, command.profesionalId());
+		}
+		revalidador.bloquearProfesionales(organizationId, command.profesionalId() != null
+				? Arrays.asList(command.profesionalId())
+				: Arrays.asList(profesionalesDe(seleccion.afectados())));
 
 		OfertaSnapshot oferta = ofertas.find(organizationId, consultorioId, serie.getOfertaId())
 				.orElseThrow(() -> new OfertaNotAccessibleException(serie.getOfertaId()));
@@ -641,7 +698,7 @@ public class SerieDeTurnosService {
 			Long profesionalId = command.profesionalId() != null
 					? command.profesionalId()
 					: turno.getProfesionalMembershipId();
-			movidos.add(sinLugarNombraLaOcurrencia(destino, () -> ciclo.aplicarReprogramacion(
+			movidos.add(sinLugarNombraLaOcurrencia(destino, zona, () -> ciclo.aplicarReprogramacion(
 					actor, sede, oferta, turno, destino, profesionalId, command.motivo(), ahora)));
 		}
 		movidos.sort(Comparator.comparing(Turno::getInicio).thenComparing(Turno::getId));
@@ -727,12 +784,13 @@ public class SerieDeTurnosService {
 	 * demas —un turno con atencion, una transicion imposible— no son "falta de lugar" y pasan tal
 	 * cual.
 	 */
-	private static <T> T sinLugarNombraLaOcurrencia(Instant inicio, java.util.function.Supplier<T> paso) {
+	private static <T> T sinLugarNombraLaOcurrencia(
+			Instant inicio, ZoneId zona, java.util.function.Supplier<T> paso) {
 		try {
 			return paso.get();
 		} catch (SlotNoDisponibleException | SlotCompletoException
 				| RecursoOcupadoException | OfertaNoAgendableException sinLugar) {
-			throw new OcurrenciaSinLugarException(inicio, sinLugar);
+			throw new OcurrenciaSinLugarException(inicio, zona, sinLugar);
 		}
 	}
 
@@ -828,8 +886,8 @@ public class SerieDeTurnosService {
 				.orElseThrow(() -> new ConsultorioNoAccesibleException(consultorioId));
 	}
 
-	private void exigirPermiso(
+	private PermissionDecision exigirPermiso(
 			OperatingActor actor, long organizationId, long consultorioId, String permiso) {
-		soporte.exigir(actor, permiso, organizationId, consultorioId);
+		return soporte.exigir(actor, permiso, organizationId, consultorioId);
 	}
 }

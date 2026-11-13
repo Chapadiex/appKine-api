@@ -8,6 +8,7 @@ import com.akine.person.api.dto.PersonaPageResponse;
 import com.akine.person.api.dto.PersonaResponse;
 import com.akine.person.api.dto.ResumenDePersonaResponse;
 import com.akine.person.api.dto.UpdatePersonaRequest;
+import com.akine.person.application.ActividadFiltro;
 import com.akine.person.application.OperatingActor;
 import com.akine.person.application.PerfilPacienteService;
 import com.akine.person.application.PersonaAltaCommand;
@@ -83,7 +84,7 @@ class PersonaControllerTest {
 		given(personaService.buscar(any(), any(), anyInt(), anyInt()))
 				.willReturn(new PersonaPagina(List.of(unaVista()), 1L));
 
-		PersonaPageResponse pagina = controller.buscar(null, null, null, -3, 9999, null);
+		PersonaPageResponse pagina = controller.buscar(null, null, null, null, -3, 9999, null);
 
 		assertThat(pagina.page()).isZero();
 		assertThat(pagina.size()).isEqualTo(100);
@@ -100,13 +101,15 @@ class PersonaControllerTest {
 		given(personaService.buscar(any(), any(), anyInt(), anyInt()))
 				.willReturn(new PersonaPagina(List.of(), 0L));
 
-		controller.buscar("ab-1234", PersonaEstadoFiltro.TODOS, PerfilFiltro.SIN_PERFIL, 0, 20, null);
+		controller.buscar("ab-1234", PersonaEstadoFiltro.TODOS, PerfilFiltro.SIN_PERFIL,
+				ActividadFiltro.CON_ACTIVIDAD, 0, 20, null);
 
 		ArgumentCaptor<PersonaBusqueda> filtros = ArgumentCaptor.forClass(PersonaBusqueda.class);
 		verify(personaService).buscar(any(), filtros.capture(), anyInt(), anyInt());
 		assertThat(filtros.getValue().texto()).isEqualTo("ab-1234");
 		assertThat(filtros.getValue().estado()).isEqualTo(PersonaEstadoFiltro.TODOS);
 		assertThat(filtros.getValue().perfil()).isEqualTo(PerfilFiltro.SIN_PERFIL);
+		assertThat(filtros.getValue().actividad()).isEqualTo(ActividadFiltro.CON_ACTIVIDAD);
 
 		// El nombre HTTP del parametro es el del argumento Java: tiene que ser "q", no "texto".
 		var buscar = java.util.Arrays.stream(PersonaController.class.getDeclaredMethods())

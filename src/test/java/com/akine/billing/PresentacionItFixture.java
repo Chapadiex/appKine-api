@@ -66,47 +66,47 @@ final class PresentacionItFixture {
 
 		long organizationId = InsertarConId.insertar(jdbc, """
 				INSERT INTO organization (name, slug, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "Centro " + sufijo, "presentacion-it-" + sufijo, ZONA);
 
 		long consultorioId = InsertarConId.insertar(jdbc, """
 				INSERT INTO consultorio (organization_id, name, timezone, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, "Sede " + sufijo, ZONA);
 
 		String email = "presentacion-it-" + sufijo + "@ejemplo.test";
 		long cuentaId = InsertarConId.insertar(jdbc, """
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", email, email);
 
 		jdbc.update("""
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, 'ADMINISTRATIVO', 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'ADMINISTRATIVO', false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, cuentaId);
 
 		String apellido = "Paciente" + sufijo;
 		long personaId = InsertarConId.insertar(jdbc, """
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave, nombre_clave,
 				                     active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, apellido, apellido.toUpperCase());
 
 		long historiaId = InsertarConId.insertar(jdbc, """
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, personaId, cuentaId);
 
 		long servicioId = InsertarConId.insertar(jdbc, """
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', false, false, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", "PRES-" + sufijo.toUpperCase(), "Servicio " + sufijo);
 
 		long ofertaId = InsertarConId.insertar(jdbc, """
@@ -115,8 +115,8 @@ final class PresentacionItFixture {
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', 1, 0, 0, 0, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', true, false, false, false, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, consultorioId, servicioId, "Oferta " + sufijo);
 
 		long financiadorId = insertarFinanciador(organizationId, sufijo);
@@ -129,7 +129,7 @@ final class PresentacionItFixture {
 		return InsertarConId.insertar(jdbc, """
 				INSERT INTO financiador (organization_id, codigo, nombre, tipo, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 'OBRA_SOCIAL', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'OBRA_SOCIAL', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, "FIN-" + sufijo, "Financiador " + sufijo);
 	}
 
@@ -143,8 +143,8 @@ final class PresentacionItFixture {
 				INSERT INTO sesion (organization_id, consultorio_id, historia_clinica_id, oferta_id,
 				                    profesional_membership_id, estado, iniciada_en,
 				                    iniciada_por_cuenta_id, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, 'BORRADOR', UTC_TIMESTAMP(6), ?, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, 'BORRADOR', CURRENT_TIMESTAMP, ?, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), tenant.consultorioId(), tenant.historiaId(),
 				tenant.ofertaId(), 1L, tenant.cuentaId());
 
@@ -165,11 +165,11 @@ final class PresentacionItFixture {
 				                        snapshot_credencial_vencida, snapshot_vigente_el,
 				                        snapshot_capturado_en,
 				                        devengada_en, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'FINANCIADOR', ?, 'FINANCIADOR', 1, 1, ?, ?, 'ARS', 'PENDIENTE',
-				        ?, 'Sesion sintetica', ?,
-				        1, 1, 1, 'CONV-SINT', 'Convenio sintetico', ?, ?, 0.00, 0, 0, 0, 0,
-				        CURDATE(), UTC_TIMESTAMP(6),
-				        UTC_TIMESTAMP(6), 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'FINANCIADOR', ?, 'FINANCIADOR', 1, 1, CAST(? AS numeric), CAST(? AS numeric), 'ARS', 'PENDIENTE',
+				        ?, 'Sesion sintetica', CAST(? AS numeric),
+				        1, 1, 1, 'CONV-SINT', 'Convenio sintetico', CAST(? AS numeric), CAST(? AS numeric), 0.00, false, false, false, false,
+				        CURRENT_DATE, CURRENT_TIMESTAMP,
+				        CURRENT_TIMESTAMP, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), tenant.consultorioId(), sesionId, tenant.personaId(),
 				financiadorId, monto, monto, tenant.ofertaId(), monto, monto, monto);
 	}
@@ -199,8 +199,8 @@ final class PresentacionItFixture {
 				INSERT INTO jornada_caja (organization_id, consultorio_id, fecha_negocio, moneda,
 				                          estado, saldo_inicial, saldo_arqueo, abierta_en,
 				                          abierta_por_cuenta_id, created_at, updated_at)
-				VALUES (?, ?, ?, 'ARS', 'ABIERTA', ?, ?, UTC_TIMESTAMP(6), ?,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CAST(? AS date), 'ARS', 'ABIERTA', CAST(? AS numeric), CAST(? AS numeric), CURRENT_TIMESTAMP, ?,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", tenant.organizationId(), tenant.consultorioId(),
 				Date.valueOf(LocalDate.now(ZoneId.of(ZONA))), new BigDecimal(saldoInicial),
 				new BigDecimal(saldoInicial), tenant.cuentaId());

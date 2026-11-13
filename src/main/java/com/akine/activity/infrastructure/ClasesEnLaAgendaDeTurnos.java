@@ -1,6 +1,7 @@
 package com.akine.activity.infrastructure;
 
 import com.akine.activity.application.CapacidadDeClase;
+import com.akine.activity.domain.ClaseInstructor;
 import com.akine.activity.domain.ClaseProgramada;
 import com.akine.offering.spi.OfertaDirectory;
 import com.akine.scheduling.spi.EventoExternoDeAgenda;
@@ -8,7 +9,13 @@ import com.akine.scheduling.spi.OcupacionExternaProbe;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Le contesta a M12 por las clases: si ocupan un recurso, y como se ven en la grilla.
@@ -38,13 +45,16 @@ public class ClasesEnLaAgendaDeTurnos implements OcupacionExternaProbe, EventoEx
 	public static final String TIPO_CLASE = "CLASE";
 
 	private final ClaseProgramadaRepository clases;
+	private final ClaseInstructorRepository instructores;
 	private final OfertaDirectory ofertas;
 	private final CapacidadDeClase capacidad;
 
 	public ClasesEnLaAgendaDeTurnos(
-			ClaseProgramadaRepository clases, OfertaDirectory ofertas, CapacidadDeClase capacidad) {
+			ClaseProgramadaRepository clases, ClaseInstructorRepository instructores,
+			OfertaDirectory ofertas, CapacidadDeClase capacidad) {
 
 		this.clases = clases;
+		this.instructores = instructores;
 		this.ofertas = ofertas;
 		this.capacidad = capacidad;
 	}
@@ -53,12 +63,47 @@ public class ClasesEnLaAgendaDeTurnos implements OcupacionExternaProbe, EventoEx
 	// Exclusion — camino de escritura, bajo el lock
 	// =================================================================================
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Una fila por clase y por membership pedida que la clase ocupa: el principal y cada instructor
+	 * adicional vigente. Los instructores se leen de una vez para todas las clases encontradas.
+	 */
 	@Override
-	public boolean profesionalOcupado(
-			long organizationId, long profesionalMembershipId, Instant inicio, Instant fin) {
+	public List<OcupacionExterna> ocupacionDeProfesionales(
+			long organizationId, Collection<Long> membershipIds, Instant inicio, Instant fin) {
 
-		return !clases.findVivasDeProfesionalQueCruzan(
-				organizationId, profesionalMembershipId, inicio, fin).isEmpty();
+		if (membershipIds.isEmpty()) {
+			return List.of();
+		}
+		List<ClaseProgramada> encontradas =
+				clases.findVivasDeMembershipsQueCruzan(organizationId, membershipIds, inicio, fin);
+		if (encontradas.isEmpty()) {
+			return List.of();
+		}
+		Map<Long, Set<Long>> ocupadasPorClase = new LinkedHashMap<>();
+		for (ClaseProgramada clase : encontradas) {
+			Set<Long> ocupadas = new LinkedHashSet<>();
+			if (clase.getProfesionalMembershipId() != null
+					&& membershipIds.contains(clase.getProfesionalMembershipId())) {
+				ocupadas.add(clase.getProfesionalMembershipId());
+			}
+			ocupadasPorClase.put(clase.getId(), ocupadas);
+		}
+		for (ClaseInstructor instructor
+				: instructores.vigentesDeLasClases(organizationId, ocupadasPorClase.keySet())) {
+			if (membershipIds.contains(instructor.getMembershipId())) {
+				ocupadasPorClase.get(instructor.getClaseId()).add(instructor.getMembershipId());
+			}
+		}
+		List<OcupacionExterna> ocupacion = new ArrayList<>();
+		for (ClaseProgramada clase : encontradas) {
+			for (Long membershipId : ocupadasPorClase.get(clase.getId())) {
+				ocupacion.add(new OcupacionExterna(TIPO_CLASE, clase.getId(), clase.getConsultorioId(),
+						membershipId, clase.getInicio(), clase.getFin()));
+			}
+		}
+		return ocupacion;
 	}
 
 	@Override

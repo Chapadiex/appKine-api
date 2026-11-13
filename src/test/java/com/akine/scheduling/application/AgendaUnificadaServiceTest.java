@@ -82,7 +82,7 @@ class AgendaUnificadaServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new AgendaUnificadaService(
-				turnos, eventosExternos, ofertas, consultorios, new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class)));
+				turnos, eventosExternos, ofertas, consultorios, new SoporteEnAgenda(permissionGuard, mock(AuditoriaAparte.class), mock(AgendaDelProfesional.class)));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(sede()));
 		// Todas las ofertas del dia en una sola llamada (docs/carga.md §6.4): cada id pedido resuelve.

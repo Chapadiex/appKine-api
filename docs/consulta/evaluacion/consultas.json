@@ -1,0 +1,71 @@
+[
+  { "id": "C01", "consulta": "como trabajar lumbalgia", "historial": [], "esperado": "responder", "libro": "M2", "paginas": [9, 10, 11, 12, 13, 14, 15], "nota": "Resumen y tabla de recursos de la lumbalgia (contenido 1.2, págs. PDF 9–15)." },
+  { "id": "C02", "consulta": "ejercicios fractura cadera", "historial": [], "esperado": "responder", "libro": "M2", "paginas": [59, 60, 62, 63], "nota": "Fracturas: resumen (59–60, carga de peso y fortalecimiento) y filas de consolidación y movilidad articular (62–63). El libro no dice 'cadera': la CIE NC72 es fractura de fémur, miembro inferior." },
+  { "id": "C03", "consulta": "epoc ejercicio", "historial": [], "esperado": "responder", "libro": "M4", "paginas": [23, 24, 26, 27], "nota": "EPOC: resumen (23–24) y filas de entrenamiento del ejercicio físico y tolerancia al ejercicio (26–27)." },
+  { "id": "C04", "consulta": "acv hombro doloroso", "historial": [], "esperado": "responder", "libro": "M3", "paginas": [9, 10, 17, 18], "nota": "ACV: 'Dolor de hombro' en el resumen (9–10) y fila 'Dolor musculoesquelético (en particular dolor de hombro)' (17–18)." },
+  { "id": "C05", "consulta": "rehabilitacion cardiaca ejercicio", "historial": [], "esperado": "responder", "libro": "M4", "paginas": [9, 10, 12, 13, 16], "nota": "Cardiopatía isquémica: resumen (9–10), tolerancia al ejercicio y entrenamiento físico (12–13), entrenamiento del ejercicio físico en salud mental (16)." },
+  { "id": "C06", "consulta": "reeducacion de la marcha en parkinson", "historial": [], "esperado": "responder", "libro": "M3", "paginas": [38, 46, 47], "nota": "Parkinson: resumen de funciones motoras (38) y filas 'Funciones de la marcha' (46–47)." },
+  { "id": "C07", "consulta": "ortesis artritis reumatoide", "historial": [], "esperado": "responder", "libro": "M2", "paginas": [35, 36, 38], "nota": "Artritis reumatoide: suministro de ortesis en el resumen (35–36) y en la tabla de recursos (38)." },
+  { "id": "C08", "consulta": "sarcopenia ejercicios de fuerza", "historial": [], "esperado": "responder", "libro": "M2", "paginas": [49, 50], "nota": "Sarcopenia: resumen (49) y fila 'Ejercicios de fortalecimiento muscular' (50)." },
+  { "id": "C09", "consulta": "ulceras por presion en lesion medular", "historial": [], "esperado": "responder", "libro": "M3", "paginas": [111, 112, 113], "nota": "Lesión de la médula espinal: filas 'Úlceras por presión' (111–113)." },
+  { "id": "C10", "consulta": "como manejar la disnea en epoc", "historial": [], "esperado": "responder", "libro": "M4", "paginas": [23, 25], "nota": "EPOC: resumen (23) y fila 'Disnea: técnicas de control de la respiración' (25)." },
+  { "id": "C11", "consulta": "demencia apoyo al cuidador", "historial": [], "esperado": "responder", "libro": "M3", "paginas": [148, 149, 158, 159], "nota": "Demencia: resumen (148–149) y fila 'Apoyo para el cuidador y la familia' (158–159)." },
+  { "id": "C12", "consulta": "autismo intervenciones de comunicacion", "historial": [], "esperado": "responder", "libro": "M5", "paginas": [9, 13, 14, 15], "nota": "Trastornos del espectro autista: resumen (9) y filas de lenguaje, habla y comunicación (13–15)." },
+  { "id": "C13", "consulta": "espasticidad en paralisis cerebral", "historial": [], "esperado": "responder", "libro": "M3", "paginas": [121, 122, 123, 131], "nota": "Parálisis cerebral: resumen (121–123) y fila 'Funciones del tono muscular' (131)." },
+  { "id": "C14", "consulta": "protesis tras amputacion de miembro inferior", "historial": [], "esperado": "responder", "libro": "M2", "paginas": [75, 76, 81, 82, 87], "nota": "Amputaciones: resumen (75–76), filas con prótesis (81–82) y recursos materiales (87)." },
+  { "id": "C15", "consulta": "que ejercicios para osteoartritis de rodilla", "historial": [], "esperado": "responder", "libro": "M2", "paginas": [21, 22, 24, 25], "nota": "Osteoartritis: resumen (21–22) y filas de movilidad, fuerza y tolerancia al ejercicio (24–25)." },
+  { "id": "C16", "consulta": "evaluacion de kinesiofobia en lumbalgia", "historial": [], "esperado": "responder", "libro": "M2", "paginas": [9, 11], "nota": "Lumbalgia: 'Evaluación del contenido del pensamiento (... kinesiofobia)' en el resumen (9) y en la tabla (11)." },
+
+  { "id": "A01", "consulta": "lumbalgia", "historial": [], "esperado": "repreguntar", "libro": "M2", "paginas": [], "nota": "Tema suelto sin intención." },
+  { "id": "A02", "consulta": "kinesiofobia", "historial": [], "esperado": "repreguntar", "libro": "M2", "paginas": [], "nota": "Tema suelto; el material está en M2 págs. 9 y 11." },
+  { "id": "A03", "consulta": "fracturas", "historial": [], "esperado": "repreguntar", "libro": "M2", "paginas": [], "nota": "Tema suelto." },
+  { "id": "A04", "consulta": "epoc", "historial": [], "esperado": "repreguntar", "libro": "M4", "paginas": [], "nota": "Tema suelto." },
+  { "id": "A05", "consulta": "parkinson", "historial": [], "esperado": "repreguntar", "libro": "M3", "paginas": [], "nota": "Tema suelto." },
+  { "id": "A06", "consulta": "sarcopenia", "historial": [], "esperado": "repreguntar", "libro": "M2", "paginas": [], "nota": "Tema suelto." },
+  { "id": "A07", "consulta": "demencia", "historial": [], "esperado": "repreguntar", "libro": "M3", "paginas": [], "nota": "Tema suelto." },
+  { "id": "A08", "consulta": "ejercicios", "historial": [], "esperado": "repreguntar", "libro": "M2", "paginas": [], "nota": "Ambigua sin afección (decisión 5 del diseño): repregunta '¿Para qué afección o tema?' sin botones. Ojo: la regex de intención incluye 'ejerc', así que no la atrapa la regla de 1–3 palabras sin intención." },
+
+  { "id": "H01", "consulta": "ejercicios", "historial": [
+      { "rol": "usuario", "texto": "intervenciones de rehabilitación para la lumbalgia" },
+      { "rol": "asistente", "texto": "- Psicoterapia cognitivo-conductual: para el catastrofismo y la kinesiofobia.\n- Entrenamiento del ejercicio físico: para recuperar la tolerancia a las actividades.\n- Terapia de manipulación de la columna: para el dolor." }
+    ], "esperado": "responder", "libro": "M2", "paginas": [9, 11, 12, 14, 15], "nota": "Hereda el tema de la charla (lumbalgia): filas 'Entrenamiento del ejercicio físico' (11–12, 14–15)." },
+  { "id": "H02", "consulta": "kinesiofobia", "historial": [
+      { "rol": "usuario", "texto": "intervenciones de rehabilitación para la lumbalgia" },
+      { "rol": "asistente", "texto": "- Psicoterapia cognitivo-conductual: para el catastrofismo y el miedo al movimiento.\n- Entrenamiento del ejercicio físico: para recuperar la tolerancia a las actividades." }
+    ], "esperado": "repreguntar", "libro": "M2", "paginas": [], "nota": "Tema nuevo después de lumbalgia: se repregunta como si no hubiera historial (decisión 3 del diseño)." },
+  { "id": "H03", "consulta": "y la evaluacion?", "historial": [
+      { "rol": "usuario", "texto": "epoc ejercicio" },
+      { "rol": "asistente", "texto": "- Entrenamiento del ejercicio físico: para mejorar la fuerza y la movilidad.\n- Entrenamiento físico: para la tolerancia al ejercicio.\n- Técnicas de control de la respiración: para la disnea." }
+    ], "esperado": "responder", "libro": "M4", "paginas": [23, 24, 25, 26], "nota": "Sin tema propio: hereda EPOC. Evaluación de funciones respiratorias (25) y de la capacidad de ejercicio (26)." },
+  { "id": "H04", "consulta": "parkinson", "historial": [
+      { "rol": "usuario", "texto": "acv hombro doloroso" },
+      { "rol": "asistente", "texto": "- Analgésicos (AINE, paracetamol): para el dolor de hombro.\n- Infiltración intraarticular con corticoesteroides: para el dolor persistente." }
+    ], "esperado": "repreguntar", "libro": "M3", "paginas": [], "nota": "Tema nuevo después de ACV: se repregunta." },
+  { "id": "H05", "consulta": "quien lo hace?", "historial": [
+      { "rol": "usuario", "texto": "ejercicios fractura cadera" },
+      { "rol": "asistente", "texto": "- Ejercicios con carga de peso: para la consolidación ósea.\n- Ejercicios de flexibilidad articular: para la movilidad.\n- Ejercicios de fortalecimiento muscular: para la fuerza." }
+    ], "esperado": "responder", "libro": "M2", "paginas": [62, 63, 69], "nota": "Hereda fracturas: profesionales de las filas de ejercicios (62–63) y recursos humanos de fracturas (69)." },
+
+  { "id": "P01", "consulta": "Más detalle sobre lo anterior", "historial": [
+      { "rol": "usuario", "texto": "como trabajar lumbalgia" },
+      { "rol": "asistente", "texto": "- Psicoterapia cognitivo-conductual: para el catastrofismo y la kinesiofobia.\n- Entrenamiento del ejercicio físico: para la tolerancia a las actividades.\n- Terapia de manipulación de la columna: para el dolor.\n- Orientación para la actividad laboral: para volver al trabajo." }
+    ], "esperado": "responder", "libro": "M2", "paginas": [9, 10, 11, 12, 13, 14, 15], "nota": "Botón Profundizar sobre lumbalgia: tabla de recursos (11–15) con tiempos, materiales y profesiones." },
+  { "id": "P02", "consulta": "más detalle de la psicoterapia cognitivo-conductual", "historial": [
+      { "rol": "usuario", "texto": "como trabajar lumbalgia" },
+      { "rol": "asistente", "texto": "- Psicoterapia cognitivo-conductual: para el catastrofismo y la kinesiofobia.\n- Entrenamiento del ejercicio físico: para la tolerancia a las actividades." }
+    ], "esperado": "responder", "libro": "M2", "paginas": [11, 12, 14, 100, 101], "nota": "Fila de lumbalgia (11–12, 60 min, psicólogo; 14 en salud mental) y definición del glosario (100–101)." },
+  { "id": "P03", "consulta": "Más detalle sobre lo anterior", "historial": [
+      { "rol": "usuario", "texto": "epoc ejercicio" },
+      { "rol": "asistente", "texto": "- Entrenamiento del ejercicio físico: para la fuerza y la movilidad.\n- Entrenamiento físico: para la tolerancia al ejercicio." }
+    ], "esperado": "responder", "libro": "M4", "paginas": [26, 27, 39, 40], "nota": "EPOC: filas de ejercicio (26–27) y definiciones del glosario (39–40)." },
+  { "id": "P04", "consulta": "¿quién lo hace y cuánto dura cada sesión?", "historial": [
+      { "rol": "usuario", "texto": "sarcopenia ejercicios de fuerza" },
+      { "rol": "asistente", "texto": "- Ejercicios de fortalecimiento muscular: para recuperar la fuerza.\n- Ejercicios aeróbicos: para la tolerancia al ejercicio.\n- Reeducación del equilibrio: para prevenir caídas." }
+    ], "esperado": "responder", "libro": "M2", "paginas": [50, 51, 53], "nota": "Sarcopenia: filas con minutos y profesiones (50–51) y recursos humanos (53)." },
+
+  { "id": "X01", "consulta": "esguince de tobillo", "historial": [], "esperado": "sin_material", "libro": "M2", "paginas": [], "nota": "'esguince' no aparece en ningún libro. 'tobillo' sí, sólo en la CIE de fracturas y amputaciones." },
+  { "id": "X02", "consulta": "tratamiento de la fibromialgia", "historial": [], "esperado": "sin_material", "libro": "M2", "paginas": [], "nota": "'fibromialgia' no aparece en ningún libro." },
+  { "id": "X03", "consulta": "ejercicios para escoliosis idiopatica", "historial": [], "esperado": "sin_material", "libro": "M2", "paginas": [], "nota": "'escoliosis' no aparece en ningún libro." },
+  { "id": "X04", "consulta": "rehabilitacion de ligamento cruzado anterior", "historial": [], "esperado": "sin_material", "libro": "M2", "paginas": [], "nota": "'ligamento cruzado' no aparece en ningún libro." },
+  { "id": "X05", "consulta": "linfedema despues de cancer de mama", "historial": [], "esperado": "sin_material", "libro": "M4", "paginas": [], "nota": "'linfedema' no aparece en ningún libro." }
+]

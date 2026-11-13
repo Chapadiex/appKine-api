@@ -12,7 +12,7 @@ import java.time.Instant;
  * tenant. Lo que cada centro decide es si lo ofrece y en que condiciones, y eso es una
  * {@link OfertaResponse}, no este recurso.
  */
-@Schema(description = "Servicio del catalogo global de la plataforma")
+@Schema(description = "Servicio del catalogo global de la plataforma o propio del centro")
 public record ServicioResponse(
 
 		@Schema(description = "Identificador del servicio", example = "12")
@@ -50,6 +50,13 @@ public record ServicioResponse(
 		boolean generaRegistroClinicoDefault,
 
 		@Schema(
+				description = "GLOBAL: del catalogo de la plataforma, lo ven todos los centros. "
+						+ "ORGANIZACION: servicio propio del centro, lo ve solo esa organizacion",
+				example = "GLOBAL",
+				allowableValues = {"GLOBAL", "ORGANIZACION"})
+		String alcance,
+
+		@Schema(
 				description = "Ciclo de vida. Un servicio INACTIVO se sigue leyendo con 200: los "
 						+ "historicos que lo referencian tienen que seguir resolviendo",
 				example = "ACTIVO",
@@ -78,6 +85,7 @@ public record ServicioResponse(
 				view.modalidadDefault(),
 				view.requiereCasoClinicoDefault(),
 				view.generaRegistroClinicoDefault(),
+				view.alcance(),
 				view.estado(),
 				view.deletedAt(),
 				view.deactivationReason(),

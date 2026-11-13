@@ -84,5 +84,11 @@ public record ReservarTurnoRequest(
 						+ "sigue teniendo que estar habilitado y atender en ese horario. Se ve en la agenda: "
 						+ "sin informacion clinica.",
 				example = "Se acordo atenderlo entre turnos")
-		@Size(max = 300, message = "El motivo del sobreturno no puede superar los 300 caracteres") String sobreturnoMotivo) {
+		@Size(max = 300, message = "El motivo del sobreturno no puede superar los 300 caracteres") String sobreturnoMotivo,
+
+		@Schema(
+				description = "Observaciones administrativas del turno (\"trae estudios\"). **Nunca informacion "
+						+ "clinica.** No forma parte de la huella de idempotencia.",
+				example = "Trae los estudios")
+		@Size(max = 500, message = "Las observaciones no pueden superar los 500 caracteres") String observaciones) {
 }

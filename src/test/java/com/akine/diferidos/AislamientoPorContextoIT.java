@@ -40,8 +40,8 @@ class AislamientoPorContextoIT extends BaseEscenarioDiferido {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, NULL, ?, 'ORG_ADMIN', 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 DAY),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, NULL, ?, 'ORG_ADMIN', false, (CURRENT_TIMESTAMP - INTERVAL '1 days'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", b.organizationId(), a.cuentaId());
 
 		long membershipDelFundadorDeB = jdbc.queryForObject(

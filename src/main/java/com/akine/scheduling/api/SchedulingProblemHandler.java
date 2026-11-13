@@ -10,6 +10,7 @@ import com.akine.scheduling.domain.exception.EspacioNoElegibleException;
 import com.akine.scheduling.domain.exception.PlanSinSesionesException;
 import com.akine.scheduling.domain.exception.OcurrenciaSinLugarException;
 import com.akine.scheduling.domain.exception.SedeDadaDeBajaException;
+import com.akine.scheduling.domain.exception.SedeSinAgendaException;
 import com.akine.scheduling.domain.exception.SerieNotAccessibleException;
 import com.akine.scheduling.domain.exception.OfertaNoAgendableException;
 import com.akine.scheduling.application.IdempotencyKeyConflictException;
@@ -17,6 +18,7 @@ import com.akine.scheduling.domain.exception.OfertaNotAccessibleException;
 import com.akine.scheduling.domain.exception.CoberturaNoAccesibleException;
 import com.akine.scheduling.domain.exception.PersonaNotAccessibleException;
 import com.akine.scheduling.domain.exception.PersonaSinPerfilPacienteException;
+import com.akine.scheduling.domain.exception.ProfesionalNotAccessibleException;
 import com.akine.scheduling.domain.exception.RecepcionNotAccessibleException;
 import com.akine.scheduling.domain.exception.RecursoOcupadoException;
 import com.akine.scheduling.domain.exception.TransicionDeRecepcionNoPermitidaException;
@@ -54,6 +56,7 @@ public class SchedulingProblemHandler {
 	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
 	private static final URI OFERTA_NO_AGENDABLE = ProblemType.OFERTA_NO_AGENDABLE.uri();
 	private static final URI CONSULTORIO_INACTIVE = ProblemType.CONSULTORIO_INACTIVE.uri();
+	private static final URI CONSULTORIO_SIN_AGENDA = ProblemType.CONSULTORIO_SIN_AGENDA.uri();
 	private static final URI VENTANA_DEMASIADO_AMPLIA = ProblemType.VENTANA_DEMASIADO_AMPLIA.uri();
 	private static final URI SLOT_NO_DISPONIBLE = ProblemType.SLOT_NO_DISPONIBLE.uri();
 	private static final URI SLOT_COMPLETO = ProblemType.SLOT_COMPLETO.uri();
@@ -125,6 +128,21 @@ public class SchedulingProblemHandler {
 		return problem;
 	}
 
+	/**
+	 * La sede esta activa pero todavia no abrio su agenda (V140). Distinto de la baja: esta va a
+	 * abrir, y la pantalla tiene que poder decir "termina de configurar la sede".
+	 */
+	@ExceptionHandler(SedeSinAgendaException.class)
+	public ProblemDetail handleSedeSinAgenda(SedeSinAgendaException exception) {
+		log.debug("Escritura de agenda en sede sin agenda habilitada: consultorioId={}",
+				exception.getConsultorioId());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(CONSULTORIO_SIN_AGENDA);
+		problem.setTitle("La sede no esta habilitada para agenda");
+		return problem;
+	}
+
 	// =================================================================================
 	// Peticion invalida — 400
 	// =================================================================================
@@ -169,6 +187,27 @@ public class SchedulingProblemHandler {
 	}
 
 	/**
+	 * 403 {@code forbidden}, el mismo tipo que cualquier permiso denegado, con {@code alcance = "PROPIO"}:
+	 * el lector solo ve su propia agenda (historial de agenda).
+	 */
+	@ExceptionHandler(com.akine.scheduling.application.AgendaAjenaException.class)
+	public ProblemDetail handleAgendaAjena(com.akine.scheduling.application.AgendaAjenaException exception) {
+		log.info("Acceso denegado a una agenda ajena con alcance propio");
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				org.springframework.http.HttpStatus.FORBIDDEN, exception.getMessage());
+		problem.setTitle("Acceso denegado");
+		problem.setType(ProblemType.FORBIDDEN.uri());
+		problem.setProperty("alcance", "PROPIO");
+		return problem;
+	}
+
+	@ExceptionHandler(ProfesionalNotAccessibleException.class)
+	public ProblemDetail handleProfesionalNoAccesible(ProfesionalNotAccessibleException exception) {
+		log.debug("Profesional no accesible desde la agenda: profesionalId={}", exception.getProfesionalId());
+		return noEncontrado("El profesional no existe.");
+	}
+
+	/**
 	 * <b>Un tipo propio y no un {@code conflict} generico.</b> "El hueco ya no existe" manda a la
 	 * pantalla a recargar la agenda; "no hay cupo" manda a ofrecer el turno siguiente. Con un tipo
 	 * unico el cliente tendria que adivinar leyendo prosa en castellano.
@@ -180,6 +219,11 @@ public class SchedulingProblemHandler {
 		problem.setType(SLOT_NO_DISPONIBLE);
 		problem.setTitle("El horario elegido ya no esta disponible");
 		problem.setProperty("motivo", exception.getMotivo());
+		// Disponibilidad central (0.158.0): un cierre con su franja y su sede, y el detail que lo dice.
+		if (exception.getConflicto() != null) {
+			problem.setDetail(exception.getMotivo());
+			exception.getConflicto().propiedades().forEach(problem::setProperty);
+		}
 		return problem;
 	}
 
@@ -202,9 +246,25 @@ public class SchedulingProblemHandler {
 		problem.setProperty("recurso", exception.getRecurso());
 		// Con que choca, si es un turno: "ya tiene un turno entre las 10:00 y las 10:45" (TURNO.md §36).
 		if (exception.getConflictoInicio() != null) {
-			problem.setProperty("turnoEnConflictoId", exception.getTurnoEnConflictoId());
+			if (exception.getTurnoEnConflictoId() != null) {
+				problem.setProperty("turnoEnConflictoId", exception.getTurnoEnConflictoId());
+			}
 			problem.setProperty("conflictoInicio", exception.getConflictoInicio().toString());
 			problem.setProperty("conflictoFin", exception.getConflictoFin().toString());
+		}
+		// Agenda de clases y avisos (0.156.0): una clase, quiza de otra sede. Mismo type, mas datos.
+		if (exception.getConflictoTipo() != null) {
+			problem.setProperty("conflictoTipo", exception.getConflictoTipo());
+		}
+		if (exception.getClaseEnConflictoId() != null) {
+			problem.setProperty("claseEnConflictoId", exception.getClaseEnConflictoId());
+		}
+		if (exception.getConflictoConsultorioId() != null) {
+			problem.setProperty("conflictoConsultorioId", exception.getConflictoConsultorioId());
+		}
+		// Disponibilidad central (0.158.0): nombre de la sede, si es la misma, y el detail con la franja.
+		if (exception.getConflicto() != null) {
+			exception.getConflicto().propiedades().forEach(problem::setProperty);
 		}
 		return problem;
 	}
@@ -385,7 +445,8 @@ public class SchedulingProblemHandler {
 			default -> throw new IllegalStateException(
 					"Causa no prevista para una ocurrencia sin lugar", exception.getCausa());
 		};
-		problem.setDetail(exception.getMessage());
+		// La ocurrencia en hora de la sede y la causa con el mismo texto que en una reserva suelta.
+		problem.setDetail(exception.detalleCon(problem.getDetail()));
 		problem.setProperty("ocurrenciaInicio", exception.getOcurrenciaInicio().toString());
 		return problem;
 	}

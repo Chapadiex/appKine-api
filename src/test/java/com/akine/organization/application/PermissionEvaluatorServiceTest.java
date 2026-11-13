@@ -235,6 +235,30 @@ class PermissionEvaluatorServiceTest {
 			assertThat(decision.granted()).isTrue();
 			assertThat(decision.limitadaAActividadPropia()).isFalse();
 		}
+
+		@Test
+		@DisplayName("Agenda: el profesional opera solo lo suyo, y un grant del mismo codigo le da la sede")
+		void el_grant_amplia_la_actividad_propia() {
+			sinRolDePlataforma();
+			memberships(Fixtures.membershipDeSede(CONSULTORIO_ID, RoleCode.PROFESIONAL));
+			given(grantRepository.findAllByMembershipIdAndActiveTrue(MEMBERSHIP_ID)).willReturn(List.of());
+
+			assertThat(decidir(PermissionCode.TURNO_MANAGE, CONSULTORIO_ID).limitadaAActividadPropia()).isTrue();
+			assertThat(evaluator.ownScopedPermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
+					.contains("turno:manage", "agenda:horario", "agenda:excepciones");
+
+			// Con las dos cosas gana la mas amplia, no la que aparece primero.
+			given(grantRepository.findAllByMembershipIdAndActiveTrue(MEMBERSHIP_ID))
+					.willReturn(List.of(new MembershipGrant(ORG_ID, MEMBERSHIP_ID,
+							PermissionCode.TURNO_MANAGE, OTRA_CUENTA, "cubre la recepcion",
+							AHORA.minus(1, ChronoUnit.DAYS), null)));
+			PermissionDecision ampliada = decidir(PermissionCode.TURNO_MANAGE, CONSULTORIO_ID);
+			assertThat(ampliada.granted()).isTrue();
+			assertThat(ampliada.grantedByScope()).isEqualTo(PermissionScope.CONSULTORIO.name());
+			assertThat(evaluator.ownScopedPermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
+					.doesNotContain("turno:manage")
+					.contains("agenda:horario");
+		}
 	}
 
 	// =================================================================================
@@ -565,6 +589,8 @@ class PermissionEvaluatorServiceTest {
 							"tenant:read", "tenant:update", "consultorio:manage", "espacio:read",
 							"colaborador:manage", "colaborador:read", "auditoria:read",
 							"paciente:manage", "turno:read", "turno:manage", "turno:sobreturno", "cobro:register",
+							// Agenda de profesionales: horario habitual y excepciones con codigo propio.
+							"agenda:horario", "agenda:excepciones",
 							// `paciente:read` lo sumo AKINE-DU-6 (DP-22): todo el personal lee el padron.
 							"paciente:read",
 							// `convenio:manage` se sumo en AKINE-03.03, cuando nacio `contracting`,
@@ -596,7 +622,9 @@ class PermissionEvaluatorServiceTest {
 							// AKINE-08.07: ajustar y anular pases, permiso reforzado fuera del mostrador.
 							"pase:adjust",
 							// AKINE-G-1 (DP-15): "Si" en Ver Reportes.
-							"reporte:read");
+							"reporte:read",
+							// M30: la biblioteca de libros, solo ORG_ADMIN.
+							"biblioteca:manage", "biblioteca:consultar");
 		}
 
 		@Test
@@ -666,6 +694,8 @@ class PermissionEvaluatorServiceTest {
 			assertThat(evaluator.effectivePermissions(ACCOUNT_ID, ORG_ID, CONSULTORIO_ID))
 					.containsExactlyInAnyOrder(
 							"colaborador:read", "espacio:read", "turno:read", "turno:manage", "sesion:register",
+							// Agenda de profesionales: los dos, sobre su propia agenda (ACTIVIDAD_PROPIA).
+							"agenda:horario", "agenda:excepciones",
 							// U-25 (DP-43): enmendar es un permiso propio, con el reparto de Registrar Sesion.
 							"sesion:amend",
 							"hc:read", "hc:write",
@@ -683,7 +713,9 @@ class PermissionEvaluatorServiceTest {
 							"asistencia:manage",
 							// AKINE-G-1 (DP-15): aparece aunque sea ACTIVIDAD_PROPIA; el recorte
 							// lo hace el reporte, no la lista que oculta botones.
-							"reporte:read");
+							"reporte:read",
+							// M30, RF-M30-012: consultar la biblioteca, por base.
+							"biblioteca:consultar");
 		}
 	}
 

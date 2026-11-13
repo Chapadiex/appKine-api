@@ -4,7 +4,7 @@ import com.akine.organization.spi.AltaDeSedeExtension.Complemento;
 
 /**
  * Alta de una sede adicional (RF-M03-001), y con ella el primer box y el horario general cuando
- * vienen (RF-M03-002, A-8).
+ * vienen (RF-M03-002, A-8), y desde V140 la direccion fisica, la ubicacion y las opciones.
  *
  * <p>La sede numero uno NO pasa por aca: la crea el onboarding compuesto en la misma
  * transaccion que la organizacion (ADR-0008), y ese camino no se reescribe. Esto es el camino
@@ -14,11 +14,14 @@ import com.akine.organization.spi.AltaDeSedeExtension.Complemento;
  * @param timezone        zona IANA. {@code null} hereda la de la organizacion, que es el valor
  *                        que la UI propone
  * @param slotMinutes     intervalo de agenda en minutos. {@code null} usa el default
+ * @param addressLine     direccion FISCAL de la sede (texto libre)
  * @param idempotencyKey  identificador del intento, generado por el cliente. Obligatorio
  * @param requestHash     SHA-256 del payload canonico, para detectar la misma clave con otro
  *                        contenido. {@code null} cuando el alta no entra por HTTP
  * @param complemento     primer box y horario general. {@code null} equivale a
  *                        {@link Complemento#ninguno()}
+ * @param datos           direccion fisica, ubicacion y opciones (V140). {@code null} equivale a
+ *                        {@link SedeDatosCommand#ninguno()}
  */
 public record ConsultorioAltaCommand(
 		String name,
@@ -31,10 +34,29 @@ public record ConsultorioAltaCommand(
 		String contactEmail,
 		String idempotencyKey,
 		String requestHash,
-		Complemento complemento) {
+		Complemento complemento,
+		SedeDatosCommand datos) {
 
 	public ConsultorioAltaCommand {
 		complemento = complemento == null ? Complemento.ninguno() : complemento;
+		datos = datos == null ? SedeDatosCommand.ninguno() : datos;
+	}
+
+	/** Alta sin direccion ni ubicacion: la forma anterior a V140. */
+	public ConsultorioAltaCommand(
+			String name,
+			String timezone,
+			Integer slotMinutes,
+			String legalName,
+			String taxId,
+			String addressLine,
+			String phone,
+			String contactEmail,
+			String idempotencyKey,
+			String requestHash,
+			Complemento complemento) {
+		this(name, timezone, slotMinutes, legalName, taxId, addressLine, phone, contactEmail,
+				idempotencyKey, requestHash, complemento, null);
 	}
 
 	/** Alta sin primer box ni horario: la forma anterior a A-8. */
@@ -50,6 +72,6 @@ public record ConsultorioAltaCommand(
 			String idempotencyKey,
 			String requestHash) {
 		this(name, timezone, slotMinutes, legalName, taxId, addressLine, phone, contactEmail,
-				idempotencyKey, requestHash, null);
+				idempotencyKey, requestHash, null, null);
 	}
 }

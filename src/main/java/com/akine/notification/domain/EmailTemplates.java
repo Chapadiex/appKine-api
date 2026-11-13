@@ -91,25 +91,17 @@ public final class EmailTemplates {
 					"Tu turno en " + payload.getOrDefault("consultorioNombre", "AKINE"),
 					saludo + ",\n\nTe reservamos un turno" + servicio(payload)
 							+ " para el " + payload.getOrDefault("turnoInicio", "horario acordado")
-							+ sede(payload)
-							+ ".\n\nSi no podes asistir, avisale al centro con anticipacion para "
+							+ sede(payload) + "." + comoLlegar(payload)
+							+ "\n\nSi no podes asistir, avisale al centro con anticipacion para "
 							+ "liberar el lugar." + FIRMA);
 			case TURNO_CANCELADO -> new EmailMessage(
 					destinatario,
 					"Se cancelo tu turno en " + payload.getOrDefault("consultorioNombre", "AKINE"),
 					saludo + ",\n\nSe cancelo tu turno" + servicio(payload)
 							+ " del " + payload.getOrDefault("turnoInicio", "horario reservado")
-							+ sede(payload)
-							+ ".\n\nSi queres sacar uno nuevo, comunicate con el centro." + FIRMA);
-			case TURNO_REPROGRAMADO -> new EmailMessage(
-					destinatario,
-					"Cambio el horario de tu turno en "
-							+ payload.getOrDefault("consultorioNombre", "AKINE"),
-					saludo + ",\n\nTu turno" + servicio(payload) + anterior(payload)
-							+ " paso al " + payload.getOrDefault("turnoInicio", "nuevo horario acordado")
-							+ sede(payload)
-							+ ".\n\nSi el nuevo horario no te queda bien, comunicate con el centro."
-							+ FIRMA);
+							+ sede(payload) + "." + comoLlegar(payload)
+							+ "\n\nSi queres sacar uno nuevo, comunicate con el centro." + FIRMA);
+			case TURNO_REPROGRAMADO -> turnoModificado(destinatario, saludo, payload);
 			// AKINE-08.08 (RF-M26-008). Producto, fecha y saldo. CA-M26-008-06: el aviso no renueva
 			// ni consume nada, asi que el texto no ofrece ninguna accion que lo haga.
 			case PASE_POR_VENCER -> new EmailMessage(
@@ -146,6 +138,72 @@ public final class EmailTemplates {
 							+ "\n\nSi tienen que seguir renovandose, alguien que pueda vender tiene que "
 							+ "volver a activar la renovacion en cada abono." + FIRMA);
 		};
+	}
+
+	/**
+	 * "Tu turno cambio": el unico aviso de una reprogramacion y de un cambio de sede. Lista lo que
+	 * cambio de antes a ahora; lo que no cambio no aparece. Solo el horario (o una fila vieja del
+	 * outbox, sin las marcas nuevas) conserva el texto de siempre.
+	 */
+	private static EmailMessage turnoModificado(String destinatario, String saludo, SanitizedPayload payload) {
+		String sedeAnterior = payload.getOrDefault("consultorioNombreAnterior", null);
+		String inicioAnterior = payload.getOrDefault("turnoInicioAnterior", null);
+		boolean otroProfesional = "si".equals(payload.getOrDefault("cambioProfesional", null));
+		boolean otroBox = "si".equals(payload.getOrDefault("cambioEspacio", null));
+		String inicio = payload.getOrDefault("turnoInicio", "nuevo horario acordado");
+
+		if (sedeAnterior == null && !otroProfesional && !otroBox) {
+			return new EmailMessage(
+					destinatario,
+					"Cambio el horario de tu turno en " + payload.getOrDefault("consultorioNombre", "AKINE"),
+					saludo + ",\n\nTu turno" + servicio(payload) + anterior(payload)
+							+ " paso al " + inicio + sede(payload) + "." + comoLlegar(payload)
+							+ "\n\nSi el nuevo horario no te queda bien, comunicate con el centro." + FIRMA);
+		}
+
+		StringBuilder cambios = new StringBuilder();
+		if (sedeAnterior != null) {
+			cambios.append("\n- Sede: antes ").append(sedeAnterior).append(", ahora ")
+					.append(payload.getOrDefault("consultorioNombre", "otra sede"));
+		}
+		if (inicioAnterior != null) {
+			cambios.append("\n- Fecha y hora: antes ").append(inicioAnterior).append(", ahora ").append(inicio);
+		}
+		if (otroProfesional) {
+			cambios.append("\n- Profesional: te va a atender otro profesional");
+		}
+		if (otroBox) {
+			cambios.append("\n- Box: te van a atender en otro box de la sede");
+		}
+		return new EmailMessage(
+				destinatario,
+				"Cambio tu turno en " + payload.getOrDefault("consultorioNombre", "AKINE"),
+				saludo + ",\n\nHubo cambios en tu turno" + servicio(payload) + " del "
+						+ (inicioAnterior != null ? inicioAnterior : inicio) + ":\n" + cambios
+						+ "\n\nTu turno queda para el " + inicio + sede(payload) + "." + comoLlegar(payload)
+						+ "\n\nSi el cambio no te queda bien, comunicate con el centro." + FIRMA);
+	}
+
+	/**
+	 * La direccion de la sede y, si hay coordenadas, el enlace para llegar (V140). Vacio si la sede
+	 * no publica su direccion: {@code AvisosDeTurno} no manda las claves y aca no se inventa nada.
+	 *
+	 * <p>El enlace se arma ACA y no viaja en el payload: una URL en el payload la rechaza la lista de
+	 * fragmentos prohibidos del outbox, y esa regla sigue valiendo. Lo unico que llega son dos numeros.
+	 */
+	private static String comoLlegar(SanitizedPayload payload) {
+		String direccion = payload.getOrDefault("consultorioDireccion", null);
+		if (direccion == null) {
+			return "";
+		}
+		StringBuilder texto = new StringBuilder("\nDireccion: ").append(direccion);
+		String latitud = payload.getOrDefault("consultorioLatitud", null);
+		String longitud = payload.getOrDefault("consultorioLongitud", null);
+		if (latitud != null && longitud != null) {
+			texto.append("\nComo llegar: https://www.google.com/maps/dir/?api=1&destination=")
+					.append(latitud).append(',').append(longitud);
+		}
+		return texto.toString();
 	}
 
 	private static String autorizante(SanitizedPayload payload) {

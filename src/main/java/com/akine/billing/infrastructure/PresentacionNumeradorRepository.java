@@ -23,8 +23,8 @@ public interface PresentacionNumeradorRepository
 			INSERT INTO presentacion_numerador (organization_id, consultorio_id, financiador_id,
 			                                    ultimo_numero, created_at, updated_at)
 			VALUES (:organizationId, :consultorioId, :financiadorId, 0,
-			        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-			ON DUPLICATE KEY UPDATE id = id
+			        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			ON CONFLICT DO NOTHING
 			""", nativeQuery = true)
 	@Override
 	void crearSiFalta(

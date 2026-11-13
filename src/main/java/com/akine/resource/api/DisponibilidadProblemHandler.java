@@ -1,12 +1,20 @@
 package com.akine.resource.api;
 
 import com.akine.platform.spi.problem.ProblemType;
+import com.akine.resource.api.dto.FranjaFueraDeHorarioResponse;
+import com.akine.resource.api.dto.ImpactoDisponibilidadResponse;
+import com.akine.resource.api.dto.IntervaloHorarioResponse;
+import com.akine.resource.application.FranjasFueraDelHorarioException;
+import com.akine.resource.domain.exception.FranjaFueraDelHorarioDeSedeException;
+import com.akine.resource.domain.exception.ActividadReservadaEnConflictoException;
 import com.akine.resource.domain.exception.BloqueInactivoException;
+import com.akine.resource.domain.exception.DisponibilidadSuperpuestaException;
 import com.akine.resource.domain.exception.BloqueNotAccessibleException;
 import com.akine.resource.domain.exception.BloqueSolapadoException;
 import com.akine.resource.domain.exception.BloqueoConTurnosAfectadosException;
 import com.akine.resource.domain.exception.ExcepcionInactivaException;
 import com.akine.resource.domain.exception.ExcepcionNotAccessibleException;
+import com.akine.resource.domain.exception.MotivoOtroSinNotasException;
 import com.akine.resource.domain.exception.ProfesionalNoVinculadoException;
 import com.akine.resource.domain.exception.ProfesionalNotAccessibleException;
 import com.akine.resource.domain.exception.VentanaDemasiadoAmpliaException;
@@ -86,6 +94,7 @@ public class DisponibilidadProblemHandler {
 
 	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
 	private static final URI BLOQUE_SOLAPADO = ProblemType.BLOQUE_SOLAPADO.uri();
+	private static final URI RECURSO_OCUPADO = ProblemType.RECURSO_OCUPADO.uri();
 	private static final URI BLOQUEO_CON_TURNOS_AFECTADOS = ProblemType.BLOQUEO_CON_TURNOS_AFECTADOS.uri();
 	private static final URI BLOQUE_INACTIVO = ProblemType.BLOQUE_INACTIVO.uri();
 	private static final URI BLOQUE_ALREADY_INACTIVE = ProblemType.BLOQUE_ALREADY_INACTIVE.uri();
@@ -94,6 +103,21 @@ public class DisponibilidadProblemHandler {
 			ProblemType.VENTANA_DEMASIADO_AMPLIA.uri();
 	private static final URI EXCEPCION_ALREADY_INACTIVE =
 			ProblemType.EXCEPCION_ALREADY_INACTIVE.uri();
+	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
+
+	/**
+	 * Motivo {@code OTRO} sin notas: 400 {@code validation-error} con el error en el campo, la misma
+	 * forma que un {@code @Valid} que falla, para que la pantalla lo pinte debajo del campo.
+	 */
+	@ExceptionHandler(MotivoOtroSinNotasException.class)
+	public ProblemDetail handleMotivoOtroSinNotas(MotivoOtroSinNotasException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, "La solicitud contiene campos invalidos");
+		problem.setTitle("Error de validacion");
+		problem.setType(VALIDATION_ERROR);
+		problem.setProperty("errors", java.util.Map.of(MotivoOtroSinNotasException.CAMPO, exception.getMessage()));
+		return problem;
+	}
 
 	// =================================================================================
 	// 404 — inexistente, de otro tenant, de otra sede o de otro profesional
@@ -168,20 +192,124 @@ public class DisponibilidadProblemHandler {
 		problem.setType(BLOQUEO_CON_TURNOS_AFECTADOS);
 		problem.setTitle("El bloqueo afecta turnos");
 		problem.setProperty("turnosAfectados", exception.getTurnosAfectados());
+		// La lista, con la misma forma que la consulta previa de impacto: la pantalla arma la tabla de
+		// afectados con el 409 sin otra vuelta (checklist de agenda §6.2).
+		problem.setProperty("turnos", exception.getTurnos().stream()
+				.map(turno -> new ImpactoDisponibilidadResponse.TurnoAfectadoResponse(
+						turno.turnoId(), turno.membershipId(), turno.inicio(), turno.fin(), turno.personaId(),
+						turno.personaNombre(), turno.profesionalNombre(), turno.estado()))
+				.toList());
+		// Disponibilidad central (0.158.0): las clases que el cierre deja sin instructor. Sin participantes.
+		problem.setProperty("clasesAfectadas", exception.getClases().size());
+		problem.setProperty("clases", exception.getClases().stream()
+				.map(clase -> {
+					java.util.Map<String, Object> fila = new java.util.LinkedHashMap<>();
+					fila.put("claseId", clase.claseId());
+					if (clase.instructorMembershipId() != null) {
+						fila.put("instructorMembershipId", clase.instructorMembershipId());
+					}
+					fila.put("inicio", clase.inicio().toString());
+					fila.put("fin", clase.fin().toString());
+					return fila;
+				})
+				.toList());
+		return problem;
+	}
+
+	/** Disponibilidad central (0.158.0): la apertura choca con un turno o una clase en otra sede. */
+	@ExceptionHandler(ActividadReservadaEnConflictoException.class)
+	public ProblemDetail handleActividadReservada(ActividadReservadaEnConflictoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(RECURSO_OCUPADO);
+		problem.setTitle("El recurso ya esta ocupado en ese horario");
+		problem.setProperty("recurso", "profesional");
+		exception.getConflicto().propiedades().forEach(problem::setProperty);
+		return problem;
+	}
+
+	/**
+	 * Disponibilidad central (0.158.0): la apertura se superpone con el horario de la misma persona en
+	 * otra sede. Mismo {@code type} que el bloque solapado; la primera superposicion va en las extensiones
+	 * planas y todas en {@code superposiciones}.
+	 */
+	@ExceptionHandler(DisponibilidadSuperpuestaException.class)
+	public ProblemDetail handleDisponibilidadSuperpuesta(DisponibilidadSuperpuestaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+		problem.setType(BLOQUE_SOLAPADO);
+		problem.setTitle("Disponibilidad superpuesta con otra sede");
+		exception.getSuperposiciones().getFirst().propiedades().forEach(problem::setProperty);
+		problem.setProperty("superposiciones", exception.getSuperposiciones().stream()
+				.map(conflicto -> conflicto.propiedades()).toList());
+		return problem;
+	}
+
+	/**
+	 * Una franja del profesional se sale del horario general de la sede (regla del 08/11/2026). Lleva
+	 * todas las que no entran, con su indice en el pedido, su dia y el horario de la sede ese dia
+	 * —vacio si ese dia no abre—, para que la pantalla lo muestre al lado de cada franja.
+	 */
+	@ExceptionHandler(FranjaFueraDelHorarioDeSedeException.class)
+	public ProblemDetail handleFranjaFueraDelHorarioDeSede(FranjaFueraDelHorarioDeSedeException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+		problem.setTitle("Franja fuera del horario de la sede");
+		problem.setType(ProblemType.FRANJA_FUERA_DEL_HORARIO_DE_SEDE.uri());
+		problem.setProperty("diaSemana", exception.getFranjas().getFirst().diaSemana());
+		problem.setProperty("franjasFueraDeHorario", exception.getFranjas().stream()
+				.map(franja -> {
+					java.util.Map<String, Object> fila = new java.util.LinkedHashMap<>();
+					fila.put("indice", franja.indice());
+					fila.put("diaSemana", franja.diaSemana());
+					fila.put("horaDesde", horaDeContrato(franja.horaDesde()));
+					fila.put("horaHasta", horaDeContrato(franja.horaHasta()));
+					fila.put("horarioDeSede", franja.horarioDeSede().stream()
+							.map(IntervaloHorarioResponse::from).toList());
+					return fila;
+				})
+				.toList());
+		return problem;
+	}
+
+	/**
+	 * El horario nuevo de la sede deja afuera franjas de profesionales y el {@code PUT} no dijo que
+	 * hacer con ellas: es el aviso, no se guardo nada (regla del 08/11/2026).
+	 */
+	@ExceptionHandler(FranjasFueraDelHorarioException.class)
+	public ProblemDetail handleFranjasFueraDelHorario(FranjasFueraDelHorarioException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+		problem.setTitle("Franjas de profesionales fuera del horario");
+		problem.setType(ProblemType.FRANJAS_DE_PROFESIONALES_FUERA_DEL_HORARIO.uri());
+		problem.setProperty("franjasDeProfesionales", exception.getFranjas().stream()
+				.map(FranjaFueraDeHorarioResponse::from).toList());
 		return problem;
 	}
 
 	@ExceptionHandler(BloqueSolapadoException.class)
 	public ProblemDetail handleBloqueSolapado(BloqueSolapadoException exception) {
-		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-				HttpStatus.CONFLICT,
-				"El horario pedido se pisa con otro bloque activo del profesional en esta sede.");
+		// Disponibilidad central (0.158.0): el detail nombra la sede real del choque; antes decia "en esta
+		// sede" aunque el bloque fuera de la misma persona en otra.
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.detalle());
 		problem.setTitle("Bloque de disponibilidad solapado");
 		problem.setType(BLOQUE_SOLAPADO);
 		problem.setProperty("bloqueEnConflictoId", exception.getBloqueEnConflictoId());
 		problem.setProperty("diaSemana", exception.getDiaSemana());
 		problem.setProperty("horaDesde", horaDeContrato(exception.getHoraDesde()));
 		problem.setProperty("horaHasta", horaDeContrato(exception.getHoraHasta()));
+		problem.setProperty("conflictoTipo", "DISPONIBILIDAD");
+		problem.setProperty("conflictoOrigen", exception.getOrigen().name());
+		problem.setProperty("conflictoMismaSede", exception.isConflictoMismaSede());
+		if (exception.getConflictoConsultorioId() != null) {
+			problem.setProperty("conflictoConsultorioId", exception.getConflictoConsultorioId());
+		}
+		if (exception.getConflictoConsultorioNombre() != null) {
+			problem.setProperty("conflictoConsultorioNombre", exception.getConflictoConsultorioNombre());
+		}
+		if (exception.getConflictoHoraDesde() != null) {
+			problem.setProperty("conflictoHoraDesde", horaDeContrato(exception.getConflictoHoraDesde()));
+			problem.setProperty("conflictoHoraHasta", horaDeContrato(exception.getConflictoHoraHasta()));
+		}
+		if (exception.getConflictoFecha() != null) {
+			problem.setProperty("conflictoFecha", exception.getConflictoFecha().toString());
+		}
 		return problem;
 	}
 

@@ -59,7 +59,7 @@ import java.util.Map;
  *       ocurre ANTES del lock: el lock se toma correctamente y despues se lee un mundo viejo en el
  *       que el convenio ajeno todavia no existe. Es la leccion que 05.02 pago con los turnos.</li>
  *   <li><b>La fila-lock creada en una transaccion aparte</b>, con
- *       {@code INSERT ... ON DUPLICATE KEY UPDATE}. Ver {@link ConvenioLockIniciador}: crearla
+ *       {@code INSERT ... ON CONFLICT DO NOTHING}. Ver {@link ConvenioLockIniciador}: crearla
  *       perezosamente aca produce deadlock entre las primeras N escrituras de una sede, y el
  *       {@code try/catch} no salva.</li>
  *   <li><b>El lock tomado ANTES de leer nada</b> del conjunto que se valida. Leer primero y

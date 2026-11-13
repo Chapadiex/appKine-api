@@ -237,11 +237,11 @@ class TratamientoRealizadoIT {
 		assertThat(tres.orden()).as("el orden de la baja no se libera").isEqualTo(3);
 		assertThat(jdbc.queryForList("""
 				SELECT orden FROM tratamiento_realizado
-				 WHERE sesion_id = ? AND active = 1 ORDER BY orden
+				 WHERE sesion_id = ? AND active = true ORDER BY orden
 				""", Integer.class, sesionId)).containsExactly(1, 3);
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM tratamiento_realizado
-				 WHERE sesion_id = ? AND orden = 2 AND active = 0
+				 WHERE sesion_id = ? AND orden = 2 AND active = false
 				""", Long.class, sesionId)).as("la fila dada de baja sigue ahi").isEqualTo(1);
 	}
 
@@ -455,7 +455,7 @@ class TratamientoRealizadoIT {
 		// Nada cambio en la sesion de A.
 		assertThat(contar("tratamiento_realizado", "sesion_id", sesionA)).isEqualTo(1);
 		assertThat(jdbc.queryForObject(
-				"SELECT active FROM tratamiento_realizado WHERE id = ?", Integer.class, deA.id()))
+				"SELECT CAST(active AS integer) FROM tratamiento_realizado WHERE id = ?", Integer.class, deA.id()))
 				.isEqualTo(1);
 		assertThat(versionEnBase(sesionA)).isEqualTo(version);
 	}
@@ -555,7 +555,7 @@ class TratamientoRealizadoIT {
 				        registrado_por_cuenta_id, active, deleted_at, deactivation_reason,
 				        version, created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?, 'P-IT', 'Practica sintetica', ?, ?, ?, ?, ?, ?,
-				        UTC_TIMESTAMP(6), ?, ?, ?, ?, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				        CURRENT_TIMESTAMP, ?, CAST(? AS boolean), CAST(? AS timestamptz), ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""",
 				mundo.organizationId(), mundo.consultorioId(), sesionId, orden, mundo.practicaId(),
 				zona, lateralidad, duracion, mundo.profesional().membershipId(), espacioId,
@@ -571,7 +571,7 @@ class TratamientoRealizadoIT {
 				INSERT INTO tratamiento_parametro
 				       (organization_id, tratamiento_realizado_id, clave, tipo_dato, valor_numerico,
 				        valor_texto, valor_booleano, unidad, orden, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, CAST(? AS numeric), ?, CAST(? AS boolean), ?, 0, CURRENT_TIMESTAMP)
 				""", organizacionDelUltimo, tratamientoId, clave, tipo, numerico, texto, booleano, unidad);
 	}
 

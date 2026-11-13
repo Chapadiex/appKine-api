@@ -51,7 +51,7 @@ class AkineApiApplicationIT {
 		JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
 		Integer migracionesExitosas = jdbc.queryForObject(
-				"SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1", Integer.class);
+				"SELECT COUNT(*) FROM flyway_schema_history WHERE success", Integer.class);
 		assertThat(migracionesExitosas)
 				.as("flyway debe haber aplicado al menos la migracion V1")
 				.isNotNull()
@@ -71,7 +71,7 @@ class AkineApiApplicationIT {
 		JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 		Integer tablas = jdbc.queryForObject(
 				"SELECT COUNT(*) FROM information_schema.tables "
-						+ "WHERE table_schema = DATABASE() AND table_name = 'platform_schema_info'",
+						+ "WHERE table_schema = current_schema() AND table_name = 'platform_schema_info'",
 				Integer.class);
 		assertThat(tablas).isEqualTo(1);
 	}

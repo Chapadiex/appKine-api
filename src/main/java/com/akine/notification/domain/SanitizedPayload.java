@@ -51,6 +51,18 @@ public final class SanitizedPayload {
 			"turnoInicio",
 			"turnoInicioAnterior",
 			"servicioNombre",
+			// Aviso "tu turno cambio" (reprogramacion y cambio de sede): la sede de antes, y dos
+			// marcas ("si") de que cambio el profesional o el box. Las marcas no nombran a nadie.
+			"consultorioNombreAnterior",
+			"cambioProfesional",
+			"cambioEspacio",
+			// V140: la direccion fisica de la sede y sus coordenadas, SOLO cuando la sede las publica
+			// (ConsultorioSnapshot.direccionPublica). Es dato del centro, no de la persona. Las
+			// coordenadas van como texto decimal: el enlace "como llegar" lo arma el template, porque
+			// una URL en el payload la rechaza FRAGMENTOS_PROHIBIDOS, y eso esta bien.
+			"consultorioDireccion",
+			"consultorioLatitud",
+			"consultorioLongitud",
 			// AKINE-08.08 (RF-M26-008): el aviso de un pase dice que producto es, cuando vence y
 			// cuanto saldo le queda. El nombre comercial del producto, no un dato clinico ni un id.
 			"productoNombre",
@@ -75,6 +87,14 @@ public final class SanitizedPayload {
 
 	/** Un nombre propio no llega ni cerca de este limite; un secreto pegado, si. */
 	private static final int LARGO_MAXIMO_VALOR = 200;
+
+	/**
+	 * Claves cuyo valor legitimo supera el tope general. La direccion formateada de la sede (V140)
+	 * junta calle (160), numero, piso (60), ciudad (120), provincia (80) y codigo postal: con las
+	 * partes al maximo pasa de 450. Sin este tope propio el aviso la perdia en silencio
+	 * (AvisosDeTurno.depurar) y con ella el enlace "como llegar".
+	 */
+	private static final Map<String, Integer> LARGO_MAXIMO_POR_CLAVE = Map.of("consultorioDireccion", 500);
 
 	/** Fragmentos que delatan un enlace o un secreto, en minusculas. */
 	private static final List<String> FRAGMENTOS_PROHIBIDOS = List.of(
@@ -122,9 +142,10 @@ public final class SanitizedPayload {
 		if (valor == null) {
 			return;
 		}
-		if (valor.length() > LARGO_MAXIMO_VALOR) {
+		int largoMaximo = LARGO_MAXIMO_POR_CLAVE.getOrDefault(clave, LARGO_MAXIMO_VALOR);
+		if (valor.length() > largoMaximo) {
 			throw new SensitiveContentException(clave,
-					"supera los " + LARGO_MAXIMO_VALOR + " caracteres, no parece un dato de render");
+					"supera los " + largoMaximo + " caracteres, no parece un dato de render");
 		}
 		String minusculas = valor.toLowerCase(Locale.ROOT);
 		for (String fragmento : FRAGMENTOS_PROHIBIDOS) {

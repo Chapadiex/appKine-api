@@ -251,7 +251,7 @@ class AsistenciaConcurrenteIT {
 	private long filaDeAgenda(Tenant tenant) {
 		jdbc.update("""
 				INSERT INTO agenda_sede (organization_id, consultorio_id, created_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6)) ON DUPLICATE KEY UPDATE id = id
+				VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT (organization_id, consultorio_id) DO NOTHING
 				""", tenant.organizationId(), tenant.consultorioId());
 		return jdbc.queryForObject(
 				"SELECT id FROM agenda_sede WHERE organization_id = ? AND consultorio_id = ?",

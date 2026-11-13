@@ -26,8 +26,8 @@ public record ImpactoDisponibilidadResponse(
 				nullable = true)
 		Instant primerTurnoAfectado,
 
-		@Schema(description = "Los primeros 50 turnos afectados, por inicio. Sin datos del "
-				+ "paciente: el detalle se abre en la agenda")
+		@Schema(description = "Los primeros 50 turnos afectados, por inicio, con paciente, profesional y "
+				+ "estado para reubicarlos. Nada clinico")
 		List<TurnoAfectadoResponse> turnos,
 
 		@Schema(description = "Fecha local EXCLUSIVA hasta la que se evaluo: el fin de vigencia "
@@ -49,17 +49,34 @@ public record ImpactoDisponibilidadResponse(
 			Instant inicio,
 
 			@Schema(description = "Fin del turno, exclusivo")
-			Instant fin) {
+			Instant fin,
+
+			@Schema(description = "Paciente del turno", example = "77")
+			Long personaId,
+
+			@Schema(description = "Apellido y nombre del paciente. Ausente si la ficha no se resuelve",
+					example = "Perez, Ana")
+			String personaNombre,
+
+			@Schema(description = "Nombre del profesional. Ausente si su cuenta no se resuelve",
+					example = "Gomez, Laura")
+			String profesionalNombre,
+
+			@Schema(description = "Estado del turno", allowableValues = {"RESERVADO", "CONFIRMADO"},
+					example = "CONFIRMADO")
+			String estado) {
+
+		public static TurnoAfectadoResponse de(ImpactoDeDisponibilidad.TurnoAfectado turno) {
+			return new TurnoAfectadoResponse(turno.turnoId(), turno.membershipId(), turno.inicio(), turno.fin(),
+					turno.personaId(), turno.personaNombre(), turno.profesionalNombre(), turno.estado());
+		}
 	}
 
 	public static ImpactoDisponibilidadResponse from(ImpactoDeDisponibilidad impacto) {
 		return new ImpactoDisponibilidadResponse(
 				impacto.turnosAfectados(),
 				impacto.primerTurnoAfectado(),
-				impacto.turnos().stream()
-						.map(turno -> new TurnoAfectadoResponse(
-								turno.turnoId(), turno.membershipId(), turno.inicio(), turno.fin()))
-						.toList(),
+				impacto.turnos().stream().map(TurnoAfectadoResponse::de).toList(),
 				impacto.evaluadoHasta());
 	}
 }

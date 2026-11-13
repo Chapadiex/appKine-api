@@ -4,6 +4,7 @@ import com.akine.offering.spi.OfertaDirectory;
 import com.akine.offering.spi.OfertaSnapshot;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionDecision;
 import com.akine.person.spi.ContactoDePersona;
 import com.akine.person.spi.ContactoDirectory;
 import com.akine.person.spi.PacienteDirectory;
@@ -111,7 +112,9 @@ public class ListaDeEsperaService {
 
 		long organizationId = exigirContexto(actor);
 		exigirSede(organizationId, consultorioId);
-		soporte.exigir(actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);
+		PermissionDecision gestion = soporte.exigir(actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);
+		// Alcance propio: el PROFESIONAL anota solo para su agenda, con el mismo como profesional.
+		soporte.exigirPropio(gestion, actor, organizationId, command.profesionalId());
 		ofertas.find(organizationId, consultorioId, command.ofertaId())
 				.orElseThrow(() -> new OfertaNotAccessibleException(command.ofertaId()));
 		PacienteSnapshot paciente = pacientes.find(organizationId, command.personaId())
@@ -258,9 +261,10 @@ public class ListaDeEsperaService {
 
 		long organizationId = exigirContexto(actor);
 		exigirSede(organizationId, consultorioId);
-		soporte.exigir(actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);
+		PermissionDecision gestion = soporte.exigir(actor, PermissionCodes.TURNO_MANAGE, organizationId, consultorioId);
 
 		EntradaDeListaDeEspera entrada = exigirEntrada(organizationId, consultorioId, entradaId);
+		soporte.exigirPropio(gestion, actor, organizationId, entrada.getProfesionalMembershipId());
 		exigirVersion(entrada, expectedVersion);
 		Instant ahora = Instant.now();
 		entrada.descartar(motivo, actor.accountId(), ahora);

@@ -118,6 +118,8 @@ Códigos `<dominio>:<acción>`. Estable, en minúsculas, sin significado de UI. 
 | `cobro:register` | Registrar Cobro | F7 |
 | `caja:operate` | Operar Caja | F7 |
 | `reporte:read` | Ver Reportes | F8 |
+| `agenda:horario` | Cargar, editar y dar de baja el horario habitual de un profesional, y consultar su impacto (agenda de profesionales, §21) | F5 |
+| `agenda:excepciones` | Cargar y dar de baja excepciones y bloqueos de disponibilidad, y consultar su impacto (§21) | F5 |
 
 ## 6. Asignación base por rol — Fase 1
 
@@ -539,11 +541,13 @@ como concepto separado de "turnos" para decidir a quién dárselo, cuando en los
 trabajo sobre las mismas filas. El check-in **es una transición del Turno**, y quien puede
 cancelar un turno con más razón puede decir que el paciente llegó.
 
-Consecuencia práctica, que conviene tener presente: **el `PROFESIONAL` no tiene `turno:manage`
-por asignación base**, así que no puede marcar llegadas salvo que se le otorgue por grant. Es
-coherente con M13 —recepción es trabajo administrativo— pero deja sin resolver el centro de un
-solo kinesiólogo que atiende y recibe. Se resuelve con un grant, que es exactamente para lo que
-existe.
+> **Corregido el 03/11/2026 (agenda de profesionales, §21).** El párrafo original decía que el
+> `PROFESIONAL` no tenía `turno:manage` por base; ya lo tenía desde 05.01 con alcance de sede, así
+> que marcaba llegadas de cualquier turno de su sede. Desde §21 lo tiene con alcance
+> **`ACTIVIDAD_PROPIA`**: registra la llegada, la deshace y la cierra solo en los turnos que atiende
+> él; en los ajenos, 403. El centro de un solo kinesiólogo que atiende y recibe no necesita nada:
+> todos los turnos son suyos. Si además cubre la recepción de otros, un grant de `turno:manage` le
+> da la sede entera.
 
 ### 13.2 Lo que 05.04 NO habilita — dicho para que nadie lo asuma
 
@@ -737,6 +741,10 @@ define como solo metadatos y nunca contenido clínico), `paciente:manage` o `hc:
 | `paciente:manage` | `PROFESIONAL` | §2 "Según permiso" |
 | `hc:read` | `ORG_ADMIN`, `CONSULTORIO_ADMIN` | §2 "No por defecto", "Según rol clínico" |
 | `hc:write` | `CONSULTORIO_ADMIN` | §2 "No por defecto" |
+| `agenda:horario` | `ADMINISTRATIVO`, `PROFESIONAL` | §21 (agenda de profesionales) |
+| `turno:sobreturno` | `ADMINISTRATIVO`, `PROFESIONAL` | §21 |
+| `turno:manage` | `PROFESIONAL` (amplía su alcance propio a la sede) | §21 |
+| `agenda:excepciones` | `PROFESIONAL` (amplía su alcance propio a la sede) | §21 |
 
 Un permiso que el rol ya tiene por base también se acepta (redundante e inocuo). Cualquier otra
 combinación responde **400** con el rol nombrado en el detalle.
@@ -926,7 +934,9 @@ puede saltearla.
 
 | Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
 |---|---|---|---|---|---|---|
-| `turno:sobreturno` | — | Org | Consultorio | — | — | — |
+| `turno:sobreturno` | — | Org | Consultorio | — (grant) | — (grant) | — |
+
+> Desde §21 es otorgable por grant al `PROFESIONAL` y al `ADMINISTRATIVO`.
 
 - **Exige motivo** y se audita (`TURNO_SOBRETURNO`) con quién lo autorizó. Sin permiso, 403.
 - **Sólo salva la ocupación.** No sirve fuera de la disponibilidad, contra un bloqueo ni contra el tope del
@@ -935,3 +945,83 @@ puede saltearla.
 La lista de espera no suma permisos: lee con `turno:read` y opera con `turno:manage`.
 
 **Lo verifican** `PermissionEvaluatorServiceTest`, `PermisosEsquemaIT` y `FlujoUnicoDeTurnosIT`.
+
+## 21. Enmiendas — agenda de profesionales (03/11/2026)
+
+Decisión del usuario del 03/11/2026: el `PROFESIONAL` **ve** la agenda de toda su sede y **opera**
+solo la suya; la secretaría (`ADMINISTRATIVO`) carga bloqueos y licencias pero no cambia el horario
+habitual, que se le puede otorgar. Se usa el RBAC que ya existe: códigos, asignación base, alcance y
+grants. Diseño: `docs/diseno/AKINE-agenda-roles.md`.
+
+### 21.1 Dos códigos nuevos, y `consultorio:manage` deja de cubrir la agenda de las personas
+
+`agenda:horario` (bloques de `profesional_disponibilidad`, su edición, su baja y el impacto previo) y
+`agenda:excepciones` (`disponibilidad_excepcion`, alta, baja e impacto previo) reemplazan a
+`consultorio:manage` en `DisponibilidadService` y `ExcepcionService`. `consultorio:manage` sigue
+cubriendo lo que es de la **sede**: calendario, horario general, espacios, configuración de ofertas
+(incluidas las duraciones propias por profesional de V128, que son de la oferta).
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `turno:read` | Soporte | Org | Consultorio | Consultorio | Consultorio | — |
+| `turno:manage` | — | Org | Consultorio | **Actividad propia** (grant: sede) | Consultorio | — |
+| `agenda:excepciones` | — | Org | Consultorio | **Actividad propia** (grant: sede) | Consultorio | — |
+| `agenda:horario` | — | Org | Consultorio | **Actividad propia** | — (grant) | — |
+| `turno:sobreturno` | — | Org | Consultorio | — (grant) | — (grant) | — |
+
+### 21.2 El alcance propio es `ACTIVIDAD_PROPIA`, no `OWN`
+
+`ACTIVIDAD_PROPIA` (§14.3) ya significaba "lo que el actor atiende o le fue asignado, resuelto por
+sus memberships", que es exactamente esto. `OWN` es el paciente sobre sus propios datos y sigue sin
+implementar. El evaluador concede la sede y devuelve el alcance en `grantedByScope`; **el recorte lo
+hace el servicio**:
+
+- `scheduling` (`AgendaDelProfesional.exigirPropio`): el profesional del turno —y el destino de una
+  reprogramación, el de una reserva, el de cada ocurrencia de una serie, el de una entrada de la
+  lista de espera— tiene que ser una membership **de la misma cuenta** que el actor. Cubre reservar,
+  confirmar, cancelar, ausente, reprogramar, asociar caso y plan, series (alta, cancelación y
+  reprogramación por alcance), recepción (llegada, transiciones, anular) y lista de espera (anotar,
+  descartar; asignar pasa por la reserva). Un turno sin profesional no es de nadie: 403.
+- `resource` (`AutorizacionDeSede.exigirPermisoSobreProfesional`): el bloque o la excepción tiene que
+  ser de una membership de la misma cuenta. **Una excepción de sede (sin profesional) exige un alcance
+  que no sea el propio.**
+
+Se compara por **cuenta** y no por id de membership: con memberships por sede, la misma persona
+tiene un id distinto en cada una. Ajeno es **403 `forbidden`** (no 404: el turno es de su sede y ya
+lo ve en la agenda). Ese 403 no deja fila `PERMISSION_DENIED`: la decisión del evaluador fue
+"concedida", y el rechazo lo produce el recorte.
+
+### 21.3 Con un grant del mismo código gana el alcance más amplio
+
+Antes, una asignación base que cubría devolvía su alcance sin mirar los grants. Con
+`ACTIVIDAD_PROPIA` eso dejaría a un profesional con grant de `turno:manage` igual de recortado. El
+evaluador ahora, cuando la base es `ACTIVIDAD_PROPIA`, prefiere el grant si también cubre (alcance
+de la membership: sede u organización). Para los demás alcances no cambia nada.
+
+### 21.4 Lo que ve el frontend
+
+- `GET /api/v1/me` → `context.membershipId`: la membership que gobierna el contexto (la de la sede si
+  la hay). Es el id con el que la agenda nombra al profesional.
+- `GET /api/v1/me/permissions` → `ownScopedPermissions`: el subconjunto de `permissions` que la cuenta
+  tiene solo sobre su actividad. Insumo de UX, como la otra lista.
+
+**Contrato 0.153.0**, aditivo.
+
+**Lo verifican** `RolePermissionsTest`, `PermissionEvaluatorServiceTest`, `MembershipServiceTest`,
+`AgendaDelProfesionalTest`, `AgendaPropiaEnResourceTest` y `AgendaEntreSedesIT`.
+
+## 22. Enmiendas — Biblioteca (M30)
+
+La biblioteca del centro (M30, `docs/producto/AKINE_Requerimientos_Integrados.md`) no tiene fila en el §32. Se agrega un solo código, `biblioteca:manage`, que cubre todas las operaciones del módulo: subir, listar, ver detalle, editar, reemplazar, reprocesar, activar o desactivar, eliminar y probar búsqueda. No hay un `biblioteca:read` separado: los profesionales no ven la pantalla y usarán la biblioteca a través de otros módulos, no por esta API. Diseño: `docs/diseno/AKINE-biblioteca-rag.md`.
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `biblioteca:manage` | — | Org | — | — | — | — |
+| `biblioteca:consultar` | — | Org | Org | Org | Org | — |
+
+- **Alcance `ORGANIZACION`.** La biblioteca es de la organización y no de una sede; una membership con alcance de sede no la administra.
+- **No es otorgable por membership.** No entra en el catálogo de permisos otorgables por grant (§16): ningún grant puede dárselo al `CONSULTORIO_ADMIN`, al `PROFESIONAL`, al `ADMINISTRATIVO` ni al `PACIENTE`.
+- **`PLATFORM_ADMIN` no lo tiene:** el soporte de plataforma no administra el material de un centro.
+- **Cross-tenant:** un libro de otra organización responde 404 `libro-no-encontrado`, nunca 403.
+- **Biblioteca apagada:** con el interruptor global apagado, toda operación responde 409 `biblioteca-deshabilitada` aunque el actor tenga el permiso.
+- **`biblioteca:consultar` (RF-M30-012):** consultar la biblioteca con el asistente. Por base para `ORG_ADMIN`, `CONSULTORIO_ADMIN`, `PROFESIONAL` y `ADMINISTRATIVO`, con alcance `ORGANIZACION`; no es otorgable por grant y `PACIENTE` y `PLATFORM_ADMIN` no lo tienen. La consulta exige además `akine.biblioteca.consulta.enabled`: apagado, 409 `biblioteca-deshabilitada`.

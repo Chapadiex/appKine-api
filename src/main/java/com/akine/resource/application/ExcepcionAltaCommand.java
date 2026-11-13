@@ -43,7 +43,19 @@ public record ExcepcionAltaCommand(
 		LocalTime horaHasta,
 		Long feriadoId,
 		String notes,
-		boolean confirmaTurnosAfectados) {
+		boolean confirmaTurnosAfectados,
+		boolean sustituirDisponibilidadSuperpuesta) {
+
+	/**
+	 * Sin sustitucion: una APERTURA que se superpone con el horario de la misma persona en otra sede
+	 * responde 409 (disponibilidad central, 0.158.0).
+	 */
+	public ExcepcionAltaCommand(Long membershipId, TipoExcepcion tipo, MotivoExcepcion motivo,
+			LocalDate fechaDesde, LocalDate fechaHasta, LocalTime horaDesde, LocalTime horaHasta,
+			Long feriadoId, String notes, boolean confirmaTurnosAfectados) {
+		this(membershipId, tipo, motivo, fechaDesde, fechaHasta, horaDesde, horaHasta, feriadoId, notes,
+				confirmaTurnosAfectados, false);
+	}
 
 	public ExcepcionAltaCommand(Long membershipId, TipoExcepcion tipo, MotivoExcepcion motivo,
 			LocalDate fechaDesde, LocalDate fechaHasta, LocalTime horaDesde, LocalTime horaHasta,

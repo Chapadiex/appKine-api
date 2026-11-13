@@ -246,7 +246,7 @@ class TimelineIT {
 				adjunto.adjunto().id(), "Documento equivocado", JUSTIFICACION);
 
 		assertThat(ver(fixture, null, 50).eventos())
-				.as("las dos fuentes filtran active = 1 sin parametro que lo negocie")
+				.as("las dos fuentes filtran active = true sin parametro que lo negocie")
 				.isEmpty();
 
 		// Pero siguen siendo consultables por su id: la baja saca del indice, no borra.
@@ -433,7 +433,7 @@ class TimelineIT {
 				new AdjuntoClinicoAltaCommand(CategoriaAdjuntoClinico.ESTUDIO, null, null,
 						marca + ".pdf", "application/pdf", pdf(marca)),
 				JUSTIFICACION);
-		jdbc.update("UPDATE adjunto_clinico SET subido_en = ? WHERE id = ?",
+		jdbc.update("UPDATE adjunto_clinico SET subido_en = CAST(? AS timestamptz) WHERE id = ?",
 				utc(subidoEn), alta.adjunto().id());
 		return alta;
 	}
@@ -466,8 +466,8 @@ class TimelineIT {
 				INSERT INTO historia_clinica_antecedente (organization_id, historia_clinica_id, tipo,
 				                                          descripcion, registrado_en, registrado_por,
 				                                          active, version, created_at, updated_at)
-				VALUES (?, ?, 'ALERGIA', 'penicilina', ?, ?, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'ALERGIA', 'penicilina', CAST(? AS timestamptz), ?, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", fixture.organizationId(), fixture.historiaClinicaId(),
 				utc(registradoEn), fixture.cuentaId());
 	}
@@ -489,7 +489,7 @@ class TimelineIT {
 				                    iniciada_por_cuenta_id, asistencia, cerrada_en,
 				                    cerrada_por_cuenta_id, ultimo_numero_version, version,
 				                    created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS timestamptz), ?, ?, CAST(? AS timestamptz), ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""",
 				fixture.organizationId(), fixture.consultorioId(), fixture.historiaClinicaId(),
 				fixture.ofertaId(), fixture.membershipId(), estado, numeroSesion,
@@ -519,57 +519,57 @@ class TimelineIT {
 		long organizationId = insertar("""
 				INSERT INTO organization (name, slug, timezone, active, version,
 				                          created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{"Centro Sintetico " + sufijo, "timeline-it-" + sufijo, ZONA});
 
 		long consultorioId = insertar("""
 				INSERT INTO consultorio (organization_id, name, timezone, active, version,
 				                         created_at, updated_at)
-				VALUES (?, ?, ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{organizationId, "Sede Sintetica " + sufijo, ZONA});
 
 		String email = "timeline-it-" + sufijo + "@ejemplo.test";
 		long cuentaId = insertar("""
 				INSERT INTO cuenta (email, email_normalizado, nombre, apellido, estado, active,
 				                    version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', 'DePrueba', 'ACTIVA', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{email, email});
 
 		long membershipId = insertar("""
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, estado, active, version,
 				                        created_at, updated_at)
-				VALUES (?, ?, ?, 'PROFESIONAL', 0, DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 5 YEAR),
-				        'ACTIVA', 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, 'PROFESIONAL', false, (CURRENT_TIMESTAMP - INTERVAL '5 years'),
+				        'ACTIVA', true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{organizationId, consultorioId, cuentaId});
 
 		long personaId = insertar("""
 				INSERT INTO persona (organization_id, apellido, nombre, apellido_clave,
 				                     nombre_clave, active, version, created_at, updated_at)
-				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'Sintetico', ?, 'SINTETICO', true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{
 						organizationId, "Paciente" + sufijo, ("PACIENTE" + sufijo).toUpperCase()});
 
 		insertar("""
 				INSERT INTO perfil_paciente (organization_id, persona_id, activado_en, activado_por,
 				                             active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{organizationId, personaId, cuentaId});
 
 		long historiaClinicaId = insertar("""
 				INSERT INTO historia_clinica (organization_id, persona_id, abierta_en, abierta_por,
 				                              active, version, created_at, updated_at)
-				VALUES (?, ?, UTC_TIMESTAMP(6), ?, 1, 0, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, CURRENT_TIMESTAMP, ?, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{organizationId, personaId, cuentaId});
 
 		long servicioId = insertar("""
 				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
 				                      requiere_caso_clinico_default, genera_registro_clinico_default,
 				                      active, version, created_at, updated_at)
-				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', 0, 0, 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, 'CLINICO', 'INDIVIDUAL', false, false, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{
 						"TL-" + sufijo.toUpperCase(), "Servicio Sintetico " + sufijo});
 
@@ -579,9 +579,9 @@ class TimelineIT {
 				        duracion_minutos, capacidad, precio_base, moneda, admite_obra_social,
 				        requiere_caso_clinico, genera_registro_clinico, requiere_profesional,
 				        requiere_espacio, vigencia_desde, active, version, created_at, updated_at)
-				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', 0, 0, 0, 1, 0,
-				        DATE_SUB(CURDATE(), INTERVAL 5 YEAR), 1, 0,
-				        UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+				VALUES (?, ?, ?, ?, 'INDIVIDUAL', 60, 1, 8500.00, 'ARS', false, false, false, true, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", new Object[]{
 						organizationId, consultorioId, servicioId, "Oferta " + sufijo});
 

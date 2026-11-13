@@ -2,9 +2,11 @@ package com.akine.resource.application;
 
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
+import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.identity.AccountIdentityDirectory;
 import com.akine.platform.spi.transaccion.FilaLockPrevia;
 import com.akine.resource.domain.DisponibilidadExcepcion;
 import com.akine.resource.domain.PermissionCodes;
@@ -20,6 +22,7 @@ import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.CalendarioSe
 import com.akine.resource.domain.port.DisponibilidadRepositoryPorts.DisponibilidadExcepcionRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Isolation;
@@ -34,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Cierres y aperturas puntuales de disponibilidad (M05, RF-M05-004).
@@ -81,8 +85,11 @@ public class ExcepcionService {
 	private final PermissionGuard permissionGuard;
 	private final AuditTrail auditTrail;
 	private final SimuladorDeImpacto simulador;
+	private final AccountIdentityDirectory identidades;
+	private final DisponibilidadEntreSedes entreSedes;
 	private final TransactionTemplate transaccionReadCommitted;
 
+	/** Sin nombres de autor: los dobles de test anteriores a la agenda operativa. */
 	public ExcepcionService(
 			DisponibilidadExcepcionRepositoryPort excepciones,
 			CalendarioSedeRepositoryPort calendarios,
@@ -93,7 +100,43 @@ public class ExcepcionService {
 			AuditTrail auditTrail,
 			SimuladorDeImpacto simulador,
 			PlatformTransactionManager transactionManager) {
+		this(excepciones, calendarios, calendarioIniciador, consultorioDirectory, membershipDirectory,
+				permissionGuard, auditTrail, simulador, null, transactionManager);
+	}
 
+	/** Sin validacion entre sedes: los dobles de test anteriores a la disponibilidad central (0.158.0). */
+	public ExcepcionService(
+			DisponibilidadExcepcionRepositoryPort excepciones,
+			CalendarioSedeRepositoryPort calendarios,
+			CalendarioSedeIniciador calendarioIniciador,
+			ConsultorioDirectory consultorioDirectory,
+			ConsultorioMembershipDirectory membershipDirectory,
+			PermissionGuard permissionGuard,
+			AuditTrail auditTrail,
+			SimuladorDeImpacto simulador,
+			AccountIdentityDirectory identidades,
+			PlatformTransactionManager transactionManager) {
+		this(excepciones, calendarios, calendarioIniciador, consultorioDirectory, membershipDirectory,
+				permissionGuard, auditTrail, simulador, identidades, transactionManager, null);
+	}
+
+	@Autowired
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	public ExcepcionService(
+			DisponibilidadExcepcionRepositoryPort excepciones,
+			CalendarioSedeRepositoryPort calendarios,
+			CalendarioSedeIniciador calendarioIniciador,
+			ConsultorioDirectory consultorioDirectory,
+			ConsultorioMembershipDirectory membershipDirectory,
+			PermissionGuard permissionGuard,
+			AuditTrail auditTrail,
+			SimuladorDeImpacto simulador,
+			AccountIdentityDirectory identidades,
+			PlatformTransactionManager transactionManager,
+			DisponibilidadEntreSedes entreSedes) {
+
+		this.entreSedes = entreSedes;
+		this.identidades = identidades;
 		this.excepciones = excepciones;
 		this.calendarios = calendarios;
 		this.calendarioIniciador = calendarioIniciador;
@@ -137,18 +180,47 @@ public class ExcepcionService {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		exigirSedeOperable(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId, command.membershipId());
 
-		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
-		calendarioIniciador.asegurar(organizationId, consultorioId);
+		// Las filas-lock ANTES de abrir la transaccion (FilaLockPrevia): la de la sede, la de las otras
+		// sedes que una sustitucion va a cerrar, y la de la persona (disponibilidad central, 0.158.0).
+		Set<Long> sedes = sedesQueSeEscriben(organizationId, consultorioId, command.membershipId(),
+				command.tipo() == TipoExcepcion.APERTURA && command.sustituirDisponibilidadSuperpuesta());
+		sedes.forEach(sede -> calendarioIniciador.asegurar(organizationId, sede));
+		if (deUnaPersona(command.membershipId())) {
+			entreSedes.asegurarPersona(organizationId, command.membershipId());
+		}
 
-		return transaccionReadCommitted.execute(estado -> crearEnTransaccion(
-				actor, consultorioId, command, organizationId));
+		return conNombreDelAutor(organizationId, transaccionReadCommitted.execute(estado -> crearEnTransaccion(
+				actor, consultorioId, command, organizationId, sedes)));
+	}
+
+	private boolean deUnaPersona(Long membershipId) {
+		return membershipId != null && entreSedes != null;
+	}
+
+	/** La sede de la operacion y, si se sustituye, las otras sedes de la persona. Ascendente. */
+	private Set<Long> sedesQueSeEscriben(long organizationId, long consultorioId, Long membershipId, boolean sustituye) {
+		Set<Long> sedes = new java.util.TreeSet<>();
+		sedes.add(consultorioId);
+		if (sustituye && deUnaPersona(membershipId)) {
+			sedes.addAll(entreSedes.otrasSedesDeLaPersona(organizationId, consultorioId, membershipId));
+		}
+		return sedes;
+	}
+
+	/**
+	 * Locks en orden fijo: las sedes por id ascendente y despues la persona. Es el orden sede → persona de
+	 * los turnos y las clases. Devuelve las memberships de la persona, o vacio si es de sede.
+	 */
+	private Set<Long> bloquear(long organizationId, Set<Long> sedes, Long membershipId) {
+		sedes.forEach(sede -> bloquearLaSede(organizationId, sede));
+		return deUnaPersona(membershipId) ? entreSedes.bloquearPersona(organizationId, membershipId) : Set.of();
 	}
 
 	private ExcepcionView crearEnTransaccion(
 			OperatingActor actor, long consultorioId, ExcepcionAltaCommand command,
-			long organizationId) {
+			long organizationId, Set<Long> sedes) {
 
 		Instant ahora = Instant.now();
 		Long membershipId = command.membershipId();
@@ -156,7 +228,7 @@ public class ExcepcionService {
 			exigirProfesionalDeLaSede(organizationId, consultorioId, membershipId, ahora);
 		}
 
-		bloquearLaSede(organizationId, consultorioId);
+		Set<Long> mismaPersona = bloquear(organizationId, sedes, membershipId);
 
 		Optional<DisponibilidadExcepcion> yaCargada =
 				buscarCoincidenciaExacta(organizationId, consultorioId, command);
@@ -175,15 +247,18 @@ public class ExcepcionService {
 					organizationId, consultorioId, membershipId, command.tipo(), command.motivo(),
 					command.fechaDesde(), command.fechaHasta(), command.horaDesde(), command.horaHasta(),
 					command.feriadoId(), command.notes());
-			long afectados = simulador.deAltaDeExcepcion(
-					AutorizacionDeSede.exigirSedeDelTenant(consultorioDirectory, organizationId, consultorioId),
-					propuesta, ahora).turnosAfectados();
-			if (afectados > 0) {
-				throw new BloqueoConTurnosAfectadosException(afectados);
+			ConsultorioSnapshot sede =
+					AutorizacionDeSede.exigirSedeDelTenant(consultorioDirectory, organizationId, consultorioId);
+			ImpactoDeDisponibilidad impacto = simulador.deAltaDeExcepcion(sede, propuesta, ahora);
+			// Disponibilidad central (0.158.0): las clases que quedan sin instructor, con la misma confirmacion.
+			List<BloqueoConTurnosAfectadosException.Clase> clases = clasesAfectadas(sede, propuesta, ahora);
+			if (impacto.hayAlgo() || !clases.isEmpty()) {
+				// Con la lista: la pantalla arma la tabla de afectados con el 409 (checklist §6.2).
+				throw impacto.comoRechazo().conClases(clases);
 			}
 		}
 
-		DisponibilidadExcepcion guardada = excepciones.save(new DisponibilidadExcepcion(
+		DisponibilidadExcepcion nueva = new DisponibilidadExcepcion(
 				organizationId,
 				consultorioId,
 				membershipId,
@@ -194,9 +269,22 @@ public class ExcepcionService {
 				command.horaDesde(),
 				command.horaHasta(),
 				command.feriadoId(),
-				command.notes()));
+				command.notes());
+		nueva.registrarAutor(actor.accountId());
+		DisponibilidadExcepcion guardada = excepciones.save(nueva);
+
+		// Disponibilidad central (0.158.0): una apertura de profesional no puede pisar lo reservado en otra
+		// sede (siempre 409) ni ofrecer doble disponibilidad (409 salvo sustitucion explicita). Despues de
+		// guardar, para que los cierres de la sustitucion nombren la apertura; un rechazo deshace todo.
+		List<DisponibilidadExcepcion> sustituidas = validarAperturaEntreSedes(
+				actor, organizationId, consultorioId, guardada, mismaPersona,
+				command.sustituirDisponibilidadSuperpuesta(), ahora);
 
 		Map<String, String> detalles = new LinkedHashMap<>();
+		if (!sustituidas.isEmpty()) {
+			detalles.put("cierresPorSustitucion", sustituidas.stream()
+					.map(cierre -> String.valueOf(cierre.getId())).collect(java.util.stream.Collectors.joining(",")));
+		}
 		detalles.put("alcance", membershipId == null ? "SEDE" : "PROFESIONAL");
 		if (membershipId != null) {
 			detalles.put("membershipId", String.valueOf(membershipId));
@@ -207,8 +295,9 @@ public class ExcepcionService {
 		detalles.put("horario", command.horaDesde() == null
 				? "DIA COMPLETO"
 				: command.horaDesde() + " -> " + command.horaHasta());
+		ResumenDeAgendaParaAuditoria.con(detalles, null, ResumenDeAgendaParaAuditoria.de(guardada));
 		auditar(AuditEvents.DISPONIBILIDAD_EXCEPCION_CREATED, guardada, actor.accountId(),
-				null, "ACTIVO", null, detalles, ahora);
+				null, "ACTIVO", null, AuditEvents.conActor(actor, guardada.getMembershipId(), detalles), ahora);
 
 		log.info("Excepcion de disponibilidad creada: consultorioId={} excepcionId={} alcance={}",
 				consultorioId, guardada.getId(), membershipId == null ? "SEDE" : membershipId);
@@ -216,6 +305,212 @@ public class ExcepcionService {
 		// nueva = true SOLO en este camino: el controller responde 201 aca y 200 en el reintento
 		// idempotente de mas arriba.
 		return ExcepcionView.nueva(guardada);
+	}
+
+	// =================================================================================
+	// Edicion (checklist de agenda §2.5)
+	// =================================================================================
+
+	/**
+	 * Edita una excepcion activa: motivo, fechas, horario y notas. Mismo patron que la edicion de un
+	 * bloque ({@code DisponibilidadService#editar}): lock de la sede antes de leer, version comparada
+	 * antes de mutar, impacto calculado contra la disponibilidad efectiva antes y despues, y auditoria
+	 * con el antes y el despues de cada campo que cambio.
+	 *
+	 * <p>Si el cambio deja turnos pendientes afuera y no se confirmo, 409
+	 * {@code bloqueo-con-turnos-afectados} con la lista, igual que el alta. Confirmado, los turnos no se
+	 * tocan: quedan reservados y la agenda los marca fuera de disponibilidad.
+	 *
+	 * @throws ExcepcionNotAccessibleException     no existe, es de otra sede o de otro tenant (404)
+	 * @throws ExcepcionInactivaException          ya estaba dada de baja (409)
+	 * @throws org.springframework.dao.OptimisticLockingFailureException la version quedo vieja (409)
+	 * @throws com.akine.resource.domain.exception.MotivoOtroSinNotasException motivo OTRO sin notas (400)
+	 */
+	public ExcepcionView editar(
+			OperatingActor actor, long consultorioId, long excepcionId, ExcepcionEdicionCommand command) {
+
+		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		exigirGestionDeExcepcion(actor, organizationId, consultorioId, excepcionId);
+
+		// Las filas-lock ANTES de abrir la transaccion (FilaLockPrevia). El profesional y el tipo salen de
+		// una lectura sin lock: no se editan, asi que no cambian entre esta lectura y la transaccion.
+		Optional<DisponibilidadExcepcion> previa =
+				excepciones.findByIdScoped(excepcionId, organizationId, consultorioId);
+		Long membershipId = previa.map(DisponibilidadExcepcion::getMembershipId).orElse(null);
+		boolean sustituye = command.sustituirDisponibilidadSuperpuesta()
+				&& previa.map(e -> e.getTipo() == TipoExcepcion.APERTURA).orElse(false);
+		Set<Long> sedes = sedesQueSeEscriben(organizationId, consultorioId, membershipId, sustituye);
+		sedes.forEach(sede -> calendarioIniciador.asegurar(organizationId, sede));
+		if (deUnaPersona(membershipId)) {
+			entreSedes.asegurarPersona(organizationId, membershipId);
+		}
+		asegurarRecortadas(previa, organizationId);
+
+		ExcepcionView editada = transaccionReadCommitted.execute(estado -> editarEnTransaccion(
+				actor, consultorioId, excepcionId, command, organizationId, sedes, membershipId));
+		return conNombreDelAutor(organizationId, editada);
+	}
+
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	private ExcepcionView editarEnTransaccion(
+			OperatingActor actor, long consultorioId, long excepcionId, ExcepcionEdicionCommand command,
+			long organizationId, Set<Long> sedes, Long membershipId) {
+
+		Instant ahora = Instant.now();
+		Set<Long> mismaPersona = bloquear(organizationId, sedes, membershipId);
+
+		DisponibilidadExcepcion excepcion = excepciones
+				.findByIdScoped(excepcionId, organizationId, consultorioId)
+				.orElseThrow(() -> new ExcepcionNotAccessibleException(excepcionId));
+		if (!excepcion.isOperable()) {
+			throw new ExcepcionInactivaException(excepcionId);
+		}
+		if (excepcion.getVersion() != command.expectedVersion()) {
+			throw new org.springframework.dao.OptimisticLockingFailureException(
+					"La excepcion de disponibilidad fue modificada por otra operacion");
+		}
+
+		// Transitoria: valida fechas, horario y notas igual que el alta, y es la que se simula.
+		DisponibilidadExcepcion propuesta = new DisponibilidadExcepcion(
+				organizationId, consultorioId, excepcion.getMembershipId(), excepcion.getTipo(),
+				command.motivo(), command.fechaDesde(), command.fechaHasta(),
+				command.horaDesde(), command.horaHasta(), excepcion.getFeriadoId(), command.notes());
+
+		ConsultorioSnapshot sede =
+				AutorizacionDeSede.exigirSedeDelTenant(consultorioDirectory, organizationId, consultorioId);
+		ImpactoDeDisponibilidad impacto = simulador.deEdicionDeExcepcion(sede, excepcion, propuesta, ahora);
+		// Disponibilidad central (0.158.0): solo las clases que la edicion suma, no las que ya alcanzaba.
+		List<BloqueoConTurnosAfectadosException.Clase> clases = new java.util.ArrayList<>(
+				clasesAfectadas(sede, propuesta, ahora));
+		clases.removeAll(clasesAfectadas(sede, excepcion, ahora));
+		if ((impacto.hayAlgo() || !clases.isEmpty()) && !command.confirmaTurnosAfectados()) {
+			throw impacto.comoRechazo().conClases(clases);
+		}
+
+		Map<String, String> detalles = new LinkedHashMap<>();
+		detalles.put("alcance", excepcion.esDeSede() ? "SEDE" : "PROFESIONAL");
+		if (!excepcion.esDeSede()) {
+			detalles.put("membershipId", String.valueOf(excepcion.getMembershipId()));
+		}
+		detalles.put("tipo", excepcion.getTipo().name());
+		anotarCambio(detalles, "motivo", excepcion.getMotivo(), propuesta.getMotivo());
+		anotarCambio(detalles, "fechaDesde", excepcion.getFechaDesde(), propuesta.getFechaDesde());
+		anotarCambio(detalles, "fechaHasta", excepcion.getFechaHasta(), propuesta.getFechaHasta());
+		anotarCambio(detalles, "horario", horarioDe(excepcion), horarioDe(propuesta));
+		anotarCambio(detalles, "notes", excepcion.getNotes(), propuesta.getNotes());
+		if (impacto.hayAlgo()) {
+			detalles.put("turnosAfectados", String.valueOf(impacto.turnosAfectados()));
+		}
+		ResumenDeAgendaParaAuditoria.con(detalles, ResumenDeAgendaParaAuditoria.de(excepcion),
+				ResumenDeAgendaParaAuditoria.de(propuesta));
+
+		// D-1: achicar o mover un CIERRE devuelve horario. La foto de como estaba, antes de mutarlo; las
+		// personas: la del cierre (ya bloqueada arriba) o, si es de sede, las que tienen horario ahi.
+		DisponibilidadExcepcion anterior = new DisponibilidadExcepcion(
+				organizationId, consultorioId, excepcion.getMembershipId(), excepcion.getTipo(), excepcion.getMotivo(),
+				excepcion.getFechaDesde(), excepcion.getFechaHasta(), excepcion.getHoraDesde(), excepcion.getHoraHasta(),
+				excepcion.getFeriadoId(), excepcion.getNotes());
+		Map<Long, Set<Long>> recortadas = excepcion.esDeSede()
+				? bloquearRecortadas(organizationId, excepcion)
+				: excepcion.getTipo() == TipoExcepcion.CIERRE && deUnaPersona(membershipId)
+						? Map.of(membershipId, mismaPersona)
+						: Map.of();
+
+		excepcion.updateDatos(
+				propuesta.getMotivo(), propuesta.getFechaDesde(), propuesta.getFechaHasta(),
+				propuesta.getHoraDesde(), propuesta.getHoraHasta(), propuesta.getHoraDesde() == null,
+				propuesta.getNotes() == null ? "" : propuesta.getNotes());
+		DisponibilidadExcepcion guardada = excepciones.save(excepcion);
+		// D-3: sin el flush la respuesta lleva la version LEIDA y el segundo guardado encadenado da 409.
+		// Y la efectiva de la sede ya refleja el cierre editado para validar lo que libero.
+		excepciones.flush();
+		validarLiberacion(organizationId, consultorioId, anterior, recortadas, ahora);
+
+		// Disponibilidad central (0.158.0): la apertura editada vuelve a validarse contra las otras sedes.
+		List<DisponibilidadExcepcion> sustituidas = validarAperturaEntreSedes(
+				actor, organizationId, consultorioId, guardada, mismaPersona,
+				command.sustituirDisponibilidadSuperpuesta(), ahora);
+		if (!sustituidas.isEmpty()) {
+			detalles.put("cierresPorSustitucion", sustituidas.stream()
+					.map(cierre -> String.valueOf(cierre.getId())).collect(java.util.stream.Collectors.joining(",")));
+		}
+		if (!clases.isEmpty()) {
+			detalles.put("clasesAfectadas", String.valueOf(clases.size()));
+		}
+
+		auditar(AuditEvents.DISPONIBILIDAD_EXCEPCION_UPDATED, guardada, actor.accountId(),
+				"ACTIVO", "ACTIVO", null, AuditEvents.conActor(actor, guardada.getMembershipId(), detalles), ahora);
+
+		log.info("Excepcion de disponibilidad editada: consultorioId={} excepcionId={} turnosAfectados={}",
+				consultorioId, excepcionId, impacto.turnosAfectados());
+		return ExcepcionView.de(guardada);
+	}
+
+	/** Ver {@link DisponibilidadEntreSedes#validarApertura}. Solo aperturas de profesional. */
+	private List<DisponibilidadExcepcion> validarAperturaEntreSedes(
+			OperatingActor actor, long organizationId, long consultorioId, DisponibilidadExcepcion apertura,
+			Set<Long> mismaPersona, boolean sustituir, Instant ahora) {
+
+		if (apertura.getTipo() != TipoExcepcion.APERTURA || !deUnaPersona(apertura.getMembershipId())) {
+			return List.of();
+		}
+		ConsultorioSnapshot sede =
+				AutorizacionDeSede.exigirSedeDelTenant(consultorioDirectory, organizationId, consultorioId);
+		return entreSedes.validarApertura(actor, sede, apertura, mismaPersona, sustituir, ahora);
+	}
+
+	/**
+	 * Las filas de las personas a las que el CIERRE recorta, sin transaccion (FilaLockPrevia). La de un
+	 * profesional ya la asegura quien llama; esto agrega las de un cierre de sede entera.
+	 */
+	private void asegurarRecortadas(Optional<DisponibilidadExcepcion> previa, long organizationId) {
+		if (entreSedes != null && previa.isPresent() && previa.get().isOperable()) {
+			entreSedes.asegurarPersonas(organizationId, entreSedes.recortadasPorElCierre(previa.get()));
+		}
+	}
+
+	/**
+	 * Bajo el lock de la sede: las personas a las que el CIERRE recorta, recalculadas, bloqueadas en orden de
+	 * cuenta (sede → persona, como el alta). Vacio si no es un cierre o sin el validador.
+	 */
+	private Map<Long, Set<Long>> bloquearRecortadas(long organizationId, DisponibilidadExcepcion cierre) {
+		if (entreSedes == null) {
+			return Map.of();
+		}
+		return entreSedes.bloquearPersonas(organizationId, entreSedes.recortadasPorElCierre(cierre));
+	}
+
+	/** Ver {@link DisponibilidadEntreSedes#validarLiberacion}. */
+	private void validarLiberacion(long organizationId, long consultorioId, DisponibilidadExcepcion anterior,
+			Map<Long, Set<Long>> recortadas, Instant ahora) {
+		if (entreSedes == null || recortadas.isEmpty() || anterior.getTipo() != TipoExcepcion.CIERRE) {
+			return;
+		}
+		ConsultorioSnapshot sede =
+				AutorizacionDeSede.exigirSedeDelTenant(consultorioDirectory, organizationId, consultorioId);
+		entreSedes.validarLiberacion(sede, anterior, recortadas, ahora);
+	}
+
+	/** Ver {@link DisponibilidadEntreSedes#clasesAfectadas}. Vacio en una apertura o sin el validador. */
+	private List<BloqueoConTurnosAfectadosException.Clase> clasesAfectadas(
+			ConsultorioSnapshot sede, DisponibilidadExcepcion cierre, Instant ahora) {
+		if (entreSedes == null || cierre.getTipo() != TipoExcepcion.CIERRE) {
+			return List.of();
+		}
+		return entreSedes.clasesAfectadas(sede, cierre, ahora);
+	}
+
+	private static String horarioDe(DisponibilidadExcepcion excepcion) {
+		return excepcion.getHoraDesde() == null
+				? "DIA COMPLETO"
+				: excepcion.getHoraDesde() + " -> " + excepcion.getHoraHasta();
+	}
+
+	private static void anotarCambio(Map<String, String> detalles, String campo, Object antes, Object despues) {
+		if (!Objects.equals(antes, despues)) {
+			detalles.put(campo, antes + " -> " + despues);
+		}
 	}
 
 	// =================================================================================
@@ -240,10 +535,12 @@ public class ExcepcionService {
 
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		exigirSedeDelTenant(organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		exigirGestionDeExcepcion(actor, organizationId, consultorioId, excepcionId);
 
-		// La fila-lock de la sede, ANTES de abrir la transaccion (FilaLockPrevia).
+		// Las filas-lock ANTES de abrir la transaccion (FilaLockPrevia): la de la sede y, si es un CIERRE,
+		// las de las personas a las que la baja les devuelve horario (D-1, disponibilidad central).
 		calendarioIniciador.asegurar(organizationId, consultorioId);
+		asegurarRecortadas(excepciones.findByIdScoped(excepcionId, organizationId, consultorioId), organizationId);
 
 		return transaccionReadCommitted.execute(estado -> darDeBajaEnTransaccion(
 				actor, consultorioId, excepcionId, motivo, organizationId));
@@ -264,15 +561,21 @@ public class ExcepcionService {
 		if (!excepcion.isOperable()) {
 			throw new ExcepcionInactivaException(excepcionId);
 		}
+		Map<Long, Set<Long>> recortadas = bloquearRecortadas(organizationId, excepcion);
 
 		excepcion.deactivate(ahora, motivo);
 		DisponibilidadExcepcion guardada = excepciones.save(excepcion);
+		// La version nueva en la respuesta (save() antes del flush devuelve la leida) y la efectiva de la
+		// sede ya sin el cierre para la validacion de abajo.
+		excepciones.flush();
+		validarLiberacion(organizationId, consultorioId, excepcion, recortadas, ahora);
 
 		Map<String, String> detalles = new LinkedHashMap<>();
 		detalles.put("alcance", guardada.esDeSede() ? "SEDE" : "PROFESIONAL");
 		detalles.put("tipo", guardada.getTipo().name());
+		ResumenDeAgendaParaAuditoria.con(detalles, ResumenDeAgendaParaAuditoria.de(guardada), null);
 		auditar(AuditEvents.DISPONIBILIDAD_EXCEPCION_DEACTIVATED, guardada, actor.accountId(),
-				"ACTIVO", "INACTIVO", motivo, detalles, ahora);
+				"ACTIVO", "INACTIVO", motivo, AuditEvents.conActor(actor, guardada.getMembershipId(), detalles), ahora);
 
 		log.info("Excepcion de disponibilidad dada de baja: consultorioId={} excepcionId={}",
 				consultorioId, excepcionId);
@@ -302,7 +605,7 @@ public class ExcepcionService {
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		var sede = AutorizacionDeSede.exigirSedeDelTenant(
 				consultorioDirectory, organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId, command.membershipId());
 		if (command.membershipId() != null) {
 			exigirProfesionalDelTenant(organizationId, command.membershipId());
 		}
@@ -329,7 +632,7 @@ public class ExcepcionService {
 		long organizationId = exigirContextoDeLaSede(actor, consultorioId);
 		var sede = AutorizacionDeSede.exigirSedeDelTenant(
 				consultorioDirectory, organizationId, consultorioId);
-		exigirGestion(actor, organizationId, consultorioId);
+		exigirGestionDeExcepcion(actor, organizationId, consultorioId, excepcionId);
 
 		DisponibilidadExcepcion excepcion = excepciones
 				.findByIdScoped(excepcionId, organizationId, consultorioId)
@@ -375,13 +678,42 @@ public class ExcepcionService {
 					organizationId, consultorioId, membershipId, desde, hasta);
 		}
 
+		Map<Long, String> autores = nombresDeCuentas(encontradas.stream()
+				.map(DisponibilidadExcepcion::getCreatedByCuentaId)
+				.filter(Objects::nonNull)
+				.distinct()
+				.toList());
 		return encontradas.stream()
 				.sorted(Comparator.comparing(DisponibilidadExcepcion::getFechaDesde)
 						.thenComparing(DisponibilidadExcepcion::getFechaHasta)
 						.thenComparing(DisponibilidadExcepcion::getId,
 								Comparator.nullsLast(Comparator.naturalOrder())))
 				.map(ExcepcionView::de)
+				.map(vista -> vista.createdByCuentaId() == null
+						? vista
+						: vista.conAutor(autores.get(vista.createdByCuentaId())))
 				.toList();
+	}
+
+	/** Nombres de las cuentas que cargaron excepciones, en una sola consulta (checklist §5.4). */
+	private Map<Long, String> nombresDeCuentas(List<Long> cuentaIds) {
+		if (identidades == null || cuentaIds.isEmpty()) {
+			return Map.of();
+		}
+		Map<Long, String> nombres = new java.util.HashMap<>();
+		identidades.identidadesDe(cuentaIds).forEach((id, identidad) -> {
+			if (identidad != null && identidad.nombreCompleto() != null) {
+				nombres.put(id, identidad.nombreCompleto());
+			}
+		});
+		return nombres;
+	}
+
+	private ExcepcionView conNombreDelAutor(long organizationId, ExcepcionView vista) {
+		if (vista == null || vista.createdByCuentaId() == null) {
+			return vista;
+		}
+		return vista.conAutor(nombresDeCuentas(List.of(vista.createdByCuentaId())).get(vista.createdByCuentaId()));
 	}
 
 	// =================================================================================
@@ -460,9 +792,32 @@ public class ExcepcionService {
 		return organizationId;
 	}
 
-	private void exigirGestion(OperatingActor actor, long organizationId, long consultorioId) {
-		AutorizacionDeSede.exigirPermiso(permissionGuard, actor,
-				PermissionCodes.CONSULTORIO_MANAGE, organizationId, consultorioId);
+	/**
+	 * {@code agenda:excepciones} sobre la sede y, con alcance propio (el {@code PROFESIONAL}), sobre
+	 * SU agenda: {@code membershipId} tiene que ser suyo, y una excepcion de sede ({@code null}) no
+	 * se le permite. Agenda de profesionales, checklist §14.4.
+	 */
+	private void exigirGestion(
+			OperatingActor actor, long organizationId, long consultorioId, Long membershipId) {
+		AutorizacionDeSede.exigirPermisoSobreProfesional(permissionGuard, membershipDirectory, actor,
+				PermissionCodes.AGENDA_EXCEPCIONES, organizationId, consultorioId, membershipId);
+	}
+
+	/**
+	 * {@link #exigirGestion} sobre una excepcion ya cargada: el profesional es el suyo. Se lee sin
+	 * lock solo para decidir el permiso; si no existe en la sede, se exige el permiso sin recorte y
+	 * el 404 lo da la operacion, igual que antes.
+	 */
+	private void exigirGestionDeExcepcion(
+			OperatingActor actor, long organizationId, long consultorioId, long excepcionId) {
+		Optional<DisponibilidadExcepcion> excepcion =
+				excepciones.findByIdScoped(excepcionId, organizationId, consultorioId);
+		if (excepcion.isEmpty()) {
+			AutorizacionDeSede.exigirPermiso(permissionGuard, actor,
+					PermissionCodes.AGENDA_EXCEPCIONES, organizationId, consultorioId);
+			return;
+		}
+		exigirGestion(actor, organizationId, consultorioId, excepcion.get().getMembershipId());
 	}
 
 	/**

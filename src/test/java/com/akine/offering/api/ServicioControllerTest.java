@@ -77,14 +77,14 @@ class ServicioControllerTest {
 	@Test
 	@DisplayName("listar pasa q y estado tal cual y publica el servicio")
 	void listar() throws Exception {
-		given(servicioService.buscar(any())).willReturn(List.of(vista()));
+		given(servicioService.buscar(any(), any())).willReturn(List.of(vista()));
 
 		mockMvc.perform(get(RUTA + "?q=kinesio&estado=TODOS").with(admin(true)))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[0].codigo").value("KINESIOLOGIA_SESION"))
 				.andExpect(jsonPath("$[0].estado").value("ACTIVO"));
 
-		verify(servicioService).buscar(new ServicioBusqueda("kinesio", ServicioEstadoFiltro.TODOS));
+		verify(servicioService).buscar(any(), eq(new ServicioBusqueda("kinesio", ServicioEstadoFiltro.TODOS)));
 	}
 
 	@Test
@@ -216,7 +216,7 @@ class ServicioControllerTest {
 
 	private static ServicioView vista() {
 		return new ServicioView(12L, "KINESIOLOGIA_SESION", "Sesion de kinesiologia", null,
-				"TERAPEUTICO", "INDIVIDUAL", false, true, "ACTIVO", null, null, 0L);
+				"TERAPEUTICO", "INDIVIDUAL", false, true, "GLOBAL", "ACTIVO", null, null, 0L);
 	}
 
 	private record PrincipalDePrueba(long accountId, boolean platformAdmin)

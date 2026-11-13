@@ -57,7 +57,7 @@ class ConsolaDePlataformaIT extends BaseEscenarioDiferido {
 		// siguiente.
 		jdbc.update("""
 				UPDATE platform_role
-				   SET valid_until = DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 1 SECOND)
+				   SET valid_until = (CURRENT_TIMESTAMP - INTERVAL '1 seconds')
 				 WHERE account_id = ?
 				""", admin.cuentaId());
 		assertThat(rol(admin.tokenPreContexto())).isFalse();
@@ -122,7 +122,7 @@ class ConsolaDePlataformaIT extends BaseEscenarioDiferido {
 		// concepto, sin tenant.
 		assertThat(jdbc.queryForMap("""
 				SELECT organization_id, actor_account_id, previous_state, new_state,
-				       JSON_UNQUOTE(JSON_EXTRACT(details, '$.conceptoId')) AS concepto
+				       details ->> 'conceptoId' AS concepto
 				  FROM audit_event
 				 WHERE event_type = 'CATALOGO_SOLICITUD_RESOLVED' AND entity_id = ?
 				""", solicitudId))

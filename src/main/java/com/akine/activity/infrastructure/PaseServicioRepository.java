@@ -290,7 +290,7 @@ public interface PaseServicioRepository
 			UPDATE pase_servicio
 			   SET renovacion_autorizada_por_cuenta_id = CASE WHEN :activa = 1 THEN :actorCuentaId
 			                                                  ELSE renovacion_autorizada_por_cuenta_id END,
-			       renovacion_automatica = :activa,
+			       renovacion_automatica = (:activa = 1),
 			       renovacion_omitida_motivo = NULL,
 			       version = version + 1
 			 WHERE id = :paseId
@@ -310,12 +310,12 @@ public interface PaseServicioRepository
 	@Modifying(flushAutomatically = true)
 	@Query(value = """
 			UPDATE pase_servicio
-			   SET renovacion_automatica = 0,
+			   SET renovacion_automatica = false,
 			       renovacion_omitida_motivo = NULL,
 			       version = version + 1
 			 WHERE id = :paseId
 			   AND organization_id = :organizationId
-			   AND renovacion_automatica = 1
+			   AND renovacion_automatica = true
 			""", nativeQuery = true)
 	int marcarRenovado(
 			@Param("organizationId") long organizationId,
@@ -325,12 +325,12 @@ public interface PaseServicioRepository
 	@Modifying(flushAutomatically = true)
 	@Query(value = """
 			UPDATE pase_servicio
-			   SET renovacion_automatica = 0,
+			   SET renovacion_automatica = false,
 			       renovacion_omitida_motivo = :motivo,
 			       version = version + 1
 			 WHERE id = :paseId
 			   AND organization_id = :organizationId
-			   AND renovacion_automatica = 1
+			   AND renovacion_automatica = true
 			""", nativeQuery = true)
 	int omitirRenovacion(
 			@Param("organizationId") long organizationId,
@@ -393,7 +393,7 @@ public interface PaseServicioRepository
 			      JOIN cadena c ON p.id = c.renueva_pase_id
 			     WHERE p.organization_id = :organizationId
 			)
-			SELECT DATE_FORMAT(vigencia_desde, '%Y-%m-%d') FROM cadena ORDER BY nivel DESC LIMIT 1
+			SELECT to_char(vigencia_desde, 'YYYY-MM-DD') FROM cadena ORDER BY nivel DESC LIMIT 1
 			""", nativeQuery = true)
 	String filaDeInicioDeLaCadena(
 			@Param("organizationId") long organizationId,
