@@ -9,31 +9,30 @@ import jakarta.validation.constraints.Pattern;
 public record ColoresDeInterfazDto(
 
 		@Schema(description = "Fondo de la barra lateral de navegacion, #rrggbb", example = "#0f766e")
-		@Pattern(regexp = COLOR, message = MENSAJE_COLOR)
+		@Pattern(regexp = COLOR, message = "El color de la barra lateral tiene que tener la forma #rrggbb")
 		String barraLateral,
 
 		@Schema(description = "Fondo de la barra superior, #rrggbb", example = "#ecfdf5")
-		@Pattern(regexp = COLOR, message = MENSAJE_COLOR)
+		@Pattern(regexp = COLOR, message = "El color de la cabecera tiene que tener la forma #rrggbb")
 		String cabecera,
 
 		@Schema(description = "Fondo de la pagina, detras de las tarjetas, #rrggbb", example = "#f0fdfa")
-		@Pattern(regexp = COLOR, message = MENSAJE_COLOR)
+		@Pattern(regexp = COLOR, message = "El color del fondo tiene que tener la forma #rrggbb")
 		String fondo,
 
 		@Schema(description = "Fondo de las tarjetas, paneles y campos, #rrggbb", example = "#ffffff")
-		@Pattern(regexp = COLOR, message = MENSAJE_COLOR)
+		@Pattern(regexp = COLOR, message = "El color de la tarjeta tiene que tener la forma #rrggbb")
 		String tarjeta,
 
 		@Schema(description = "Fondo del pie de pagina, #rrggbb", example = "#f0fdfa")
-		@Pattern(regexp = COLOR, message = MENSAJE_COLOR)
+		@Pattern(regexp = COLOR, message = "El color del pie tiene que tener la forma #rrggbb")
 		String pie,
 
 		@Schema(description = "Contorno y texto de los botones de contorno, #rrggbb", example = "#115e59")
-		@Pattern(regexp = COLOR, message = MENSAJE_COLOR)
+		@Pattern(regexp = COLOR, message = "El color del boton secundario tiene que tener la forma #rrggbb")
 		String botonSecundario) {
 
 	private static final String COLOR = "^$|^#[0-9a-fA-F]{6}$";
-	private static final String MENSAJE_COLOR = "El color tiene que tener la forma #rrggbb";
 
 	static ColoresDeInterfazDto from(ColoresDeInterfaz c) {
 		return c == null || ColoresDeInterfaz.NINGUNO.equals(c)
