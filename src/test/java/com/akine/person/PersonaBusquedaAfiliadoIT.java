@@ -78,6 +78,19 @@ class PersonaBusquedaAfiliadoIT {
 	}
 
 	@Test
+	@DisplayName("q tambien encuentra por correo, completo o en parte y sin importar mayusculas")
+	void encuentra_por_correo() {
+		long org = datos.organizacion();
+		long ana = datos.persona(org, "Alvarez", "Ana", "30000001");
+		jdbc.update("UPDATE persona SET email = ? WHERE id = ?", "ana.prueba@ejemplo.test", ana);
+		datos.persona(org, "Benitez", "Beto", "30000002");
+
+		for (String tipeado : List.of("ana.prueba@ejemplo.test", "ANA.PRUEBA@", "ejemplo.test")) {
+			assertThat(ids(org, tipeado)).as("tipeado como '%s'", tipeado).containsExactly(ana);
+		}
+	}
+
+	@Test
 	@DisplayName("B1-E2 un fragmento del numero, final o medio, tambien encuentra")
 	void b1_e2_match_contiene() {
 		long org = datos.organizacion();
