@@ -21,7 +21,7 @@ services:
     # reproducible (plan, AKINE-00.01). La misma imagen usan los tests de integracion.
     # PostgreSQL 18 y no 17: LIKE sobre la collation no determinista akine_ci (sin mayusculas ni
     # tildes, la semantica de utf8mb4_0900_ai_ci que tenia MySQL) recien existe desde 18.
-    image: pgvector/pgvector:0.8.1-pg18-trixie
+    image: pgvector/pgvector:0.8.7-pg18-trixie
     container_name: akine-postgres
     restart: unless-stopped
     environment:
