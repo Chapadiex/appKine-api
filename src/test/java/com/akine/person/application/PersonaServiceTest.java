@@ -250,6 +250,19 @@ class PersonaServiceTest {
 			verify(personas, never()).buscarVigentePorDocumento(anyLong(), any(), anyString());
 			verifyNoInteractions(auditTrail);
 		}
+
+		@Test
+		@DisplayName("Una violacion que no es el unique de documento no se informa como documento en uso")
+		void otra_violacion_no_es_documento_en_uso() {
+			// Un CHECK traducido como documento repetido mandaba al operador a buscar en el padron
+			// una ficha que no existia.
+			DataIntegrityViolationException check = new DataIntegrityViolationException(
+					"Check constraint 'ck_persona_documento_completo' is violated.");
+			willThrow(check).given(personas).saveAndFlush(any());
+
+			assertThatThrownBy(() -> service.crear(delMostrador, altaValida()))
+					.isSameAs(check);
+		}
 	}
 
 	// =================================================================================

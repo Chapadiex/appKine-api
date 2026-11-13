@@ -76,6 +76,9 @@ public class PersonaService {
 
 	private static final Logger log = LoggerFactory.getLogger(PersonaService.class);
 
+	/** Nombre del unique de documento en {@code V27}: el unico choque que es "documento en uso". */
+	private static final String UNIQUE_DE_DOCUMENTO = "uk_persona_documento_vigente";
+
 	private final PersonaRepositoryPort personas;
 	private final PerfilPacienteRepositoryPort perfiles;
 	private final PermissionGuard permissionGuard;
@@ -396,10 +399,29 @@ public class PersonaService {
 		try {
 			return personas.saveAndFlush(persona);
 		} catch (DataIntegrityViolationException choque) {
+			// Solo el unique de documento es "documento en uso". Cualquier otra violacion —un CHECK,
+			// una FK— traducida asi mandaba al operador a buscar en el padron una ficha inexistente.
+			if (!esChoqueDeDocumento(choque)) {
+				throw choque;
+			}
 			log.info("Alta o edicion de persona rechazada por documento repetido: organizationId={}",
 					persona.getOrganizationId());
 			throw new PersonaDocumentoTakenException(null);
 		}
+	}
+
+	/**
+	 * Si la violacion es la de {@code uk_persona_documento_vigente}. Se lee el nombre en los
+	 * mensajes de la cadena de causas, que es donde lo deja el driver; no hay otro lugar portable.
+	 */
+	static boolean esChoqueDeDocumento(DataIntegrityViolationException choque) {
+		for (Throwable causa = choque; causa != null; causa = causa.getCause()) {
+			String mensaje = causa.getMessage();
+			if (mensaje != null && mensaje.contains(UNIQUE_DE_DOCUMENTO)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
