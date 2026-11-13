@@ -1,5 +1,7 @@
 package com.akine.organization.application;
 
+import com.akine.organization.domain.ColoresDeInterfaz;
+
 /**
  * Marca del tenant tal como la ve la capa {@code api}. Un color {@code null} es "el de AKINE";
  * un logo {@code null} es "no hay".
@@ -13,6 +15,8 @@ public record MarcaView(
 		String colorAcentoClaro,
 		String colorPrincipalOscuro,
 		String colorAcentoOscuro,
+		ColoresDeInterfaz interfazClaro,
+		ColoresDeInterfaz interfazOscuro,
 		String telefono,
 		String email,
 		String sitioWeb,

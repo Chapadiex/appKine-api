@@ -28,6 +28,13 @@ public record MarcaResponse(
 		@Schema(description = "Color de enlaces y seleccion en tema oscuro", example = "#5eead4")
 		String colorAcentoOscuro,
 
+		@Schema(description = "Colores de barra lateral, cabecera, fondo y boton secundario en "
+				+ "tema claro, si el centro fijo alguno")
+		ColoresDeInterfazDto interfazClaro,
+
+		@Schema(description = "Lo mismo para tema oscuro")
+		ColoresDeInterfazDto interfazOscuro,
+
 		@Schema(description = "Telefono de contacto del centro", example = "+54 351 555-0100")
 		String telefono,
 
@@ -55,6 +62,7 @@ public record MarcaResponse(
 				v.organizationId(), v.version(),
 				v.colorPrincipalClaro(), v.colorAcentoClaro(),
 				v.colorPrincipalOscuro(), v.colorAcentoOscuro(),
+				ColoresDeInterfazDto.from(v.interfazClaro()), ColoresDeInterfazDto.from(v.interfazOscuro()),
 				v.telefono(), v.email(), v.sitioWeb(), v.direccion(), v.leyenda(),
 				LogoDeMarcaResponse.from(v.logoClaro()), LogoDeMarcaResponse.from(v.logoOscuro()));
 	}

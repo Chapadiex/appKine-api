@@ -6,6 +6,7 @@ import com.akine.organization.application.LogoContenido;
 import com.akine.organization.application.MarcaCommand;
 import com.akine.organization.application.MarcaService;
 import com.akine.organization.application.MarcaView;
+import com.akine.organization.domain.ColoresDeInterfaz;
 import com.akine.organization.domain.LogoVariante;
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
 import org.junit.jupiter.api.DisplayName;
@@ -60,12 +61,17 @@ class MarcaDeOrganizacionIT {
 
 		MarcaView guardada = marca.actualizar(org, new MarcaCommand(
 				"#0F766E", "#115e59", "#2dd4bf", "",
+				new ColoresDeInterfaz("#0B4F4A", "", null, "#FFFBEB", "#F0FDFA", "#115E59"), null,
 				"  +54 351 555-0100 ", "contacto@centro.example", "https://centro.example",
 				"Av. Colon 1234", "Lunes a viernes de 8 a 20 h"), 0, null);
 
 		assertThat(guardada.version()).as("la respuesta trae la version nueva, no la leida").isEqualTo(1);
 		assertThat(guardada.colorPrincipalClaro()).as("en minusculas").isEqualTo("#0f766e");
 		assertThat(guardada.colorAcentoOscuro()).as("vacio es volver al de AKINE").isNull();
+		assertThat(guardada.interfazClaro())
+				.as("normalizados igual que los otros colores")
+				.isEqualTo(new ColoresDeInterfaz("#0b4f4a", null, null, "#fffbeb", "#f0fdfa", "#115e59"));
+		assertThat(guardada.interfazOscuro()).isEqualTo(ColoresDeInterfaz.NINGUNO);
 		assertThat(guardada.telefono()).isEqualTo("+54 351 555-0100");
 		assertThat(jdbc.queryForObject(
 				"SELECT color_principal_claro FROM organization_marca WHERE organization_id = ?",
@@ -156,7 +162,8 @@ class MarcaDeOrganizacionIT {
 	void aislamiento_entre_centros() {
 		long a = insertarOrganizacion();
 		long b = insertarOrganizacion();
-		marca.actualizar(a, new MarcaCommand("#0f766e", null, null, null, null, null, null, null, null), 0, null);
+		marca.actualizar(a, new MarcaCommand(
+				"#0f766e", null, null, null, null, null, null, null, null, null, null), 0, null);
 		marca.subirLogo(a, LogoVariante.CLARO, PNG, null);
 
 		MarcaView deB = marca.ver(b);
@@ -167,7 +174,7 @@ class MarcaDeOrganizacionIT {
 	// =================================================================================
 
 	private static MarcaCommand comandoVacio() {
-		return new MarcaCommand(null, null, null, null, null, null, null, null, null);
+		return new MarcaCommand(null, null, null, null, null, null, null, null, null, null, null);
 	}
 
 	private int filasDeMarca(long org) {

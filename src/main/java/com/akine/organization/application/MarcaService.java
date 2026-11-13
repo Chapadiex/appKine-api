@@ -1,6 +1,7 @@
 package com.akine.organization.application;
 
 import com.akine.organization.domain.LogoResumen;
+import com.akine.organization.domain.ColoresDeInterfaz;
 import com.akine.organization.domain.LogoVariante;
 import com.akine.organization.domain.OrganizationMarca;
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
@@ -82,6 +83,7 @@ public class MarcaService {
 		marca.reemplazar(
 				comando.colorPrincipalClaro(), comando.colorAcentoClaro(),
 				comando.colorPrincipalOscuro(), comando.colorAcentoOscuro(),
+				comando.interfazClaro(), comando.interfazOscuro(),
 				comando.telefono(), comando.email(), comando.sitioWeb(),
 				comando.direccion(), comando.leyenda());
 		OrganizationMarca guardada = marcaRepository.saveAndFlush(marca);
@@ -91,6 +93,8 @@ public class MarcaService {
 		detalles.put("colorAcentoClaro", String.valueOf(guardada.getColorAcentoClaro()));
 		detalles.put("colorPrincipalOscuro", String.valueOf(guardada.getColorPrincipalOscuro()));
 		detalles.put("colorAcentoOscuro", String.valueOf(guardada.getColorAcentoOscuro()));
+		detalles.put("interfazClaro", String.valueOf(guardada.getInterfazClaro()));
+		detalles.put("interfazOscuro", String.valueOf(guardada.getInterfazOscuro()));
 		auditar(organizationId, actorAccountId, AuditEvents.ORGANIZATION_BRANDING_UPDATED, detalles);
 
 		return vista(organizationId, Optional.of(guardada));
@@ -184,10 +188,12 @@ public class MarcaService {
 				.map(m -> new MarcaView(organizationId, m.getVersion(),
 						m.getColorPrincipalClaro(), m.getColorAcentoClaro(),
 						m.getColorPrincipalOscuro(), m.getColorAcentoOscuro(),
+						m.getInterfazClaro(), m.getInterfazOscuro(),
 						m.getTelefono(), m.getEmail(), m.getSitioWeb(), m.getDireccion(),
 						m.getLeyenda(), claro, oscuro))
 				.orElseGet(() -> new MarcaView(organizationId, 0,
-						null, null, null, null, null, null, null, null, null, claro, oscuro));
+						null, null, null, null, ColoresDeInterfaz.NINGUNO, ColoresDeInterfaz.NINGUNO,
+						null, null, null, null, null, claro, oscuro));
 	}
 
 	private static MarcaView.Logo logoDe(List<LogoResumen> logos, LogoVariante variante) {

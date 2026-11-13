@@ -117,6 +117,8 @@ public class MarcaController {
 		MarcaCommand comando = new MarcaCommand(
 				request.colorPrincipalClaro(), request.colorAcentoClaro(),
 				request.colorPrincipalOscuro(), request.colorAcentoOscuro(),
+				request.interfazClaro() == null ? null : request.interfazClaro().aDominio(),
+				request.interfazOscuro() == null ? null : request.interfazOscuro().aDominio(),
 				request.telefono(), request.email(), request.sitioWeb(),
 				request.direccion(), request.leyenda());
 		return ResponseEntity.ok(MarcaResponse.from(

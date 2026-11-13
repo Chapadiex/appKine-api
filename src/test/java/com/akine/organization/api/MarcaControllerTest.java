@@ -6,6 +6,7 @@ import com.akine.organization.application.LogoContenido;
 import com.akine.organization.application.MarcaCommand;
 import com.akine.organization.application.MarcaService;
 import com.akine.organization.application.MarcaView;
+import com.akine.organization.domain.ColoresDeInterfaz;
 import com.akine.organization.domain.LogoVariante;
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
 import com.akine.platform.spi.tenant.TenantContextHolder;
@@ -95,6 +96,7 @@ class MarcaControllerTest {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
 								{"version":3,"colorPrincipalClaro":"#0f766e","colorAcentoOscuro":"",
+								 "interfazClaro":{"barraLateral":"#0F766E","fondo":"","tarjeta":"#fffbeb"},
 								 "telefono":"+54 351 555-0100","email":"contacto@centro.example",
 								 "sitioWeb":"https://centro.example","leyenda":"Lunes a viernes"}"""))
 				.andExpect(status().isOk())
@@ -102,7 +104,9 @@ class MarcaControllerTest {
 
 		verify(authorizationGuard).requireOrgDataEditor(eq(42L), eq(7L), any(), anyBoolean());
 		verify(marcaService).actualizar(7L, new MarcaCommand(
-				"#0f766e", null, null, "", "+54 351 555-0100", "contacto@centro.example",
+				"#0f766e", null, null, "",
+				new ColoresDeInterfaz("#0F766E", null, "", "#fffbeb", null, null), null,
+				"+54 351 555-0100", "contacto@centro.example",
 				"https://centro.example", null, "Lunes a viernes"), 3L, 42L);
 	}
 
@@ -112,9 +116,11 @@ class MarcaControllerTest {
 		mockMvc.perform(put(URL).with(ApiActors.miembro(42L))
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
-								{"colorPrincipalClaro":"rojo","email":"sin-arroba","sitioWeb":"centro.example"}"""))
+								{"colorPrincipalClaro":"rojo","email":"sin-arroba","sitioWeb":"centro.example",
+								 "interfazOscuro":{"cabecera":"azul"}}"""))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.errors.colorPrincipalClaro").exists())
+				.andExpect(jsonPath("$.errors['interfazOscuro.cabecera']").exists())
 				.andExpect(jsonPath("$.errors.email").exists())
 				.andExpect(jsonPath("$.errors.sitioWeb").exists())
 				.andExpect(jsonPath("$.errors.version").exists());
@@ -201,6 +207,7 @@ class MarcaControllerTest {
 
 	private static MarcaView vista(long version, String principalClaro, MarcaView.Logo logoClaro) {
 		return new MarcaView(7L, version, principalClaro, null, null, null,
+				ColoresDeInterfaz.NINGUNO, ColoresDeInterfaz.NINGUNO,
 				null, null, null, null, null, logoClaro, null);
 	}
 }

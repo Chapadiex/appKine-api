@@ -30974,6 +30974,41 @@ components:
           type: integer
           format: int64
           example: 0
+    ColoresDeInterfaz:
+      type: object
+      description: "Colores de las zonas de la interfaz para un tema. Cada uno es\
+        \ opcional: ausente o vacio significa que se deriva del color principal"
+      properties:
+        barraLateral:
+          type: string
+          description: "Fondo de la barra lateral de navegacion, #rrggbb"
+          example: "#0f766e"
+          pattern: "^$|^#[0-9a-fA-F]{6}$"
+        botonSecundario:
+          type: string
+          description: "Contorno y texto de los botones de contorno, #rrggbb"
+          example: "#115e59"
+          pattern: "^$|^#[0-9a-fA-F]{6}$"
+        cabecera:
+          type: string
+          description: "Fondo de la barra superior, #rrggbb"
+          example: "#ecfdf5"
+          pattern: "^$|^#[0-9a-fA-F]{6}$"
+        fondo:
+          type: string
+          description: "Fondo de la pagina, detras de las tarjetas, #rrggbb"
+          example: "#f0fdfa"
+          pattern: "^$|^#[0-9a-fA-F]{6}$"
+        pie:
+          type: string
+          description: "Fondo del pie de pagina, #rrggbb"
+          example: "#f0fdfa"
+          pattern: "^$|^#[0-9a-fA-F]{6}$"
+        tarjeta:
+          type: string
+          description: "Fondo de las tarjetas, paneles y campos, #rrggbb"
+          example: "#ffffff"
+          pattern: "^$|^#[0-9a-fA-F]{6}$"
     ComparacionDeMediciones:
       type: object
       description: Las medidas de esta sesion contra las de la sesion cerrada anterior
@@ -37846,6 +37881,13 @@ components:
           type: string
           description: Email de contacto del centro
           example: contacto@centro.example
+        interfazClaro:
+          $ref: "#/components/schemas/ColoresDeInterfaz"
+          description: "Colores de barra lateral, cabecera, fondo y boton secundario\
+            \ en tema claro, si el centro fijo alguno"
+        interfazOscuro:
+          $ref: "#/components/schemas/ColoresDeInterfaz"
+          description: Lo mismo para tema oscuro
         leyenda:
           type: string
           description: "Linea libre del pie: horario, matricula, lema"
@@ -46601,6 +46643,13 @@ components:
           example: contacto@centro.example
           maxLength: 254
           minLength: 0
+        interfazClaro:
+          $ref: "#/components/schemas/ColoresDeInterfaz"
+          description: "Colores de barra lateral, cabecera, fondo y boton secundario\
+            \ en tema claro"
+        interfazOscuro:
+          $ref: "#/components/schemas/ColoresDeInterfaz"
+          description: Lo mismo para tema oscuro
         leyenda:
           type: string
           description: Linea libre del pie

@@ -44,3 +44,18 @@ paletas sugeridas que puede editar libremente, y muestra su logo y sus datos de 
 - Correos con la marca del centro (segunda tanda).
 - La pantalla de ingreso sigue con la marca AKINE: ahí todavía no se sabe de qué centro es la persona.
 - Sin logo cargado la barra lateral sigue mostrando AKINE.
+
+## Colores de interfaz por zona (12/11/2026)
+
+Además del principal y el acento, cada tema admite seis colores opcionales de zona, agrupados en
+`interfazClaro` e `interfazOscuro` (`ColoresDeInterfaz`): barra lateral, cabecera, fondo de página,
+tarjetas, pie y botón secundario. Se guardan en doce columnas de `organization_marca`
+(`color_<zona>_<tema>`), con el mismo CHECK `#rrggbb` en minúsculas.
+
+- **Ausente significa "automático"**: el cliente deriva la zona del color principal (un tinte) o
+  deja la de AKINE. El servidor no deriva ni valida contraste, igual que con los otros colores.
+- **El texto sobre una zona lo elige el cliente** (blanco o casi negro) para barra lateral, cabecera
+  y pie. Tarjetas y fondo no dan vuelta el texto: la pantalla avisa si no se lee.
+- La migración sigue siendo `V14`: la rama no estaba mergeada cuando se agregaron las columnas.
+- Los datos de contacto siguen en el mismo recurso, pero la pantalla los edita desde "Datos del
+  centro"; como el `PUT` reemplaza la marca entera, cada pantalla reenvía lo que no edita.

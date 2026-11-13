@@ -1,6 +1,7 @@
 package com.akine.organization.api.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -30,6 +31,14 @@ public record UpdateMarcaRequest(
 		@Schema(description = "Color de enlaces y seleccion en tema oscuro, #rrggbb", example = "#5eead4")
 		@Pattern(regexp = COLOR, message = MENSAJE_COLOR)
 		String colorAcentoOscuro,
+
+		@Schema(description = "Colores de barra lateral, cabecera, fondo y boton secundario en tema claro")
+		@Valid
+		ColoresDeInterfazDto interfazClaro,
+
+		@Schema(description = "Lo mismo para tema oscuro")
+		@Valid
+		ColoresDeInterfazDto interfazOscuro,
 
 		@Schema(description = "Telefono de contacto", example = "+54 351 555-0100")
 		@Size(max = 40, message = "El telefono no puede superar los 40 caracteres")

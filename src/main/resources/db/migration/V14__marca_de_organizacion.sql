@@ -15,6 +15,18 @@ CREATE TABLE organization_marca
     color_acento_claro varchar(7),
     color_principal_oscuro varchar(7),
     color_acento_oscuro varchar(7),
+    color_barra_lateral_claro varchar(7),
+    color_cabecera_claro varchar(7),
+    color_fondo_claro varchar(7),
+    color_tarjeta_claro varchar(7),
+    color_pie_claro varchar(7),
+    color_boton_secundario_claro varchar(7),
+    color_barra_lateral_oscuro varchar(7),
+    color_cabecera_oscuro varchar(7),
+    color_fondo_oscuro varchar(7),
+    color_tarjeta_oscuro varchar(7),
+    color_pie_oscuro varchar(7),
+    color_boton_secundario_oscuro varchar(7),
     telefono varchar(40) COLLATE akine_ci,
     email varchar(254) COLLATE akine_ci,
     sitio_web varchar(200) COLLATE akine_ci,
@@ -30,11 +42,25 @@ CREATE TABLE organization_marca
         (color_principal_claro IS NULL OR color_principal_claro ~ '^#[0-9a-f]{6}$')
         AND (color_acento_claro IS NULL OR color_acento_claro ~ '^#[0-9a-f]{6}$')
         AND (color_principal_oscuro IS NULL OR color_principal_oscuro ~ '^#[0-9a-f]{6}$')
-        AND (color_acento_oscuro IS NULL OR color_acento_oscuro ~ '^#[0-9a-f]{6}$'))
+        AND (color_acento_oscuro IS NULL OR color_acento_oscuro ~ '^#[0-9a-f]{6}$')),
+    CONSTRAINT ck_organization_marca_interfaz CHECK (
+        (color_barra_lateral_claro IS NULL OR color_barra_lateral_claro ~ '^#[0-9a-f]{6}$')
+        AND (color_cabecera_claro IS NULL OR color_cabecera_claro ~ '^#[0-9a-f]{6}$')
+        AND (color_fondo_claro IS NULL OR color_fondo_claro ~ '^#[0-9a-f]{6}$')
+        AND (color_tarjeta_claro IS NULL OR color_tarjeta_claro ~ '^#[0-9a-f]{6}$')
+        AND (color_pie_claro IS NULL OR color_pie_claro ~ '^#[0-9a-f]{6}$')
+        AND (color_boton_secundario_claro IS NULL OR color_boton_secundario_claro ~ '^#[0-9a-f]{6}$')
+        AND (color_barra_lateral_oscuro IS NULL OR color_barra_lateral_oscuro ~ '^#[0-9a-f]{6}$')
+        AND (color_cabecera_oscuro IS NULL OR color_cabecera_oscuro ~ '^#[0-9a-f]{6}$')
+        AND (color_fondo_oscuro IS NULL OR color_fondo_oscuro ~ '^#[0-9a-f]{6}$')
+        AND (color_tarjeta_oscuro IS NULL OR color_tarjeta_oscuro ~ '^#[0-9a-f]{6}$')
+        AND (color_pie_oscuro IS NULL OR color_pie_oscuro ~ '^#[0-9a-f]{6}$')
+        AND (color_boton_secundario_oscuro IS NULL OR color_boton_secundario_oscuro ~ '^#[0-9a-f]{6}$'))
 );
 COMMENT ON TABLE organization_marca IS 'Identidad visual y datos de contacto del tenant. Una fila por organizacion, creada en la primera edicion. Un color NULL significa "el de AKINE".';
 COMMENT ON COLUMN organization_marca.color_principal_claro IS 'Color de accion (botones, foco) en tema claro, #rrggbb en minusculas';
 COMMENT ON COLUMN organization_marca.color_acento_claro IS 'Color de enlaces y de la seleccion en tema claro';
+COMMENT ON COLUMN organization_marca.color_barra_lateral_claro IS 'Fondo de la navegacion en tema claro. NULL: se deriva del color principal. Igual para cabecera, fondo, tarjeta, pie y boton secundario';
 COMMENT ON COLUMN organization_marca.leyenda IS 'Linea libre del pie de pagina: horario, matricula, lema';
 
 CREATE TABLE organization_logo
