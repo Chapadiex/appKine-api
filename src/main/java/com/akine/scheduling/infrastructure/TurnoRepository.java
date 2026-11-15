@@ -227,6 +227,20 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 			@Param("organizationId") long organizationId,
 			@Param("planIds") Collection<Long> planIds);
 
+	/**
+	 * Los turnos de un caso, <b>con</b> los cancelados (M31): cancelar sella {@code deleted_at} y
+	 * filtrarlo borraria justo lo que mide la adherencia.
+	 */
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.casoId = :casoId
+			 ORDER BY t.inicio ASC, t.id ASC
+			""")
+	List<Turno> findDelCasoConCancelados(
+			@Param("organizationId") long organizationId,
+			@Param("casoId") long casoId);
+
 	@Override
 	default List<Turno> findDeLaPersonaEnSede(
 			long organizationId, long consultorioId, long personaId, boolean soloFuturos, Instant ahora,
