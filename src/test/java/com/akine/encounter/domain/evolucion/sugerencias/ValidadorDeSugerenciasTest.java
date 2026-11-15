@@ -140,4 +140,52 @@ class ValidadorDeSugerenciasTest {
 		ResultadoDeValidacion r = validar(salida(siete));
 		assertThat(r.aceptadas()).hasSize(5);
 	}
+
+	@Test
+	void pasajeCompartidoSeAceptaParaLosDosHallazgos() {
+		PasajeEnviado compartido = new PasajeEnviado("P3", new PasajeRecuperado(1L, "Libro", 1, 2, "Texto.", 0.9, true),
+				Set.of(DOLOR, ADHERENCIA));
+		List<HallazgoConEvidencia> env = List.of(
+				new HallazgoConEvidencia(new Hallazgo(DOLOR, Severidad.ATENCION, List.of(), List.of(), null),
+						List.of(compartido)),
+				new HallazgoConEvidencia(new Hallazgo(ADHERENCIA, Severidad.INFO, List.of(), List.of(), null),
+						List.of(compartido)));
+		ResultadoDeValidacion r = validador.validar(salida(
+				sugerencia("DOLOR_SIN_MEJORA", "Revisar la carga.", "x", "[\"P3\"]"),
+				sugerencia("BAJA_ADHERENCIA", "Revisar la asistencia.", "x", "[\"P3\"]")), env, Set.of());
+		assertThat(r.aceptadas()).hasSize(2);
+	}
+
+	@Test
+	void numeroDeUnPasajeCitadoSeAceptaYElDeUnoNoCitadoNo() {
+		PasajeEnviado conNumero = new PasajeEnviado("P1",
+				new PasajeRecuperado(1L, "Libro", 1, 2, "Se sugieren 12 semanas.", 0.9, true), Set.of(DOLOR));
+		PasajeEnviado otro = new PasajeEnviado("P2",
+				new PasajeRecuperado(1L, "Libro", 1, 2, "Se sugieren 99 repeticiones.", 0.9, true), Set.of(DOLOR));
+		List<HallazgoConEvidencia> env = List.of(new HallazgoConEvidencia(
+				new Hallazgo(DOLOR, Severidad.ATENCION, List.of(), List.of(), null), List.of(conNumero, otro)));
+		assertThat(validador.validar(salida(sugerencia("DOLOR_SIN_MEJORA", "Considerar 12 semanas.", "x", "[\"P1\"]")),
+				env, Set.of()).aceptadas()).hasSize(1);
+		assertThat(validador.validar(salida(sugerencia("DOLOR_SIN_MEJORA", "Considerar 99 repeticiones.", "x",
+				"[\"P1\"]")), env, Set.of()).descartes()).containsOnlyKeys(ReglaDeDescarte.NUMERO_NO_ENVIADO);
+	}
+
+	@Test
+	void numerosPegadosAUnaLetraOConSeparadorDeMilesNoSeEscapan() {
+		for (String texto : List.of("Hacer 3x10 series.", "El dolor llegó a EVA7.", "Pasar de 1.000 a más.")) {
+			ResultadoDeValidacion r = validar(
+					salida(sugerencia("DOLOR_SIN_MEJORA", texto, "x", "[\"P1\"]")), "3", "1", "7.5");
+			assertThat(r.descartes()).as(texto).containsOnlyKeys(ReglaDeDescarte.NUMERO_NO_ENVIADO);
+		}
+	}
+
+	@Test
+	void unPasajeOmitidoNoSePuedeCitar() {
+		PasajeEnviado omitido = new PasajeEnviado("P1",
+				new PasajeRecuperado(1L, "[texto omitido]", 1, 2, "", 0.9, true), Set.of(DOLOR), true);
+		List<HallazgoConEvidencia> env = List.of(new HallazgoConEvidencia(
+				new Hallazgo(DOLOR, Severidad.ATENCION, List.of(), List.of(), null), List.of(omitido)));
+		assertThat(validador.validar(salida(buena()), env, Set.of()).descartes())
+				.containsOnlyKeys(ReglaDeDescarte.CITA_DESCONOCIDA);
+	}
 }

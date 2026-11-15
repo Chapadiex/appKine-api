@@ -118,7 +118,7 @@ public final class ValidadorDeSugerencias {
 		List<PasajeEnviado> citas = new ArrayList<>();
 		for (String id : ids) {
 			PasajeEnviado p = porId.get(id);
-			if (p == null) {
+			if (p == null || p.omitido()) {
 				return descarte(ReglaDeDescarte.CITA_DESCONOCIDA);
 			}
 			if (!citas.contains(p)) {
@@ -189,12 +189,7 @@ public final class ValidadorDeSugerencias {
 	}
 
 	private static String normalizarNumeroOEntero(String n) {
-		try {
-			return NumerosEnTexto.normalizar(n.strip());
-		}
-		catch (NumberFormatException e) {
-			return n;
-		}
+		return NumerosEnTexto.canonico(n.strip());
 	}
 
 	private static String normalizar(String texto) {

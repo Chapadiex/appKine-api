@@ -20,9 +20,11 @@ import java.util.stream.Collectors;
  *
  * @param numerosPermitidos cada numero presente en lo enviado, normalizado, mas 1, 2 y 3
  * @param huboTextoOmitido  algun texto o pasaje se reemplazo por {@code [texto omitido]}
+ * @param enviados          la evidencia tal como viajo (pasajes recortados y los omitidos marcados): es la que
+ *                          hay que pasarle al validador
  */
 public record PromptDeSugerencias(List<MensajeChat> mensajes, String esquemaJson, Set<String> numerosPermitidos,
-		boolean huboTextoOmitido) {
+		boolean huboTextoOmitido, List<HallazgoConEvidencia> enviados) {
 
 	static final String OMITIDO = "[texto omitido]";
 
@@ -51,9 +53,10 @@ public record PromptDeSugerencias(List<MensajeChat> mensajes, String esquemaJson
 	 * @param evidencia hallazgos elegidos con sus pasajes
 	 * @param ultimas3  textos libres de las ultimas sesiones (de la mas vieja a la mas nueva)
 	 */
-	public static PromptDeSugerencias armar(EntradaDelPrompt entrada, List<HallazgoConEvidencia> evidencia,
+	public static PromptDeSugerencias armar(EntradaDelPrompt entrada, List<HallazgoConEvidencia> evidenciaOriginal,
 			List<TextosDeSesion> ultimas3, DetectorDeInstrucciones detector) {
 		Saneador s = new Saneador(detector);
+		List<HallazgoConEvidencia> evidencia = sanearPasajes(evidenciaOriginal, s);
 		DatosDelCaso datos = entrada.datos();
 		StringBuilder d = new StringBuilder("<<<DATOS\n");
 		d.append("Diagnóstico presuntivo: ").append(s.limpiar(entrada.diagnostico())).append('\n');
@@ -100,7 +103,7 @@ public record PromptDeSugerencias(List<MensajeChat> mensajes, String esquemaJson
 				se.tratamientos().forEach(t -> cuentas.merge(
 						t.practicaNombre() == null ? "tratamiento" : t.practicaNombre(), 1, Integer::sum));
 				d.append("; tratamientos: ").append(cuentas.entrySet().stream()
-						.map(e -> e.getKey() + " x" + e.getValue()).collect(Collectors.joining(", ")));
+						.map(e -> e.getKey() + ": " + e.getValue() + (e.getValue() == 1 ? " vez" : " veces")).collect(Collectors.joining(", ")));
 			}
 			d.append('\n');
 		}
@@ -127,33 +130,56 @@ public record PromptDeSugerencias(List<MensajeChat> mensajes, String esquemaJson
 				d.append("; sesiones ").append(ses);
 			}
 			new TreeMap<>(h.valores()).forEach((k, v) -> d.append("; ").append(k).append(": ").append(v));
-			d.append("; pasajes: ").append(e.pasajes().stream().map(PasajeEnviado::id)
+			d.append("; pasajes: ").append(e.pasajes().stream().filter(x -> !x.omitido()).map(PasajeEnviado::id)
 					.collect(Collectors.joining(", "))).append('\n');
 		}
 		d.append("DATOS>>>");
 
+		// Solo lo de DATOS: los numeros de un pasaje los suma el validador por cada cita.
 		Set<String> numeros = new LinkedHashSet<>(NumerosEnTexto.extraer(d.toString()));
+		numeros.addAll(Set.of("1", "2", "3"));
 		StringBuilder p = new StringBuilder("<<<PASAJES\n");
 		Map<String, PasajeEnviado> unicos = new java.util.LinkedHashMap<>();
 		evidencia.forEach(e -> e.pasajes().forEach(x -> unicos.putIfAbsent(x.id(), x)));
 		for (PasajeEnviado x : unicos.values()) {
-			String texto = x.pasaje().texto();
-			if (texto.length() > MAXIMO_PASAJE) {
-				texto = texto.substring(0, MAXIMO_PASAJE);
+			if (!x.omitido()) {
+				p.append('[').append(x.id()).append("] ").append(x.pasaje().titulo()).append(": ")
+						.append(x.pasaje().texto()).append('\n');
 			}
-			String enviado = s.limpiarPasaje(texto);
-			if (!OMITIDO.equals(enviado)) {
-				numeros.addAll(NumerosEnTexto.extraer(enviado));
-			}
-			p.append('[').append(x.id()).append("] ").append(x.pasaje().titulo()).append(": ").append(enviado)
-					.append('\n');
 		}
 		p.append("PASAJES>>>");
-		numeros.addAll(Set.of("1", "2", "3"));
 
 		List<MensajeChat> mensajes = List.of(new MensajeChat(Rol.SISTEMA, SISTEMA),
 				new MensajeChat(Rol.USUARIO, d + "\n\n" + p));
-		return new PromptDeSugerencias(mensajes, ESQUEMA, numeros, s.omitio);
+		return new PromptDeSugerencias(mensajes, ESQUEMA, numeros, s.omitio, evidencia);
+	}
+
+	/** Recorta y sanea cada pasaje (titulo y cuerpo); si el detector marca cualquiera de los dos, se omite. */
+	private static List<HallazgoConEvidencia> sanearPasajes(List<HallazgoConEvidencia> evidencia, Saneador s) {
+		Map<String, PasajeEnviado> hechos = new HashMap<>();
+		List<HallazgoConEvidencia> resultado = new java.util.ArrayList<>();
+		for (HallazgoConEvidencia e : evidencia) {
+			List<PasajeEnviado> pasajes = new java.util.ArrayList<>();
+			for (PasajeEnviado x : e.pasajes()) {
+				pasajes.add(hechos.computeIfAbsent(x.id(), id -> sanear(x, s)));
+			}
+			resultado.add(new HallazgoConEvidencia(e.hallazgo(), pasajes));
+		}
+		return resultado;
+	}
+
+	private static PasajeEnviado sanear(PasajeEnviado x, Saneador s) {
+		String texto = x.pasaje().texto() == null ? "" : x.pasaje().texto();
+		if (texto.length() > MAXIMO_PASAJE) {
+			texto = texto.substring(0, MAXIMO_PASAJE);
+		}
+		String titulo = s.limpiar(x.pasaje().titulo());
+		String cuerpo = s.limpiar(texto);
+		boolean omitido = OMITIDO.equals(titulo) || OMITIDO.equals(cuerpo);
+		var p = x.pasaje();
+		return new PasajeEnviado(x.id(), new com.akine.knowledge.spi.PasajeRecuperado(p.libroId(),
+				omitido ? OMITIDO : titulo, p.paginaDesde(), p.paginaHasta(), omitido ? "" : cuerpo, p.puntaje(),
+				p.superaCorte()), x.hallazgos(), omitido);
 	}
 
 	private static String medicion(DatosDelCaso.Medicion m) {
@@ -187,11 +213,8 @@ public record PromptDeSugerencias(List<MensajeChat> mensajes, String esquemaJson
 				omitio = true;
 				return OMITIDO;
 			}
-			return texto.strip();
-		}
-
-		String limpiarPasaje(String texto) {
-			return limpiar(texto);
+			// las marcas de bloque nunca viajan dentro de un texto: cerrarian el bloque antes de tiempo
+			return texto.replace("<<<", "").replace(">>>", "").strip();
 		}
 	}
 }
