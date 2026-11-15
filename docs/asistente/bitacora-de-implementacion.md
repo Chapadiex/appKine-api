@@ -98,3 +98,11 @@ La base de QA no tenía clases. Se armó una por la API, como lo haría el admin
 - **Que el modelo devuelva `seguimiento: true|false`.** Cambia el prompt y obliga a volver a medir, y la heurística actual pasa los sets.
 
 **La latencia sin GPU** (7 a 9 s por pregunta) no se resuelve en código: es una decisión de despliegue (U-02). Las opciones son un servidor con GPU, aceptar la espera, o cambiar el adaptador por un modelo en la nube (D-1), y en ese caso al modelo sólo le llega la pregunta.
+
+## CI del PR #204 (15/11)
+
+| # | Problema | Solución aplicada |
+|---|---|---|
+| 55 | `MensajesDeValidacionTest` exige que toda restricción de la capa `api` tenga un `message` que nombre su campo; los DTO del asistente usaban los mensajes por defecto | `message` propio en cada restricción de `ConsultaAsistenteRequest`, `TurnoPrevioRequest` e `InterpretacionDto` |
+| 56 | `PermissionEvaluatorServiceTest` y `PermisosEsquemaIT` esperan la lista exacta de permisos efectivos de cada rol, y `asistente:use` es nuevo | Se sumó a las listas esperadas, igual que `biblioteca:consultar` |
+| 57 | Por la regla de correr sólo lo que toca el cambio, esos tests no se habían corrido en local, y el CI cortó en la etapa de unitarios | Antes de volver a subir se corrió la suite unitaria completa en local (4741 tests, 0 fallas) y los IT de permisos (`PermisosEsquemaIT` 11/11, `MatrizDePermisosIT` 14/14) |

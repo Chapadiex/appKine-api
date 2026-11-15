@@ -10,12 +10,12 @@ import jakarta.validation.constraints.Size;
 @Schema(description = "Lo que el asistente entendio de una pregunta. El cliente lo devuelve tal cual en el "
 		+ "historial del siguiente turno, sin modificarlo.")
 public record InterpretacionDto(
-		@Schema(requiredMode = Schema.RequiredMode.REQUIRED) @NotNull Intencion intencion,
-		@Schema(description = "Nombre de la persona tal como se escribio", maxLength = 120) @Size(max = 120) String persona,
-		@Schema(description = "Actividad de la clase, en minusculas", maxLength = 120) @Size(max = 120) String clase,
+		@Schema(requiredMode = Schema.RequiredMode.REQUIRED) @NotNull(message = "La intencion de la interpretacion es obligatoria") Intencion intencion,
+		@Schema(description = "Nombre de la persona tal como se escribio", maxLength = 120) @Size(max = 120, message = "La persona admite hasta 120 caracteres") String persona,
+		@Schema(description = "Actividad de la clase, en minusculas", maxLength = 120) @Size(max = 120, message = "La clase admite hasta 120 caracteres") String clase,
 		@Schema(description = "Periodo en el vocabulario del asistente (HOY, ESTA_SEMANA, DIA:LUNES, MES:OCTUBRE...)",
-				maxLength = 40) @Size(max = 40) String periodo,
-		@Schema(description = "ECONOMICO, TURNOS o CLASES, solo para REPORTE", maxLength = 20) @Size(max = 20) String reporte) {
+				maxLength = 40) @Size(max = 40, message = "El periodo admite hasta 40 caracteres") String periodo,
+		@Schema(description = "ECONOMICO, TURNOS o CLASES, solo para REPORTE", maxLength = 20) @Size(max = 20, message = "El reporte admite hasta 20 caracteres") String reporte) {
 
 	public static InterpretacionDto de(Interpretacion i) {
 		return new InterpretacionDto(i.intencion(), i.persona(), i.clase(), i.periodo(), i.reporte());

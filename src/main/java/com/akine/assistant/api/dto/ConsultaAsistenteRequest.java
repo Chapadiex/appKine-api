@@ -17,14 +17,16 @@ import java.util.List;
 public record ConsultaAsistenteRequest(
 		@Schema(requiredMode = Schema.RequiredMode.REQUIRED, minLength = 1, maxLength = 300,
 				example = "¿Juan vino esta semana?")
-		@NotBlank @Size(max = 300) String pregunta,
+		@NotBlank(message = "La pregunta es obligatoria")
+		@Size(max = 300, message = "La pregunta admite hasta 300 caracteres") String pregunta,
 		@ArraySchema(maxItems = 10, schema = @Schema(implementation = TurnoPrevioRequest.class),
 				arraySchema = @Schema(description = "Turnos previos, del mas viejo al mas nuevo; el servidor usa "
 						+ "los ultimos tres"))
-		@Size(max = 10) List<@NotNull @Valid TurnoPrevioRequest> historial,
+		@Size(max = 10, message = "El historial admite hasta 10 preguntas anteriores")
+		List<@NotNull(message = "El historial no admite elementos vacios") @Valid TurnoPrevioRequest> historial,
 		@Schema(description = "La persona elegida entre las opciones de una aclaracion. Se reenvia la misma "
 				+ "pregunta con este campo", minimum = "1")
-		@Positive Long personaId) {
+		@Positive(message = "La persona elegida tiene que ser un id positivo") Long personaId) {
 
 	public List<TurnoPrevio> aHistorial() {
 		return historial == null ? List.of() : historial.stream().map(TurnoPrevioRequest::aTurno).toList();
