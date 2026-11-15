@@ -1,7 +1,9 @@
 # AKINE — Asistente de datos: preguntarle a la aplicación en lenguaje natural
 
 > Diseño del 15/11/2026. Plan de implementación en `AKINE-asistente-de-datos-plan.md`.
-> Estado: **propuesto, sin código**. Las decisiones abiertas están en el §10.
+> Estado: **en implementación** (B-1 hecho el 15/11). El usuario aceptó las recomendaciones de D-1 a D-4 (§10) el
+> 15/11. **No hay RF en `AKINE_Requerimientos_Integrados.md`**: es un pedido del usuario del 15/11, y este
+> documento hace las veces de especificación hasta que se agregue al integrado.
 
 ## 1. Qué se quiere
 

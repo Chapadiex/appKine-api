@@ -10,7 +10,7 @@
 |---|---|---|---|
 | 0.1 | Decidir D-1 a D-4 (§10 del diseño). Con las recomendaciones, el plan no cambia | usuario | todo |
 | 0.2 | Reservar la minor del contrato (hoy sería 0.169.0) en `docs/fases/01-trabajo-en-paralelo.md` | agente | B-6 |
-| 0.3 | Con D-2 = permiso nuevo: fila `asistente:use` en `docs/seguridad/matriz-permisos-minima.md` (ORG_ADMIN, PROFESIONAL, ADMINISTRATIVO, RECEPCION; **no** PACIENTE) | agente | B-1 |
+| 0.3 | Con D-2 = permiso nuevo: fila `asistente:use` en `docs/seguridad/matriz-permisos-minima.md` (ORG_ADMIN, CONSULTORIO_ADMIN, PROFESIONAL y ADMINISTRATIVO, que es el rol de la recepción; **no** PACIENTE). Hecho en B-1 (§23 de la matriz) | agente | B-1 |
 | 0.4 | Escribir 40 preguntas reales con su intención esperada en `src/test/resources/asistente/preguntas.yaml` | usuario + agente | B-5 |
 
 **Ramas:** `wt-API-ASISTENTE` (rama `akine-asistente-datos`) y `wt-WEB-ASISTENTE`. Un PR por repo,
@@ -20,7 +20,20 @@ con la regla de siempre: primero el backend con el contrato y después el client
 
 Orden pensado para tener algo que responda al final del paso B-3 y completar después.
 
-### B-1 · Esqueleto del módulo `assistant` (medio día)
+### B-1 · Esqueleto del módulo `assistant` (medio día) — hecho el 15/11
+
+> **Hecho.** `spi` (`Intencion`, `HerramientaDelAsistente`, `ActorDelAsistente`, `PedidoDeHerramienta`,
+> `ResultadoDeHerramienta`), puerto `ModeloDeLenguaje` con una sola operación, `completarJson`, adaptador
+> `OllamaModeloDelAsistente` (sólo la llamada completa, no los 282 renglones con streaming de `knowledge`),
+> `ModeloDelAsistenteDePrueba`, `AsistenteProperties`/`AsistenteConfig` con `akine.asistente.enabled` en
+> `false` y `asistente:use` en `PermissionCode` y `RolePermissions`. Sin migración ni cambio de contrato: el
+> permiso vive en código. Diferencias con lo planeado: `Intencion` vive en `spi` y no en `domain`, porque
+> los otros módulos la necesitan y sólo pueden importar el `spi`. La excepción `asistente-deshabilitado` y el
+> controller pasan a B-3, que es donde hay operación. Tampoco hay precarga del modelo: la de la biblioteca ya
+> lo sube, y si está apagada la primera pregunta paga la carga.
+> **Verificado:** ArchUnit 5/5 también con una clase sonda en `scheduling` que implementa la herramienta
+> llamando a `RecepcionService.delRango` (borrada después); convenciones 12/12; `RolePermissionsTest` 136/136;
+> `OllamaModeloDelAsistenteTest` 3/3 contra un servidor HTTP falso.
 
 ```
 com.akine.assistant
