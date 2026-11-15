@@ -2,6 +2,7 @@ package com.akine.resource.api.dto;
 
 import com.akine.resource.application.MedicionDefinicionView;
 import com.akine.resource.spi.MedicionTipo;
+import com.akine.resource.spi.SentidoDeMejora;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.math.BigDecimal;
@@ -56,6 +57,9 @@ public record MedicionDefinicionResponse(
 
 		@Schema(description = "Techo del rango admitido al registrar, INCLUSIVE", example = "160")
 		BigDecimal maximo,
+		@Schema(description = "Hacia donde se mueve el valor cuando el paciente mejora. null "
+				+ "si no se declaro", example = "SUBE")
+		SentidoDeMejora mejoraCuando,
 
 		@Schema(description = "Ciclo de vida administrativo", example = "ACTIVO")
 		String estado,
@@ -83,6 +87,7 @@ public record MedicionDefinicionResponse(
 				vista.unidad(),
 				vista.minimo(),
 				vista.maximo(),
+				vista.mejoraCuando(),
 				vista.estado(),
 				vista.deletedAt(),
 				vista.deactivationReason(),

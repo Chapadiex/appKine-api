@@ -38,6 +38,8 @@ import java.math.BigDecimal;
  * @param unidad         {@code null} solo cuando {@code tipo} es {@code TEXTO} o {@code BOOLEANO}
  * @param minimo         {@code null} = sin piso. Solo en los tipos numericos
  * @param maximo         {@code null} = sin techo. INCLUSIVE cuando esta
+ * @param mejoraCuando   {@code null} = sin sentido declarado. Se lee VIVO, no se copia: dice como
+ *                       leer la serie, no que valor se tomo (RF-M31-003)
  */
 public record MedicionDefinicionSnapshot(
 
@@ -59,7 +61,16 @@ public record MedicionDefinicionSnapshot(
 
 		boolean activa,
 
-		long version) {
+		long version,
+
+		SentidoDeMejora mejoraCuando) {
+
+	/** Sin sentido de mejora declarado (RF-M31-003). */
+	public MedicionDefinicionSnapshot(long id, Long organizationId, String codigo, String nombre,
+			MedicionTipo tipo, String unidad, BigDecimal minimo, BigDecimal maximo, boolean activa,
+			long version) {
+		this(id, organizationId, codigo, nombre, tipo, unidad, minimo, maximo, activa, version, null);
+	}
 
 	/** {@code true} si la definicion es del catalogo comun y la ve todo el SaaS. */
 	public boolean esGlobal() {

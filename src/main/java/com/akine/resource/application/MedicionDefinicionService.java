@@ -145,6 +145,7 @@ public class MedicionDefinicionService {
 		MedicionDefinicion definicion = new MedicionDefinicion(
 				duenio, codigo, nombre, command.descripcion(),
 				command.tipo(), command.unidad(), command.minimo(), command.maximo());
+		definicion.declararSentidoDeMejora(command.mejoraCuando());
 
 		MedicionDefinicion creada;
 		try {
@@ -201,6 +202,11 @@ public class MedicionDefinicionService {
 		definicion.updateDatos(
 				nombre, command.descripcion(), command.unidad(),
 				command.minimo(), command.maximo(), command.clearRango());
+		if (command.clearMejoraCuando()) {
+			definicion.declararSentidoDeMejora(null);
+		} else if (command.mejoraCuando() != null) {
+			definicion.declararSentidoDeMejora(command.mejoraCuando());
+		}
 
 		MedicionDefinicion guardada;
 		try {
@@ -311,6 +317,13 @@ public class MedicionDefinicionService {
 			if (command.maximo() != null && !command.maximo().equals(definicion.getMaximo())) {
 				detalles.put("maximo", definicion.getMaximo() + " -> " + command.maximo());
 			}
+		}
+		if (command.clearMejoraCuando() && definicion.getMejoraCuando() != null) {
+			detalles.put("mejoraCuando", definicion.getMejoraCuando() + " -> (sin definir)");
+		} else if (command.mejoraCuando() != null
+				&& command.mejoraCuando() != definicion.getMejoraCuando()) {
+			detalles.put("mejoraCuando",
+					definicion.getMejoraCuando() + " -> " + command.mejoraCuando());
 		}
 		return detalles;
 	}
