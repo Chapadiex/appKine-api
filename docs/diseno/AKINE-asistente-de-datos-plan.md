@@ -135,7 +135,13 @@ Esto da la primera respuesta real y valida el patrón entero.
 - Meta: ≥ 90 % y 10/10 en fuera de alcance. Si no se llega, se ajustan los ejemplos del prompt
   antes de tocar el modelo.
 
-### B-6 · Contrato y tests mínimos (medio día)
+### B-6 · Contrato y tests mínimos (medio día) — hecho el 15/11
+
+> **Hecho.** Contrato **0.170.0** (la 0.169.0 la tomó el PR #202), 403 operaciones, `consultarAsistente` y el problem
+> type `asistente-deshabilitado`; `OpenApiContractIT` 6/6. `AsistenteIT` (7 escenarios contra PostgreSQL: asistencia
+> con el padrón real, agenda, clases y reporte contra el motor, persona de otra organización, sede de otra
+> organización 404, `PACIENTE` 403, pregunta vacía 400 y auditoría sin la pregunta) y `AsistenteApagadoIT` (409),
+> todo en verde. No se abre PR: la preferencia del usuario es una tanda en una rama, con merge cuando lo pida.
 
 - `./mvnw verify -Dakine.contract.update=true` → contrato con la minor reservada.
 - **Un IT** `AsistenteIT` con `ModeloDeLenguajeDePrueba` (respuesta fija): un `RECEPCION` pregunta
