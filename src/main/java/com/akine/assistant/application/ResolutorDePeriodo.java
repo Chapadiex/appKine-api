@@ -103,9 +103,10 @@ public final class ResolutorDePeriodo {
 	 * @param periodo        un valor ya normalizado, o {@code null}
 	 * @param pregunta       el texto original: una fecha escrita en el manda sobre lo que dijo el modelo
 	 * @param hoy            el dia de hoy en la zona de la organizacion
-	 * @param haciaAdelante  para un dia de la semana: {@code true} toma el proximo (la agenda, "quien
-	 *                       viene el jueves"), {@code false} el ultimo ("vino el lunes"); hoy cuenta
-	 *                       en los dos casos
+	 * @param haciaAdelante  {@code true} si la pregunta es sobre lo que viene ("quien viene el jueves",
+	 *                       "turnos de diciembre"): un dia de la semana toma el proximo y un mes el
+	 *                       proximo con ese nombre; {@code false} toma el ultimo ("vino el lunes",
+	 *                       "en octubre"). Hoy y el mes actual cuentan en los dos casos
 	 * @return vacio si no hay periodo: la intencion decide el default
 	 */
 	public static Optional<RangoDeDias> resolver(String periodo, String pregunta, LocalDate hoy, boolean haciaAdelante) {
@@ -138,14 +139,19 @@ public final class ResolutorDePeriodo {
 		}
 		if (periodo.startsWith("MES:")) {
 			// "en octubre" se pregunta por lo que ya paso: un mes posterior al actual es del anio pasado.
+			// Hacia adelante ("turnos de diciembre"), al reves: un mes anterior al actual es del proximo.
 			Month mes = MESES.get(periodo.substring(4));
-			int anio = mes.getValue() > hoy.getMonthValue() ? hoy.getYear() - 1 : hoy.getYear();
+			int anio = haciaAdelante
+					? (mes.getValue() < hoy.getMonthValue() ? hoy.getYear() + 1 : hoy.getYear())
+					: (mes.getValue() > hoy.getMonthValue() ? hoy.getYear() - 1 : hoy.getYear());
 			return mes(YearMonth.of(anio, mes));
 		}
 		Matcher fecha = FECHA_CANONICA.matcher(periodo);
 		if (fecha.matches()) {
-			// El anio del modelo no es confiable: se usa el de hoy.
+			// El anio del modelo no es confiable: se usa el de hoy. Si ese dia no existe este anio (un
+			// 29/02), queda la fecha del modelo, que normalizar() ya valido entera.
 			return fechaValida(String.valueOf(hoy.getYear()), fecha.group(2), fecha.group(3))
+					.or(() -> fechaValida(fecha.group(1), fecha.group(2), fecha.group(3)))
 					.map(RangoDeDias::delDia)
 					.orElseThrow(() -> new IllegalArgumentException("Fecha invalida: " + periodo));
 		}

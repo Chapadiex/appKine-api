@@ -182,4 +182,17 @@ class InterpretadorTest {
 				.isInstanceOf(ModeloNoDisponibleException.class);
 		assertThat(intentos).hasValue(1);
 	}
+
+	@Test
+	void el_historial_del_cliente_se_valida_antes_de_heredar() {
+		// Code review del 15/11: un reporte o periodo inventado en el historial llegaba heredado.
+		Interpretacion inventada = new Interpretacion(Intencion.REPORTE, null, null, "BOGUS", "SUELDOS");
+		assertThat(Interpretador.sanear(inventada)).isEqualTo(Interpretacion.FUERA_DE_ALCANCE);
+
+		Interpretacion conPeriodoMalo = new Interpretacion(Intencion.ASISTENCIA_PERSONA, "Juan", null, "BOGUS", null);
+		assertThat(conPeriodoMalo.periodo()).isEqualTo("BOGUS");
+		assertThat(conRespuesta(json("SESION_DE_PERSONA", null, null, null, null))
+				.interpretar("¿y tiene la sesion cargada?", List.of(new TurnoPrevio("Juan vino?", conPeriodoMalo))))
+				.isEqualTo(new Interpretacion(Intencion.SESION_DE_PERSONA, "Juan", null, null, null));
+	}
 }

@@ -88,4 +88,19 @@ class ResolutorDePeriodoTest {
 	void sin_periodo_ni_fecha_escrita_la_intencion_decide() {
 		assertThat(ResolutorDePeriodo.resolver(null, "se cargo la sesion de maria?", HOY, false)).isEmpty();
 	}
+
+	@Test
+	void una_fecha_del_modelo_que_no_existe_este_anio_queda_con_su_anio() {
+		// Code review del 15/11: FECHA:2024-02-29 resuelta como 2026-02-29 lanzaba una excepcion.
+		assertThat(ResolutorDePeriodo.resolver("FECHA:2024-02-29", "turnos del 29 de febrero", HOY, true))
+				.contains(RangoDeDias.delDia(LocalDate.of(2024, 2, 29)));
+	}
+
+	@Test
+	void hacia_adelante_un_mes_anterior_al_actual_es_del_proximo_anio() {
+		assertThat(ResolutorDePeriodo.resolver("MES:ENERO", "", HOY, true))
+				.contains(new RangoDeDias(LocalDate.of(2027, 1, 1), LocalDate.of(2027, 1, 31)));
+		assertThat(ResolutorDePeriodo.resolver("MES:DICIEMBRE", "", HOY, true))
+				.contains(new RangoDeDias(LocalDate.of(2026, 12, 1), LocalDate.of(2026, 12, 31)));
+	}
 }

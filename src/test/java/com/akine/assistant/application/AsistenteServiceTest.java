@@ -259,4 +259,29 @@ class AsistenteServiceTest {
 		HerramientaDelAsistente una = herramienta(Intencion.REPORTE, p -> filas(List.of()));
 		assertThatThrownBy(() -> servicio(true, una, una)).isInstanceOf(IllegalStateException.class);
 	}
+
+	@Test
+	void una_clase_preguntada_en_futuro_mira_hacia_adelante() {
+		// Code review del 15/11: "¿quienes van a pilates el jueves?" resolvia al jueves pasado.
+		Interpretacion clase = new Interpretacion(Intencion.ASISTENTES_CLASE, null, "pilates", "DIA:JUEVES", null);
+		LocalDate domingo = LocalDate.of(2026, 11, 15);
+
+		assertThat(AsistenteService.rango(clase, "¿quiénes van a pilates el jueves?", domingo))
+				.isEqualTo(RangoDeDias.delDia(LocalDate.of(2026, 11, 19)));
+		assertThat(AsistenteService.rango(clase, "¿quiénes vinieron a pilates el jueves?", domingo))
+				.isEqualTo(RangoDeDias.delDia(LocalDate.of(2026, 11, 12)));
+	}
+
+	@Test
+	void una_consulta_que_falla_despues_del_permiso_igual_se_audita() {
+		respuestaDelModelo = "{\"intencion\":\"AGENDA_DEL_DIA\",\"periodo\":\"HOY\"}";
+		AsistenteService servicio = servicio(true, herramienta(Intencion.AGENDA_DEL_DIA, p -> {
+			throw new IllegalStateException("se cayo");
+		}));
+
+		assertThatThrownBy(() -> servicio.consultar(ACTOR, SEDE, "¿quiénes vienen hoy?", List.of(), null))
+				.isInstanceOf(IllegalStateException.class);
+		verify(auditoria).registrar(eq(ORG), eq(SEDE), eq(11L),
+				eq(Map.of("intencion", "AGENDA_DEL_DIA", "resultado", "ERROR", "error", "IllegalStateException")));
+	}
 }

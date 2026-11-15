@@ -17,6 +17,7 @@ import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.organization.spi.ZonaDeSede;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -108,9 +109,20 @@ public class AsistenteService {
 				organizationId, consultorioId, actor.roleCode());
 
 		Interpretacion interpretacion = interpretador.interpretar(pregunta, historial);
-		RangoDeDias rango = rango(interpretacion, pregunta, LocalDate.now(clock.withZone(zona)));
-		RespuestaDelAsistente respuesta = responder(enLaSede, interpretacion, pregunta, rango, zona, sede.name(), personaId);
-
+		RespuestaDelAsistente respuesta;
+		RangoDeDias rango;
+		try {
+			rango = rango(interpretacion, pregunta, LocalDate.now(clock.withZone(zona)));
+			respuesta = responder(enLaSede, interpretacion, pregunta, rango, zona, sede.name(), personaId);
+		}
+		catch (RuntimeException e) {
+			// La consulta pudo haber leido datos antes de fallar (la busqueda de persona): se audita igual.
+			auditoria.registrar(organizationId, consultorioId, actor.accountId(), Map.of(
+					"intencion", interpretacion.intencion().name(),
+					"resultado", "ERROR",
+					"error", e.getClass().getSimpleName()));
+			throw e;
+		}
 		auditar(organizationId, consultorioId, actor.accountId(), respuesta, rango);
 		return respuesta;
 	}
@@ -221,7 +233,8 @@ public class AsistenteService {
 	 * y el mes para los reportes. Un dia de la semana va hacia adelante solo en la agenda.
 	 */
 	static RangoDeDias rango(Interpretacion interpretacion, String pregunta, LocalDate hoy) {
-		boolean adelante = interpretacion.intencion() == Intencion.AGENDA_DEL_DIA;
+		boolean adelante = interpretacion.intencion() == Intencion.AGENDA_DEL_DIA
+				|| (interpretacion.intencion() == Intencion.ASISTENTES_CLASE && enFuturo(pregunta));
 		return ResolutorDePeriodo.resolver(interpretacion.periodo(), pregunta, hoy, adelante)
 				.orElseGet(() -> switch (interpretacion.intencion()) {
 					case ASISTENCIA_PERSONA -> ResolutorDePeriodo.resolver("ESTA_SEMANA", null, hoy, false).orElseThrow();
@@ -229,6 +242,17 @@ public class AsistenteService {
 					case REPORTE -> ResolutorDePeriodo.resolver("ESTE_MES", null, hoy, false).orElseThrow();
 					default -> RangoDeDias.delDia(hoy);
 				});
+	}
+
+	private static final java.util.regex.Pattern VERBOS_EN_FUTURO =
+			java.util.regex.Pattern.compile("\\b(van|va|vienen|viene|vendran|inscript[oa]s?|anotad[oa]s?)\\b");
+
+	/**
+	 * "¿Quienes van a yoga el jueves?" pregunta por la clase que viene, no por la que paso. El prompt
+	 * acepta preguntas de clase en futuro, asi que el resolutor tiene que saber hacia donde mirar.
+	 */
+	static boolean enFuturo(String pregunta) {
+		return pregunta != null && VERBOS_EN_FUTURO.matcher(TextoDeBusqueda.plegar(pregunta)).find();
 	}
 
 	private void auditar(long organizationId, long consultorioId, long accountId, RespuestaDelAsistente respuesta,

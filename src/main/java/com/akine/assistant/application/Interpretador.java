@@ -75,7 +75,9 @@ public class Interpretador {
 			return Interpretacion.FUERA_DE_ALCANCE;
 		}
 		List<TurnoPrevio> previos = historial == null ? List.of()
-				: historial.subList(Math.max(0, historial.size() - MAX_TURNOS_PREVIOS), historial.size());
+				: historial.subList(Math.max(0, historial.size() - MAX_TURNOS_PREVIOS), historial.size()).stream()
+						.map(t -> new TurnoPrevio(t.pregunta(), sanear(t.interpretacion())))
+						.toList();
 
 		String crudo = modelo.get().completarJson(mensajes(texto, previos), plazo);
 		Interpretacion leida = leer(crudo);
@@ -129,6 +131,26 @@ public class Interpretador {
 				intencion.usaPersona() ? persona(texto(raiz, "persona")) : null,
 				intencion.usaClase() ? clase(texto(raiz, "clase")) : null,
 				ResolutorDePeriodo.normalizar(texto(raiz, "periodo")),
+				reporte);
+	}
+
+	/**
+	 * El historial lo manda el cliente: se valida igual que lo que devuelve el modelo, para que un
+	 * periodo o un reporte fuera del vocabulario no llegue heredado al resolutor ni a la herramienta
+	 * (code review del 15/11).
+	 */
+	static Interpretacion sanear(Interpretacion i) {
+		if (!ELEGIBLES.contains(i.intencion()) || i.fueraDeAlcance()) {
+			return Interpretacion.FUERA_DE_ALCANCE;
+		}
+		String reporte = i.usaReporte() ? reporte(i.reporte()) : null;
+		if (i.usaReporte() && reporte == null) {
+			return Interpretacion.FUERA_DE_ALCANCE;
+		}
+		return new Interpretacion(i.intencion(),
+				i.usaPersona() ? persona(i.persona()) : null,
+				i.usaClase() ? clase(i.clase()) : null,
+				ResolutorDePeriodo.normalizar(i.periodo()),
 				reporte);
 	}
 

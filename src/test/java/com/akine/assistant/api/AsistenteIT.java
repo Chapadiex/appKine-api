@@ -148,6 +148,11 @@ class AsistenteIT {
 		HttpResponse<String> r = post("/api/v1/consultorios/" + centroA.consultorioId() + "/asistente/consultas",
 				centroA.token(), "{\"pregunta\":\"\"}");
 		assertThat(r.statusCode()).as(r.body()).isEqualTo(400);
+
+		// Code review del 15/11: un elemento null en el historial terminaba en NullPointerException (500).
+		HttpResponse<String> conNull = post("/api/v1/consultorios/" + centroA.consultorioId() + "/asistente/consultas",
+				centroA.token(), "{\"pregunta\":\"hola\",\"historial\":[null]}");
+		assertThat(conNull.statusCode()).as(conNull.body()).isEqualTo(400);
 	}
 
 	@Test

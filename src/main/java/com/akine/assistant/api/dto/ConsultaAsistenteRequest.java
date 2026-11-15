@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
@@ -20,7 +21,7 @@ public record ConsultaAsistenteRequest(
 		@ArraySchema(maxItems = 10, schema = @Schema(implementation = TurnoPrevioRequest.class),
 				arraySchema = @Schema(description = "Turnos previos, del mas viejo al mas nuevo; el servidor usa "
 						+ "los ultimos tres"))
-		@Size(max = 10) List<@Valid TurnoPrevioRequest> historial,
+		@Size(max = 10) List<@NotNull @Valid TurnoPrevioRequest> historial,
 		@Schema(description = "La persona elegida entre las opciones de una aclaracion. Se reenvia la misma "
 				+ "pregunta con este campo", minimum = "1")
 		@Positive Long personaId) {

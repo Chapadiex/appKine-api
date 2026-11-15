@@ -74,3 +74,14 @@ La base de QA no tenía clases. Se armó una por la API, como lo haría el admin
 | 44 | **Defecto real:** "No encontré una clase de yoga", con la clase programada. El título de la clase es opcional, y una clase sin título se muestra con el nombre de su oferta, pero la herramienta buscaba sólo en `titulo` | `ClasesEnElAsistente.nombre()`: el título, o el nombre de la oferta si no tiene uno propio. Cubierto en `ClasesEnElAsistenteTest` |
 | 45 | "¿Quiénes **van** a yoga mañana?" salía como agenda del día: el prompt describía las clases sólo en pasado | El prompt suma "van o están inscriptos" y "si nombra una actividad grupal, es esta intención". Un primer intento con un ejemplo ("el jueves") contagió `DIA:JUEVES` a preguntas que decían "ayer", y se sacó el ejemplo. Una aclaración en texto para la agenda ("si nombra a una persona, no es agenda") arregló la regresión que apareció en "qué días vino Pedro". Resultado: 90/90 en intención y 88/90 completos en los tres sets anteriores, igual que antes, y 5/5 en un set nuevo de preguntas en futuro (`preguntas-futuro.json`) |
 | 46 | Para una clase que todavía no empezó, la respuesta decía "2 sin registrar" y no quiénes van | Una clase `PROGRAMADA` lista sus inscriptos. En una clase empezada se nombra también a los que no tienen asistencia registrada (`PlantillasTest`) |
+
+## Revisión de `/code-review` (15/11)
+
+| # | Hallazgo | Solución aplicada |
+|---|---|---|
+| 47 | El historial lo manda el cliente y se heredaba sin validar: un período o un reporte inventados llegaban al resolutor o a `ReporteCode.valueOf` y volvían como 400 con un mensaje interno | `Interpretador.sanear` valida cada turno previo igual que la salida del modelo (`InterpretadorTest`) |
+| 48 | Un elemento `null` en `historial` terminaba en `NullPointerException` (500), el mismo patrón que `{"items":[null]}` del #146 | `List<@NotNull @Valid TurnoPrevioRequest>`: 400. Cubierto en `AsistenteIT` |
+| 49 | Una `FECHA` del modelo se validaba con su año y se resolvía con el actual: un 29/02 lanzaba una excepción | Si ese día no existe este año, queda la fecha completa del modelo (`ResolutorDePeriodo`) |
+| 50 | "¿Quiénes van a pilates el jueves?" resolvía al jueves pasado: sólo la agenda miraba hacia adelante | `AsistenteService.enFuturo` detecta los verbos en futuro y las clases preguntadas así miran hacia adelante |
+| 51 | "Turnos de enero" preguntado en noviembre resolvía a enero del año pasado | Hacia adelante, un mes anterior al actual es del año próximo |
+| 52 | Una consulta que fallaba después de pasar el permiso no quedaba auditada, aunque ya hubiera leído el padrón | Se audita con `resultado` ERROR y se relanza la excepción |
