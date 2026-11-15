@@ -50,7 +50,7 @@ class InterpretadorContraOllamaTest {
 		int completos = 0;
 		int intenciones = 0;
 		List<String> fallas = new ArrayList<>();
-		for (String archivo : List.of("preguntas.json", "preguntas-control.json")) {
+		for (String archivo : archivos()) {
 			for (JsonNode caso : JsonMapper.builder().build().readTree(Path.of("docs/asistente/evaluacion", archivo).toFile())) {
 				total++;
 				Interpretacion obtenida = interpretador.interpretar(caso.path("q").asString(), historial(caso));
@@ -74,6 +74,12 @@ class InterpretadorContraOllamaTest {
 		fallas.forEach(f -> System.out.println("  FALLA " + f));
 
 		assertThat((double) intenciones / total).isGreaterThanOrEqualTo(MINIMO_INTENCION);
+	}
+
+	/** Por defecto los tres sets; con AKINE_EVALUACION_SET se mide uno solo (por ejemplo preguntas-limpias.json). */
+	private static List<String> archivos() {
+		String uno = System.getenv("AKINE_EVALUACION_SET");
+		return uno == null || uno.isBlank() ? List.of("preguntas.json", "preguntas-control.json", "preguntas-limpias.json") : List.of(uno);
 	}
 
 	private static List<TurnoPrevio> historial(JsonNode caso) {

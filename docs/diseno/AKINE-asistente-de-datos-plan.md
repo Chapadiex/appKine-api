@@ -123,7 +123,12 @@ Esto da la primera respuesta real y valida el patrón entero.
 - Auditoría `ASISTENTE_CONSULTA` (intención, parámetros resueltos, cantidad de filas; **sin la
   pregunta textual**).
 
-### B-5 · Medir la interpretación (medio día) — adelantada el 15/11, ver `docs/asistente/evaluacion/`
+### B-5 · Medir la interpretación (medio día) — hecho el 15/11
+
+> **Hecho.** Con un set limpio de 25 preguntas nuevas (`preguntas-limpias.json`), el pipeline Java dio **intención
+> 25/25 y completos 25/25**; el modelo solo, 24/25 y 23/25. Las dos fallas del modelo (un año inventado y una
+> inyección que eligió un reporte inexistente) las corrigen las reglas del backend. Detalle en
+> `docs/asistente/evaluacion/resultados-2026-11-15.md`.
 
 - Ya existe la prueba fuera del backend (`evaluar.mjs`, 45 + 20 preguntas). En B-5 se vuelve a correr
   contra el interpretador real, con un **tercer set nuevo** para tener una medición limpia.
