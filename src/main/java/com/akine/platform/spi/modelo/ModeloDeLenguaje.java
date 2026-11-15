@@ -38,4 +38,14 @@ public interface ModeloDeLenguaje {
 	 *         plazo
 	 */
 	String completarJson(List<MensajeChat> mensajes, String esquemaJson, Duration plazo);
+
+	/**
+	 * Como {@link #completarJson(List, String, Duration)}, con la temperatura y el tope de tokens de
+	 * {@code opciones} ({@code opciones.json()} se ignora: siempre es modo JSON). Para salidas mas
+	 * largas que el objeto corto del asistente, como las sugerencias de evolucion.
+	 *
+	 * @throws ModeloNoDisponibleException si el servidor no responde, responde con error o vence el
+	 *         plazo
+	 */
+	String completarJson(List<MensajeChat> mensajes, String esquemaJson, OpcionesGeneracion opciones, Duration plazo);
 }

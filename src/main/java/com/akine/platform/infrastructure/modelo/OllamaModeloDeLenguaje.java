@@ -89,6 +89,16 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 		return enviar(pedido(cuerpo, plazo));
 	}
 
+	@Override
+	public String completarJson(List<MensajeChat> mensajes, String esquemaJson, OpcionesGeneracion opciones,
+			Duration plazo) {
+		Map<String, Object> cuerpo = cuerpo(mensajes, false);
+		cuerpo.put("format", esquemaJson == null ? "json" : esquema(esquemaJson));
+		cuerpo.put("options", Map.of("temperature", opciones.temperatura(), "num_predict", opciones.maxTokens(),
+				"num_ctx", NUM_CTX));
+		return enviar(pedido(cuerpo, plazo));
+	}
+
 	private String enviar(HttpRequest request) {
 		HttpResponse<String> respuesta;
 		try {

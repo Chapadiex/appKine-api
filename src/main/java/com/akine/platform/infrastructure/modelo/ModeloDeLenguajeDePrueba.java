@@ -56,6 +56,13 @@ public class ModeloDeLenguajeDePrueba implements ModeloDeLenguaje {
 		return respuestaDeCompletarJson.apply(List.copyOf(mensajes));
 	}
 
+	/** Igual que la de tres argumentos: las opciones no cambian lo que contesta. */
+	@Override
+	public String completarJson(List<MensajeChat> mensajes, String esquemaJson, OpcionesGeneracion opciones,
+			Duration plazo) {
+		return completarJson(mensajes, esquemaJson, plazo);
+	}
+
 	/** Las proximas llamadas a {@code completarJson} devuelven lo que arme esta funcion. */
 	public void responderCon(Function<List<MensajeChat>, String> respuesta) {
 		this.respuestaDeCompletarJson = Objects.requireNonNull(respuesta);

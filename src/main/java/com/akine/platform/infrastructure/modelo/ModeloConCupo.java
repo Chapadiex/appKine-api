@@ -54,6 +54,12 @@ public class ModeloConCupo implements ModeloDeLenguaje {
 		return conCupo(plazo, restante -> modelo.completarJson(mensajes, esquemaJson, restante));
 	}
 
+	@Override
+	public String completarJson(List<MensajeChat> mensajes, String esquemaJson, OpcionesGeneracion opciones,
+			Duration plazo) {
+		return conCupo(plazo, restante -> modelo.completarJson(mensajes, esquemaJson, opciones, restante));
+	}
+
 	private <T> T conCupo(Duration plazo, Function<Duration, T> llamada) {
 		long inicio = System.nanoTime();
 		boolean conCupo;
