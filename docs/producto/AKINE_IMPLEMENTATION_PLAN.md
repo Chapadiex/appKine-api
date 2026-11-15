@@ -11686,3 +11686,15 @@ frontend deja de adivinar por la minúscula inicial y muestra el mensaje tal cua
 **Correcciones de la revisión final (10/11/2026, `5ad50db7`..`14da0900`).** Los workers corren en un hilo propio de la biblioteca (no en el planificador compartido de Spring, sin publicar un bean `TaskScheduler`) y procesan un libro por vuelta; `akine.biblioteca.modelo.hilos` acota onnxruntime. `libro.intentos` en `V144`: a los 3 reclamos que vuelven a la cola, ERROR; `reprocesar` lo reinicia. `StackOverflowError` de la extracción y más de 20.000.000 caracteres son ERROR. Con un reemplazo en curso, su fila no se edita, activa ni desactiva y el original no se desactiva (409 `libro-en-proceso`); al cerrar, el reemplazo toma los datos vigentes del original. El worker mueve la versión del libro al cerrar, fallar o reencolar: una edición concurrente del admin recibe 409 y el reintento funciona. Contrato `0.164.0` con 202/204 y respuestas de error declaradas. Antes de prender el interruptor: subida en streaming, `rewriteBatchedStatements` en el datasource y prueba de humo de onnxruntime/DJL en el contenedor (home escribible). Detalle en §12.1 del diseño.
 
 Diseño: `docs/diseno/AKINE-biblioteca-rag.md` (sección 12).
+
+---
+
+## Registro de avance — M31, evolución del caso clínico, fase 1 (15/11/2026)
+
+**Ramas, sin push:** `akine-analizador-evolucion` (`wt-API-EVOLUCION`) y `akine-evolucion-web` (`wt-WEB-EVOLUCION`). Diseño, plan y registro de problemas: `docs/diseno/AKINE-analizador-de-evolucion*.md`.
+
+**Qué entró.** RF-M31-001 a 003 en el integrado. `GET /api/v1/consultorios/{c}/casos/{casoId}/evolucion` en `encounter`: indicadores y trece alertas calculados con reglas puras (`ReglasDeEvolucion`) sobre las sesiones cerradas del caso, sin modelo de lenguaje y sin tabla. Autoriza por la puerta de la Historia Clínica (`clinical.spi.AccesoClinicoDirectory`: `hc:read` y relación asistencial o justificación) y audita `EVOLUCION_DEL_CASO_ANALIZADA`. Spi nuevos: plan vigente con avance y detalle del caso (`clinical`), turnos del caso con cancelados (`scheduling`), definiciones en lote (`resource`). `V17`: `medicion_definicion.mejora_cuando` e índice `ix_turno_caso`. Contrato 0.170.0, aditivo. Interruptor `akine.evolucion.enabled`, apagado por defecto. Frontend: tarjeta Evolución en la ficha del caso, cliente 0.170.0.
+
+**Medido.** 25 unitarias de reglas, `EvolucionDelCasoIT` 3/3 contra PostgreSQL, `OpenApiContractIT` 6/6 sin drift, ArchUnit 5/5, unitarias de `encounter`, `clinical`, `resource`, `scheduling` y arquitectura 1.404 en verde. Web: specs de `features/clinical/casos` 34/34, lint limpio, build de desarrollo. Pila aislada recorrida en pantalla (detalle en el registro).
+
+**Quedó afuera.** Pantalla de ABM de definiciones de medición (el sentido de mejora se carga por API). Los umbrales son del diseño y esperan aprobación clínica (U-02, RN-M31-004). `api:check` del frontend fallará en local hasta que el contrato 0.170.0 llegue al `appKine-api` hermano. Fase 2 (sugerencias con modelo y biblioteca): plan propio.

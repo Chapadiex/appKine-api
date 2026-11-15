@@ -23,3 +23,18 @@
 | 16 | 8 | El 403 sin `hc:read` es `PermissionDeniedException`, no `AccessDeniedException` (el IT lo esperaba así) | Era la aserción del test. 3/3 en verde contra PostgreSQL, con `V17` aplicada por Flyway |
 | 17 | 8 | `AllowableValuesDelDominioTest` exige declarar de qué enum salen los `allowableValues` de un `String` | Se registraron `CodigoDeHallazgo` y `Hallazgo.Severidad`. Unitarias de `encounter`, `clinical`, `resource`, `scheduling` y arquitectura: 1.404, 0 fallos |
 | 18 | 8 | El IT es a nivel servicio (`WebEnvironment.NONE`), como el resto de los de `encounter`: no ve el `type` del 403 HTTP | El mapeo de `AccesoClinicoNoJustificadoException` a `justificacion-de-acceso-requerida` ya existe y no se tocó (`ClinicalProblemHandler`, sin `basePackages`). Queda para la prueba en pila (Tarea 10) |
+| 19 | 9 | El frontend no tiene ninguna pantalla de alta o edición de definiciones de medición (sólo las lee la atención): el selector de sentido de mejora no tiene dónde ir | El backend lo acepta y lo devuelve (contrato 0.170.0). La pantalla de catálogo de mediciones queda como pendiente aparte; hasta entonces se carga por API |
+| 20 | 9 | El plan hablaba de una "pestaña"; la ficha del caso no tiene pestañas, sólo tarjetas | La evolución es una tarjeta más de la ficha del caso, debajo del diagnóstico. Con la función apagada (404) la tarjeta no se dibuja |
+| 21 | 9 | El spec de la ficha del caso verifica que no queden pedidos sin contestar; la tarjeta nueva agrega uno | El `afterEach` del spec contesta 404 a la evolución, que es la respuesta con la función apagada |
+| 22 | 10 | La pila aislada no arrancó por `preview_start`: el límite es de 5 servidores por carpeta y 4 eran de otras sesiones | El backend corrió en segundo plano con `.claude/evolucion-backend.ps1` y la web por `preview_start` (`akine-web-evolucion`, 4296). Las dos configuraciones quedaron en `.claude/launch.json` |
+| 23 | 10 | La base clonada (`CREATE DATABASE akine_evolucion TEMPLATE akine_turnos`) quedó con dueño `postgres` y Flyway falló con `permission denied for schema public` | Dueño de la base y del esquema pasados a `akine`, como `akine_turnos`. Después Flyway aplicó `V14` y `V17` |
+| 24 | 10 | Los casos de `akine_turnos` tienen una sola sesión cerrada cada uno: sólo se podía ver el aviso de datos insuficientes | En la copia `akine_evolucion` (ninguna base existente se tocó) se sembraron cinco sesiones cerradas y dos turnos ausentes sintéticos del caso 98. No es maquillar un flujo: la pantalla es de sólo lectura y no hay otra forma de tener historia clínica en una base de prueba |
+| 25 | 10 | En pantalla: "1 sesiones", "0.5" con punto y una adherencia del indicador (total del caso) que parecía contradecir la de la alerta (últimas 6 citas) | Plurales, coma decimal (en la pantalla y en el texto de `FRECUENCIA_BAJO_PLAN`) y "citas del caso" en el indicador |
+
+## Verificación en la pila (15/11/2026)
+
+- Backend de `akine-analizador-evolucion` en 8096 contra `akine_evolucion` (`V17`), web de `akine-evolucion-web` en 4296, cuenta E2E del profesional del caso 98.
+- La ficha del caso muestra la tarjeta Evolución con `DOLOR_SIN_MEJORA`, `BAJA_ADHERENCIA` y `SIN_PLAN_ACTIVO`, enlaces a las sesiones, series de dolor y de medición y tratamientos.
+- `audit_event` registró `EVOLUCION_DEL_CASO_ANALIZADA` sobre el caso 98, vía `RELACION_ASISTENCIAL`, con los tres códigos y sin texto clínico.
+- Oscuro a 1440 px y claro a 375 px sin desborde horizontal.
+- No se probó en pantalla el pedido de motivo (403) ni la función apagada: los cubren el IT y los specs del componente.

@@ -35,7 +35,7 @@ final class TextosDeHallazgo {
 			case BAJA_ADHERENCIA -> "Faltó a " + v.get("inasistencias") + " de las últimas "
 					+ v.get("citas") + " citas (" + v.get("porcentaje") + " %).";
 			case FRECUENCIA_BAJO_PLAN -> "En las últimas " + v.get("semanas") + " semanas asistió "
-					+ v.get("real") + " veces por semana; el plan prevé " + v.get("planificada") + ".";
+					+ v.get("real").replace('.', ',') + " veces por semana; el plan prevé " + v.get("planificada") + ".";
 			case PLAN_COMPLETO_ABIERTO -> "Todas las prácticas del plan alcanzaron la cantidad "
 					+ "planificada y el plan sigue activo.";
 			case PLAN_EXCEDIDO_EN_TIEMPO -> "El plan preveía " + v.get("semanas")
