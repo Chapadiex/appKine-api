@@ -4,6 +4,7 @@ import com.akine.clinical.application.CasoNumeradorIniciador;
 import com.akine.clinical.domain.CasoClinico;
 import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoClinicoRepositoryPort;
 import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoSesionNumeradorPort;
+import com.akine.clinical.spi.CasoDetalleSnapshot;
 import com.akine.clinical.spi.CasoDirectory;
 import com.akine.clinical.spi.CasoSnapshot;
 import org.springframework.stereotype.Component;
@@ -68,6 +69,21 @@ public class ClinicalCasoDirectory implements CasoDirectory {
 	 * transaccion del cierre de sesion y no abre una propia. Si abriera una, el numero se
 	 * commitearia aunque el cierre despues fallara, y el caso quedaria con un hueco.
 	 */
+	@Override
+	@Transactional(readOnly = true)
+	public Optional<CasoDetalleSnapshot> detalle(long organizationId, long casoId) {
+		return casos.findByIdAndOrganizationId(casoId, organizationId)
+				.map(caso -> new CasoDetalleSnapshot(
+						caso.getId(),
+						caso.getOrganizationId(),
+						caso.getHistoriaClinicaId(),
+						caso.getNumeroCaso(),
+						caso.getEstado().name(),
+						caso.getDiagnosticoPresuntivo(),
+						caso.getObjetivoTerapeutico(),
+						caso.getAbiertoEn()));
+	}
+
 	@Override
 	@Transactional
 	public int siguienteNumeroDeSesion(long organizationId, long casoId) {
