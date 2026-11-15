@@ -77,7 +77,7 @@ import java.util.stream.Collectors;
  * Sugerencias de revision del tratamiento sobre un Caso Clinico, respaldadas por la biblioteca del
  * centro (M31 fase 2, {@code docs/diseno/AKINE-analizador-de-evolucion-fase2.md}).
  *
- * <h2>Tres tramos, y la llamada al modelo fuera de toda transaccion (diseno Â§4.2)</h2>
+ * <h2>Tres tramos, y la llamada al modelo fuera de toda transaccion (diseno §4.2)</h2>
  *
  * <ol>
  *   <li>Transaccion corta: el calculo de la fase 1, el permiso {@code evolucion:sugerir}, la puerta
@@ -176,7 +176,7 @@ public class SugerenciasDeEvolucionService {
 		long organizationId = organizacionDe(actor);
 		if (TransactionSynchronizationManager.isActualTransactionActive()) {
 			throw new IllegalStateException("Las sugerencias llaman al modelo: no pueden correr dentro de una"
-					+ " transaccion (diseno fase 2, Â§4.2)");
+					+ " transaccion (diseno fase 2, §4.2)");
 		}
 		if (!candado.tomar(actor.accountId())) {
 			throw new GeneracionEnCursoException();
@@ -281,7 +281,7 @@ public class SugerenciasDeEvolucionService {
 		return new SugerenciasView(generacionId, resultado, List.of(), 0, lectura.advertencias());
 	}
 
-	/** Una busqueda por hallazgo (diseno Â§5.2), en {@link EvidenciaDeSugerencias}. */
+	/** Una busqueda por hallazgo (diseno §5.2), en {@link EvidenciaDeSugerencias}. */
 	private List<HallazgoConEvidencia> buscarEvidencia(long organizationId, CasoDetalleSnapshot caso,
 			List<Hallazgo> elegidos) {
 		return EvidenciaDeSugerencias.buscar(biblioteca, organizationId, caso.diagnosticoPresuntivo(), elegidos);

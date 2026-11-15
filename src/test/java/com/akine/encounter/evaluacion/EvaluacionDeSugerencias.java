@@ -535,7 +535,7 @@ public final class EvaluacionDeSugerencias {
 		fila(b, "Latencia del modelo p50 / p95 (ver dónde corrió en la cabecera)", "se informa (U-02)", latencias.isEmpty() ? "sin datos"
 				: String.format(Locale.ROOT, "%.1f s / %.1f s (máx. %.1f s; %d errores o plazos vencidos)",
 						percentil(latencias, 50) / 1000.0, percentil(latencias, 95) / 1000.0,
-						latencias.getLast() / 1000.0, errores), errores == 0);
+						latencias.getLast() / 1000.0, errores), null);
 		List<Integer> tokens = rs.stream().map(r -> r.tokensPrompt).filter(x -> x != null).sorted().toList();
 		if (!tokens.isEmpty()) {
 			long cerca = tokens.stream().filter(t -> t >= NUM_CTX - MAX_SALIDA).count();
@@ -621,9 +621,9 @@ public final class EvaluacionDeSugerencias {
 		return archivo;
 	}
 
-	private static void fila(StringBuilder b, String medida, String meta, String resultado, boolean cumple) {
+	private static void fila(StringBuilder b, String medida, String meta, String resultado, Boolean cumple) {
 		b.append("| ").append(medida).append(" | ").append(meta).append(" | ").append(resultado).append(" | ")
-				.append(cumple ? "sí" : "**no**").append(" |\n");
+				.append(cumple == null ? "— (sin meta)" : cumple ? "sí" : "**no**").append(" |\n");
 	}
 
 	private static long percentil(List<Long> ordenadas, int p) {

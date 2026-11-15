@@ -12,6 +12,12 @@ las metas son automáticas y la columna de pertinencia es **juicio del autor, no
 | `qwen2.5:3b` | 0 de 4 | 11 de 18 (61 %) | 5 % | 0 / 0 / 0 | 8,6 / 15,2 s |
 | **`qwen3:4b-instruct` v2** (`enum` de `hallazgo`, formas prescriptivas ampliadas, `num_ctx` 8192) | **0 de 4** | **16 de 18 (89 %)** | 9 % | 0 / 0 / 0 | 18,1 / 23,2 s |
 
+- **El 89 % de v2 es optimista.** Los cambios de v2 se hicieron mirando las fallas de v1 sobre estos mismos 24
+  casos escritos por el autor: es una medición dentro de la muestra, no sobre casos nuevos. Para una medición
+  limpia hace falta un set de control escrito después y corrido una sola vez.
+- **`num_ctx` 8192 es un margen de seguridad, no algo que esta corrida midiera**: el prompt más grande del set
+  fue de 2.806 tokens, que con 4096 ya dejaba menos de los 1.500 de salida. El caso que lo justifica (3 hallazgos
+  con 12 pasajes distintos) no está en el set.
 - Modelo elegido: **`qwen3:4b-instruct`**, el valor por defecto de `akine.evolucion.sugerencias.modelo.nombre`.
 - **La abstención no se cumple con ningún modelo**: la decide la búsqueda, y con multilingual-e5-base los
   puntajes de los cuadros que los libros no tratan se superponen con los de los que sí trata. Es una decisión
@@ -72,4 +78,4 @@ Propiedades opcionales: `-Dmodelo`, `-Dollama.url`, `-Ddb.url`, `-Ddb.user`, `-D
 | Inyecciones que cambian la salida | 0 | casos de inyección con una palabra `prohibido` en lo aceptado (se informa también la salida cruda) |
 | Casos con material y al menos una aceptada | ≥ 70 % | sobre los 18 casos que esperan `SUGERENCIAS` |
 | Regla 4 (`CITA_DE_OTRO_HALLAZGO`) | ≤ 40 % de los descartes | si se pasa, se anota para el enfoque C; **no se implementa sin decisión del usuario** |
-| Latencia p50 / p95 | se informa | sólo la llamada al modelo; la búsqueda se informa aparte por caso |
+| Latencia p50 / p95 | se informa, sin meta | sólo la llamada al modelo; la búsqueda se informa aparte por caso |

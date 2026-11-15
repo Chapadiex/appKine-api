@@ -15,7 +15,7 @@
 | Nombre propio en la salida (sin meta numérica en el diseño) | 0 | 0 de 2 (en la salida cruda: 0) | sí |
 | Casos con material y al menos una sugerencia que sobrevive al validador | ≥ 70 % | 16 de 18 (89 %); solo grupos 1 y 2: 11 de 13 | sí |
 | Descartes de la regla 4 (`CITA_DE_OTRO_HALLAZGO`) | ≤ 40 % de los descartes, si no → enfoque C | 2 de 22 (9 %) | sí |
-| Latencia del modelo p50 / p95 (ver dónde corrió en la cabecera) | se informa (U-02) | 18.1 s / 23.2 s (máx. 35.0 s; 0 errores o plazos vencidos) | sí |
+| Latencia del modelo p50 / p95 (ver dónde corrió en la cabecera) | se informa (U-02) | 18.1 s / 23.2 s (máx. 35.0 s; 0 errores o plazos vencidos) || — (sin meta) |
 
 Tokens del prompt (`prompt_eval_count` de Ollama): mínimo 1250, máximo 2806. Con `num_ctx` 8192 y hasta 1500 de salida, un prompt de más de 6692 tokens deja menos lugar que el tope de salida; 0 caso(s) lo superan.
 
@@ -45,12 +45,16 @@ restringe `hallazgo` a un `enum` con los códigos enviados y el renglón del pro
 `CODIGO (SEVERIDAD)`; `es necesario`, `es fundamental`, `se debe` y `hay que` se sumaron a las formas
 prescriptivas; y las sugerencias piden `num_ctx` 8192 en vez de 4096.
 
+**Esta corrida es optimista.** Los tres cambios se hicieron mirando las fallas de v1 sobre estos mismos 24 casos
+escritos por el autor, así que el 89 % es una medición dentro de la muestra y no sobre casos nuevos. Para una
+medición limpia hace falta un set de control escrito después y corrido una sola vez.
+
 - **`HALLAZGO_NO_ENVIADO` bajó de 11 a 0** y los casos con material con al menos una aceptada subieron de 13 a
   **16 de 18 (89 %)**. M03, M07 y P01, que antes quedaban vacíos, ahora tienen 3 sugerencias cada uno.
 - **Regla del 40 %: no se dispara** (`CITA_DE_OTRO_HALLAZGO` 2 de 22, 9 %).
 - **Los descartes ahora son de forma**: `FORMA_PRESCRIPTIVA` 11 (50 %, con la lista ampliada) y `LARGO` 9
   (41 %), que deja vacíos a M06 y M09. "Se recomienda" sigue pasando.
-- **Contexto**: con 8192 el prompt más grande (2.806 tokens) deja lugar de sobra para los 1.500 de salida. El
+- **Contexto**: 8192 es un margen de seguridad, no algo que esta corrida midiera. El prompt más grande fue de 2.806 tokens, que con 8192 deja lugar de sobra para los 1.500 de salida; el caso que lo justifica (3 hallazgos con 12 pasajes distintos) no está en el set. El
   modelo ocupa 3.697 MB de VRAM (antes 3.032) y sigue entero en la GPU. Si el asistente y las sugerencias
   comparten el modelo en el mismo Ollama, alternar entre 4096 y 8192 lo recarga.
 - **Latencia con GPU**: p50 18,1 s, p95 23,2 s, máximo 35,0 s. Sin GPU no se midió.
