@@ -67,7 +67,7 @@ public record PromptDeSugerencias(List<MensajeChat> mensajes, String esquemaJson
 			d.append("Plan: sin plan vigente\n");
 		}
 		else {
-			d.append("Plan: ").append(plan.estado()).append(", frecuencia semanal ")
+			d.append("Plan: ").append(s.limpiar(plan.estado())).append(", frecuencia semanal ")
 					.append(plan.frecuenciaSemanal() == null ? "sin dato" : plan.frecuenciaSemanal())
 					.append(", duración ").append(plan.duracionSemanas() == null ? "sin dato" : plan.duracionSemanas())
 					.append(" semanas\n");
@@ -95,20 +95,20 @@ public record PromptDeSugerencias(List<MensajeChat> mensajes, String esquemaJson
 				d.append("; próxima conducta ").append(se.proximaConducta().name());
 			}
 			if (!se.mediciones().isEmpty()) {
-				d.append("; mediciones: ").append(se.mediciones().stream().map(PromptDeSugerencias::medicion)
+				d.append("; mediciones: ").append(se.mediciones().stream().map(m -> medicion(m, s))
 						.collect(Collectors.joining(", ")));
 			}
 			if (!se.tratamientos().isEmpty()) {
 				Map<String, Integer> cuentas = new TreeMap<>();
 				se.tratamientos().forEach(t -> cuentas.merge(
-						t.practicaNombre() == null ? "tratamiento" : t.practicaNombre(), 1, Integer::sum));
+						t.practicaNombre() == null ? "tratamiento" : s.limpiar(t.practicaNombre()), 1, Integer::sum));
 				d.append("; tratamientos: ").append(cuentas.entrySet().stream()
 						.map(e -> e.getKey() + ": " + e.getValue() + (e.getValue() == 1 ? " vez" : " veces")).collect(Collectors.joining(", ")));
 			}
 			d.append('\n');
 		}
 		Map<String, Integer> turnos = new TreeMap<>();
-		datos.turnos().forEach(t -> turnos.merge(t.estado(), 1, Integer::sum));
+		datos.turnos().forEach(t -> turnos.merge(s.limpiar(t.estado()), 1, Integer::sum));
 		d.append("Turnos del caso: ").append(datos.turnos().size());
 		turnos.forEach((estado, n) -> d.append("; ").append(estado).append(' ').append(n));
 		d.append('\n');
@@ -182,14 +182,14 @@ public record PromptDeSugerencias(List<MensajeChat> mensajes, String esquemaJson
 				p.superaCorte()), x.hallazgos(), omitido);
 	}
 
-	private static String medicion(DatosDelCaso.Medicion m) {
-		StringBuilder b = new StringBuilder(m.nombre() == null ? m.codigo() : m.nombre());
+	private static String medicion(DatosDelCaso.Medicion m, Saneador s) {
+		StringBuilder b = new StringBuilder(s.limpiar(m.nombre() == null ? m.codigo() : m.nombre()));
 		if (m.lateralidad() != null && !m.lateralidad().isBlank()) {
-			b.append(' ').append(m.lateralidad());
+			b.append(' ').append(s.limpiar(m.lateralidad()));
 		}
 		b.append(' ').append(m.valor() == null ? "sin dato" : m.valor().stripTrailingZeros().toPlainString());
 		if (m.unidad() != null && !m.unidad().isBlank()) {
-			b.append(' ').append(m.unidad());
+			b.append(' ').append(s.limpiar(m.unidad()));
 		}
 		return b.toString();
 	}
@@ -213,8 +213,8 @@ public record PromptDeSugerencias(List<MensajeChat> mensajes, String esquemaJson
 				omitio = true;
 				return OMITIDO;
 			}
-			// las marcas de bloque nunca viajan dentro de un texto: cerrarian el bloque antes de tiempo
-			return texto.replace("<<<", "").replace(">>>", "").strip();
+			// ningun < ni > viaja dentro de un texto: quitar solo las marcas podria rearmarlas ("<<>>><")
+			return texto.replaceAll("[<>]", "").strip();
 		}
 	}
 }

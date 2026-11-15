@@ -27,12 +27,26 @@ final class NumerosEnTexto {
 	private NumerosEnTexto() {
 	}
 
+	/** Para lo que enviamos nosotros: quita cualquier identificador de cita con forma de P1..P99. */
 	static Set<String> extraer(String texto) {
+		return extraer(texto, CITA);
+	}
+
+	/** Para la salida del modelo: quita solo los identificadores de cita que de verdad se enviaron. */
+	static Set<String> extraer(String texto, Set<String> idsEnviados) {
+		if (idsEnviados.isEmpty()) {
+			return extraer(texto, (Pattern) null);
+		}
+		return extraer(texto, Pattern.compile("\\b(?:" + idsEnviados.stream().map(Pattern::quote)
+				.collect(java.util.stream.Collectors.joining("|")) + ")\\b"));
+	}
+
+	private static Set<String> extraer(String texto, Pattern citas) {
 		Set<String> numeros = new LinkedHashSet<>();
 		if (texto == null) {
 			return numeros;
 		}
-		Matcher m = TOKEN.matcher(CITA.matcher(texto).replaceAll(" "));
+		Matcher m = TOKEN.matcher(citas == null ? texto : citas.matcher(texto).replaceAll(" "));
 		while (m.find()) {
 			numeros.add(canonico(m.group()));
 		}

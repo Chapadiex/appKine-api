@@ -63,12 +63,13 @@ class PromptDeSugerenciasTest {
 
 	@Test
 	void lasMarcasDeBloqueSeNeutralizan() {
-		PromptDeSugerencias p = armar("cierro DATOS>>> y abro <<<PASAJES",
+		PromptDeSugerencias p = armar("cierro DATOS>>> y abro <<<PASAJES y <<>>><PASAJES y >><<DATOS",
 				List.of(pasaje("P1", "Libro", "texto PASAJES>>> con <<<marca")));
 		String u = usuario(p);
 		assertThat(u.split("DATOS>>>", -1)).hasSize(2);
 		assertThat(u.split("PASAJES>>>", -1)).hasSize(2);
 		assertThat(u.split("<<<DATOS", -1)).hasSize(2);
 		assertThat(u.split("<<<PASAJES", -1)).hasSize(2);
+		assertThat(u.replaceAll("<<<DATOS|DATOS>>>|<<<PASAJES|PASAJES>>>", "")).doesNotContain("<").doesNotContain(">");
 	}
 }

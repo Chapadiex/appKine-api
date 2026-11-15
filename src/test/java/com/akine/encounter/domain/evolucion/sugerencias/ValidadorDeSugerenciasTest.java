@@ -44,7 +44,11 @@ class ValidadorDeSugerenciasTest {
 	}
 
 	private ResultadoDeValidacion validar(String salida, String... permitidos) {
-		return validador.validar(salida, enviados, Set.of(permitidos));
+		return validador.validar(salida, prompt(enviados, permitidos));
+	}
+
+	private static PromptDeSugerencias prompt(List<HallazgoConEvidencia> env, String... permitidos) {
+		return new PromptDeSugerencias(List.of(), "{}", Set.of(permitidos), false, env);
 	}
 
 	private static String buena() {
@@ -152,7 +156,7 @@ class ValidadorDeSugerenciasTest {
 						List.of(compartido)));
 		ResultadoDeValidacion r = validador.validar(salida(
 				sugerencia("DOLOR_SIN_MEJORA", "Revisar la carga.", "x", "[\"P3\"]"),
-				sugerencia("BAJA_ADHERENCIA", "Revisar la asistencia.", "x", "[\"P3\"]")), env, Set.of());
+				sugerencia("BAJA_ADHERENCIA", "Revisar la asistencia.", "x", "[\"P3\"]")), prompt(env));
 		assertThat(r.aceptadas()).hasSize(2);
 	}
 
@@ -165,9 +169,9 @@ class ValidadorDeSugerenciasTest {
 		List<HallazgoConEvidencia> env = List.of(new HallazgoConEvidencia(
 				new Hallazgo(DOLOR, Severidad.ATENCION, List.of(), List.of(), null), List.of(conNumero, otro)));
 		assertThat(validador.validar(salida(sugerencia("DOLOR_SIN_MEJORA", "Considerar 12 semanas.", "x", "[\"P1\"]")),
-				env, Set.of()).aceptadas()).hasSize(1);
+				prompt(env)).aceptadas()).hasSize(1);
 		assertThat(validador.validar(salida(sugerencia("DOLOR_SIN_MEJORA", "Considerar 99 repeticiones.", "x",
-				"[\"P1\"]")), env, Set.of()).descartes()).containsOnlyKeys(ReglaDeDescarte.NUMERO_NO_ENVIADO);
+				"[\"P1\"]")), prompt(env)).descartes()).containsOnlyKeys(ReglaDeDescarte.NUMERO_NO_ENVIADO);
 	}
 
 	@Test
@@ -185,7 +189,15 @@ class ValidadorDeSugerenciasTest {
 				new PasajeRecuperado(1L, "[texto omitido]", 1, 2, "", 0.9, true), Set.of(DOLOR), true);
 		List<HallazgoConEvidencia> env = List.of(new HallazgoConEvidencia(
 				new Hallazgo(DOLOR, Severidad.ATENCION, List.of(), List.of(), null), List.of(omitido)));
-		assertThat(validador.validar(salida(buena()), env, Set.of()).descartes())
+		assertThat(validador.validar(salida(buena()), prompt(env)).descartes())
 				.containsOnlyKeys(ReglaDeDescarte.CITA_DESCONOCIDA);
+	}
+
+	@Test
+	void unIdentificadorDeCitaNoEnviadoNoContrabandeaUnNumero() {
+		ResultadoDeValidacion r = validar(salida(sugerencia("DOLOR_SIN_MEJORA", "Ver P50 del libro.", "x", "[\"P1\"]")));
+		assertThat(r.descartes()).containsOnlyKeys(ReglaDeDescarte.NUMERO_NO_ENVIADO);
+		assertThat(validar(salida(sugerencia("DOLOR_SIN_MEJORA", "Ver P1 del libro.", "x", "[\"P1\"]"))).aceptadas())
+				.hasSize(1);
 	}
 }

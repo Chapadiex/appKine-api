@@ -43,8 +43,9 @@ public final class ValidadorDeSugerencias {
 		this.detector = detector;
 	}
 
-	public ResultadoDeValidacion validar(String salidaCruda, List<HallazgoConEvidencia> enviados,
-			Set<String> numerosPermitidos) {
+	public ResultadoDeValidacion validar(String salidaCruda, PromptDeSugerencias prompt) {
+		List<HallazgoConEvidencia> enviados = prompt.enviados();
+		Set<String> numerosPermitidos = prompt.numerosPermitidos();
 		Map<ReglaDeDescarte, Integer> descartes = new EnumMap<>(ReglaDeDescarte.class);
 		JsonNode lista = leerLista(salidaCruda);
 		if (lista == null) {
@@ -134,8 +135,8 @@ public final class ValidadorDeSugerencias {
 		// 5. numeros
 		Set<String> validos = new HashSet<>(permitidos);
 		citas.forEach(p -> validos.addAll(NumerosEnTexto.extraer(p.pasaje().texto())));
-		Set<String> usados = NumerosEnTexto.extraer(texto);
-		usados.addAll(NumerosEnTexto.extraer(fundamento));
+		Set<String> usados = NumerosEnTexto.extraer(texto, porId.keySet());
+		usados.addAll(NumerosEnTexto.extraer(fundamento, porId.keySet()));
 		if (!validos.containsAll(usados)) {
 			return descarte(ReglaDeDescarte.NUMERO_NO_ENVIADO);
 		}
