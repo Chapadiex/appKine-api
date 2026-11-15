@@ -49,7 +49,10 @@ com.akine.assistant
   `FUERA_DE_ALCANCE`, nunca en una excepción.
 - Si el historial trae una aclaración resuelta (`personaId` elegido), se salta la búsqueda.
 - `ResolutorDePeriodo`: de `ESTA_SEMANA` a `(lunes, domingo)` con la zona de la organización.
-  Lunes como inicio de semana.
+  Lunes como inicio de semana. Normaliza los alias (`MES:PASADO` → `MES_PASADO`) y **extrae las fechas
+  escritas del texto original** (`20/11`) sin usar el año del modelo.
+- Seguimientos: un campo vacío en la interpretación se hereda de la interpretación anterior.
+- Arranca con el prompt ya medido: `docs/asistente/evaluacion/prompt-interpretador.txt` (v3).
 - **Tests:** unitarios de `ResolutorDePeriodo` (bordes de semana y mes, zona) y del parseo del JSON
   con `ModeloDeLenguajeDePrueba`. Nada más.
 
@@ -72,7 +75,7 @@ Esto da la primera respuesta real y valida el patrón entero.
 |---|---|---|
 | `SesionDePersonaHerramienta` | scheduling | el mismo `delRango`; lee `estadoOperativo` y `sesionId` |
 | `AgendaDelDiaHerramienta` | scheduling | `RecepcionService.delDia` |
-| `AsistentesDeClaseHerramienta` | activity | `ClaseService.listar` (filtra por `titulo`, sin distinguir mayúsculas ni tildes) + `AsistenciaService.detalleOperativo` |
+| `AsistentesDeClaseHerramienta` | activity | `ClaseService.listar` (gana el título real más largo contenido en la pregunta, sin distinguir mayúsculas ni tildes; con empate, aclaración) + `AsistenciaService.detalleOperativo` |
 | `ReporteHerramienta` | reporting | `ReporteService.generar(actor, sede, ECONOMICO / TURNOS / CLASES, desde, hasta)` → indicadores |
 
 - Una plantilla por intención en `Plantillas`. Ninguna suma conceptos económicos.
@@ -81,10 +84,10 @@ Esto da la primera respuesta real y valida el patrón entero.
 - Auditoría `ASISTENTE_CONSULTA` (intención, parámetros resueltos, cantidad de filas; **sin la
   pregunta textual**).
 
-### B-5 · Medir la interpretación (medio día)
+### B-5 · Medir la interpretación (medio día) — adelantada el 15/11, ver `docs/asistente/evaluacion/`
 
-- `InterpretadorEvaluacionIT`, **excluido del CI** como el set de la biblioteca: corre las 40
-  preguntas contra Ollama real y reporta aciertos de intención y de parámetros.
+- Ya existe la prueba fuera del backend (`evaluar.mjs`, 45 + 20 preguntas). En B-5 se vuelve a correr
+  contra el interpretador real, con un **tercer set nuevo** para tener una medición limpia.
 - Meta: ≥ 90 % y 10/10 en fuera de alcance. Si no se llega, se ajustan los ejemplos del prompt
   antes de tocar el modelo.
 

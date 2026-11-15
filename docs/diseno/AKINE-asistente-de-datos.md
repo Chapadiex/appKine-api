@@ -185,6 +185,18 @@ biblioteca: **40 preguntas reales** con la intención y los parámetros esperado
 - **Latencia**: respuesta completa < 4 s en GPU (una sola llamada JSON corta).
 - **Permisos**: una corrida con cuenta de `RECEPCION` pidiendo facturación responde "sin permiso".
 
+### 7.1 Medido el 15/11 (prueba adelantada de B-5)
+
+Detalle en `docs/asistente/evaluacion/resultados-2026-11-15.md`. Con `qwen3:4b-instruct` en GPU: intención
+correcta en 19 de 20 preguntas nunca vistas (16/20 con todos los campos), inyecciones rechazadas y **~1 s por
+pregunta**. Sólo con CPU, misma precisión y **7 a 9 s**. `qwen2.5:3b` queda descartado. De la prueba
+salieron cuatro reglas que van en el backend y no en el modelo:
+
+1. Las **fechas escritas** (`20/11`) se extraen del texto con una expresión regular y el año lo pone el servidor.
+2. La **clase** se resuelve contra los títulos reales del período: gana el título más largo que aparece en la pregunta.
+3. En un **seguimiento**, el campo que el modelo deja vacío se hereda del turno anterior.
+4. Los **alias evidentes** del período (`MES:PASADO` → `MES_PASADO`) se normalizan antes de validar.
+
 ## 8. Contrato y versiones
 
 - Operación nueva `POST /api/v1/asistente/consultas` → contrato **minor** (0.168.0 → 0.169.0 al
@@ -226,7 +238,7 @@ biblioteca: **40 preguntas reales** con la intención y los parámetros esperado
 
 | # | Decisión | Recomendación |
 |---|---|---|
-| D-1 | **Modelo**: Ollama local (`qwen3:4b-instruct`, ya instalado) o un modelo en la nube (p. ej. Claude) | **Local para el MVP.** El diseño "sólo interpreta" funciona con 4 B y no saca datos. El puerto queda listo para cambiar de proveedor con una propiedad |
+| D-1 | **Modelo**: Ollama local (`qwen3:4b-instruct`, ya instalado) o un modelo en la nube (p. ej. Claude) | **Local para el MVP**, medido el 15/11 (§7.1): ~1 s con GPU y 7–9 s sin ella. El puerto queda listo para cambiar de proveedor con una propiedad si el servidor de destino no tiene GPU |
 | D-2 | **Permiso**: `asistente:use` nuevo en la matriz, o sólo el flag y que cada herramienta exija lo suyo | **Permiso nuevo**, para poder apagarlo por rol (p. ej. que el `PACIENTE` no lo vea). Es una línea en el catálogo y en la matriz |
 | D-3 | **Puerto del modelo**: copiar el adaptador de Ollama en `assistant` o extraerlo a `platform.spi` | **Copiar** (~150 líneas) y declararlo deuda con condición de salida: el tercer consumidor lo extrae. Es el precedente del storage duplicado (04.02) |
 | D-4 | ¿La sede la elige el usuario o se pregunta "en todas mis sedes"? | **La sede activa de la cabecera.** Varias sedes es fase 2 |
