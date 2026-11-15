@@ -6,20 +6,22 @@ import java.time.ZoneId;
 
 /**
  * Los parametros ya resueltos de una consulta. Nada de esto sale crudo del modelo: el periodo llega
- * convertido a fechas con la zona de la organizacion y la persona, como id.
+ * convertido a fechas con la zona de la sede y la persona, como id.
  *
  * <p>{@code desde} y {@code hasta} son dias de la sede, ambos inclusive; {@code desdeInstante} y
  * {@code hastaInstante} son los mismos limites como instantes, con {@code hastaInstante} exclusivo.
  *
- * @param texto   el texto que hace falta buscar: el nombre de una persona para
- *                {@link Intencion#BUSCAR_PERSONA}, la pregunta original para resolver el titulo de
- *                una clase; {@code null} si no aplica
- * @param reporte el codigo del reporte de M23 para {@link Intencion#REPORTE}, o {@code null}
+ * @param texto    lo que hay que buscar: el nombre de una persona para
+ *                 {@link Intencion#BUSCAR_PERSONA}, la actividad para {@link Intencion#ASISTENTES_CLASE};
+ *                 {@code null} si no aplica
+ * @param pregunta la pregunta original: la herramienta de clases la usa para elegir el titulo real
+ *                 mas largo que aparece en ella ("yoga para embarazadas" y no "yoga")
+ * @param reporte  el codigo del reporte de M23 para {@link Intencion#REPORTE}, o {@code null}
  */
 public record PedidoDeHerramienta(
 		Long personaId,
-		Long claseId,
 		String texto,
+		String pregunta,
 		LocalDate desde,
 		LocalDate hasta,
 		Instant desdeInstante,

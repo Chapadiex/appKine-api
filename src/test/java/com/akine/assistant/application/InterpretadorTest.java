@@ -136,6 +136,28 @@ class InterpretadorTest {
 	}
 
 	@Test
+	void una_pregunta_con_sujeto_nuevo_y_sin_y_no_hereda_el_periodo() {
+		// Prueba de punta a punta del 15/11: heredaba "la semana pasada" de una pregunta sobre otra persona.
+		Interpretacion lautaro = new Interpretacion(Intencion.ASISTENCIA_PERSONA, "Lautaro", null, "SEMANA_PASADA", null);
+
+		assertThat(conRespuesta(json("SESION_DE_PERSONA", "Fanny", null, null, null))
+				.interpretar("¿Se cargó la sesión de fanny?", List.of(new TurnoPrevio("¿y la semana pasada?", lautaro))))
+				.isEqualTo(new Interpretacion(Intencion.SESION_DE_PERSONA, "Fanny", null, null, null));
+	}
+
+	@Test
+	void un_seguimiento_con_y_hereda_el_periodo_aunque_cambie_el_sujeto() {
+		// El caso H04 de la medicion: "¿y a pilates?" despues de "quienes vinieron a yoga hoy".
+		Interpretacion yoga = new Interpretacion(Intencion.ASISTENTES_CLASE, null, "yoga", "HOY", null);
+
+		assertThat(conRespuesta(json("ASISTENTES_CLASE", null, "pilates", null, null))
+				.interpretar("¿y a pilates?", List.of(new TurnoPrevio("quienes vinieron a yoga hoy", yoga))))
+				.isEqualTo(new Interpretacion(Intencion.ASISTENTES_CLASE, null, "pilates", "HOY", null));
+		assertThat(Interpretador.esSeguimiento("Y la de Pedro?")).isTrue();
+		assertThat(Interpretador.esSeguimiento("yoga de hoy")).isFalse();
+	}
+
+	@Test
 	void no_hereda_a_una_intencion_que_no_usa_el_campo_ni_desde_fuera_de_alcance() {
 		Interpretacion juan = new Interpretacion(Intencion.ASISTENCIA_PERSONA, "Juan", null, "AYER", null);
 		assertThat(conRespuesta(json("AGENDA_DEL_DIA", null, null, "HOY", null))

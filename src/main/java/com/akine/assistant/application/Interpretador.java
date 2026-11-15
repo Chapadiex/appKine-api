@@ -80,7 +80,7 @@ public class Interpretador {
 
 		String crudo = modelo.get().completarJson(mensajes(texto, previos), plazo);
 		Interpretacion leida = leer(crudo);
-		return previos.isEmpty() ? leida : heredar(leida, previos.getLast().interpretacion());
+		return previos.isEmpty() ? leida : heredar(leida, previos.getLast().interpretacion(), esSeguimiento(texto));
 	}
 
 	List<MensajeChat> mensajes(String pregunta, List<TurnoPrevio> previos) {
@@ -134,17 +134,35 @@ public class Interpretador {
 				reporte);
 	}
 
-	/** Completa lo que falta con la interpretacion anterior, solo en los campos que la intencion usa. */
-	static Interpretacion heredar(Interpretacion actual, Interpretacion anterior) {
+	/**
+	 * Completa lo que falta con la interpretacion anterior, solo en los campos que la intencion usa.
+	 *
+	 * <p>El sujeto (persona, clase, reporte) se hereda si falta. <b>El periodo, no siempre</b>: solo
+	 * si la pregunta es un seguimiento ("¿y a pilates?") o si sigue hablando del mismo sujeto ("¿y
+	 * tiene la sesion cargada?"). Una pregunta que trae un sujeto nuevo y no empieza con "y" es una
+	 * consulta aparte: "¿se cargo la sesion de Fanny?" despues de "¿y la semana pasada?" no es sobre
+	 * la semana pasada (lo encontro la prueba de punta a punta del 15/11).
+	 */
+	static Interpretacion heredar(Interpretacion actual, Interpretacion anterior, boolean seguimiento) {
 		if (actual.fueraDeAlcance() || anterior.fueraDeAlcance()) {
 			return actual;
 		}
-		return new Interpretacion(
-				actual.intencion(),
-				actual.usaPersona() && actual.persona() == null ? anterior.persona() : actual.persona(),
-				actual.usaClase() && actual.clase() == null ? anterior.clase() : actual.clase(),
-				actual.periodo() == null ? anterior.periodo() : actual.periodo(),
-				actual.usaReporte() && actual.reporte() == null ? anterior.reporte() : actual.reporte());
+		String persona = actual.usaPersona() && actual.persona() == null ? anterior.persona() : actual.persona();
+		String clase = actual.usaClase() && actual.clase() == null ? anterior.clase() : actual.clase();
+		String reporte = actual.usaReporte() && actual.reporte() == null ? anterior.reporte() : actual.reporte();
+		boolean sujetoNuevo = (actual.persona() != null && !actual.persona().equalsIgnoreCase(
+				String.valueOf(anterior.persona())))
+				|| (actual.clase() != null && !actual.clase().equalsIgnoreCase(String.valueOf(anterior.clase())))
+				|| (actual.reporte() != null && !actual.reporte().equals(anterior.reporte()));
+		String periodo = actual.periodo() != null || (sujetoNuevo && !seguimiento) ? actual.periodo()
+				: anterior.periodo();
+		return new Interpretacion(actual.intencion(), persona, clase, periodo, reporte);
+	}
+
+	/** "¿y la semana pasada?", "y a pilates", "Y la de Pedro?". */
+	static boolean esSeguimiento(String pregunta) {
+		String normal = ResolutorDePeriodo.sinTildes(pregunta).toLowerCase(Locale.ROOT).replaceFirst("^[¿¡\\s]+", "");
+		return normal.equals("y") || normal.startsWith("y ");
 	}
 
 	private static Intencion intencion(String valor) {

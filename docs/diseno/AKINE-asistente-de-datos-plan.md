@@ -81,7 +81,21 @@ com.akine.assistant
 - **Tests:** unitarios de `ResolutorDePeriodo` (bordes de semana y mes, zona) y del parseo del JSON
   con `ModeloDeLenguajeDePrueba`. Nada más.
 
-### B-3 · Primera herramienta de punta a punta: `ASISTENCIA_PERSONA` (1 día)
+### B-3 · Primera herramienta de punta a punta: `ASISTENCIA_PERSONA` (1 día) — hecho el 15/11, junto con B-4
+
+> **Hecho, junto con B-4.** `AsistenteService`, `Plantillas`, `AuditoriaDelAsistente` (`REQUIRES_NEW`), el
+> controller `POST /api/v1/consultorios/{consultorioId}/asistente/consultas` (`consultarAsistente`), el handler
+> (409 `asistente-deshabilitado`, 503 `asistente-no-disponible`, 404 `not-found`) y seis herramientas:
+> `person.PersonasEnElAsistente`, `scheduling.TurnosEnElAsistente` (asistencia, sesiones y agenda),
+> `activity.ClasesEnElAsistente` y `reporting.ReportesEnElAsistente`. Las claves de las filas viven en
+> `assistant.spi.ClavesDeFila`.
+> **Verificado de punta a punta** contra `akine_asistente` (copia de `akine_qa`) con Ollama, en el puerto 8097
+> (`.claude/asistente-backend.ps1`): asistencia, seguimiento, sesiones, agenda de mañana, fecha escrita, reportes
+> económico y de turnos, persona inexistente y fuera de alcance, todo en ~1 s. Con `PACIENTE` da 403, el
+> `ORG_ADMIN` de la organización B sobre una sede de A da 404 sin llamar al modelo, y el `PROFESIONAL` ve el
+> reporte recortado a su actividad, con advertencia. `ASISTENCIA_CLASE` no se probó de punta a punta porque la
+> base no tiene clases: lo cubren `ClasesEnElAsistenteTest` y el IT de B-6. La prueba real encontró cuatro
+> defectos que ningún unitario veía (bitácora, entradas 10, 15, 16 y 17).
 
 Esto da la primera respuesta real y valida el patrón entero.
 

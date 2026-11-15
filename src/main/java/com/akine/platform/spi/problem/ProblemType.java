@@ -1439,8 +1439,16 @@ public enum ProblemType {
 	/** La cola de consultas a la biblioteca esta llena (503, con {@code Retry-After}). */
 	CONSULTA_OCUPADA("consulta-ocupada"),
 
-	/** El modelo de lenguaje no responde o vencio el plazo (503). */
-	ASISTENTE_NO_DISPONIBLE("asistente-no-disponible");
+	/**
+	 * El modelo de lenguaje no responde o vencio el plazo (503). Lo emiten la consulta a la
+	 * biblioteca y el asistente de datos.
+	 */
+	ASISTENTE_NO_DISPONIBLE("asistente-no-disponible"),
+
+	// --- Asistente de datos (docs/diseno/AKINE-asistente-de-datos.md) -------------------------
+
+	/** El asistente de datos esta apagado por configuracion (409). */
+	ASISTENTE_DESHABILITADO("asistente-deshabilitado");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";
