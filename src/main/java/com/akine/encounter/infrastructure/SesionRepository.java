@@ -475,4 +475,40 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("claseId") long claseId);
+
+	// =================================================================================
+	// M31 — evolucion del caso
+	// =================================================================================
+
+	@Override
+	@Query(value = """
+			SELECT s.* FROM sesion s
+			 WHERE s.organization_id = :organizationId
+			   AND s.caso_id = :casoId
+			   AND s.estado = 'CERRADA'
+			   AND s.deleted_at IS NULL
+			 ORDER BY s.cerrada_en DESC, s.id DESC
+			 LIMIT :tope
+			""", nativeQuery = true)
+	List<Sesion> findCerradasDelCaso(
+			@Param("organizationId") long organizationId,
+			@Param("casoId") long casoId,
+			@Param("tope") int tope);
+
+	@Override
+	@Query(value = """
+			SELECT COUNT(*) FROM sesion s
+			 WHERE s.organization_id = :organizationId
+			   AND s.historia_clinica_id = :historiaClinicaId
+			   AND s.caso_id IS NULL
+			   AND s.estado = 'CERRADA'
+			   AND s.deleted_at IS NULL
+			   AND s.cerrada_en >= :desde
+			   AND s.cerrada_en <= :hasta
+			""", nativeQuery = true)
+	long contarCerradasSinCasoDeHistoria(
+			@Param("organizationId") long organizationId,
+			@Param("historiaClinicaId") long historiaClinicaId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
 }

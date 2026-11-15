@@ -42,6 +42,10 @@ public final class TratamientoRepositoryPorts {
 		 */
 		List<TratamientoRealizado> listarVigentes(long organizationId, long sesionId);
 
+		/** Los tratamientos vigentes de varias sesiones de una vez (M31), por sesion y orden. */
+		List<TratamientoRealizado> listarVigentesDeSesiones(
+				long organizationId, java.util.Collection<Long> sesionIds);
+
 		/**
 		 * El mayor {@code orden} usado en la sesion, <b>incluidas las filas dadas de baja</b>.
 		 *

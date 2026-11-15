@@ -83,4 +83,16 @@ public interface TratamientoRealizadoRepository
 	List<Long> practicasVigentesDe(
 			@Param("organizationId") long organizationId,
 			@Param("sesionId") long sesionId);
+
+	@Override
+	@Query("""
+			SELECT t FROM TratamientoRealizado t
+			 WHERE t.organizationId = :organizationId
+			   AND t.sesionId IN :sesionIds
+			   AND t.active = true
+			 ORDER BY t.sesionId, t.orden
+			""")
+	List<TratamientoRealizado> listarVigentesDeSesiones(
+			@Param("organizationId") long organizationId,
+			@Param("sesionIds") java.util.Collection<Long> sesionIds);
 }
