@@ -46,7 +46,7 @@ com.akine.assistant
 ```
 
 - Propiedades `akine.asistente.enabled` (por defecto `false`), `akine.asistente.modelo.tipo`
-  (`ollama` | `prueba`), `url`, `modelo` (`qwen3:4b-instruct`), `plazo` (`10s`).
+  (`ollama` | `prueba`), `url`, `modelo` (`qwen3:4b-instruct`), `plazo` (`60s`: cubre la carga en frío del modelo, ~15 s).
 - Con el flag apagado: no se crea el bean del modelo y la operación responde 409
   `asistente-deshabilitado`, igual que la biblioteca.
 - `PermissionCodes.ASISTENTE_USE` y su alta en el catálogo de permisos.

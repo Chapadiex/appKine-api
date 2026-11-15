@@ -108,3 +108,9 @@ La base de QA no tenía clases. Se armó una por la API, como lo haría el admin
 | 57 | Por la regla de correr sólo lo que toca el cambio, esos tests no se habían corrido en local, y el CI cortó en la etapa de unitarios | Antes de volver a subir se corrió la suite unitaria completa en local (4741 tests, 0 fallas) y los IT de permisos (`PermisosEsquemaIT` 11/11, `MatrizDePermisosIT` 14/14) |
 
 **Estado final del CI (15/11, 14:19Z):** los dos PR están en verde en todos sus checks y en estado `CLEAN`/`MERGEABLE`. appKine-api#204: build, tests unitarios y de integración, contrato, imagen y SBOM, vulnerabilidades, CodeQL, ZAP y Sonar. appKine-web#175: lint, build y tests, cliente alineado con el contrato, contraste WCAG, E2E, imagen, CodeQL y Sonar. Falta sólo el merge, que decide el usuario: primero #204 y después #175, y borrar la rama espejo `akine-asistente-web` de `appKine-api`.
+
+## Después del merge (15/11, tarde)
+
+| # | Problema | Solución aplicada |
+|---|---|---|
+| 58 | Probando sobre `main`, la primera pregunta respondió 503 `asistente-no-disponible`: Ollama había descargado el modelo y cargarlo en frío tardó ~15 s, justo el plazo por defecto (`HttpTimeoutException` en `OllamaModeloDelAsistente`). El `keep_alive` de 2 h evita la descarga mientras hay uso, pero no la primera consulta después de reiniciar Ollama o de que cargue otro modelo | El plazo por defecto pasó de 15 s a 60 s (`AsistenteProperties` y `application.yml`). Sigue cortando un Ollama colgado; `AKINE_ASISTENTE_TIMEOUT_SEGUNDOS` lo ajusta por despliegue |
