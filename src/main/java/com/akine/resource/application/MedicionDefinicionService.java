@@ -9,6 +9,7 @@ import com.akine.resource.domain.exception.CatalogoNameTakenException;
 import com.akine.resource.domain.exception.MedicionDefinicionInactivaException;
 import com.akine.resource.domain.exception.MedicionDefinicionNoAccesibleException;
 import com.akine.resource.domain.port.MedicionDefinicionRepositoryPort;
+import com.akine.resource.spi.SentidoDeMejora;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -202,11 +203,7 @@ public class MedicionDefinicionService {
 		definicion.updateDatos(
 				nombre, command.descripcion(), command.unidad(),
 				command.minimo(), command.maximo(), command.clearRango());
-		if (command.clearMejoraCuando()) {
-			definicion.declararSentidoDeMejora(null);
-		} else if (command.mejoraCuando() != null) {
-			definicion.declararSentidoDeMejora(command.mejoraCuando());
-		}
+		definicion.declararSentidoDeMejora(sentidoResultante(command, definicion.getMejoraCuando()));
 
 		MedicionDefinicion guardada;
 		try {
@@ -318,14 +315,25 @@ public class MedicionDefinicionService {
 				detalles.put("maximo", definicion.getMaximo() + " -> " + command.maximo());
 			}
 		}
-		if (command.clearMejoraCuando() && definicion.getMejoraCuando() != null) {
-			detalles.put("mejoraCuando", definicion.getMejoraCuando() + " -> (sin definir)");
-		} else if (command.mejoraCuando() != null
-				&& command.mejoraCuando() != definicion.getMejoraCuando()) {
-			detalles.put("mejoraCuando",
-					definicion.getMejoraCuando() + " -> " + command.mejoraCuando());
+		SentidoDeMejora sentido = sentidoResultante(command, definicion.getMejoraCuando());
+		if (sentido != definicion.getMejoraCuando()) {
+			detalles.put("mejoraCuando", definicion.getMejoraCuando() + " -> "
+					+ (sentido == null ? "(sin definir)" : sentido));
 		}
 		return detalles;
+	}
+
+	/**
+	 * El sentido de mejora despues de la edicion (RF-M31-003): {@code clearMejoraCuando} lo quita,
+	 * un valor lo reemplaza y su ausencia lo deja como estaba. Lo usan la edicion y su auditoria,
+	 * para que lo guardado y lo auditado no puedan divergir.
+	 */
+	private static SentidoDeMejora sentidoResultante(
+			MedicionDefinicionEdicionCommand command, SentidoDeMejora actual) {
+		if (command.clearMejoraCuando()) {
+			return null;
+		}
+		return command.mejoraCuando() != null ? command.mejoraCuando() : actual;
 	}
 
 	@SuppressWarnings("java:S107")

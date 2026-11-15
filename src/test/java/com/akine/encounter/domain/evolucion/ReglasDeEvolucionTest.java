@@ -125,7 +125,7 @@ class ReglasDeEvolucionTest {
 		@Test
 		void sinRangoDeclaradoNoSeEvalua() {
 			DatosDelCaso datos = new DatosDelCaso(true, sesiones(rom("grados", 90, 91, 90, 92)), List.of(),
-					PLAN_NEUTRO, Map.of(ROM, new Definicion(ROM, null, null, "SUBE")));
+					PLAN_NEUTRO, Map.of(ROM, new Definicion(null, null, "SUBE")));
 			assertThat(codigos(analizar(datos))).doesNotContain(MEDICION_SIN_CAMBIO, MEDICION_EMPEORA);
 		}
 
@@ -390,7 +390,7 @@ class ReglasDeEvolucionTest {
 
 	private static DatosDelCaso conDefinicion(List<Sesion> sesiones, String mejoraCuando) {
 		return new DatosDelCaso(true, sesiones, List.of(), PLAN_NEUTRO,
-				Map.of(ROM, new Definicion(ROM, BigDecimal.ZERO, new BigDecimal("160"), mejoraCuando)));
+				Map.of(ROM, new Definicion(BigDecimal.ZERO, new BigDecimal("160"), mejoraCuando)));
 	}
 
 	private static AnalisisDeEvolucion analizar(DatosDelCaso datos) {

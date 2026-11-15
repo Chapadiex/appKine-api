@@ -1,5 +1,6 @@
 package com.akine.clinical.application;
 
+import com.akine.clinical.domain.PermissionCodes;
 import com.akine.clinical.spi.AccesoClinicoConcedido;
 import com.akine.clinical.spi.AccesoClinicoDirectory;
 import com.akine.clinical.spi.ActorClinico;
@@ -39,9 +40,8 @@ class AccesoClinicoDesdeOtroModulo implements AccesoClinicoDirectory {
 	}
 
 	@Override
-	public AccesoClinicoConcedido exigir(
+	public AccesoClinicoConcedido exigirLectura(
 			ActorClinico actor,
-			String permissionCode,
 			long personaId,
 			String justificacion,
 			String operacion) {
@@ -50,7 +50,7 @@ class AccesoClinicoDesdeOtroModulo implements AccesoClinicoDirectory {
 				actor.accountId(), actor.platformAdmin(), actor.organizationId(), actor.consultorioId());
 		AccesoClinico acceso = AutorizacionClinica.exigirSobrePersona(
 				permissionGuard, relaciones, supportAccessAuditor, pacientes, propio,
-				permissionCode, personaId, justificacion, operacion);
+				PermissionCodes.HC_READ, personaId, justificacion, operacion);
 
 		if (acceso.viaSupportAccess()) {
 			supportAccessAuditor.record(new AuditEntry(

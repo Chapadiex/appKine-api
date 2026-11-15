@@ -165,9 +165,9 @@ public class EvolucionDelCasoService {
 		HistoriaClinicaSnapshot historia = historias.findPorId(organizationId, caso.historiaClinicaId())
 				.orElseThrow(() -> new CasoNoAsignableException(casoId, CasoNoAsignableException.Motivo.NO_ACCESIBLE));
 
-		AccesoClinicoConcedido acceso = accesoClinico.exigir(
+		AccesoClinicoConcedido acceso = accesoClinico.exigirLectura(
 				new ActorClinico(actor.accountId(), actor.platformAdmin(), organizationId, consultorioId),
-				AccesoClinicoDirectory.HC_READ, historia.personaId(), justificacion, OPERACION);
+				historia.personaId(), justificacion, OPERACION);
 
 		ZoneId zona = ZonaDeSede.de(sede);
 		LocalDate hoy = LocalDate.now(clock.withZone(zona));
@@ -229,7 +229,7 @@ public class EvolucionDelCasoService {
 		Map<Long, DatosDelCaso.Definicion> porDefinicion = definiciones
 				.findTodas(organizationId, definicionIds).stream()
 				.collect(Collectors.toMap(MedicionDefinicionSnapshot::id, d -> new DatosDelCaso.Definicion(
-						d.id(), d.minimo(), d.maximo(), d.mejoraCuando() == null ? null : d.mejoraCuando().name())));
+						d.minimo(), d.maximo(), d.mejoraCuando() == null ? null : d.mejoraCuando().name())));
 
 		List<DatosDelCaso.Sesion> sesionesDelCaso = cerradas.stream()
 				.map(s -> new DatosDelCaso.Sesion(

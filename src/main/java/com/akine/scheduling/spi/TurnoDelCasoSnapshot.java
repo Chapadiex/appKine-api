@@ -16,6 +16,5 @@ public record TurnoDelCasoSnapshot(
 		long turnoId,
 		Instant inicio,
 		String estado,
-		String origenCancelacion,
-		Long profesionalMembershipId) {
+		String origenCancelacion) {
 }

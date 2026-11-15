@@ -49,6 +49,19 @@ public class ClinicalCasoDirectory implements CasoDirectory {
 				.map(ClinicalCasoDirectory::instantanea);
 	}
 
+	@Override
+	@Transactional(readOnly = true)
+	public Optional<CasoDetalleSnapshot> detalle(long organizationId, long casoId) {
+		return casos.findByIdAndOrganizationId(casoId, organizationId)
+				.map(caso -> new CasoDetalleSnapshot(
+						caso.getId(),
+						caso.getHistoriaClinicaId(),
+						caso.getNumeroCaso(),
+						caso.getEstado().name(),
+						caso.getDiagnosticoPresuntivo(),
+						caso.getObjetivoTerapeutico()));
+	}
+
 	/**
 	 * {@inheritDoc}
 	 *
@@ -69,21 +82,6 @@ public class ClinicalCasoDirectory implements CasoDirectory {
 	 * transaccion del cierre de sesion y no abre una propia. Si abriera una, el numero se
 	 * commitearia aunque el cierre despues fallara, y el caso quedaria con un hueco.
 	 */
-	@Override
-	@Transactional(readOnly = true)
-	public Optional<CasoDetalleSnapshot> detalle(long organizationId, long casoId) {
-		return casos.findByIdAndOrganizationId(casoId, organizationId)
-				.map(caso -> new CasoDetalleSnapshot(
-						caso.getId(),
-						caso.getOrganizationId(),
-						caso.getHistoriaClinicaId(),
-						caso.getNumeroCaso(),
-						caso.getEstado().name(),
-						caso.getDiagnosticoPresuntivo(),
-						caso.getObjetivoTerapeutico(),
-						caso.getAbiertoEn()));
-	}
-
 	@Override
 	@Transactional
 	public int siguienteNumeroDeSesion(long organizationId, long casoId) {

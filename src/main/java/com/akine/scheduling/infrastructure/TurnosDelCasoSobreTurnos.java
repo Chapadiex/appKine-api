@@ -31,7 +31,6 @@ class TurnosDelCasoSobreTurnos implements TurnosDelCasoDirectory {
 				turno.getId(),
 				turno.getInicio(),
 				turno.getEstado().name(),
-				turno.getOrigenCancelacion() == null ? null : turno.getOrigenCancelacion().name(),
-				turno.getProfesionalMembershipId());
+				turno.getOrigenCancelacion() == null ? null : turno.getOrigenCancelacion().name());
 	}
 }

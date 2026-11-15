@@ -65,13 +65,6 @@ public record MedicionDefinicionSnapshot(
 
 		SentidoDeMejora mejoraCuando) {
 
-	/** Sin sentido de mejora declarado (RF-M31-003). */
-	public MedicionDefinicionSnapshot(long id, Long organizationId, String codigo, String nombre,
-			MedicionTipo tipo, String unidad, BigDecimal minimo, BigDecimal maximo, boolean activa,
-			long version) {
-		this(id, organizationId, codigo, nombre, tipo, unidad, minimo, maximo, activa, version, null);
-	}
-
 	/** {@code true} si la definicion es del catalogo comun y la ve todo el SaaS. */
 	public boolean esGlobal() {
 		return organizationId == null;

@@ -24,7 +24,6 @@ public record PlanVigenteSnapshot(
 		int versionVigente,
 		Instant versionVigenteDesde,
 		String objetivos,
-		String indicaciones,
 		Integer frecuenciaSemanal,
 		Integer duracionSemanas,
 		List<ItemDelPlan> items,

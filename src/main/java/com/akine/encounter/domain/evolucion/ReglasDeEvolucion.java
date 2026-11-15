@@ -268,7 +268,6 @@ public final class ReglasDeEvolucion {
 				hallazgos.add(new Hallazgo(CodigoDeHallazgo.PLAN_EXCEDIDO_EN_TIEMPO, Severidad.INFO,
 						List.of(), List.of(), Map.of(
 								"semanas", String.valueOf(plan.duracionSemanas()),
-								"activadoEl", plan.activadoEl().toString(),
 								"semanasTranscurridas",
 								String.valueOf(ChronoUnit.WEEKS.between(plan.activadoEl(), hoy)))));
 			}

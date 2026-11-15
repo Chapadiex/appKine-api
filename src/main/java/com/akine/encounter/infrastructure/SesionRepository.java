@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
@@ -481,6 +483,7 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 	// =================================================================================
 
 	@Override
+	@QueryHints(@QueryHint(name = org.hibernate.jpa.HibernateHints.HINT_READ_ONLY, value = "true"))
 	@Query(value = """
 			SELECT s.* FROM sesion s
 			 WHERE s.organization_id = :organizationId

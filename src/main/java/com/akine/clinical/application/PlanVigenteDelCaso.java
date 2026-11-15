@@ -56,7 +56,6 @@ class PlanVigenteDelCaso implements PlanVigenteDirectory {
 				version.getNumeroVersion(),
 				version.getRegistradaEn(),
 				version.getObjetivos(),
-				version.getIndicaciones(),
 				version.getFrecuenciaSemanal(),
 				version.getDuracionSemanas(),
 				avance.items().stream()

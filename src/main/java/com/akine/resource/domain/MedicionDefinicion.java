@@ -227,14 +227,6 @@ public class MedicionDefinicion extends MarcaTemporal {
 	}
 
 	/**
-	 * Baja logica con motivo declarado (RN-M06-001).
-	 *
-	 * <p>No borra nada y <b>no cascadea</b>: las mediciones existentes siguen legibles y
-	 * comparables, y lo unico que se impide es registrar nuevas. <b>No hay reactivacion</b>: una
-	 * definicion que vuelve es una definicion nueva, y modelarlo como baja deshecha borraria el
-	 * rastro de que el test dejo de usarse alguna vez.
-	 */
-	/**
 	 * Declara o quita el sentido de mejora (RF-M31-003). Solo los tipos numericos lo admiten:
 	 * "mejora cuando sube" sobre un texto o un booleano no significa nada.
 	 */
@@ -246,6 +238,14 @@ public class MedicionDefinicion extends MarcaTemporal {
 		this.mejoraCuando = sentido;
 	}
 
+	/**
+	 * Baja logica con motivo declarado (RN-M06-001).
+	 *
+	 * <p>No borra nada y <b>no cascadea</b>: las mediciones existentes siguen legibles y
+	 * comparables, y lo unico que se impide es registrar nuevas. <b>No hay reactivacion</b>: una
+	 * definicion que vuelve es una definicion nueva, y modelarlo como baja deshecha borraria el
+	 * rastro de que el test dejo de usarse alguna vez.
+	 */
 	public void deactivate(Instant occurredAt, String reason) {
 		if (reason == null || reason.isBlank()) {
 			throw new IllegalArgumentException(

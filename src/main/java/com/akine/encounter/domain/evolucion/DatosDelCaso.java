@@ -92,7 +92,7 @@ public record DatosDelCaso(
 	 *
 	 * @param mejoraCuando {@code SUBE}, {@code BAJA} o {@code null}
 	 */
-	public record Definicion(long id, BigDecimal minimo, BigDecimal maximo, String mejoraCuando) {
+	public record Definicion(BigDecimal minimo, BigDecimal maximo, String mejoraCuando) {
 
 		/** El ancho del rango, o {@code null} si la definicion no declara los dos extremos. */
 		public BigDecimal rango() {

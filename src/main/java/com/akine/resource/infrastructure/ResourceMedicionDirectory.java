@@ -54,12 +54,6 @@ public class ResourceMedicionDirectory implements MedicionDirectory {
 				.toList();
 	}
 
-	/**
-	 * Lo global, mas lo propio si el llamador trae tenant.
-	 *
-	 * <p>{@code organizationId} nulo deja solo el catalogo de plataforma, que es lo correcto para
-	 * un actor sin contexto de tenant: nunca "todo", que seria filtrar por nada.
-	 */
 	@Override
 	@Transactional(readOnly = true)
 	public List<MedicionDefinicionSnapshot> findTodas(Long organizationId, java.util.Collection<Long> definicionIds) {
@@ -71,6 +65,12 @@ public class ResourceMedicionDirectory implements MedicionDirectory {
 				.toList();
 	}
 
+	/**
+	 * Lo global, mas lo propio si el llamador trae tenant.
+	 *
+	 * <p>{@code organizationId} nulo deja solo el catalogo de plataforma, que es lo correcto para
+	 * un actor sin contexto de tenant: nunca "todo", que seria filtrar por nada.
+	 */
 	private static List<Long> owners(Long organizationId) {
 		return organizationId == null
 				? List.of(OWNER_PLATAFORMA)

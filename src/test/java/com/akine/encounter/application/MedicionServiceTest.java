@@ -211,7 +211,7 @@ class MedicionServiceTest {
 		void el_texto_no_tiene_rango() {
 			given(definiciones.find(ORG_ID, DEFINICION_ID)).willReturn(Optional.of(
 					new MedicionDefinicionSnapshot(DEFINICION_ID, ORG_ID, "OBS", "Observacion",
-							MedicionTipo.TEXTO, null, null, null, true, 0L)));
+							MedicionTipo.TEXTO, null, null, null, true, 0L, null)));
 
 			assertThatCode(() -> service.registrar(actor, CONSULTORIO_ID, SESION_ID, DEFINICION_ID,
 					null, new ValorMedido(null, "mejor que ayer", null), null))
@@ -357,7 +357,7 @@ class MedicionServiceTest {
 	private static MedicionDefinicionSnapshot definicion(
 			boolean activa, BigDecimal minimo, BigDecimal maximo) {
 		return new MedicionDefinicionSnapshot(DEFINICION_ID, ORG_ID, "EVA", "Escala de dolor",
-				MedicionTipo.NUMERICO, "puntos", minimo, maximo, activa, 0L);
+				MedicionTipo.NUMERICO, "puntos", minimo, maximo, activa, 0L, null);
 	}
 
 	/** JPA asigna el id al persistir; el doble tiene que hacer lo mismo o el fixture mentiria. */

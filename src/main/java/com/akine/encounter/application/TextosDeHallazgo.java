@@ -14,13 +14,13 @@ final class TextosDeHallazgo {
 	}
 
 	static String de(Hallazgo hallazgo) {
-		Map<String, String> v = hallazgo.valores();
+		Map<String, String> v = conComaDecimal(hallazgo.valores());
 		return switch (hallazgo.codigo()) {
 			case DATOS_INSUFICIENTES -> "Hay " + v.get("presentes") + " sesiones con asistencia; "
 					+ "hacen falta al menos " + v.get("minimo") + " para evaluar alertas.";
 			case DOLOR_SIN_MEJORA -> "El dolor pasó de " + v.get("desde") + " a " + v.get("hasta")
 					+ " en las últimas " + v.get("sesiones") + " sesiones y sigue alto.";
-			case DOLOR_EN_AUMENTO -> "El dolor subió de " + decimal(v.get("desde")) + " a " + decimal(v.get("hasta"))
+			case DOLOR_EN_AUMENTO -> "El dolor subió de " + v.get("desde") + " a " + v.get("hasta")
 					+ " en las últimas " + v.get("sesiones") + " sesiones.";
 			case EVOLUCION_DESFAVORABLE -> "La evolución se registró como "
 					+ evolucion(v.get("valor")) + " en las últimas " + v.get("seguidas")
@@ -28,14 +28,14 @@ final class TextosDeHallazgo {
 			case MALA_TOLERANCIA -> "La tolerancia fue mala en las últimas " + v.get("seguidas")
 					+ " sesiones seguidas.";
 			case MEDICION_SIN_CAMBIO -> medicion(v) + " no varió en las últimas " + v.get("sesiones")
-					+ " sesiones (" + decimal(v.get("desde")) + " a " + decimal(v.get("hasta")) + unidad(v) + ").";
+					+ " sesiones (" + v.get("desde") + " a " + v.get("hasta") + unidad(v) + ").";
 			case MEDICION_EMPEORA -> medicion(v) + " pasó de " + v.get("desde") + " a "
 					+ v.get("hasta") + unidad(v) + " en las últimas " + v.get("sesiones")
 					+ " sesiones, en sentido contrario al de mejora.";
 			case BAJA_ADHERENCIA -> "Faltó a " + v.get("inasistencias") + " de las últimas "
 					+ v.get("citas") + " citas (" + v.get("porcentaje") + " %).";
 			case FRECUENCIA_BAJO_PLAN -> "En las últimas " + v.get("semanas") + " semanas asistió "
-					+ decimal(v.get("real")) + " veces por semana; el plan prevé " + v.get("planificada") + ".";
+					+ v.get("real") + " veces por semana; el plan prevé " + v.get("planificada") + ".";
 			case PLAN_COMPLETO_ABIERTO -> "Todas las prácticas del plan alcanzaron la cantidad "
 					+ "planificada y el plan sigue activo.";
 			case PLAN_EXCEDIDO_EN_TIEMPO -> "El plan preveía " + v.get("semanas")
@@ -59,10 +59,17 @@ final class TextosDeHallazgo {
 		};
 	}
 
-	/** Coma decimal, como el resto de la pantalla: los valores llegan con el punto de BigDecimal. */
-	private static String decimal(String valor) {
-		return valor == null ? "" : valor.replace('.', ',');
+	/**
+	 * Coma decimal en todos los valores numericos, una sola vez: el dominio los entrega con el punto
+	 * de {@code BigDecimal} y ninguna plantilla tiene que acordarse de convertirlos.
+	 */
+	private static Map<String, String> conComaDecimal(Map<String, String> valores) {
+		return valores.entrySet().stream().collect(java.util.stream.Collectors.toMap(
+				Map.Entry::getKey,
+				e -> DECIMAL.matcher(e.getValue()).matches() ? e.getValue().replace('.', ',') : e.getValue()));
 	}
+
+	private static final java.util.regex.Pattern DECIMAL = java.util.regex.Pattern.compile("-?\\d+\\.\\d+");
 
 	private static String unidad(Map<String, String> v) {
 		String unidad = v.get("unidad");

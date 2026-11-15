@@ -64,7 +64,7 @@ class SesionVersionTest {
 				0, CIERRE);
 		SesionMedicion rom = new SesionMedicion(1L, 1L, new MedicionDefinicionSnapshot(61L, 1L,
 				"ROM", "Rango", MedicionTipo.NUMERICO, "grados", BigDecimal.ZERO,
-				new BigDecimal("180"), true, 3L), LateralidadMedicion.DERECHA,
+				new BigDecimal("180"), true, 3L, null), LateralidadMedicion.DERECHA,
 				new ValorMedido(new BigDecimal("90"), null, null), null, CIERRE, 99L);
 
 		SesionVersion original = SesionVersion.original(sesion, new FotoClinica(

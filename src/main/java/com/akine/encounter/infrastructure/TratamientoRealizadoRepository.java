@@ -4,6 +4,8 @@ import com.akine.encounter.domain.TratamientoRealizado;
 import com.akine.encounter.domain.port.TratamientoRepositoryPorts.TratamientoRepositoryPort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
@@ -85,6 +87,7 @@ public interface TratamientoRealizadoRepository
 			@Param("sesionId") long sesionId);
 
 	@Override
+	@QueryHints(@QueryHint(name = org.hibernate.jpa.HibernateHints.HINT_READ_ONLY, value = "true"))
 	@Query("""
 			SELECT t FROM TratamientoRealizado t
 			 WHERE t.organizationId = :organizationId
