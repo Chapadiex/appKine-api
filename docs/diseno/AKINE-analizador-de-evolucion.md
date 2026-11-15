@@ -1,6 +1,7 @@
 # AKINE — Analizador de evolución: sugerencias sobre el tratamiento a partir de las sesiones
 
-> Diseño del 15/11/2026. Estado: **propuesto, sin código**. Las decisiones abiertas están en el §11.
+> Diseño del 15/11/2026. Estado: **fase 1 aprobada, sin código**. Plan en
+> `AKINE-analizador-de-evolucion-plan.md`. D-1, D-2 y D-4 resueltas el 15/11; el resto, en el §11.
 > Relacionados: `AKINE-biblioteca-rag.md`, `AKINE-biblioteca-consulta-v2.md` y
 > `AKINE-asistente-de-datos.md` (este último en la rama `akine-asistente-datos`, sin mergear).
 
@@ -321,10 +322,10 @@ En producción, la proporción `ACEPTADA`/`DESCARTADA` por código de hallazgo.
 
 | # | Decisión | Recomendación |
 |---|---|---|
-| D-1 | **Respaldo funcional.** No hay RF de esto en el integrado (M30 es la biblioteca). ¿Se agrega como requisito nuevo? | **Sí, antes del código**: un RF por fase en `AKINE_Requerimientos_Integrados.md`, como se hizo con M30 |
-| D-2 | **Permiso**: reusar `hc:read` o crear `evolucion:analizar` | **`hc:read`** para la fase 1 (no muestra nada que la historia no muestre). Código propio para la fase 2, para poder apagarla por rol |
+| D-1 | **Respaldo funcional.** No hay RF de esto en el integrado (M30 es la biblioteca). ¿Se agrega como requisito nuevo? | **Resuelta 15/11:** sí. M31 en el integrado antes del código (Tarea 1 del plan) |
+| D-2 | **Permiso**: reusar `hc:read` o crear `evolucion:analizar` | **Resuelta 15/11:** `hc:read` en la fase 1; código propio en la fase 2, para poder apagarla por rol |
 | D-3 | **Puerto del modelo.** `knowledge` tiene el suyo y el asistente de datos copió otro. Este sería el tercero | **Extraerlo a `platform.spi`** en la fase 2: es la condición de salida que el asistente dejó escrita |
-| D-4 | **Sentido de mejora de una medición** (`mejora_cuando`: `SUBE`/`BAJA`/sin definir) en `medicion_definicion`. Sin él no se puede decir "empeora" | **Agregarlo**, opcional. Es una migración chica en `resource` y un campo aditivo en el contrato. Sin el dato, la serie se muestra y no se juzga |
+| D-4 | **Sentido de mejora de una medición** (`mejora_cuando`: `SUBE`/`BAJA`/sin definir) en `medicion_definicion`. Sin él no se puede decir "empeora" | **Resuelta 15/11:** se agrega, opcional (`V17`). Sin el dato, la serie se muestra y no se juzga |
 | D-5 | **Umbrales** del §5.3 | Arrancar con los propuestos como propiedades y que los confirme un kinesiólogo dentro de U-02 |
 | D-6 | **Dónde se ve**: pestaña en el Caso, o también un aviso al abrir la sesión siguiente | **Sólo la pestaña** en la fase 1. El aviso en la sesión es interrumpir la atención: después de ver cuánto se usa |
 | D-7 | **Modelo de la fase 2** | Local. Cuál, lo decide la medición del §9 |
