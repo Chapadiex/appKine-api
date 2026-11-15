@@ -162,8 +162,8 @@ class EvolucionDelCasoControllerTest {
 
 		@Bean
 		SecurityFilterChain sliceSecurityFilterChain(HttpSecurity http) throws Exception {
+			// Sin desactivar CSRF: el slice solo hace GET, que no lo exige.
 			http
-					.csrf(csrf -> csrf.disable())
 					.sessionManagement(session -> session
 							.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 					.authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
