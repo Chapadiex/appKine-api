@@ -12,7 +12,6 @@ import com.akine.scheduling.application.RecepcionService;
 import com.akine.scheduling.application.TurnoDeCalendarioView;
 import com.akine.scheduling.application.TurnoDelDiaView;
 import com.akine.scheduling.application.TurnosDeSedeView;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
 
 import java.util.Comparator;
@@ -49,28 +48,18 @@ abstract class TurnosEnElAsistente implements HerramientaDelAsistente {
 				actor.organizationId(), actor.consultorioId(), actor.roleCode());
 		FiltroDeTurnos filtro = pedido.personaId() == null ? FiltroDeTurnos.NINGUNO
 				: new FiltroDeTurnos(Set.of(), pedido.personaId());
-		TurnosDeSedeView turnos;
-		try {
-			// delRango toma [desde, hasta): el ultimo dia del pedido (inclusive) va como hasta + 1.
-			turnos = recepcion.delRango(operador, actor.consultorioId(), pedido.desde(), pedido.hasta().plusDays(1),
-					null, null, true, filtro);
-		}
-		catch (AccessDeniedException e) {
-			return ResultadoDeHerramienta.denegado();
-		}
+		// delRango toma [desde, hasta).
+		TurnosDeSedeView turnos = recepcion.delRango(operador, actor.consultorioId(), pedido.desde(),
+				pedido.hastaExclusivo(), null, null, true, filtro);
 		List<Map<String, Object>> filas = turnos.turnos().stream()
 				.sorted(Comparator.comparing(t -> t.turno().inicio()))
 				.map(TurnosEnElAsistente::fila)
 				.toList();
-		return new ResultadoDeHerramienta(filas, advertencias(), enlace(), false);
+		return new ResultadoDeHerramienta(filas, advertencias(), ENLACE_RECEPCION, false);
 	}
 
 	List<String> advertencias() {
 		return List.of();
-	}
-
-	String enlace() {
-		return ENLACE_RECEPCION;
 	}
 
 	static Map<String, Object> fila(TurnoDeCalendarioView calendario) {

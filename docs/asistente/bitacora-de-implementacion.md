@@ -32,8 +32,34 @@ del repo ya establecen; si no alcanzan, se elige la opción más conservadora y 
 | 24 | W-2 | El plan proponía un panel lateral (drawer) abierto desde la barra superior, pero el bundle inicial tiene poco margen y la consulta a la biblioteca ya es una página con su entrada en el menú | Página `/asistente` con ruta perezosa y entrada "Asistente de datos" en Atención, con el mismo lenguaje visual que la consulta a la biblioteca. El bundle inicial queda en 405,84 kB de 448 |
 | 25 | W-1 | `api:check` y `check-problem-types` leen el contrato de `../appKine-api`, que en esta máquina es el checkout principal y está en otra rama, así que en local fallan aunque todo esté alineado | Se corrieron con una copia temporal que apunta a `wt-API-ASISTENTE` ("Contrato alineado: 0.170.0", sin tipos desconocidos) y se borró la copia. En el CI lo resuelve la rama espejo del backend con el mismo nombre (precedente de la marca por centro) |
 | 26 | W-1 | El tipo `problemas-del-contrato.ts` es exhaustivo y no compilaba con el problem type nuevo | Se sumó `asistente-deshabilitado` a la lista. Es el gate haciendo su trabajo |
-| 27 | W-1 | El cliente generado elige `Accept: application/problem+json` por ser el primer tipo de la lista (la trampa del 406 que el proyecto ya pagó) | `AsistenteApi` fija `httpHeaderAccept: 'application/json'` |
+| 27 | W-1 | Se supuso que el cliente generado elegía `Accept: application/problem+json` (la trampa del 406 que el proyecto ya pagó) y `AsistenteApi` forzaba `application/json` | **Premisa equivocada**, la encontró `/simplify`: para esta operación el cliente ya pone `application/json` primero. Se quitó el forzado; sólo hace falta donde se pide CSV o binario |
 | 28 | W-3 | A 375 px el aviso de la cabecera no cortaba línea y la página desbordaba (604 px de contenido en 375) | `.asistente__aviso` con `flex: 1 1 100%`, `min-width: 0` y `white-space: normal`. Medido otra vez: 375 de 375 |
 | 29 | W-3 | El `textarea` usaba la tipografía monoespaciada del navegador | `font: inherit` |
 | 30 | W-3 | Con el panel del navegador oculto, las teclas no llegaban a la página y la pregunta no se escribía | La prueba usa `form_input` y clics por referencia. Es una limitación de la herramienta, no del producto |
 | 31 | W-3 | En el navegador, "no tiene llegadas registradas" seguido de "Sin llegada registrada: …" repetía lo mismo | Sin ninguna llegada, la plantilla lista en la misma frase los turnos que tenía (`PlantillasTest`) |
+
+## Revisión de `/simplify` (15/11)
+
+Cuatro revisores en paralelo (reuso, simplificación, eficiencia y profundidad de los arreglos). Lo aplicado:
+
+| # | Hallazgo | Qué se hizo |
+|---|---|---|
+| 32 | Plegado de acentos reimplementado en `ResolutorDePeriodo`, `Interpretador` y `ClasesEnElAsistente` | Se usa `platform.spi.listado.TextoDeBusqueda.plegar`, que ArchUnit permite desde cualquier módulo |
+| 33 | Los reportes admitidos estaban escritos en tres lugares (y un control inalcanzable en `ReportesEnElAsistente`) | `Intencion.REPORTES` en el `spi` es la lista única. `assistant` no puede importar `ReporteCode` porque `reporting` ya depende de su `spi` |
+| 34 | "Qué campos usa cada intención" estaba repetido en `Interpretador` y en `Interpretacion` | `usaPersona`, `usaClase` y `usaReporte` viven en `Intencion` |
+| 35 | `AccessDeniedException` se atrapaba en cada herramienta y otra vez en el servicio | Un solo `catch` en `AsistenteService.ejecutar`. Las herramientas lo dejan propagar y el Javadoc del `spi` lo dice |
+| 36 | La regla "fin inclusive + 1" estaba en dos lugares, y el pedido llevaba dos instantes derivables | `PedidoDeHerramienta` deriva `hastaExclusivo()`, `desdeInstante()` y `hastaInstante()` |
+| 37 | La resolución de persona tenía cuatro niveles de anidamiento y una variable `corte` reasignada en cinco ramas | `resolverPersona` con retornos tempranos y `idDe` |
+| 38 | `ClasesEnElAsistente` pedía el detalle de 10 clases y la respuesta muestra 3 | Pide el detalle de 3 y pliega cada título una sola vez |
+| 39 | `AuditoriaDelAsistente` usaba `REQUIRES_NEW`, el patrón que trabó el pool el 11/10 si alguien envuelve la consulta en una transacción | `REQUIRED`: hoy abre su propia transacción, y si la consulta se envuelve, se suma a esa |
+| 40 | Web: la tabla se recalculaba en cada tecla, y las fechas salían en la zona del navegador | La tabla se arma una vez al llegar la respuesta, con `formatearInstante` y la zona de la sede (`DiaDeLaSede`) |
+| 41 | Web: un 400 mostraba un texto fijo y el traductor no estaba en `validacion-en-cada-traductor.spec.ts` | Muestra `error.detalle` y el traductor quedó registrado |
+| 42 | Web: el aviso iba en el lugar de la cabecera pensado para pastillas, y el CSS pisaba las reglas del componente compartido | El aviso pasó a la primera línea de la tarjeta, sin pisar `cabecera-de-pagina` |
+
+**No aplicado, y por qué:**
+- **Mover la resolución de títulos de clase al `assistant`.** Sacar `pregunta` del `spi` obliga a traer todas las clases del período antes de acotar, o a una segunda vuelta. Hoy el tope de 3 se aplica después de acotar, en un solo paso.
+- **Un semáforo para el modelo** cuando haya varias consultas a la vez. Cambia el comportamiento ante carga y conviene medirlo en el destino (DP-32).
+- **Extraer el puerto y el adaptador de Ollama a `platform.spi`.** Es la condición de salida de D-3, que se cumple con el tercer consumidor.
+- **Un componente de charla compartido con la consulta a la biblioteca.** Toca la pantalla de otra funcionalidad, que está fuera del alcance de esta tanda.
+- **Etiquetas legibles para los estados de la tabla** (`EN_ATENCION`, `DINERO`). Los formateadores viven en otras funcionalidades, y la regla de ADR-0004 obliga a moverlos a `shared/` primero.
+- **Que el modelo devuelva `seguimiento: true|false`.** Cambia el prompt y obliga a volver a medir. La heurística actual pasó 25/25 en el set limpio.

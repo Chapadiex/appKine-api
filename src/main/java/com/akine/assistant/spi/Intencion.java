@@ -1,5 +1,7 @@
 package com.akine.assistant.spi;
 
+import java.util.Set;
+
 /**
  * Lo que el asistente sabe responder. El modelo de lenguaje solo elige una de estas: cualquier otra
  * cosa que devuelva se trata como {@link #FUERA_DE_ALCANCE}.
@@ -28,5 +30,27 @@ public enum Intencion {
 	BUSCAR_PERSONA,
 
 	/** Todo lo demas. No tiene herramienta. */
-	FUERA_DE_ALCANCE
+	FUERA_DE_ALCANCE;
+
+	/**
+	 * Los reportes de M23 que el asistente sabe pedir. Una sola lista para el interpretador, la
+	 * plantilla y la herramienta de {@code reporting}: {@code assistant} no puede importar
+	 * {@code reporting.spi.ReporteCode}, porque {@code reporting} ya depende de este {@code spi}.
+	 */
+	public static final Set<String> REPORTES = Set.of("ECONOMICO", "TURNOS", "CLASES");
+
+	/** Si la intencion habla de una persona del padron. */
+	public boolean usaPersona() {
+		return this == ASISTENCIA_PERSONA || this == SESION_DE_PERSONA;
+	}
+
+	/** Si la intencion habla de una clase grupal. */
+	public boolean usaClase() {
+		return this == ASISTENTES_CLASE;
+	}
+
+	/** Si la intencion pide un reporte. */
+	public boolean usaReporte() {
+		return this == REPORTE;
+	}
 }

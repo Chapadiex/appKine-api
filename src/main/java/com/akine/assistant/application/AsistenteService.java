@@ -31,7 +31,6 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Responde una pregunta en lenguaje natural sobre los datos de una sede (diseno, §4).
@@ -116,54 +115,23 @@ public class AsistenteService {
 		return respuesta;
 	}
 
+	@SuppressWarnings("unchecked")
 	private RespuestaDelAsistente responder(ActorDelAsistente actor, Interpretacion interpretacion, String pregunta,
 			RangoDeDias rango, ZoneId zona, String sede, Long personaElegida) {
 		if (interpretacion.fueraDeAlcance() || !herramientas.containsKey(interpretacion.intencion())) {
 			return simple(Plantillas.AYUDA, Interpretacion.FUERA_DE_ALCANCE, Resultado.FUERA_DE_ALCANCE);
 		}
 
-		Long personaId = null;
-		String personaNombre = null;
+		Map<String, Object> persona = null;
 		if (interpretacion.usaPersona()) {
-			Optional<RespuestaDelAsistente> corte = Optional.empty();
-			if (interpretacion.persona() == null) {
-				corte = Optional.of(simple(Plantillas.FALTA_PERSONA, interpretacion, Resultado.FALTA_PERSONA));
+			Object resuelta = resolverPersona(actor, interpretacion, pregunta, rango, zona, personaElegida);
+			if (resuelta instanceof RespuestaDelAsistente corte) {
+				return corte;
 			}
-			else {
-				ResultadoDeHerramienta candidatos = ejecutar(Intencion.BUSCAR_PERSONA, actor,
-						pedido(interpretacion, null, interpretacion.persona(), pregunta, rango, zona));
-				if (candidatos.sinPermiso()) {
-					corte = Optional.of(simple(Plantillas.SIN_PERMISO, interpretacion, Resultado.SIN_PERMISO));
-				}
-				else if (candidatos.filas().isEmpty()) {
-					corte = Optional.of(simple(Plantillas.personaNoEncontrada(interpretacion.persona()),
-							interpretacion, Resultado.PERSONA_NO_ENCONTRADA));
-				}
-				else {
-					// Con una opcion elegida, se toma esa, pero solo si esta entre los candidatos del
-					// mismo nombre: un id cualquiera mandado por el cliente no se usa a ciegas.
-					Optional<Map<String, Object>> elegida = candidatos.filas().stream()
-							.filter(f -> personaElegida != null
-									? personaElegida.equals(((Number) f.get(ClavesDeFila.PERSONA_ID)).longValue())
-									: candidatos.filas().size() == 1)
-							.findFirst();
-					if (elegida.isPresent()) {
-						personaId = ((Number) elegida.get().get(ClavesDeFila.PERSONA_ID)).longValue();
-						personaNombre = String.valueOf(elegida.get().get(ClavesDeFila.NOMBRE));
-					}
-					else if (personaElegida != null) {
-						corte = Optional.of(simple(Plantillas.personaNoEncontrada(interpretacion.persona()),
-								interpretacion, Resultado.PERSONA_NO_ENCONTRADA));
-					}
-					else {
-						corte = Optional.of(aclaracion(interpretacion, candidatos));
-					}
-				}
-			}
-			if (corte.isPresent()) {
-				return corte.get();
-			}
+			persona = (Map<String, Object>) resuelta;
 		}
+		Long personaId = persona == null ? null : idDe(persona);
+		String personaNombre = persona == null ? null : String.valueOf(persona.get(ClavesDeFila.NOMBRE));
 
 		String texto = interpretacion.usaClase() ? interpretacion.clase() : null;
 		ResultadoDeHerramienta resultado = ejecutar(interpretacion.intencion(), actor,
@@ -178,6 +146,40 @@ public class AsistenteService {
 				resultado.advertencias(), Resultado.RESPONDIDA);
 	}
 
+	/**
+	 * La fila de la persona de la que habla la pregunta, o la respuesta que corta antes (falta el
+	 * nombre, sin permiso, no esta, o hay varias y hay que elegir). Con una opcion elegida se toma
+	 * esa, pero solo si esta entre los candidatos del mismo nombre: un id cualquiera mandado por el
+	 * cliente no se usa a ciegas.
+	 */
+	private Object resolverPersona(ActorDelAsistente actor, Interpretacion interpretacion, String pregunta,
+			RangoDeDias rango, ZoneId zona, Long personaElegida) {
+		if (interpretacion.persona() == null) {
+			return simple(Plantillas.FALTA_PERSONA, interpretacion, Resultado.FALTA_PERSONA);
+		}
+		ResultadoDeHerramienta candidatos = ejecutar(Intencion.BUSCAR_PERSONA, actor,
+				pedido(interpretacion, null, interpretacion.persona(), pregunta, rango, zona));
+		if (candidatos.sinPermiso()) {
+			return simple(Plantillas.SIN_PERMISO, interpretacion, Resultado.SIN_PERMISO);
+		}
+		List<Map<String, Object>> filas = candidatos.filas();
+		Map<String, Object> elegida = personaElegida == null
+				? (filas.size() == 1 ? filas.getFirst() : null)
+				: filas.stream().filter(f -> idDe(f) == personaElegida).findFirst().orElse(null);
+		if (elegida != null) {
+			return elegida;
+		}
+		if (filas.isEmpty() || personaElegida != null) {
+			return simple(Plantillas.personaNoEncontrada(interpretacion.persona()), interpretacion,
+					Resultado.PERSONA_NO_ENCONTRADA);
+		}
+		return aclaracion(interpretacion, candidatos);
+	}
+
+	private static long idDe(Map<String, Object> fila) {
+		return ((Number) fila.get(ClavesDeFila.PERSONA_ID)).longValue();
+	}
+
 	private ResultadoDeHerramienta ejecutar(Intencion intencion, ActorDelAsistente actor, PedidoDeHerramienta pedido) {
 		HerramientaDelAsistente herramienta = herramientas.get(intencion);
 		if (herramienta == null) {
@@ -187,22 +189,21 @@ public class AsistenteService {
 			return herramienta.ejecutar(actor, pedido);
 		}
 		catch (AccessDeniedException e) {
-			// La herramienta deberia devolver denegado(); por si un servicio lo lanza igual.
+			// El unico lugar donde un rechazo del servicio duenio se vuelve "sin permiso" (200). No
+			// hay transaccion compartida que pueda quedar marcada: cada lectura vive en la suya.
 			return ResultadoDeHerramienta.denegado();
 		}
 	}
 
 	private static PedidoDeHerramienta pedido(Interpretacion i, Long personaId, String texto, String pregunta,
 			RangoDeDias rango, ZoneId zona) {
-		return new PedidoDeHerramienta(personaId, texto, pregunta, rango.desde(), rango.hasta(),
-				rango.desde().atStartOfDay(zona).toInstant(), rango.hasta().plusDays(1).atStartOfDay(zona).toInstant(),
-				zona, i.reporte());
+		return new PedidoDeHerramienta(personaId, texto, pregunta, rango.desde(), rango.hasta(), zona, i.reporte());
 	}
 
 	private static RespuestaDelAsistente aclaracion(Interpretacion interpretacion, ResultadoDeHerramienta candidatos) {
 		List<OpcionDePersona> opciones = candidatos.filas().stream()
 				.limit(MAX_OPCIONES)
-				.map(f -> new OpcionDePersona(((Number) f.get(ClavesDeFila.PERSONA_ID)).longValue(),
+				.map(f -> new OpcionDePersona(idDe(f),
 						f.get(ClavesDeFila.NOMBRE) + (f.get(ClavesDeFila.DOCUMENTO) == null ? ""
 								: " · " + f.get(ClavesDeFila.DOCUMENTO))))
 				.toList();

@@ -25,15 +25,15 @@ public record Interpretacion(Intencion intencion, String persona, String clase, 
 	}
 
 	public boolean usaPersona() {
-		return intencion == Intencion.ASISTENCIA_PERSONA || intencion == Intencion.SESION_DE_PERSONA;
+		return intencion.usaPersona();
 	}
 
 	public boolean usaClase() {
-		return intencion == Intencion.ASISTENTES_CLASE;
+		return intencion.usaClase();
 	}
 
 	public boolean usaReporte() {
-		return intencion == Intencion.REPORTE;
+		return intencion.usaReporte();
 	}
 
 	public boolean fueraDeAlcance() {

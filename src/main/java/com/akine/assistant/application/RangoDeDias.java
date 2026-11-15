@@ -14,6 +14,11 @@ public record RangoDeDias(LocalDate desde, LocalDate hasta) {
 		}
 	}
 
+	/** Si el rango es un solo dia. */
+	public boolean esUnDia() {
+		return desde.equals(hasta);
+	}
+
 	public static RangoDeDias delDia(LocalDate dia) {
 		return new RangoDeDias(dia, dia);
 	}

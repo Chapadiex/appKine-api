@@ -145,8 +145,8 @@ final class Plantillas {
 	}
 
 	static String agenda(RangoDeDias rango, ZoneId zona, String sede, List<Map<String, Object>> filas) {
-		String dia = rango.desde().equals(rango.hasta()) ? "El " + dia(rango.desde()) : "Entre el "
-				+ diaCorto(rango.desde()) + " y el " + diaCorto(rango.hasta());
+		String periodo = periodo(rango);
+		String dia = Character.toUpperCase(periodo.charAt(0)) + periodo.substring(1);
 		List<Map<String, Object>> vigentes = filas.stream()
 				.filter(f -> !"CANCELADO".equals(f.get(ClavesDeFila.ESTADO)))
 				.toList();
@@ -156,7 +156,7 @@ final class Plantillas {
 		StringBuilder texto = new StringBuilder(dia).append(" hay ")
 				.append(cantidad(vigentes.size(), "turno", "turnos")).append(" en ").append(sede).append(':');
 		vigentes.stream().limit(MAX_EN_LISTA).forEach(f -> texto.append("\n· ")
-				.append(rango.desde().equals(rango.hasta()) ? hora(f, zona) : cuando(f, zona)).append(' ')
+				.append(rango.esUnDia() ? hora(f, zona) : cuando(f, zona)).append(' ')
 				.append(f.get(ClavesDeFila.PACIENTE)).append(" — ").append(f.get(ClavesDeFila.OFERTA))
 				.append(conProfesional(f)).append(" · ").append(estadoDeTurno(f)));
 		if (vigentes.size() > MAX_EN_LISTA) {
@@ -262,7 +262,7 @@ final class Plantillas {
 	// --- Piezas ------------------------------------------------------------------------------
 
 	static String periodo(RangoDeDias rango) {
-		if (rango.desde().equals(rango.hasta())) {
+		if (rango.esUnDia()) {
 			return "el " + dia(rango.desde());
 		}
 		return "entre el " + diaCorto(rango.desde()) + " y el " + diaCorto(rango.hasta());

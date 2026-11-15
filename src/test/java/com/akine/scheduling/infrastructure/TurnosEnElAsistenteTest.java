@@ -2,7 +2,6 @@ package com.akine.scheduling.infrastructure;
 
 import com.akine.assistant.spi.ActorDelAsistente;
 import com.akine.assistant.spi.PedidoDeHerramienta;
-import com.akine.assistant.spi.ResultadoDeHerramienta;
 import com.akine.scheduling.application.FiltroDeTurnos;
 import com.akine.scheduling.application.OperatingActor;
 import com.akine.scheduling.application.RecepcionService;
@@ -15,7 +14,7 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Set;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -33,7 +32,7 @@ class TurnosEnElAsistenteTest {
 	private final RecepcionService recepcion = mock(RecepcionService.class);
 
 	private static PedidoDeHerramienta pedido(Long personaId, LocalDate desde, LocalDate hasta) {
-		return new PedidoDeHerramienta(personaId, null, "", desde, hasta, null, null, ZoneId.of("UTC"), null);
+		return new PedidoDeHerramienta(personaId, null, "", desde, hasta, ZoneId.of("UTC"), null);
 	}
 
 	@Test
@@ -49,14 +48,14 @@ class TurnosEnElAsistenteTest {
 	}
 
 	@Test
-	void filtra_por_la_persona_y_un_rechazo_del_servicio_es_denegado() {
+	void filtra_por_la_persona_y_deja_propagar_el_rechazo_del_servicio() {
 		when(recepcion.delRango(any(), anyLong(), any(), any(), any(), any(), anyBoolean(), any()))
 				.thenThrow(new AccessDeniedException("sin turno:read"));
 
-		ResultadoDeHerramienta r = new TurnosEnElAsistente.AsistenciaDePersona(recepcion)
-				.ejecutar(ACTOR, pedido(5L, MANANA, MANANA.plusDays(6)));
-
-		assertThat(r.sinPermiso()).isTrue();
+		// El asistente lo convierte en "sin permiso" en un solo lugar (AsistenteService.ejecutar).
+		assertThatThrownBy(() -> new TurnosEnElAsistente.AsistenciaDePersona(recepcion)
+				.ejecutar(ACTOR, pedido(5L, MANANA, MANANA.plusDays(6))))
+				.isInstanceOf(AccessDeniedException.class);
 		verify(recepcion).delRango(any(OperatingActor.class), eq(3L), eq(MANANA), eq(MANANA.plusDays(7)),
 				isNull(), isNull(), eq(true), eq(new FiltroDeTurnos(Set.of(), 5L)));
 	}

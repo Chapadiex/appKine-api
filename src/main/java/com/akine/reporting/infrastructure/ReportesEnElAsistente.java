@@ -13,14 +13,12 @@ import com.akine.reporting.spi.AdvertenciaDeReporte;
 import com.akine.reporting.spi.AporteDeReporte;
 import com.akine.reporting.spi.IndicadorDeReporte;
 import com.akine.reporting.spi.ReporteCode;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * "¿Cuanto se facturo?" Genera el reporte de M23 con {@link ReporteService#generar}, con los mismos
@@ -33,7 +31,6 @@ import java.util.Set;
 @Component
 class ReportesEnElAsistente implements HerramientaDelAsistente {
 
-	static final Set<String> ADMITIDOS = Set.of("ECONOMICO", "TURNOS", "CLASES");
 	static final String ENLACE = "/reportes";
 	static final String OMITIDAS = "Hay secciones de este reporte que tu rol no puede ver; no se muestran.";
 
@@ -50,19 +47,12 @@ class ReportesEnElAsistente implements HerramientaDelAsistente {
 
 	@Override
 	public ResultadoDeHerramienta ejecutar(ActorDelAsistente actor, PedidoDeHerramienta pedido) {
-		if (pedido.reporte() == null || !ADMITIDOS.contains(pedido.reporte())) {
-			throw new IllegalArgumentException("Reporte no admitido por el asistente: " + pedido.reporte());
-		}
 		OperatingActor operador = new OperatingActor(actor.accountId(), actor.platformAdmin(),
 				actor.organizationId(), actor.consultorioId());
-		ReporteView reporte;
-		try {
-			reporte = reportes.generar(operador, actor.consultorioId(), ReporteCode.valueOf(pedido.reporte()),
-					pedido.desde(), pedido.hasta());
-		}
-		catch (AccessDeniedException e) {
-			return ResultadoDeHerramienta.denegado();
-		}
+		// Los dos extremos inclusive, igual que el pedido. El codigo ya viene validado contra
+		// Intencion.REPORTES por el interpretador.
+		ReporteView reporte = reportes.generar(operador, actor.consultorioId(), ReporteCode.valueOf(pedido.reporte()),
+				pedido.desde(), pedido.hasta());
 		List<Map<String, Object>> filas = new ArrayList<>();
 		for (AporteDeReporte seccion : reporte.secciones()) {
 			for (IndicadorDeReporte indicador : seccion.indicadores()) {

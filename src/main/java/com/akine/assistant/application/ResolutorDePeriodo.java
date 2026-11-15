@@ -1,6 +1,7 @@
 package com.akine.assistant.application;
 
-import java.text.Normalizer;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
+
 import java.time.DateTimeException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -75,7 +76,7 @@ public final class ResolutorDePeriodo {
 		if (crudo == null) {
 			return null;
 		}
-		String valor = sinTildes(crudo.strip()).toUpperCase(Locale.ROOT).replace(' ', '_');
+		String valor = TextoDeBusqueda.plegar(crudo.strip()).toUpperCase(Locale.ROOT).replace(' ', '_');
 		if (valor.isEmpty() || valor.equals("NULL")) {
 			return null;
 		}
@@ -184,9 +185,5 @@ public final class ResolutorDePeriodo {
 
 	private static RangoDeDias mes(YearMonth mes) {
 		return new RangoDeDias(mes.atDay(1), mes.atEndOfMonth());
-	}
-
-	static String sinTildes(String texto) {
-		return Normalizer.normalize(texto, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
 	}
 }

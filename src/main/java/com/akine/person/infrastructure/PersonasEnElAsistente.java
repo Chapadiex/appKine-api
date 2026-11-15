@@ -12,7 +12,6 @@ import com.akine.person.application.PersonaEstadoFiltro;
 import com.akine.person.application.PersonaPagina;
 import com.akine.person.application.PersonaService;
 import com.akine.person.application.PersonaView;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -21,7 +20,7 @@ import java.util.Map;
 
 /**
  * Busca personas del padron para que el asistente resuelva un nombre (diseno, §4.4). Llama a
- * {@link PersonaService#buscar}, que exige {@code paciente:read}: sin ese permiso, denegado.
+ * {@link PersonaService#buscar}, que exige {@code paciente:read}.
  *
  * <p>Solo personas activas, y el documento enmascarado: alcanza para distinguir dos homonimos sin
  * mostrar el numero entero en el chat.
@@ -46,14 +45,8 @@ class PersonasEnElAsistente implements HerramientaDelAsistente {
 	public ResultadoDeHerramienta ejecutar(ActorDelAsistente actor, PedidoDeHerramienta pedido) {
 		OperatingActor operador = new OperatingActor(actor.accountId(), actor.platformAdmin(),
 				actor.organizationId(), actor.consultorioId());
-		PersonaPagina pagina;
-		try {
-			pagina = personas.buscar(operador,
-					new PersonaBusqueda(pedido.texto(), PersonaEstadoFiltro.ACTIVO, null), 0, MAXIMO);
-		}
-		catch (AccessDeniedException e) {
-			return ResultadoDeHerramienta.denegado();
-		}
+		PersonaPagina pagina = personas.buscar(operador,
+				new PersonaBusqueda(pedido.texto(), PersonaEstadoFiltro.ACTIVO, null), 0, MAXIMO);
 		List<Map<String, Object>> filas = pagina.contenido().stream().map(PersonasEnElAsistente::fila).toList();
 		return new ResultadoDeHerramienta(filas, List.of(), null, false);
 	}

@@ -4,6 +4,7 @@ import com.akine.assistant.domain.port.MensajeChat;
 import com.akine.assistant.domain.port.MensajeChat.Rol;
 import com.akine.assistant.domain.port.ModeloDeLenguaje;
 import com.akine.assistant.spi.Intencion;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
@@ -47,8 +48,6 @@ public class Interpretador {
 	static final Set<Intencion> ELEGIBLES = EnumSet.of(Intencion.ASISTENCIA_PERSONA,
 			Intencion.SESION_DE_PERSONA, Intencion.AGENDA_DEL_DIA, Intencion.ASISTENTES_CLASE,
 			Intencion.REPORTE, Intencion.FUERA_DE_ALCANCE);
-
-	static final Set<String> REPORTES = Set.of("ECONOMICO", "TURNOS", "CLASES");
 
 	/** Mas atras que esto el modelo de 4B se confunde y el prompt crece sin aportar. */
 	static final int MAX_TURNOS_PREVIOS = 3;
@@ -125,11 +124,10 @@ public class Interpretador {
 		if (intencion == Intencion.REPORTE && reporte == null) {
 			return Interpretacion.FUERA_DE_ALCANCE;
 		}
-		boolean usaPersona = intencion == Intencion.ASISTENCIA_PERSONA || intencion == Intencion.SESION_DE_PERSONA;
 		return new Interpretacion(
 				intencion,
-				usaPersona ? persona(texto(raiz, "persona")) : null,
-				intencion == Intencion.ASISTENTES_CLASE ? clase(texto(raiz, "clase")) : null,
+				intencion.usaPersona() ? persona(texto(raiz, "persona")) : null,
+				intencion.usaClase() ? clase(texto(raiz, "clase")) : null,
 				ResolutorDePeriodo.normalizar(texto(raiz, "periodo")),
 				reporte);
 	}
@@ -161,7 +159,7 @@ public class Interpretador {
 
 	/** "¿y la semana pasada?", "y a pilates", "Y la de Pedro?". */
 	static boolean esSeguimiento(String pregunta) {
-		String normal = ResolutorDePeriodo.sinTildes(pregunta).toLowerCase(Locale.ROOT).replaceFirst("^[¿¡\\s]+", "");
+		String normal = TextoDeBusqueda.plegar(pregunta).replaceFirst("^[¿¡\\s]+", "");
 		return normal.equals("y") || normal.startsWith("y ");
 	}
 
@@ -182,8 +180,8 @@ public class Interpretador {
 		if (valor == null) {
 			return null;
 		}
-		String normal = ResolutorDePeriodo.sinTildes(valor.strip()).toUpperCase(Locale.ROOT);
-		return REPORTES.contains(normal) ? normal : null;
+		String normal = TextoDeBusqueda.plegar(valor.strip()).toUpperCase(Locale.ROOT);
+		return Intencion.REPORTES.contains(normal) ? normal : null;
 	}
 
 	/** Sin titulos adelante ("el senor Rodriguez" es "Rodriguez"); respeta como lo escribio el usuario. */
@@ -193,7 +191,7 @@ public class Interpretador {
 		}
 		List<String> palabras = new ArrayList<>(List.of(valor.strip().split("\\s+")));
 		while (!palabras.isEmpty() && TITULOS.contains(
-				ResolutorDePeriodo.sinTildes(palabras.getFirst()).toLowerCase(Locale.ROOT))) {
+				TextoDeBusqueda.plegar(palabras.getFirst()))) {
 			palabras.removeFirst();
 		}
 		String limpio = String.join(" ", palabras).strip();

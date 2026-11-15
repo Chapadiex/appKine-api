@@ -7,7 +7,8 @@ package com.akine.assistant.spi;
  *
  * <p>Cada implementacion traduce {@link ActorDelAsistente} a su {@code OperatingActor} y llama a su
  * servicio de aplicacion, que exige el permiso. <b>Solo lectura.</b> Si el servicio rechaza al actor,
- * devuelve {@link ResultadoDeHerramienta#denegado()} en vez de propagar la excepcion.
+ * su {@code AccessDeniedException} se deja propagar: el asistente la convierte en una respuesta "sin
+ * permiso" en un solo lugar, no en cada herramienta.
  */
 public interface HerramientaDelAsistente {
 

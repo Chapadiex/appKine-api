@@ -12,17 +12,16 @@ import com.akine.assistant.spi.HerramientaDelAsistente;
 import com.akine.assistant.spi.Intencion;
 import com.akine.assistant.spi.PedidoDeHerramienta;
 import com.akine.assistant.spi.ResultadoDeHerramienta;
-import org.springframework.security.access.AccessDeniedException;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import org.springframework.stereotype.Component;
 
-import java.text.Normalizer;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * "¿Quienes vinieron a yoga?" Lista las clases de la sede en el periodo con
@@ -34,13 +33,17 @@ import java.util.Map;
  * modelo y, entre esas, si la pregunta nombra un titulo completo mas largo que eso, gana el mas
  * largo. Asi "yoga para embarazadas" no trae tambien "yoga" a secas, y "yoga" trae las dos si las
  * dos existen.
+ *
+ * <p>Se pide el detalle de a lo sumo {@link #MAX_CLASES} clases, las mismas que la respuesta muestra:
+ * cada detalle es una lectura propia con su control de permiso.
  */
 @Component
 class ClasesEnElAsistente implements HerramientaDelAsistente {
 
-	static final int MAX_CLASES = 10;
+	static final int MAX_CLASES = 3;
 	static final int MAX_PARTICIPANTES = 200;
 	static final String ENLACE = "/asistencia";
+	private static final Pattern ESPACIOS = Pattern.compile("\\s+");
 
 	private final ClaseService clases;
 	private final AsistenciaService asistencias;
@@ -59,24 +62,19 @@ class ClasesEnElAsistente implements HerramientaDelAsistente {
 	public ResultadoDeHerramienta ejecutar(ActorDelAsistente actor, PedidoDeHerramienta pedido) {
 		OperatingActor operador = new OperatingActor(actor.accountId(), actor.platformAdmin(),
 				actor.organizationId(), actor.consultorioId());
-		try {
-			List<ClaseView> candidatas = elegir(
-					clases.listar(operador, actor.consultorioId(), pedido.desdeInstante(), pedido.hastaInstante()),
-					pedido.texto(), pedido.pregunta(), Instant.now());
-			List<Map<String, Object>> filas = new ArrayList<>();
-			for (ClaseView clase : candidatas) {
-				DetalleOperativoView detalle = asistencias.detalleOperativo(operador, actor.consultorioId(),
-						clase.id(), 0, MAX_PARTICIPANTES);
-				if (detalle.contenido().isEmpty()) {
-					filas.add(fila(clase, null));
-				}
-				detalle.contenido().forEach(p -> filas.add(fila(clase, p)));
+		List<ClaseView> candidatas = elegir(
+				clases.listar(operador, actor.consultorioId(), pedido.desdeInstante(), pedido.hastaInstante()),
+				pedido.texto(), pedido.pregunta(), Instant.now());
+		List<Map<String, Object>> filas = new ArrayList<>();
+		for (ClaseView clase : candidatas) {
+			DetalleOperativoView detalle = asistencias.detalleOperativo(operador, actor.consultorioId(),
+					clase.id(), 0, MAX_PARTICIPANTES);
+			if (detalle.contenido().isEmpty()) {
+				filas.add(fila(clase, null));
 			}
-			return new ResultadoDeHerramienta(filas, List.of(), ENLACE, false);
+			detalle.contenido().forEach(p -> filas.add(fila(clase, p)));
 		}
-		catch (AccessDeniedException e) {
-			return ResultadoDeHerramienta.denegado();
-		}
+		return new ResultadoDeHerramienta(filas, List.of(), ENLACE, false);
 	}
 
 	/**
@@ -88,22 +86,26 @@ class ClasesEnElAsistente implements HerramientaDelAsistente {
 			return List.of();
 		}
 		String buscado = normal(texto);
-		List<ClaseView> coinciden = enElPeriodo.stream()
-				.filter(c -> c.titulo() != null && normal(c.titulo()).contains(buscado))
-				.toList();
 		String enLaPregunta = normal(pregunta == null ? "" : pregunta);
+		record Candidata(ClaseView clase, String titulo) {
+		}
+		List<Candidata> coinciden = enElPeriodo.stream()
+				.filter(c -> c.titulo() != null)
+				.map(c -> new Candidata(c, normal(c.titulo())))
+				.filter(c -> c.titulo().contains(buscado))
+				.toList();
 		int masLargo = coinciden.stream()
-				.map(c -> normal(c.titulo()))
+				.map(Candidata::titulo)
 				.filter(enLaPregunta::contains)
 				.mapToInt(String::length)
 				.max()
 				.orElse(-1);
 		// Solo se acota si la pregunta nombra un titulo MAS LARGO que lo que entendio el modelo: es el
 		// caso en que el modelo lo acorto. Si nombra exactamente "yoga", vienen todas las de yoga.
-		List<ClaseView> elegidas = masLargo <= buscado.length() ? coinciden
-				: coinciden.stream().filter(c -> normal(c.titulo()).length() == masLargo
-						&& enLaPregunta.contains(normal(c.titulo()))).toList();
-		return elegidas.stream()
+		return coinciden.stream()
+				.filter(c -> masLargo <= buscado.length()
+						|| (c.titulo().length() == masLargo && enLaPregunta.contains(c.titulo())))
+				.map(Candidata::clase)
 				.sorted(Comparator.comparing((ClaseView c) -> c.inicio().isAfter(ahora))
 						.thenComparing(ClaseView::inicio, Comparator.reverseOrder()))
 				.limit(MAX_CLASES)
@@ -123,8 +125,8 @@ class ClasesEnElAsistente implements HerramientaDelAsistente {
 		return fila;
 	}
 
+	/** Plegado de la plataforma (sin acentos, minusculas) con los espacios colapsados. */
 	static String normal(String texto) {
-		return Normalizer.normalize(texto, Normalizer.Form.NFD).replaceAll("\\p{M}", "")
-				.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip();
+		return ESPACIOS.matcher(TextoDeBusqueda.plegar(texto)).replaceAll(" ").strip();
 	}
 }
