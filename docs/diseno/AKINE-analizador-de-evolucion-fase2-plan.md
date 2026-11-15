@@ -71,7 +71,7 @@ decisiones del autor A-1 a A-16 (§12) y el design challenge (§13).
 
 ---
 
-## Tarea 1 — Requisito funcional, reservas y sonda
+### Task 1: Requisito funcional, reservas y sonda
 
 **Archivos:**
 - `docs/producto/AKINE_Requerimientos_Integrados.md` (M31);
@@ -94,7 +94,7 @@ decisiones del autor A-1 a A-16 (§12) y el design challenge (§13).
 - [ ] Borrar la sonda.
 - [ ] Commit: `docs(m31): requisitos de la fase 2 y reserva de V18`.
 
-## Tarea 2 — Puerto del modelo y detector en `platform.spi`
+### Task 2: Puerto del modelo y detector en `platform.spi`
 
 **Archivos nuevos (`platform.spi`):**
 - `platform/spi/modelo/ModeloDeLenguaje.java`, `MensajeChat.java`, `OpcionesGeneracion.java`,
@@ -156,7 +156,7 @@ public final class DetectorDeInstrucciones {
   `./mvnw -o verify -Dtest=none -Dsurefire.failIfNoSpecifiedTests=false -Dit.test="Biblioteca*IT,Asistente*IT" -Djacoco.skip=true`.
 - [ ] Commit: `refactor(platform): un solo puerto del modelo y el detector de instrucciones (D-3)`.
 
-## Tarea 3 — `AnalizadorDelCaso`: el cálculo de la fase 1 sin su puerta
+### Task 3: `AnalizadorDelCaso`: el cálculo de la fase 1 sin su puerta
 
 **Archivos:**
 - nuevo `encounter/application/AnalizadorDelCaso.java`;
@@ -194,7 +194,7 @@ record CasoAnalizado(
   `./mvnw -o verify -Dtest="com.akine.encounter.**.*Evolucion*Test" -Dit.test="EvolucionDelCasoIT" -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true`.
 - [ ] Commit: `refactor(encounter): separar el cálculo de la evolución de su puerta`.
 
-## Tarea 4 — Dominio: elector, prompt y validador
+### Task 4: Dominio: elector, prompt y validador
 
 **Archivos nuevos en `encounter/domain/evolucion/sugerencias/`:**
 - `ElectorDeHallazgos.java`;
@@ -266,7 +266,7 @@ final class ValidadorDeSugerencias {
 - [ ] Correr: `./mvnw -o test -Dtest="com.akine.encounter.domain.evolucion.**.*Test" -Djacoco.skip=true`.
 - [ ] Commit: `feat(encounter): elector, prompt y validador de sugerencias de evolución`.
 
-## Tarea 5 — Tabla `sugerencia_evolucion` y su persistencia
+### Task 5: Tabla `sugerencia_evolucion` y su persistencia
 
 **Archivos:**
 - `src/main/resources/db/migration/V18__m31_sugerencia_evolucion.sql`;
@@ -292,7 +292,7 @@ final class ValidadorDeSugerencias {
   - `findDelCaso(org, casoId, Pageable)`.
 - [ ] Commit: `feat(encounter): tabla sugerencia_evolucion (V18)`.
 
-## Tarea 6 — Servicio, endpoints, permiso, auditoría y contrato
+### Task 6: Servicio, endpoints, permiso, auditoría y contrato
 
 **Archivos nuevos:**
 - `encounter/application/SugerenciasDeEvolucionService.java`;
@@ -377,7 +377,7 @@ final class ValidadorDeSugerencias {
 - [ ] `./mvnw -o test -Dtest="ModuleArchitectureTest,SchemaNameCollisionTest,RolePermissionsTest" -Djacoco.skip=true`.
 - [ ] Commit: `feat(encounter): sugerencias de evolución con respaldo, contrato 0.171.0`.
 
-## Tarea 7 — Casos de prueba y evaluación con el modelo real
+### Task 7: Casos de prueba y evaluación con el modelo real
 
 **Archivos:**
 - `src/test/resources/evolucion/casos.yaml`;
@@ -407,7 +407,7 @@ final class ValidadorDeSugerencias {
   `akine.evolucion.sugerencias.modelo.nombre`.
 - [ ] Commit: `test(evolucion): set de 24 casos sintéticos y evaluación del modelo`.
 
-## Tarea 8 — Frontend: sugerencias en la tarjeta "Evolución"
+### Task 8: Frontend: sugerencias en la tarjeta "Evolución"
 
 Worktree `wt-WEB-EVOLUCION-F2` desde `origin/main` de `appKine-web`. Antes, leer su `CLAUDE.md`, su
 `DESIGN.md` y `docs/ux/00-plan-refactor-ux-ui.md` (§3.2 y §3.4).
@@ -448,7 +448,7 @@ Worktree `wt-WEB-EVOLUCION-F2` desde `origin/main` de `appKine-web`. Antes, leer
   encendida y el modelo de prueba.
 - [ ] Commit local.
 
-## Tarea 9 — Cierre
+### Task 9: Cierre
 
 - [ ] `/simplify` y `/code-review` sobre el diff de cada repo.
 - [ ] Pila aislada con `akine_rag` y Ollama: pedir sugerencias sobre un caso sintético, verificar
