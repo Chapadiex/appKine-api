@@ -2,7 +2,7 @@
 
 Se adelantó la tarea B-5 del plan para responder una sola pregunta: **¿alcanza `qwen3:4b-instruct` para
 interpretar las preguntas del asistente?** No hay código del asistente: sólo el prompt
-(`prompt-interpretador.txt`), los casos y `evaluar.mjs`, que llama a Ollama igual que lo haría el backend
+(`prompt-interpretador.txt`, hoy en `src/main/resources/asistente/`), los casos y `evaluar.mjs`, que llama a Ollama igual que lo haría el backend
 (modo JSON, temperatura 0, `num_ctx` 4096).
 
 Pila: notebook con RTX 4050 (6 GB) y CPU de 12 hilos, Ollama local, Q4_K_M.

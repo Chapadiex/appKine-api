@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 const dir = dirname(fileURLToPath(import.meta.url));
 const modelo = process.argv[2] ?? 'qwen3:4b-instruct';
 const url = (process.argv[3] ?? 'http://localhost:11434').replace(/\/+$/, '') + '/api/chat';
-const sistema = readFileSync(join(dir, 'prompt-interpretador.txt'), 'utf8');
+// El prompt es el mismo que usa el backend: se mide lo que corre.
+const sistema = readFileSync(join(dir, '../../../src/main/resources/asistente/prompt-interpretador.txt'), 'utf8');
 const casos = JSON.parse(readFileSync(join(dir, process.env.CASOS ?? 'preguntas.json'), 'utf8'));
 
 const HONORIFICOS = new Set(['sr', 'sra', 'senor', 'senora', 'el', 'la', 'don', 'dona']);

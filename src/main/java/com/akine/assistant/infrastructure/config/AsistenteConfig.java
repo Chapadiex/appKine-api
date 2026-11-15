@@ -1,14 +1,21 @@
 package com.akine.assistant.infrastructure.config;
 
+import com.akine.assistant.application.Interpretador;
 import com.akine.assistant.domain.AsistenteAjustes;
 import com.akine.assistant.domain.port.ModeloDeLenguaje;
 import com.akine.assistant.infrastructure.ModeloDelAsistenteDePrueba;
 import com.akine.assistant.infrastructure.OllamaModeloDelAsistente;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ClassPathResource;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Set;
 
@@ -25,6 +32,7 @@ import java.util.Set;
 @EnableConfigurationProperties(AsistenteProperties.class)
 public class AsistenteConfig {
 
+	static final String PROMPT = "asistente/prompt-interpretador.txt";
 	static final Set<String> TIPOS_DE_MODELO = Set.of("ollama", "prueba");
 
 	@Bean
@@ -40,6 +48,28 @@ public class AsistenteConfig {
 		if (properties.enabled() && !TIPOS_DE_MODELO.contains(tipo)) {
 			throw new IllegalStateException("akine.asistente.modelo.tipo='" + tipo
 					+ "' no es valido: tiene que ser ollama o prueba");
+		}
+	}
+
+	/**
+	 * El interpretador existe siempre; el modelo lo pide en cada llamada, asi que con el asistente
+	 * apagado no hay bean de modelo y nadie lo llama (el servicio corta antes con 409).
+	 */
+	@Bean
+	public Interpretador interpretadorDelAsistente(ObjectProvider<ModeloDeLenguaje> modelo, AsistenteAjustes ajustes) {
+		return new Interpretador(modelo::getObject, leerPrompt(PROMPT), ajustes.plazo());
+	}
+
+	/**
+	 * El mismo archivo que mide {@code docs/asistente/evaluacion/evaluar.mjs}: lo que corre es lo que
+	 * se midio. Si falta, la aplicacion no arranca.
+	 */
+	static String leerPrompt(String ruta) {
+		try (InputStream entrada = new ClassPathResource(ruta).getInputStream()) {
+			return new String(entrada.readAllBytes(), StandardCharsets.UTF_8);
+		}
+		catch (IOException e) {
+			throw new UncheckedIOException("No se pudo leer el prompt del interpretador: " + ruta, e);
 		}
 	}
 

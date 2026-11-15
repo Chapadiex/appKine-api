@@ -52,7 +52,19 @@ com.akine.assistant
 - `PermissionCodes.ASISTENTE_USE` y su alta en el catálogo de permisos.
 - **Verificar:** `ModuleArchitectureTest` en verde con el módulo vacío.
 
-### B-2 · Interpretador (1 día)
+### B-2 · Interpretador (1 día) — hecho el 15/11
+
+> **Hecho.** `Interpretador`, `Interpretacion`, `TurnoPrevio`, `ResolutorDePeriodo` y `RangoDeDias` en
+> `application`, más el bean `interpretadorDelAsistente`, que lee el prompt del classpath. Decisiones que no
+> estaban en el plan: un `REPORTE` sin reporte válido es `FUERA_DE_ALCANCE` (no se repregunta); en un
+> seguimiento se heredan sólo los campos que usa la intención nueva, y nunca desde ni hacia
+> `FUERA_DE_ALCANCE`; el historial se recorta a los últimos 3 turnos; una pregunta de más de 300 caracteres
+> no llama al modelo; un día de la semana va hacia adelante sólo para `AGENDA_DEL_DIA`, y un mes posterior al
+> actual se toma del año pasado.
+> **Verificado:** 16 unitarios del interpretador y 36 del resolutor. `InterpretadorContraOllamaTest` (corre sólo
+> con `AKINE_OLLAMA_URL`, así que el CI lo saltea) pasó los 65 casos por el código Java real contra Ollama:
+> **intención 65/65 y completos 63/65**. Las dos fallas son los títulos de clase compuestos, que se resuelven en B-4.
+> Ojo: el prompt v3 se ajustó viendo esos casos, así que la medición limpia sigue pendiente para B-5.
 
 - `Interpretador.interpretar(pregunta, historial) → Interpretacion`: **una sola** llamada en modo
   JSON. El prompt de sistema lista las cinco intenciones, el vocabulario de períodos (§4.5 del
@@ -65,7 +77,7 @@ com.akine.assistant
   Lunes como inicio de semana. Normaliza los alias (`MES:PASADO` → `MES_PASADO`) y **extrae las fechas
   escritas del texto original** (`20/11`) sin usar el año del modelo.
 - Seguimientos: un campo vacío en la interpretación se hereda de la interpretación anterior.
-- Arranca con el prompt ya medido: `docs/asistente/evaluacion/prompt-interpretador.txt` (v3).
+- Arranca con el prompt ya medido (v3), que se movió a `src/main/resources/asistente/prompt-interpretador.txt`: el backend y `evaluar.mjs` leen el mismo archivo.
 - **Tests:** unitarios de `ResolutorDePeriodo` (bordes de semana y mes, zona) y del parseo del JSON
   con `ModeloDeLenguajeDePrueba`. Nada más.
 
