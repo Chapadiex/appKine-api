@@ -149,7 +149,12 @@ Esto da la primera respuesta real y valida el patrón entero.
   flag apagado responde 409. Son los tres que prueban las reglas, y ninguno necesita Ollama.
 - `/simplify`, `/code-review` y PR.
 
-## 2. Frontend — `appKine-web`
+## 2. Frontend — `appKine-web` — hecho el 15/11
+
+> **Hecho** en la rama `akine-asistente-web` (worktree `wt-WEB-ASISTENTE`). Cliente 0.170.0, página `/asistente` con ruta
+> perezosa en lugar del panel lateral (bitácora, entrada 24), cinco specs y la prueba en el navegador contra la pila
+> local: charla, seguimiento, aclaración con elección de persona, tabla de datos y enlace; en claro y en oscuro, a
+> escritorio y a 375 px, sin desborde. Sin E2E, como preveía W-3.
 
 Arranca cuando el contrato del backend esté publicado (después de B-6). Se puede maquetar antes
 contra un mock.
