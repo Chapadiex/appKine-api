@@ -13,6 +13,7 @@ import com.akine.encounter.domain.exception.PracticaNoUtilizableException;
 import com.akine.encounter.domain.exception.ProfesionalNoAsignableException;
 import com.akine.encounter.domain.exception.TratamientoNoAccesibleException;
 import com.akine.encounter.domain.exception.EvaluacionIncoherenteException;
+import com.akine.encounter.domain.exception.EvolucionDeshabilitadaException;
 import com.akine.encounter.domain.exception.MedicionDefinicionInactivaException;
 import com.akine.encounter.domain.exception.MedicionDefinicionNoAccesibleException;
 import com.akine.encounter.domain.exception.MedicionFueraDeRangoException;
@@ -127,6 +128,12 @@ public class EncounterProblemHandler {
 		log.debug("Consultorio no accesible desde la atencion: consultorioId={}",
 				exception.getConsultorioId());
 		return noEncontrado("El consultorio no existe.");
+	}
+
+	@ExceptionHandler(EvolucionDeshabilitadaException.class)
+	public ProblemDetail handleEvolucionDeshabilitada(EvolucionDeshabilitadaException exception) {
+		log.debug("Evolucion del caso pedida con la funcion apagada");
+		return noEncontrado("La evolucion del caso no esta disponible.");
 	}
 
 	@ExceptionHandler(SesionNotAccessibleException.class)

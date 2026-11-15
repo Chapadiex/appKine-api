@@ -175,7 +175,7 @@ akine:
   # Version SemVer del contrato OpenAPI publicado. Debe coincidir con la propiedad
   # akine.contract.version del pom.xml.
   contract:
-    version: 0.169.0
+    version: 0.170.0
   security:
     cors:
       # Nunca comodin: allowCredentials(true) lo prohibe y el frontend necesita credentials
@@ -227,6 +227,11 @@ akine:
 
   # Biblioteca de libros PDF con busqueda vectorial (M30). Apagada por defecto: apagada no crea
   # workers ni modelo y toda operacion responde 409 biblioteca-deshabilitada.
+  # Evolucion del caso clinico (M31). Apagada por defecto: responde 404. Los umbrales de las
+  # alertas (akine.evolucion.minimo-sesiones, dolor-ventana, ...) arrancan en los valores del
+  # diseno y esperan aprobacion clinica (RN-M31-004): ver EvolucionProperties.
+  evolucion:
+    enabled: ${AKINE_EVOLUCION_ENABLED:false}
   biblioteca:
     enabled: ${AKINE_BIBLIOTECA_ENABLED:false}
     # Consulta con un modelo de lenguaje local (RF-M30-012). Exige tambien biblioteca.enabled.

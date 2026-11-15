@@ -60,6 +60,17 @@ public class ResourceMedicionDirectory implements MedicionDirectory {
 	 * <p>{@code organizationId} nulo deja solo el catalogo de plataforma, que es lo correcto para
 	 * un actor sin contexto de tenant: nunca "todo", que seria filtrar por nada.
 	 */
+	@Override
+	@Transactional(readOnly = true)
+	public List<MedicionDefinicionSnapshot> findTodas(Long organizationId, java.util.Collection<Long> definicionIds) {
+		if (definicionIds.isEmpty()) {
+			return List.of();
+		}
+		return definiciones.findVisibles(definicionIds, owners(organizationId)).stream()
+				.map(MedicionDefinicionView::snapshotDe)
+				.toList();
+	}
+
 	private static List<Long> owners(Long organizationId) {
 		return organizationId == null
 				? List.of(OWNER_PLATAFORMA)
