@@ -406,7 +406,15 @@ public enum PermissionCode {
 	 * {@code ADMINISTRATIVO}, con alcance de organizacion; no se otorga por grant. Es solo la
 	 * puerta: lo que cada respuesta muestra lo decide el permiso de la herramienta que la produce.
 	 */
-	ASISTENTE_USE("asistente:use");
+	ASISTENTE_USE("asistente:use"),
+
+	/**
+	 * Pedir y responder sugerencias de revision sobre la evolucion de un Caso Clinico (M31 fase 2,
+	 * {@code docs/diseno/AKINE-analizador-de-evolucion-fase2.md} §8.2). Por base solo para el
+	 * {@code PROFESIONAL}, con alcance de organizacion; no se otorga por grant. Se exige ademas de
+	 * {@code hc:read} y relacion asistencial o justificacion.
+	 */
+	EVOLUCION_SUGERIR("evolucion:sugerir");
 
 	private final String code;
 

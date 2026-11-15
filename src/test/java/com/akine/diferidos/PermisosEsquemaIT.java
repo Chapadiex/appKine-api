@@ -294,7 +294,9 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						// M30, RF-M30-012: consultar la biblioteca, por base.
 						"biblioteca:consultar",
 						// Asistente de datos (D-2): la puerta, por base.
-						"asistente:use");
+						"asistente:use",
+						// M31 fase 2: sugerencias de evolucion, solo el profesional.
+						"evolucion:sugerir");
 
 		membershipService.revoke(actorDe(tenant), tenant.organizationId(), membership, MOTIVO);
 

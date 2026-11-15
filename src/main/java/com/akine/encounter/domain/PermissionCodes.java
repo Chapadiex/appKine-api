@@ -25,6 +25,9 @@ public final class PermissionCodes {
 	 */
 	public static final String CONSULTORIO_MANAGE = "consultorio:manage";
 
+	/** Pedir y responder sugerencias de evolucion de un caso (M31 fase 2). Solo el PROFESIONAL. */
+	public static final String EVOLUCION_SUGERIR = "evolucion:sugerir";
+
 	private PermissionCodes() {
 	}
 }

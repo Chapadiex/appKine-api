@@ -109,7 +109,7 @@ public class EvolucionDelCasoService {
 				new ActorClinico(actor.accountId(), actor.platformAdmin(), organizationId, consultorioId),
 				calculo.historia().personaId(), justificacion, OPERACION);
 
-		List<String> advertencias = advertencias(organizationId, caso, calculo.cerradas(), calculo.recortada());
+		List<String> advertencias = advertencias(sesiones, organizationId, calculo);
 		List<EvolucionDelCasoView.HallazgoView> hallazgos = analisis.hallazgos().stream()
 				.map(h -> new EvolucionDelCasoView.HallazgoView(
 						h.codigo(), h.severidad(), TextosDeHallazgo.de(h), h.sesiones(), h.turnos()))
@@ -124,8 +124,11 @@ public class EvolucionDelCasoService {
 				caso.objetivoTerapeutico(), analisis, hallazgos, calculo.plan().orElse(null), advertencias);
 	}
 
-	private List<String> advertencias(
-			long organizationId, CasoDetalleSnapshot caso, List<Sesion> cerradas, boolean recortada) {
+	/** Lo que el analisis dejo afuera: el recorte por tope y las sesiones del periodo sin caso. Tambien la fase 2. */
+	static List<String> advertencias(SesionRepositoryPort sesiones, long organizationId, CasoAnalizado calculo) {
+		CasoDetalleSnapshot caso = calculo.caso();
+		List<Sesion> cerradas = calculo.cerradas();
+		boolean recortada = calculo.recortada();
 
 		List<String> advertencias = new ArrayList<>();
 		if (recortada) {

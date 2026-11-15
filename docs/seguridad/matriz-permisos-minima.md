@@ -1037,3 +1037,15 @@ El asistente que responde preguntas sobre turnos, sesiones, clases y reportes (`
 - **Es sólo la puerta.** Cada respuesta la produce una herramienta que llama al servicio dueño del dato con el actor del usuario, y ese servicio exige su propio permiso (`turno:read`, `inscripcion:read`, `reporte:read`, `paciente:read`) con su alcance. Lo que muestra cada respuesta es lo mismo que ese rol ve en la pantalla correspondiente: un `PROFESIONAL` con alcance propio ve sólo sus turnos, una sección de reporte sin permiso de fuente queda omitida (y la respuesta lo advierte), y un `PACIENTE` no tiene la puerta. Cuando el servicio rechaza al actor, la respuesta es 200 con `resultado` SIN_PERMISO. Por eso el alcance de la puerta es `ORGANIZACION` para los cuatro roles: el recorte por sede o por actividad propia lo aplica cada servicio.
 - **No es otorgable por grant**, y `PACIENTE` y `PLATFORM_ADMIN` no lo tienen.
 - **Asistente apagado:** con `akine.asistente.enabled` en `false`, toda consulta responde 409 `asistente-deshabilitado` aunque el actor tenga el permiso.
+
+## 24. Enmiendas — Sugerencias de evolución (15/11/2026)
+
+M31 fase 2: sugerencias de revisión del tratamiento sobre un Caso Clínico, respaldadas por la biblioteca del centro (`docs/diseno/AKINE-analizador-de-evolucion-fase2.md` §8.2).
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `evolucion:sugerir` | — | — | — | Org | — | — |
+
+- **Se exige además de la puerta clínica:** `hc:read` y relación asistencial o justificación declarada, igual que la evolución de la fase 1. Pedir, listar y responder exigen las dos cosas, y las tres se auditan.
+- **Sólo el profesional**, con alcance `ORGANIZACION` (el caso es de la organización). No es otorgable por grant.
+- **Función apagada:** sin `akine.evolucion.sugerencias.enabled`, `akine.evolucion.enabled` y `akine.biblioteca.enabled` encendidos, las tres operaciones responden 404 antes de mirar permisos.

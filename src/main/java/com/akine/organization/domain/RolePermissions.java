@@ -473,7 +473,10 @@ public final class RolePermissions {
 				// M30, RF-M30-012. Consultar la biblioteca; sin grant.
 				Map.entry(PermissionCode.BIBLIOTECA_CONSULTAR, PermissionScope.ORGANIZACION),
 				// Asistente de datos (D-2). Solo la puerta; sin grant.
-				Map.entry(PermissionCode.ASISTENTE_USE, PermissionScope.ORGANIZACION)));
+				Map.entry(PermissionCode.ASISTENTE_USE, PermissionScope.ORGANIZACION),
+				// M31 fase 2: sugerencias de evolucion con respaldo de la biblioteca. Solo el
+				// profesional; ademas exige hc:read y relacion o justificacion. Sin grant.
+				Map.entry(PermissionCode.EVOLUCION_SUGERIR, PermissionScope.ORGANIZACION)));
 		// Map.ofEntries y no Map.of desde AKINE-08.02: el segundo tiene un tope de diez pares y
 		// esta fila lo alcanzo. Mismo cambio que hizo 08.01 con el CONSULTORIO_ADMIN, y por el
 		// mismo motivo: no es semantica, es el unico constructor que admite el par once.
