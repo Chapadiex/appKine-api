@@ -93,7 +93,12 @@ final class Plantillas {
 				.filter(f -> ((Instant) f.get(ClavesDeFila.INICIO)).isAfter(ahora)).toList();
 
 		StringBuilder texto = new StringBuilder();
-		if (vino.isEmpty()) {
+		boolean sinLlegadaEnElEncabezado = vino.isEmpty() && !sinLlegada.isEmpty();
+		if (sinLlegadaEnElEncabezado) {
+			texto.append(persona).append(" no tiene llegadas registradas ").append(periodo(rango)).append(" en ")
+					.append(sede).append(": tenía turno ").append(lista(sinLlegada, f -> cuando(f, zona))).append('.');
+		}
+		else if (vino.isEmpty()) {
 			texto.append(persona).append(" no tiene llegadas registradas ").append(periodo(rango)).append(" en ").append(sede).append('.');
 		}
 		else {
@@ -107,7 +112,7 @@ final class Plantillas {
 		if (!cancelados.isEmpty()) {
 			texto.append(" Cancelados: ").append(lista(cancelados, f -> cuando(f, zona))).append('.');
 		}
-		if (!sinLlegada.isEmpty()) {
+		if (!sinLlegada.isEmpty() && !sinLlegadaEnElEncabezado) {
 			texto.append(" Sin llegada registrada: ").append(lista(sinLlegada, f -> cuando(f, zona))).append('.');
 		}
 		if (!proximos.isEmpty()) {
