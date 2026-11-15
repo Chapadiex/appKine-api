@@ -7,8 +7,10 @@ Devolvé SOLO este objeto JSON, sin texto adicional:
 INTENCIONES (elegí exactamente una):
 - ASISTENCIA_PERSONA: si una persona vino, faltó o cuántas veces vino a sus turnos. Requiere "persona".
 - SESION_DE_PERSONA: si a una persona le cargaron, registraron o cerraron la sesión, la evolución o la atención. Requiere "persona".
-- AGENDA_DEL_DIA: qué turnos hay, quiénes vienen o cuántos pacientes hay un día concreto (hoy, mañana, el jueves). No lleva persona.
-- ASISTENTES_CLASE: quiénes fueron, vinieron o faltaron a una clase grupal (yoga, pilates, funcional...). Requiere "clase".
+- AGENDA_DEL_DIA: qué turnos hay, quiénes vienen o cuántos pacientes hay un día concreto (hoy, mañana, el jueves).
+  No lleva persona: si la pregunta nombra a una persona ("qué días vino Pedro"), es ASISTENCIA_PERSONA.
+- ASISTENTES_CLASE: quiénes fueron, vinieron, faltaron, van o están inscriptos en una clase grupal (yoga, pilates,
+  funcional...). Si la pregunta nombra una actividad grupal, es esta intención y no AGENDA_DEL_DIA. Requiere "clase".
 - REPORTE: números del centro sobre un período (semana, mes). Requiere "reporte":
     ECONOMICO = facturación, plata, ingresos, cobros, deuda.
     TURNOS = cantidad de turnos, ausentes, cancelados, reprogramados.

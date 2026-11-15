@@ -63,3 +63,14 @@ Cuatro revisores en paralelo (reuso, simplificación, eficiencia y profundidad d
 - **Un componente de charla compartido con la consulta a la biblioteca.** Toca la pantalla de otra funcionalidad, que está fuera del alcance de esta tanda.
 - **Etiquetas legibles para los estados de la tabla** (`EN_ATENCION`, `DINERO`). Los formateadores viven en otras funcionalidades, y la regla de ADR-0004 obliga a moverlos a `shared/` primero.
 - **Que el modelo devuelva `seguimiento: true|false`.** Cambia el prompt y obliga a volver a medir. La heurística actual pasó 25/25 en el set limpio.
+
+## Prueba de clases de punta a punta (15/11)
+
+La base de QA no tenía clases. Se armó una por la API, como lo haría el administrador, en la copia aislada `akine_asistente`: el box "GYM" pasó de capacidad 1 a 10 (`PATCH` de espacio), se programó Yoga para el lunes 16/11 a las 16:00 con el profesional de QA, y se inscribió a dos personas. La base no se tocó a mano.
+
+| # | Problema | Solución aplicada |
+|---|---|---|
+| 43 | No se podía programar ninguna clase: una clase grupal pide capacidad mínima 2 y el único box de la sede admitía 1 | Se subió la capacidad del box por la API, en la copia aislada. Es un dato de prueba, no un defecto del producto |
+| 44 | **Defecto real:** "No encontré una clase de yoga", con la clase programada. El título de la clase es opcional, y una clase sin título se muestra con el nombre de su oferta, pero la herramienta buscaba sólo en `titulo` | `ClasesEnElAsistente.nombre()`: el título, o el nombre de la oferta si no tiene uno propio. Cubierto en `ClasesEnElAsistenteTest` |
+| 45 | "¿Quiénes **van** a yoga mañana?" salía como agenda del día: el prompt describía las clases sólo en pasado | El prompt suma "van o están inscriptos" y "si nombra una actividad grupal, es esta intención". Un primer intento con un ejemplo ("el jueves") contagió `DIA:JUEVES` a preguntas que decían "ayer", y se sacó el ejemplo. Una aclaración en texto para la agenda ("si nombra a una persona, no es agenda") arregló la regresión que apareció en "qué días vino Pedro". Resultado: 90/90 en intención y 88/90 completos en los tres sets anteriores, igual que antes, y 5/5 en un set nuevo de preguntas en futuro (`preguntas-futuro.json`) |
+| 46 | Para una clase que todavía no empezó, la respuesta decía "2 sin registrar" y no quiénes van | Una clase `PROGRAMADA` lista sus inscriptos. En una clase empezada se nombra también a los que no tienen asistencia registrada (`PlantillasTest`) |

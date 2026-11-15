@@ -79,7 +79,7 @@ class InterpretadorContraOllamaTest {
 	/** Por defecto los tres sets; con AKINE_EVALUACION_SET se mide uno solo (por ejemplo preguntas-limpias.json). */
 	private static List<String> archivos() {
 		String uno = System.getenv("AKINE_EVALUACION_SET");
-		return uno == null || uno.isBlank() ? List.of("preguntas.json", "preguntas-control.json", "preguntas-limpias.json") : List.of(uno);
+		return uno == null || uno.isBlank() ? List.of("preguntas.json", "preguntas-control.json", "preguntas-limpias.json", "preguntas-futuro.json") : List.of(uno);
 	}
 
 	private static List<TurnoPrevio> historial(JsonNode caso) {

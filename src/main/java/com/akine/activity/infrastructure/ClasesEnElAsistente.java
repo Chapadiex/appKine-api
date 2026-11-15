@@ -90,8 +90,8 @@ class ClasesEnElAsistente implements HerramientaDelAsistente {
 		record Candidata(ClaseView clase, String titulo) {
 		}
 		List<Candidata> coinciden = enElPeriodo.stream()
-				.filter(c -> c.titulo() != null)
-				.map(c -> new Candidata(c, normal(c.titulo())))
+				.filter(c -> nombre(c) != null)
+				.map(c -> new Candidata(c, normal(nombre(c))))
 				.filter(c -> c.titulo().contains(buscado))
 				.toList();
 		int masLargo = coinciden.stream()
@@ -115,7 +115,7 @@ class ClasesEnElAsistente implements HerramientaDelAsistente {
 	private static Map<String, Object> fila(ClaseView clase, ParticipanteOperativoView participante) {
 		Map<String, Object> fila = new LinkedHashMap<>();
 		fila.put(ClavesDeFila.CLASE_ID, clase.id());
-		fila.put(ClavesDeFila.CLASE, clase.titulo());
+		fila.put(ClavesDeFila.CLASE, nombre(clase));
 		fila.put(ClavesDeFila.INICIO, clase.inicio());
 		fila.put(ClavesDeFila.ESTADO_CLASE, clase.estado());
 		fila.put(ClavesDeFila.PARTICIPANTE, participante == null ? null
@@ -123,6 +123,15 @@ class ClasesEnElAsistente implements HerramientaDelAsistente {
 		fila.put(ClavesDeFila.RESULTADO, participante == null || participante.asistencia() == null ? null
 				: participante.asistencia().resultado());
 		return fila;
+	}
+
+	/**
+	 * El nombre con que se conoce la clase: su titulo, o el de la oferta si no tiene uno propio (el
+	 * titulo es opcional al programar). Buscar solo por titulo dejaba afuera esas clases (prueba de
+	 * punta a punta del 15/11).
+	 */
+	static String nombre(ClaseView clase) {
+		return clase.titulo() != null && !clase.titulo().isBlank() ? clase.titulo() : clase.ofertaNombre();
 	}
 
 	/** Plegado de la plataforma (sin acentos, minusculas) con los espacios colapsados. */

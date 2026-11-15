@@ -198,15 +198,24 @@ final class Plantillas {
 				.filter(f -> f.get(ClavesDeFila.PARTICIPANTE) != null).toList();
 		List<String> presentes = nombres(conParticipante, Set.of("PRESENTE", "PRESENTE_TARDE"));
 		List<String> ausentes = nombres(conParticipante, Set.of("AUSENTE"));
-		long sinRegistrar = conParticipante.stream().filter(f -> f.get(ClavesDeFila.RESULTADO) == null).count();
+		List<String> sinRegistrar = conParticipante.stream()
+				.filter(f -> f.get(ClavesDeFila.RESULTADO) == null)
+				.map(f -> String.valueOf(f.get(ClavesDeFila.PARTICIPANTE)))
+				.toList();
 		if (conParticipante.isEmpty()) {
 			return encabezado + ": no tiene inscriptos.";
+		}
+		// "¿Quienes van a yoga manana?": una clase que no empezo no tiene asistencia que contar,
+		// tiene inscriptos.
+		if ("PROGRAMADA".equals(primera.get(ClavesDeFila.ESTADO_CLASE))) {
+			return encabezado + " (todavía no empezó): " + cantidad(sinRegistrar.size(), "inscripto", "inscriptos")
+					+ ": " + listaDeTexto(sinRegistrar) + ".";
 		}
 		StringBuilder texto = new StringBuilder(encabezado).append(": ")
 				.append(cantidad(presentes.size(), "presente", "presentes")).append(", ")
 				.append(cantidad(ausentes.size(), "ausente", "ausentes"));
-		if (sinRegistrar > 0) {
-			texto.append(" y ").append(sinRegistrar).append(" sin registrar");
+		if (!sinRegistrar.isEmpty()) {
+			texto.append(" y ").append(sinRegistrar.size()).append(" sin registrar");
 		}
 		texto.append('.');
 		if (!presentes.isEmpty()) {
@@ -214,6 +223,9 @@ final class Plantillas {
 		}
 		if (!ausentes.isEmpty()) {
 			texto.append(" Faltaron: ").append(listaDeTexto(ausentes)).append('.');
+		}
+		if (!sinRegistrar.isEmpty()) {
+			texto.append(" Sin asistencia registrada: ").append(listaDeTexto(sinRegistrar)).append('.');
 		}
 		return texto.toString();
 	}

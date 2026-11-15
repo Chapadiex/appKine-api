@@ -44,6 +44,16 @@ class ClasesEnElAsistenteTest {
 	}
 
 	@Test
+	void una_clase_sin_titulo_se_encuentra_por_el_nombre_de_la_oferta() {
+		ClaseView sinTitulo = clase(9, null, "2026-11-16T19:00:00Z");
+		when(sinTitulo.ofertaNombre()).thenReturn("Yoga");
+
+		assertThat(ClasesEnElAsistente.elegir(List.of(sinTitulo), "yoga", "quienes van a yoga manana", AHORA))
+				.extracting(ClaseView::id).containsExactly(9L);
+		assertThat(ClasesEnElAsistente.nombre(sinTitulo)).isEqualTo("Yoga");
+	}
+
+	@Test
 	void sin_coincidencias_o_sin_texto_no_hay_clases() {
 		assertThat(ClasesEnElAsistente.elegir(semana, "zumba", "quienes fueron a zumba", AHORA)).isEmpty();
 		assertThat(ClasesEnElAsistente.elegir(semana, null, "quienes fueron", AHORA)).isEmpty();
