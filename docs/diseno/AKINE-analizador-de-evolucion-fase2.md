@@ -97,7 +97,8 @@ consumidor, así que se cumple la condición de salida que dejó escrita el asis
 
 - `platform.spi.modelo.ModeloDeLenguaje` con las tres operaciones (`completar`, `generar` y
   `completarJson`), y los tipos `MensajeChat`, `OpcionesGeneracion` y `EstadisticasDeGeneracion`.
-  El nombre del modelo viaja en `OpcionesGeneracion`, porque cada consumidor usa el suyo.
+  El nombre del modelo, la URL y el plazo por defecto van en la configuración del bean de cada
+  consumidor (ver abajo), no en `OpcionesGeneracion`.
 - Una sola implementación, `platform.infrastructure.modelo.OllamaModeloDeLenguaje`, más el doble
   de prueba. La excepción es `platform.spi.modelo.ModeloNoDisponibleException`; cada consumidor
   la traduce a su problema tipado actual. **Los contratos de `knowledge` y `assistant` no cambian.**
