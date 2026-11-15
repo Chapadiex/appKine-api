@@ -398,7 +398,15 @@ public enum PermissionCode {
 	 * basada en los libros. Por base para {@code ORG_ADMIN}, {@code CONSULTORIO_ADMIN},
 	 * {@code PROFESIONAL} y {@code ADMINISTRATIVO}; no se otorga por grant.
 	 */
-	BIBLIOTECA_CONSULTAR("biblioteca:consultar");
+	BIBLIOTECA_CONSULTAR("biblioteca:consultar"),
+
+	/**
+	 * Preguntarle al asistente de datos (docs/diseno/AKINE-asistente-de-datos.md, D-2). Por base
+	 * para {@code ORG_ADMIN}, {@code CONSULTORIO_ADMIN}, {@code PROFESIONAL} y
+	 * {@code ADMINISTRATIVO}, con alcance de organizacion; no se otorga por grant. Es solo la
+	 * puerta: lo que cada respuesta muestra lo decide el permiso de la herramienta que la produce.
+	 */
+	ASISTENTE_USE("asistente:use");
 
 	private final String code;
 

@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.169.0
+  version: 0.170.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -40,6 +40,8 @@ tags:
   name: Plataforma
 - description: "Lotes reclamados a financiadores, debitos, pagos y conciliacion (M21)"
   name: Presentaciones
+- description: Preguntas en lenguaje natural sobre los datos de la sede
+  name: Asistente
 - description: "Saldo, ledger de movimientos y reversion (M17). El consumo lo dispara\
     \ el cierre de sesion, no una persona"
   name: Consumo de autorizaciones
@@ -2739,6 +2741,88 @@ paths:
       summary: Resolver el arancel efectivo de una practica para una fecha
       tags:
       - Convenios y aranceles
+  /api/v1/consultorios/{consultorioId}/asistente/consultas:
+    post:
+      description: |-
+        Responde una pregunta sobre los datos de la sede: si una persona vino o tiene la sesion cargada, quienes vienen un dia, quienes fueron a una clase y los numeros de los reportes ECONOMICO, TURNOS y CLASES. Requiere `asistente:use` y el interruptor `akine.asistente.enabled`.
+
+        Un modelo de lenguaje local **solo interpreta** la pregunta; el texto se arma con plantillas a partir de los datos, y ningun dato de la sede llega al modelo. Cada respuesta corre con los permisos del usuario: lo que no puede ver en pantalla vuelve con `resultado` SIN_PERMISO, con 200.
+
+        Si no esta claro de que persona se habla, `resultado` es ACLARACION y `opciones` trae hasta cinco: el cliente reenvia la misma pregunta con el `personaId` elegido. El servidor no guarda la conversacion: `historial` lleva las preguntas anteriores con la `interpretacion` que devolvio cada una.
+      operationId: consultarAsistente
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsultaAsistenteRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RespuestaAsistenteResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/RespuestaAsistenteResponse"
+          description: La respuesta
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`validation-error`: pregunta vacia o mas larga que 300 caracteres,\
+            \ o historial mal formado"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `asistente:use` o sin contexto de trabajo activo
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`not-found`: la sede no existe o es de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`asistente-deshabilitado`: el interruptor esta apagado"
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`asistente-no-disponible`: el modelo no responde o vencio\
+            \ el plazo"
+      summary: Preguntarle al asistente de datos
+      tags:
+      - Asistente
   /api/v1/consultorios/{consultorioId}/caja/jornadas:
     get:
       description: "Los cierres historicos, de la mas reciente a la mas vieja (RF-M20-007).\
@@ -31185,6 +31269,33 @@ components:
           format: int64
           description: Ausente si el turno es de otra sede
           example: 501
+    ConsultaAsistenteRequest:
+      type: object
+      description: "Una pregunta al asistente de datos. El servidor no guarda la conversacion:\
+        \ el historial lo manda el cliente en cada pregunta."
+      properties:
+        historial:
+          type: array
+          description: "Turnos previos, del mas viejo al mas nuevo; el servidor usa\
+            \ los ultimos tres"
+          items:
+            $ref: "#/components/schemas/TurnoPrevioRequest"
+          maxItems: 10
+          minItems: 0
+        personaId:
+          type: integer
+          format: int64
+          description: La persona elegida entre las opciones de una aclaracion. Se
+            reenvia la misma pregunta con este campo
+          exclusiveMinimum: 0
+          minimum: 1
+        pregunta:
+          type: string
+          example: ¿Juan vino esta semana?
+          maxLength: 300
+          minLength: 0
+      required:
+      - pregunta
     ConsultaEventoAclaracion:
       type: object
       description: "Evento `aclaracion` del stream de consultarBiblioteca: la consulta\
@@ -37277,6 +37388,44 @@ components:
           example: TRATANTE
       required:
       - profesionalMembershipId
+    InterpretacionDto:
+      type: object
+      description: "Lo que el asistente entendio de una pregunta. El cliente lo devuelve\
+        \ tal cual en el historial del siguiente turno, sin modificarlo."
+      properties:
+        clase:
+          type: string
+          description: "Actividad de la clase, en minusculas"
+          maxLength: 120
+          minLength: 0
+        intencion:
+          type: string
+          enum:
+          - ASISTENCIA_PERSONA
+          - SESION_DE_PERSONA
+          - AGENDA_DEL_DIA
+          - ASISTENTES_CLASE
+          - REPORTE
+          - BUSCAR_PERSONA
+          - FUERA_DE_ALCANCE
+        periodo:
+          type: string
+          description: "Periodo en el vocabulario del asistente (HOY, ESTA_SEMANA,\
+            \ DIA:LUNES, MES:OCTUBRE...)"
+          maxLength: 40
+          minLength: 0
+        persona:
+          type: string
+          description: Nombre de la persona tal como se escribio
+          maxLength: 120
+          minLength: 0
+        reporte:
+          type: string
+          description: "ECONOMICO, TURNOS o CLASES, solo para REPORTE"
+          maxLength: 20
+          minLength: 0
+      required:
+      - intencion
     IntervaloHorarioResponse:
       type: object
       description: Tramo de horas locales de un dia
@@ -39280,6 +39429,19 @@ components:
       required:
       - etiqueta
       - pregunta
+    OpcionDePersonaDelAsistente:
+      type: object
+      description: Una persona entre las que elegir
+      properties:
+        etiqueta:
+          type: string
+          example: "Pérez, Juan · DNI ***456"
+        personaId:
+          type: integer
+          format: int64
+      required:
+      - etiqueta
+      - personaId
     OperativoDeTurno:
       type: object
       description: "Lo que la agenda muestra de un turno ademas de la reserva. PHI\
@@ -41658,6 +41820,7 @@ components:
       - https://akine.app/problems/libro-en-proceso
       - https://akine.app/problems/consulta-ocupada
       - https://akine.app/problems/asistente-no-disponible
+      - https://akine.app/problems/asistente-deshabilitado
     Producto:
       type: object
       description: Producto de pack del catalogo de una sede (RF-M29-001).
@@ -43531,6 +43694,54 @@ components:
       required:
       - accion
       - expectedVersion
+    RespuestaAsistenteResponse:
+      type: object
+      description: La respuesta del asistente de datos
+      properties:
+        advertencias:
+          type: array
+          items:
+            type: string
+        enlace:
+          type: string
+          description: Ruta del frontend donde ver el detalle
+          example: /pacientes/123
+        filas:
+          type: array
+          description: "Los datos detras del texto, una fila por elemento. Las claves\
+            \ dependen de la intencion; los instantes van en ISO-8601"
+          items:
+            type: object
+            additionalProperties: true
+        interpretacion:
+          $ref: "#/components/schemas/InterpretacionDto"
+        opciones:
+          type: array
+          description: "Si no esta claro de quien se habla, las personas entre las\
+            \ que elegir"
+          items:
+            $ref: "#/components/schemas/OpcionDePersonaDelAsistente"
+        resultado:
+          type: string
+          description: Como termino la consulta
+          enum:
+          - RESPONDIDA
+          - ACLARACION
+          - FALTA_PERSONA
+          - PERSONA_NO_ENCONTRADA
+          - SIN_PERMISO
+          - FUERA_DE_ALCANCE
+        texto:
+          type: string
+          description: "La respuesta en texto, armada con una plantilla a partir de\
+            \ los datos: el modelo no la redacta"
+      required:
+      - advertencias
+      - filas
+      - interpretacion
+      - opciones
+      - resultado
+      - texto
     ResultadoDeAnulacionDePase:
       type: object
       description: "El pase ANULADO y la deuda de su venta, tambien anulada (no borrada)."
@@ -45895,6 +46106,20 @@ components:
           example: YA_EMPEZO
         turno:
           $ref: "#/components/schemas/Turno"
+    TurnoPrevioRequest:
+      type: object
+      description: Una pregunta anterior de la conversacion y la interpretacion que
+        devolvio el servidor
+      properties:
+        interpretacion:
+          $ref: "#/components/schemas/InterpretacionDto"
+        pregunta:
+          type: string
+          maxLength: 300
+          minLength: 0
+      required:
+      - interpretacion
+      - pregunta
     TurnosDePersona:
       type: object
       description: Una pagina de los turnos de una persona en una sede.

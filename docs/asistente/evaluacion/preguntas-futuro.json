@@ -1,0 +1,7 @@
+[
+ {"id":"F1","q":"¿Quiénes van a yoga mañana?","e":{"intencion":"ASISTENTES_CLASE","clase":"yoga","periodo":"MANANA"}},
+ {"id":"F2","q":"quiénes están inscriptos en pilates el jueves","e":{"intencion":"ASISTENTES_CLASE","clase":"pilates","periodo":"DIA:JUEVES"}},
+ {"id":"F3","q":"cuántos van a funcional hoy","e":{"intencion":"ASISTENTES_CLASE","clase":"funcional","periodo":"HOY"}},
+ {"id":"F4","q":"qué días vino Pedro en octubre","e":{"intencion":"ASISTENCIA_PERSONA","persona":"pedro","periodo":"MES:OCTUBRE"}},
+ {"id":"F5","q":"¿Quiénes vienen mañana?","e":{"intencion":"AGENDA_DEL_DIA","periodo":"MANANA"}}
+]

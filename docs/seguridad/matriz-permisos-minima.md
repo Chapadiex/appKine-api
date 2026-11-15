@@ -1025,3 +1025,15 @@ La biblioteca del centro (M30, `docs/producto/AKINE_Requerimientos_Integrados.md
 - **Cross-tenant:** un libro de otra organización responde 404 `libro-no-encontrado`, nunca 403.
 - **Biblioteca apagada:** con el interruptor global apagado, toda operación responde 409 `biblioteca-deshabilitada` aunque el actor tenga el permiso.
 - **`biblioteca:consultar` (RF-M30-012):** consultar la biblioteca con el asistente. Por base para `ORG_ADMIN`, `CONSULTORIO_ADMIN`, `PROFESIONAL` y `ADMINISTRATIVO`, con alcance `ORGANIZACION`; no es otorgable por grant y `PACIENTE` y `PLATFORM_ADMIN` no lo tienen. La consulta exige además `akine.biblioteca.consulta.enabled`: apagado, 409 `biblioteca-deshabilitada`.
+
+## 23. Enmiendas — Asistente de datos (15/11/2026)
+
+El asistente que responde preguntas sobre turnos, sesiones, clases y reportes (`docs/diseno/AKINE-asistente-de-datos.md`, decisión D-2).
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `asistente:use` | — | Org | Org | Org | Org | — |
+
+- **Es sólo la puerta.** Cada respuesta la produce una herramienta que llama al servicio dueño del dato con el actor del usuario, y ese servicio exige su propio permiso (`turno:read`, `inscripcion:read`, `reporte:read`, `paciente:read`) con su alcance. Lo que muestra cada respuesta es lo mismo que ese rol ve en la pantalla correspondiente: un `PROFESIONAL` con alcance propio ve sólo sus turnos, una sección de reporte sin permiso de fuente queda omitida (y la respuesta lo advierte), y un `PACIENTE` no tiene la puerta. Cuando el servicio rechaza al actor, la respuesta es 200 con `resultado` SIN_PERMISO. Por eso el alcance de la puerta es `ORGANIZACION` para los cuatro roles: el recorte por sede o por actividad propia lo aplica cada servicio.
+- **No es otorgable por grant**, y `PACIENTE` y `PLATFORM_ADMIN` no lo tienen.
+- **Asistente apagado:** con `akine.asistente.enabled` en `false`, toda consulta responde 409 `asistente-deshabilitado` aunque el actor tenga el permiso.

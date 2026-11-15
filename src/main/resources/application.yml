@@ -175,7 +175,7 @@ akine:
   # Version SemVer del contrato OpenAPI publicado. Debe coincidir con la propiedad
   # akine.contract.version del pom.xml.
   contract:
-    version: 0.169.0
+    version: 0.170.0
   security:
     cors:
       # Nunca comodin: allowCredentials(true) lo prohibe y el frontend necesita credentials
@@ -232,6 +232,22 @@ akine:
     # Consulta con un modelo de lenguaje local (RF-M30-012). Exige tambien biblioteca.enabled.
     consulta:
       enabled: ${AKINE_BIBLIOTECA_CONSULTA_ENABLED:false}
+
+  # Asistente de datos: preguntas en lenguaje natural sobre turnos, sesiones, clases y reportes
+  # (docs/diseno/AKINE-asistente-de-datos.md). Apagado por defecto: apagado no crea el modelo y
+  # toda consulta responde 409 asistente-deshabilitado. Independiente de la biblioteca, aunque
+  # puede usar el mismo Ollama y el mismo modelo.
+  asistente:
+    enabled: ${AKINE_ASISTENTE_ENABLED:false}
+    modelo:
+      # ollama | prueba
+      tipo: ${AKINE_ASISTENTE_MODELO_TIPO:ollama}
+      url: ${AKINE_ASISTENTE_OLLAMA_URL:http://localhost:11434}
+      nombre: ${AKINE_ASISTENTE_MODELO:qwen3:4b-instruct}
+      timeout-segundos: ${AKINE_ASISTENTE_TIMEOUT_SEGUNDOS:15}
+      # Consultas que esperan al modelo a la vez en esta instancia; la siguiente espera su plazo y,
+      # si no consigue lugar, responde 503 asistente-no-disponible.
+      concurrencia: ${AKINE_ASISTENTE_CONCURRENCIA:2}
 
   notification:
     email:
