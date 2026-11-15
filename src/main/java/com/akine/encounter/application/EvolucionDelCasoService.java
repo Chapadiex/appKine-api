@@ -166,7 +166,7 @@ public class EvolucionDelCasoService {
 				.orElseThrow(() -> new CasoNoAsignableException(casoId, CasoNoAsignableException.Motivo.NO_ACCESIBLE));
 
 		AccesoClinicoConcedido acceso = accesoClinico.exigir(
-				new ActorClinico(actor.accountId(), actor.platformAdmin(), organizationId, actor.consultorioId()),
+				new ActorClinico(actor.accountId(), actor.platformAdmin(), organizationId, consultorioId),
 				AccesoClinicoDirectory.HC_READ, historia.personaId(), justificacion, OPERACION);
 
 		ZoneId zona = ZonaDeSede.de(sede);

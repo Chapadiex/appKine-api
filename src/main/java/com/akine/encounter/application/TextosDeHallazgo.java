@@ -20,7 +20,7 @@ final class TextosDeHallazgo {
 					+ "hacen falta al menos " + v.get("minimo") + " para evaluar alertas.";
 			case DOLOR_SIN_MEJORA -> "El dolor pasó de " + v.get("desde") + " a " + v.get("hasta")
 					+ " en las últimas " + v.get("sesiones") + " sesiones y sigue alto.";
-			case DOLOR_EN_AUMENTO -> "El dolor subió de " + v.get("desde") + " a " + v.get("hasta")
+			case DOLOR_EN_AUMENTO -> "El dolor subió de " + decimal(v.get("desde")) + " a " + decimal(v.get("hasta"))
 					+ " en las últimas " + v.get("sesiones") + " sesiones.";
 			case EVOLUCION_DESFAVORABLE -> "La evolución se registró como "
 					+ evolucion(v.get("valor")) + " en las últimas " + v.get("seguidas")
@@ -28,14 +28,14 @@ final class TextosDeHallazgo {
 			case MALA_TOLERANCIA -> "La tolerancia fue mala en las últimas " + v.get("seguidas")
 					+ " sesiones seguidas.";
 			case MEDICION_SIN_CAMBIO -> medicion(v) + " no varió en las últimas " + v.get("sesiones")
-					+ " sesiones (" + v.get("desde") + " a " + v.get("hasta") + unidad(v) + ").";
+					+ " sesiones (" + decimal(v.get("desde")) + " a " + decimal(v.get("hasta")) + unidad(v) + ").";
 			case MEDICION_EMPEORA -> medicion(v) + " pasó de " + v.get("desde") + " a "
 					+ v.get("hasta") + unidad(v) + " en las últimas " + v.get("sesiones")
 					+ " sesiones, en sentido contrario al de mejora.";
 			case BAJA_ADHERENCIA -> "Faltó a " + v.get("inasistencias") + " de las últimas "
 					+ v.get("citas") + " citas (" + v.get("porcentaje") + " %).";
 			case FRECUENCIA_BAJO_PLAN -> "En las últimas " + v.get("semanas") + " semanas asistió "
-					+ v.get("real").replace('.', ',') + " veces por semana; el plan prevé " + v.get("planificada") + ".";
+					+ decimal(v.get("real")) + " veces por semana; el plan prevé " + v.get("planificada") + ".";
 			case PLAN_COMPLETO_ABIERTO -> "Todas las prácticas del plan alcanzaron la cantidad "
 					+ "planificada y el plan sigue activo.";
 			case PLAN_EXCEDIDO_EN_TIEMPO -> "El plan preveía " + v.get("semanas")
@@ -57,6 +57,11 @@ final class TextosDeHallazgo {
 			case "DERECHA" -> nombre + " (derecha)";
 			default -> nombre;
 		};
+	}
+
+	/** Coma decimal, como el resto de la pantalla: los valores llegan con el punto de BigDecimal. */
+	private static String decimal(String valor) {
+		return valor == null ? "" : valor.replace('.', ',');
 	}
 
 	private static String unidad(Map<String, String> v) {

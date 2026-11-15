@@ -132,8 +132,52 @@ class EvolucionDelCasoIT {
 				.isInstanceOf(CasoNoAsignableException.class);
 	}
 
+	@Test
+	@DisplayName("con plan activo trae su avance y avisa plan completo y vencido, no sin plan")
+	void con_plan_activo() {
+		Mundo m = fixtures.crearMundo();
+		long caso = fixtures.crearCaso(m, 1);
+		planActivo(m, caso, AHORA.minus(70, ChronoUnit.DAYS), 3);
+		for (int i = 0; i < 3; i++) {
+			sesionCerrada(m, caso, null, AHORA.minus(30 - 7L * i, ChronoUnit.DAYS), 3);
+		}
+
+		EvolucionDelCasoView vista = evolucion.analizar(m.actor(), m.consultorioId(), caso, null);
+
+		assertThat(vista.plan()).isNotNull();
+		assertThat(vista.plan().items()).singleElement()
+				.satisfies(item -> assertThat(item.realizadas()).isEqualTo(3));
+		assertThat(vista.hallazgos()).extracting(EvolucionDelCasoView.HallazgoView::codigo)
+				.contains(CodigoDeHallazgo.PLAN_COMPLETO_ABIERTO, CodigoDeHallazgo.PLAN_EXCEDIDO_EN_TIEMPO)
+				.doesNotContain(CodigoDeHallazgo.SIN_PLAN_ACTIVO);
+	}
+
 	// =================================================================================
 	// Armado
+
+	private void planActivo(Mundo m, long caso, Instant activadoEn, int planificadas) {
+		long plan = InsertarConId.insertar(jdbc, """
+				INSERT INTO plan_tratamiento (organization_id, caso_clinico_id, numero_plan, estado,
+				                              creado_en, creado_por, activado_en, activado_por,
+				                              created_at, updated_at)
+				VALUES (?, ?, 1, 'ACTIVO', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", m.organizationId(), caso, ts(activadoEn), m.profesional().cuentaId(), ts(activadoEn),
+				m.profesional().cuentaId());
+		long version = InsertarConId.insertar(jdbc, """
+				INSERT INTO plan_tratamiento_version (organization_id, plan_tratamiento_id, numero_version,
+				        objetivos, frecuencia_semanal, duracion_semanas, registrada_en, registrada_por,
+				        created_at, updated_at)
+				VALUES (?, ?, 1, 'Objetivo sintetico', 1, 8, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", m.organizationId(), plan, ts(activadoEn), m.profesional().cuentaId());
+		jdbc.update("""
+				INSERT INTO plan_item (organization_id, plan_tratamiento_version_id, oferta_id,
+				        oferta_consultorio_id, oferta_nombre, servicio_id, cantidad_planificada,
+				        origen_autorizacion, created_at, updated_at)
+				VALUES (?, ?, ?, ?, 'Oferta sintetica',
+				        (SELECT servicio_id FROM oferta_servicio_consultorio WHERE id = ?), ?, 'DECLARADA',
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", m.organizationId(), version, m.ofertaId(), m.consultorioId(), m.ofertaId(), planificadas);
+	}
 	// =================================================================================
 
 	private long turno(Mundo m, long caso, Instant inicio, String estado, String origenCancelacion) {
