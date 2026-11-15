@@ -13,7 +13,19 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 @ConfigurationProperties(prefix = "akine.asistente")
 public record AsistenteProperties(
 		@DefaultValue("false") boolean enabled,
-		@DefaultValue Modelo modelo) {
+		@DefaultValue Modelo modelo,
+		@DefaultValue Sql sql) {
+
+	/**
+	 * Consultas libres sobre {@code asistente_sql} (docs/diseno/AKINE-asistente-sql.md). Apagadas por
+	 * defecto, y ademas exigen {@code asistente:sql}. {@code limiteFilas}: tope de filas por respuesta;
+	 * {@code tiempoMaximoMs}: {@code statement_timeout} de la consulta.
+	 */
+	public record Sql(
+			@DefaultValue("false") boolean enabled,
+			@DefaultValue("200") int limiteFilas,
+			@DefaultValue("5000") int tiempoMaximoMs) {
+	}
 
 	/**
 	 * {@code tipo}: {@code ollama} o {@code prueba}. {@code timeoutSegundos}: el interpretador mide

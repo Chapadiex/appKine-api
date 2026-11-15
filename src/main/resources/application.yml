@@ -175,7 +175,7 @@ akine:
   # Version SemVer del contrato OpenAPI publicado. Debe coincidir con la propiedad
   # akine.contract.version del pom.xml.
   contract:
-    version: 0.170.0
+    version: 0.173.0
   security:
     cors:
       # Nunca comodin: allowCredentials(true) lo prohibe y el frontend necesita credentials
@@ -253,6 +253,12 @@ akine:
       # Consultas que esperan al modelo a la vez en esta instancia; la siguiente espera su plazo y,
       # si no consigue lugar, responde 503 asistente-no-disponible.
       concurrencia: ${AKINE_ASISTENTE_CONCURRENCIA:2}
+    # Consultas libres: si la pregunta no entra en ninguna intencion, el modelo escribe un SELECT
+    # sobre las vistas de asistente_sql (docs/diseno/AKINE-asistente-sql.md). Ademas exige asistente:sql.
+    sql:
+      enabled: ${AKINE_ASISTENTE_SQL_ENABLED:false}
+      limite-filas: ${AKINE_ASISTENTE_SQL_LIMITE_FILAS:200}
+      tiempo-maximo-ms: ${AKINE_ASISTENTE_SQL_TIEMPO_MAXIMO_MS:5000}
 
   notification:
     email:

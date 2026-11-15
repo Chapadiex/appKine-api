@@ -339,7 +339,9 @@ public final class RolePermissions {
 				// M30, RF-M30-012. Consultar la biblioteca; sin grant.
 				Map.entry(PermissionCode.BIBLIOTECA_CONSULTAR, PermissionScope.ORGANIZACION),
 				// Asistente de datos (D-2). Solo la puerta; sin grant.
-				Map.entry(PermissionCode.ASISTENTE_USE, PermissionScope.ORGANIZACION)));
+				Map.entry(PermissionCode.ASISTENTE_USE, PermissionScope.ORGANIZACION),
+				// Consultas libres del asistente sobre asistente_sql; sin grant.
+				Map.entry(PermissionCode.ASISTENTE_SQL, PermissionScope.ORGANIZACION)));
 
 		// CONSULTORIO_ADMIN â todo acotado a SU sede. Sin tenant:read: la matriz no se lo da.
 		// `Map.ofEntries` y no `Map.of`: AKINE-07.03 sumo `caja:operate` y este mapa llego a once
@@ -394,6 +396,8 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.BIBLIOTECA_CONSULTAR, PermissionScope.ORGANIZACION),
 				// Asistente de datos (D-2). Solo la puerta; sin grant.
 				Map.entry(PermissionCode.ASISTENTE_USE, PermissionScope.ORGANIZACION),
+				// Consultas libres del asistente sobre asistente_sql; sin grant.
+				Map.entry(PermissionCode.ASISTENTE_SQL, PermissionScope.ORGANIZACION),
 				// U-24 (DP-43): reemplazar al profesional de una atencion abierta es decision de quien
 				// administra la sede, y solo de el. No le da sesion:register: no atiende ni escribe
 				// en la atencion, cambia quien la atiende.

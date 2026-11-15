@@ -8,8 +8,15 @@ import java.util.Objects;
  *
  * @param enabled interruptor global ({@code akine.asistente.enabled}), apagado por defecto
  * @param plazo   cuanto se espera al modelo antes de responder que no esta disponible
+ * @param sql     consultas libres sobre {@code asistente_sql} ({@code akine.asistente.sql.enabled}),
+ *                apagadas por defecto
  */
-public record AsistenteAjustes(boolean enabled, Duration plazo) {
+public record AsistenteAjustes(boolean enabled, Duration plazo, boolean sql) {
+
+	/** Sin consultas libres. */
+	public AsistenteAjustes(boolean enabled, Duration plazo) {
+		this(enabled, plazo, false);
+	}
 
 	public AsistenteAjustes {
 		Objects.requireNonNull(plazo, "plazo");
