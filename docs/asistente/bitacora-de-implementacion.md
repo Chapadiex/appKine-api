@@ -58,10 +58,8 @@ Cuatro revisores en paralelo (reuso, simplificación, eficiencia y profundidad d
 
 **No aplicado, y por qué:**
 - **Mover la resolución de títulos de clase al `assistant`.** Sacar `pregunta` del `spi` obliga a traer todas las clases del período antes de acotar, o a una segunda vuelta. Hoy el tope de 3 se aplica después de acotar, en un solo paso.
-- **Un semáforo para el modelo** cuando haya varias consultas a la vez. Cambia el comportamiento ante carga y conviene medirlo en el destino (DP-32).
 - **Extraer el puerto y el adaptador de Ollama a `platform.spi`.** Es la condición de salida de D-3, que se cumple con el tercer consumidor.
 - **Un componente de charla compartido con la consulta a la biblioteca.** Toca la pantalla de otra funcionalidad, que está fuera del alcance de esta tanda.
-- **Etiquetas legibles para los estados de la tabla** (`EN_ATENCION`, `DINERO`). Los formateadores viven en otras funcionalidades, y la regla de ADR-0004 obliga a moverlos a `shared/` primero.
 - **Que el modelo devuelva `seguimiento: true|false`.** Cambia el prompt y obliga a volver a medir. La heurística actual pasó 25/25 en el set limpio.
 
 ## Prueba de clases de punta a punta (15/11)
@@ -85,3 +83,18 @@ La base de QA no tenía clases. Se armó una por la API, como lo haría el admin
 | 50 | "¿Quiénes van a pilates el jueves?" resolvía al jueves pasado: sólo la agenda miraba hacia adelante | `AsistenteService.enFuturo` detecta los verbos en futuro y las clases preguntadas así miran hacia adelante |
 | 51 | "Turnos de enero" preguntado en noviembre resolvía a enero del año pasado | Hacia adelante, un mes anterior al actual es del año próximo |
 | 52 | Una consulta que fallaba después de pasar el permiso no quedaba auditada, aunque ya hubiera leído el padrón | Se audita con `resultado` ERROR y se relanza la excepción |
+
+## Mejoras de `/simplify` aplicadas después del cierre (15/11)
+
+| # | Mejora | Qué se hizo |
+|---|---|---|
+| 53 | Sin un tope, cada consulta de más retenía un hilo del servidor hasta vencer su plazo, porque Ollama atiende de a pocas | `ModeloConCupo` decora el adaptador con un semáforo justo (`akine.asistente.modelo.concurrencia`, 2 por defecto). La consulta que no consigue lugar dentro de su plazo responde 503 `asistente-no-disponible`, y lo que esperó en la fila se descuenta del plazo de la llamada (`ModeloConCupoTest`) |
+| 54 | La tabla de datos mostraba los valores crudos (`EN_ATENCION`, `PRESENTE_TARDE`, `DINERO`) | Mapa local de etiquetas en la pantalla del asistente y números con formato es-AR. Es local porque ADR-0004 no deja importar los formateadores de otras funcionalidades |
+
+**Siguen sin aplicar, con su motivo** (decisiones fuera del plan, no defectos):
+- **Mover la resolución de títulos de clase al `assistant`.** Obliga a traer todas las clases del período antes de acotar, o a una segunda vuelta.
+- **Extraer el puerto y el adaptador de Ollama a `platform.spi`.** La decisión D-3, aceptada por el usuario, es copiar y extraer con el tercer consumidor.
+- **Un componente de charla compartido con la biblioteca.** Toca la pantalla de otra funcionalidad.
+- **Que el modelo devuelva `seguimiento: true|false`.** Cambia el prompt y obliga a volver a medir, y la heurística actual pasa los sets.
+
+**La latencia sin GPU** (7 a 9 s por pregunta) no se resuelve en código: es una decisión de despliegue (U-02). Las opciones son un servidor con GPU, aceptar la espera, o cambiar el adaptador por un modelo en la nube (D-1), y en ese caso al modelo sólo le llega la pregunta.

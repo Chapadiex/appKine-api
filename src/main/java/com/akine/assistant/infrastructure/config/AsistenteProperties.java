@@ -18,13 +18,15 @@ public record AsistenteProperties(
 	/**
 	 * {@code tipo}: {@code ollama} o {@code prueba}. {@code timeoutSegundos}: el interpretador mide
 	 * ~1 s con GPU y 7–9 s solo con CPU (medicion del 15/11); el default de 15 s cubre la CPU con
-	 * margen y corta un Ollama colgado antes que el cliente.
+	 * margen y corta un Ollama colgado antes que el cliente. {@code concurrencia}: cuantas consultas
+	 * esperan al modelo a la vez en esta instancia (ver {@code ModeloConCupo}).
 	 */
 	public record Modelo(
 			@DefaultValue("ollama") String tipo,
 			@DefaultValue("http://localhost:11434") String url,
 			@DefaultValue("qwen3:4b-instruct") String nombre,
 			@DefaultValue("15") int timeoutSegundos,
-			@DefaultValue("2h") String keepAlive) {
+			@DefaultValue("2h") String keepAlive,
+			@DefaultValue("2") int concurrencia) {
 	}
 }

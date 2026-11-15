@@ -3,6 +3,7 @@ package com.akine.assistant.infrastructure.config;
 import com.akine.assistant.application.Interpretador;
 import com.akine.assistant.domain.AsistenteAjustes;
 import com.akine.assistant.domain.port.ModeloDeLenguaje;
+import com.akine.assistant.infrastructure.ModeloConCupo;
 import com.akine.assistant.infrastructure.ModeloDelAsistenteDePrueba;
 import com.akine.assistant.infrastructure.OllamaModeloDelAsistente;
 import org.springframework.beans.factory.ObjectProvider;
@@ -78,7 +79,8 @@ public class AsistenteConfig {
 			+ " and '${akine.asistente.modelo.tipo:ollama}' == 'ollama'")
 	public ModeloDeLenguaje modeloDelAsistente(AsistenteProperties properties) {
 		AsistenteProperties.Modelo modelo = properties.modelo();
-		return new OllamaModeloDelAsistente(modelo.url(), modelo.nombre(), modelo.keepAlive());
+		return new ModeloConCupo(new OllamaModeloDelAsistente(modelo.url(), modelo.nombre(), modelo.keepAlive()),
+				modelo.concurrencia());
 	}
 
 	/** Determinista, para tests y desarrollo sin Ollama. */

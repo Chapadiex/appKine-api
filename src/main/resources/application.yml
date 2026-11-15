@@ -245,6 +245,9 @@ akine:
       url: ${AKINE_ASISTENTE_OLLAMA_URL:http://localhost:11434}
       nombre: ${AKINE_ASISTENTE_MODELO:qwen3:4b-instruct}
       timeout-segundos: ${AKINE_ASISTENTE_TIMEOUT_SEGUNDOS:15}
+      # Consultas que esperan al modelo a la vez en esta instancia; la siguiente espera su plazo y,
+      # si no consigue lugar, responde 503 asistente-no-disponible.
+      concurrencia: ${AKINE_ASISTENTE_CONCURRENCIA:2}
 
   notification:
     email:
