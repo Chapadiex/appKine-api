@@ -42,7 +42,10 @@ import java.util.stream.Stream;
  *
  * <p>Une los dos adaptadores que tenian {@code knowledge} ({@code completar} y {@code generar}) y
  * {@code assistant} ({@code completarJson}) (D-3). {@code num_ctx} es 4096 en todas las llamadas, para
- * que Ollama no recargue el modelo al alternar entre consumidores.
+ * que Ollama no recargue el modelo al alternar entre consumidores, salvo en {@code completarJson} con
+ * {@link OpcionesGeneracion}, que manda {@link OpcionesGeneracion#numCtx()}: las sugerencias de evolucion piden
+ * 8192 porque su prompt llega a 3 hallazgos con 12 pasajes, y eso recarga el modelo si otro consumidor lo tenia
+ * cargado con 4096.
  *
  * <p>{@code completarJson} usa los parametros que midio el asistente el 15/11
  * ({@code docs/asistente/evaluacion/}): temperatura 0 y 120 tokens, que sobran para un objeto corto.
@@ -95,7 +98,7 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 		Map<String, Object> cuerpo = cuerpo(mensajes, false);
 		cuerpo.put("format", esquemaJson == null ? "json" : esquema(esquemaJson));
 		cuerpo.put("options", Map.of("temperature", opciones.temperatura(), "num_predict", opciones.maxTokens(),
-				"num_ctx", NUM_CTX));
+				"num_ctx", opciones.numCtx()));
 		return enviar(pedido(cuerpo, plazo));
 	}
 

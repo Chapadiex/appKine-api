@@ -103,7 +103,8 @@ public class SugerenciasDeEvolucionService {
 	static final String TEXTO_OMITIDO = "TEXTO_OMITIDO";
 	static final int TEXTOS_DE_SESIONES = 3;
 	/** Publica para el arnes de evaluacion, que llama al modelo igual que el servicio. */
-	public static final OpcionesGeneracion OPCIONES = new OpcionesGeneracion(new BigDecimal("0.2"), 1500, true);
+	public static final OpcionesGeneracion OPCIONES = new OpcionesGeneracion(new BigDecimal("0.2"), 1500, true,
+			8192);
 	static final String ERROR = "ERROR";
 	private static final String OPERACION = "Sugerencias de evolucion del caso";
 

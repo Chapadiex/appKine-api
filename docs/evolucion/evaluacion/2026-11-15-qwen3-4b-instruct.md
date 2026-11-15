@@ -4,6 +4,8 @@
 > Casos: `src/test/resources/evolucion/casos.yaml` (24 casos sintéticos escritos por el autor). Biblioteca: `akine_rag`, organización 1, búsqueda vectorial con multilingual-e5-base (ONNX, el modelo con que se guardaron los vectores), corte 0,818, k = 4.
 > Modelo: `qwen3:4b-instruct` en Ollama local, temperatura 0,2, 1.500 tokens, plazo 50 s, `num_ctx` 4096. Dónde corrió, según `/api/ps` al terminar: 100 % del modelo en VRAM (3032 de 3032 MB), contexto 4096. Sin kinesiólogo: todas las metas son automáticas.
 
+> **Superado por `2026-11-15-v2-qwen3-4b-instruct.md`**, corrido después de corregir el `enum` de `hallazgo`, las formas prescriptivas y el `num_ctx`. Éste queda como la medición de antes.
+
 ## Metas (diseño §9.2)
 
 | Medida | Meta | Resultado | Cumple |

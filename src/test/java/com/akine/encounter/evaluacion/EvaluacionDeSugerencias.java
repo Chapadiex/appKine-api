@@ -79,6 +79,8 @@ public final class EvaluacionDeSugerencias {
 
 	private static final String OMITIDO = "[texto omitido]";
 	private static final Duration PLAZO = Duration.ofSeconds(50);
+	private static final int NUM_CTX = SugerenciasDeEvolucionService.OPCIONES.numCtx();
+	private static final int MAX_SALIDA = SugerenciasDeEvolucionService.OPCIONES.maxTokens();
 	private static final Pattern NUMERO = Pattern.compile("\\d+(?:[.,]\\d+)?");
 	private static final Pattern CITA = Pattern.compile("\\bP\\d{1,2}\\b");
 
@@ -260,7 +262,7 @@ public final class EvaluacionDeSugerencias {
 
 	/**
 	 * Tokens del prompt segun Ollama ({@code prompt_eval_count}), con una llamada aparte de 1 token y el mismo
-	 * {@code num_ctx} 4096 que el adaptador (otro valor recargaria el modelo). Si el prompt no entra, Ollama lo
+	 * {@code num_ctx} que el servicio (otro valor recargaria el modelo). Si el prompt no entra, Ollama lo
 	 * recorta y el numero queda pegado al tope: es la senal que se busca.
 	 */
 	private static Integer tokensDelPrompt(PromptDeSugerencias prompt) {
@@ -270,7 +272,7 @@ public final class EvaluacionDeSugerencias {
 					"content", m.texto())).toList();
 			String cuerpo = JSON.writeValueAsString(Map.of("model", nombreDelModelo, "messages", mensajes,
 					"stream", false, "keep_alive", "2h",
-					"options", Map.of("num_predict", 1, "num_ctx", 4096, "temperature", 0)));
+					"options", Map.of("num_predict", 1, "num_ctx", NUM_CTX, "temperature", 0)));
 			java.net.http.HttpResponse<String> respuesta = HTTP.send(java.net.http.HttpRequest
 					.newBuilder(java.net.URI.create(ollamaUrl + "/api/chat"))
 					.header("Content-Type", "application/json")
@@ -509,7 +511,7 @@ public final class EvaluacionDeSugerencias {
 				.append(" casos sintéticos escritos por el autor). Biblioteca: `akine_rag`, organización 1, búsqueda vectorial con")
 				.append(" multilingual-e5-base (ONNX, el modelo con que se guardaron los vectores), corte 0,818, k = 4.\n")
 				.append("> Modelo: `").append(modelo).append("` en Ollama local, temperatura 0,2, 1.500 tokens, plazo 50 s,")
-				.append(" `num_ctx` 4096. Dónde corrió, según `/api/ps` al terminar: ").append(dondeCorre)
+				.append(" `num_ctx` ").append(NUM_CTX).append(". Dónde corrió, según `/api/ps` al terminar: ").append(dondeCorre)
 				.append(". Sin kinesiólogo: todas las metas son automáticas.\n\n");
 
 		b.append("## Metas (diseño §9.2)\n\n| Medida | Meta | Resultado | Cumple |\n|---|---|---|---|\n");
@@ -536,10 +538,10 @@ public final class EvaluacionDeSugerencias {
 						latencias.getLast() / 1000.0, errores), errores == 0);
 		List<Integer> tokens = rs.stream().map(r -> r.tokensPrompt).filter(x -> x != null).sorted().toList();
 		if (!tokens.isEmpty()) {
-			long cerca = tokens.stream().filter(t -> t >= 4096 - 1500).count();
+			long cerca = tokens.stream().filter(t -> t >= NUM_CTX - MAX_SALIDA).count();
 			b.append("\nTokens del prompt (`prompt_eval_count` de Ollama): mínimo ").append(tokens.getFirst())
-					.append(", máximo ").append(tokens.getLast()).append(". Con `num_ctx` 4096 y hasta 1.500 de salida,")
-					.append(" un prompt de más de 2.596 tokens deja menos lugar que el tope de salida; ").append(cerca)
+					.append(", máximo ").append(tokens.getLast()).append(". Con `num_ctx` ").append(NUM_CTX).append(" y hasta ").append(MAX_SALIDA).append(" de salida,")
+					.append(" un prompt de más de ").append(NUM_CTX - MAX_SALIDA).append(" tokens deja menos lugar que el tope de salida; ").append(cerca)
 					.append(" caso(s) lo superan.\n");
 		}
 		b.append("\nLa meta de casos con material cuenta los ").append(conMaterial.size())

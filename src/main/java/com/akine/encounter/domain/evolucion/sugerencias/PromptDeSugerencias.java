@@ -30,11 +30,21 @@ public record PromptDeSugerencias(List<MensajeChat> mensajes, String esquemaJson
 
 	static final int MAXIMO_PASAJE = 1200;
 
+	/** {@code %s}: la lista JSON de los codigos enviados, el {@code enum} de {@code hallazgo}. */
 	static final String ESQUEMA = """
 			{"type":"object","properties":{"sugerencias":{"type":"array","items":{"type":"object","properties":{\
-			"hallazgo":{"type":"string"},"texto":{"type":"string"},"fundamento":{"type":"string"},\
+			"hallazgo":{"type":"string","enum":%s},"texto":{"type":"string"},"fundamento":{"type":"string"},\
 			"citas":{"type":"array","items":{"type":"string"}}},\
 			"required":["hallazgo","texto","fundamento","citas"]}}},"required":["sugerencias"]}""";
+
+	/**
+	 * El esquema con {@code hallazgo} restringido a los codigos que viajaron. Sin esto el modelo copiaba el renglon
+	 * del prompt ({@code "BAJA_ADHERENCIA (ATENCION)"}) y el validador lo descartaba (evaluacion del 15/11).
+	 */
+	static String esquema(List<HallazgoConEvidencia> evidencia) {
+		return ESQUEMA.formatted(evidencia.stream().map(e -> "\"" + e.hallazgo().codigo().name() + "\"").distinct()
+				.collect(Collectors.joining(",", "[", "]")));
+	}
 
 	static final String SISTEMA = """
 			Sos un asistente para kinesiólogos. Escribís en castellano rioplatense y en tono de sugerencia \
@@ -123,7 +133,8 @@ public record PromptDeSugerencias(List<MensajeChat> mensajes, String esquemaJson
 		d.append("Hallazgos:\n");
 		for (HallazgoConEvidencia e : evidencia) {
 			Hallazgo h = e.hallazgo();
-			d.append("- ").append(h.codigo().name()).append(" (").append(h.severidad().name()).append(")");
+			// Nunca "CODIGO (SEVERIDAD)": el modelo copiaba esa forma entera en el campo hallazgo.
+			d.append("- ").append(h.codigo().name()).append("; severidad ").append(h.severidad().name());
 			String ses = h.sesiones().stream().map(indice::get).filter(x -> x != null).map(String::valueOf)
 					.collect(Collectors.joining(", "));
 			if (!ses.isEmpty()) {
@@ -151,7 +162,7 @@ public record PromptDeSugerencias(List<MensajeChat> mensajes, String esquemaJson
 
 		List<MensajeChat> mensajes = List.of(new MensajeChat(Rol.SISTEMA, SISTEMA),
 				new MensajeChat(Rol.USUARIO, d + "\n\n" + p));
-		return new PromptDeSugerencias(mensajes, ESQUEMA, numeros, s.omitio, evidencia);
+		return new PromptDeSugerencias(mensajes, esquema(evidencia), numeros, s.omitio, evidencia);
 	}
 
 	/** Recorta y sanea cada pasaje (titulo y cuerpo); si el detector marca cualquiera de los dos, se omite. */

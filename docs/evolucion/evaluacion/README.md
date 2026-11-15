@@ -4,6 +4,21 @@ Medición manual, **fuera del CI**, de las sugerencias de revisión del tratamie
 biblioteca real (diseño `docs/diseno/AKINE-analizador-de-evolucion-fase2.md` §9.2). No hay kinesiólogo:
 las metas son automáticas y la columna de pertinencia es **juicio del autor, no clínico**.
 
+## Resultados al 15/11/2026
+
+| Corrida | Abstención (meta 100 %) | Con material con ≥ 1 aceptada (meta ≥ 70 %) | Regla 4 (≤ 40 %) | Número inventado / cita ajena / inyección | p50 / p95 con GPU |
+|---|---|---|---|---|---|
+| `qwen3:4b-instruct` v1 | 0 de 4 | 13 de 18 (72 %) | 18 % | 0 / 0 / 0 | 16,2 / 23,2 s |
+| `qwen2.5:3b` | 0 de 4 | 11 de 18 (61 %) | 5 % | 0 / 0 / 0 | 8,6 / 15,2 s |
+| **`qwen3:4b-instruct` v2** (`enum` de `hallazgo`, formas prescriptivas ampliadas, `num_ctx` 8192) | **0 de 4** | **16 de 18 (89 %)** | 9 % | 0 / 0 / 0 | 18,1 / 23,2 s |
+
+- Modelo elegido: **`qwen3:4b-instruct`**, el valor por defecto de `akine.evolucion.sugerencias.modelo.nombre`.
+- **La abstención no se cumple con ningún modelo**: la decide la búsqueda, y con multilingual-e5-base los
+  puntajes de los cuadros que los libros no tratan se superponen con los de los que sí trata. Es una decisión
+  pendiente del usuario, como la sugerencia de infiltraciones para una ATM que pasó el validador (§13.8) y la
+  latencia sin GPU, que no se midió.
+- Detalle y pertinencia (juicio del autor, no clínico) en `2026-11-15-v2-qwen3-4b-instruct.md`.
+
 ## Qué hay acá
 
 | Archivo | Qué es |
@@ -20,7 +35,7 @@ Por cada caso, lo mismo que `SugerenciasDeEvolucionService.generar` después de 
 2. `EvidenciaDeSugerencias.buscar` (la misma clase que usa el servicio) con la `BusquedaService` real
    contra `akine_rag`: una búsqueda por hallazgo, `k = 4`, corte 0,818 (vacío → `SIN_MATERIAL`);
 3. `PromptDeSugerencias.armar` y `ModeloDeLenguaje.completarJson` con las mismas opciones que el servicio
-   (temperatura 0,2, 1.500 tokens, plazo 50 s);
+   (`SugerenciasDeEvolucionService.OPCIONES`: temperatura 0,2, 1.500 tokens, `num_ctx` 8192; plazo 50 s);
 4. `ValidadorDeSugerencias.validar`, y además dos confirmaciones independientes del validador: que ninguna
    sugerencia aceptada cite un pasaje de otro hallazgo y que todo número de lo aceptado esté en lo enviado.
 

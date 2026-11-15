@@ -124,6 +124,12 @@ class ValidadorDeSugerenciasTest {
 	}
 
 	@Test
+	void esFundamentalEsFormaPrescriptiva() {
+		assertThat(validar(salida(sugerencia("DOLOR_SIN_MEJORA", "Es fundamental evaluar el entorno laboral.", "x",
+				"[\"P1\"]"))).descartes()).containsOnlyKeys(ReglaDeDescarte.FORMA_PRESCRIPTIVA);
+	}
+
+	@Test
 	void largoDeMas() {
 		String largo = "a".repeat(281);
 		assertThat(validar(salida(sugerencia("DOLOR_SIN_MEJORA", largo, "x", "[\"P1\"]"))).descartes())

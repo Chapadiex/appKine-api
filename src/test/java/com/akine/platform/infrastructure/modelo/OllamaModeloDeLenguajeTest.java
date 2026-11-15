@@ -205,6 +205,19 @@ class OllamaModeloDeLenguajeTest {
 	}
 
 	@Test
+	void completarJson_con_opciones_manda_temperatura_tope_y_num_ctx_de_las_opciones() throws IOException {
+		String url = levantar(200, "{\"message\":{\"role\":\"assistant\",\"content\":\"{}\"}}");
+
+		new OllamaModeloDeLenguaje(url, "qwen3:4b-instruct", "2h").completarJson(MENSAJES_ASISTENTE, null,
+				new OpcionesGeneracion(new java.math.BigDecimal("0.2"), 1500, true, 8192), Duration.ofSeconds(5));
+
+		JsonNode opciones = JsonMapper.builder().build().readTree(pedido.get()).path("options");
+		assertThat(opciones.path("temperature").asDouble()).isEqualTo(0.2);
+		assertThat(opciones.path("num_predict").asInt()).isEqualTo(1500);
+		assertThat(opciones.path("num_ctx").asInt()).isEqualTo(8192);
+	}
+
+	@Test
 	void un_error_del_servidor_es_modelo_no_disponible() throws IOException {
 		String url = levantar(500, "{\"error\":\"model not found\"}");
 
