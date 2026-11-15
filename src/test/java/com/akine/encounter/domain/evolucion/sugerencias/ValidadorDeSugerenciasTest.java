@@ -200,4 +200,15 @@ class ValidadorDeSugerenciasTest {
 		assertThat(validar(salida(sugerencia("DOLOR_SIN_MEJORA", "Ver P1 del libro.", "x", "[\"P1\"]"))).aceptadas())
 				.hasSize(1);
 	}
+
+	@Test
+	void elIdDeUnPasajeOmitidoSeLeeComoNumero() {
+		PasajeEnviado omitido = new PasajeEnviado("P7", new PasajeRecuperado(1L, "[texto omitido]", 1, 2, "", 0.9, true),
+				Set.of(DOLOR), true);
+		List<HallazgoConEvidencia> env = List.of(new HallazgoConEvidencia(
+				new Hallazgo(DOLOR, Severidad.ATENCION, List.of(), List.of(), null), List.of(p1, omitido)));
+		ResultadoDeValidacion r = validador.validar(
+				salida(sugerencia("DOLOR_SIN_MEJORA", "Ver P7 del libro.", "x", "[\"P1\"]")), prompt(env));
+		assertThat(r.descartes()).containsOnlyKeys(ReglaDeDescarte.NUMERO_NO_ENVIADO);
+	}
 }

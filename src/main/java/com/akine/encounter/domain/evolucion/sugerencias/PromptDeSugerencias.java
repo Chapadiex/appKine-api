@@ -129,7 +129,7 @@ public record PromptDeSugerencias(List<MensajeChat> mensajes, String esquemaJson
 			if (!ses.isEmpty()) {
 				d.append("; sesiones ").append(ses);
 			}
-			new TreeMap<>(h.valores()).forEach((k, v) -> d.append("; ").append(k).append(": ").append(v));
+			new TreeMap<>(h.valores()).forEach((k, v) -> d.append("; ").append(s.limpiar(k)).append(": ").append(s.limpiar(v)));
 			d.append("; pasajes: ").append(e.pasajes().stream().filter(x -> !x.omitido()).map(PasajeEnviado::id)
 					.collect(Collectors.joining(", "))).append('\n');
 		}

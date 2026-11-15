@@ -135,8 +135,11 @@ public final class ValidadorDeSugerencias {
 		// 5. numeros
 		Set<String> validos = new HashSet<>(permitidos);
 		citas.forEach(p -> validos.addAll(NumerosEnTexto.extraer(p.pasaje().texto())));
-		Set<String> usados = NumerosEnTexto.extraer(texto, porId.keySet());
-		usados.addAll(NumerosEnTexto.extraer(fundamento, porId.keySet()));
+		// solo se descuentan los ids de pasajes que viajaron: el de uno omitido es un numero comun
+		Set<String> idsEnviados = new HashSet<>();
+		porId.values().stream().filter(p -> !p.omitido()).forEach(p -> idsEnviados.add(p.id()));
+		Set<String> usados = NumerosEnTexto.extraer(texto, idsEnviados);
+		usados.addAll(NumerosEnTexto.extraer(fundamento, idsEnviados));
 		if (!validos.containsAll(usados)) {
 			return descarte(ReglaDeDescarte.NUMERO_NO_ENVIADO);
 		}
