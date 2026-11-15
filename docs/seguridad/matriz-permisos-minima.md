@@ -1033,7 +1033,9 @@ El asistente que responde preguntas sobre turnos, sesiones, clases y reportes (`
 | Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
 |---|---|---|---|---|---|---|
 | `asistente:use` | — | Org | Org | Org | Org | — |
+| `asistente:sql` | — | Org | Org | — | — | — |
 
 - **Es sólo la puerta.** Cada respuesta la produce una herramienta que llama al servicio dueño del dato con el actor del usuario, y ese servicio exige su propio permiso (`turno:read`, `inscripcion:read`, `reporte:read`, `paciente:read`) con su alcance. Lo que muestra cada respuesta es lo mismo que ese rol ve en la pantalla correspondiente: un `PROFESIONAL` con alcance propio ve sólo sus turnos, una sección de reporte sin permiso de fuente queda omitida (y la respuesta lo advierte), y un `PACIENTE` no tiene la puerta. Cuando el servicio rechaza al actor, la respuesta es 200 con `resultado` SIN_PERMISO. Por eso el alcance de la puerta es `ORGANIZACION` para los cuatro roles: el recorte por sede o por actividad propia lo aplica cada servicio.
 - **No es otorgable por grant**, y `PACIENTE` y `PLATFORM_ADMIN` no lo tienen.
 - **Asistente apagado:** con `akine.asistente.enabled` en `false`, toda consulta responde 409 `asistente-deshabilitado` aunque el actor tenga el permiso.
+- **`asistente:sql`, consultas libres** (`docs/diseno/AKINE-asistente-sql.md`): si la pregunta no entra en ninguna intención, el modelo escribe un `SELECT` sobre las vistas de `asistente_sql`, recortadas a la organización y a la sede. Las vistas **no** aplican el recorte por actividad propia del profesional, por eso el permiso es sólo de los dos roles de administración, que ya ven todo de la sede. No es otorgable por grant y exige además `akine.asistente.sql.enabled` (apagado por defecto); sin el permiso o apagado, la pregunta recibe la ayuda de siempre.
