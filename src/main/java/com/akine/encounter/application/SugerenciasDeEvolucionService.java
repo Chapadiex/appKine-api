@@ -17,7 +17,6 @@ import com.akine.encounter.domain.evolucion.sugerencias.AjustesDeSugerencias;
 import com.akine.encounter.domain.evolucion.sugerencias.ElectorDeHallazgos;
 import com.akine.encounter.domain.evolucion.sugerencias.EntradaDelPrompt;
 import com.akine.encounter.domain.evolucion.sugerencias.HallazgoConEvidencia;
-import com.akine.encounter.domain.evolucion.sugerencias.PasajeEnviado;
 import com.akine.encounter.domain.evolucion.sugerencias.PromptDeSugerencias;
 import com.akine.encounter.domain.evolucion.sugerencias.RecursosDeSugerencias;
 import com.akine.encounter.domain.evolucion.sugerencias.ResultadoDeValidacion;
@@ -35,8 +34,6 @@ import com.akine.encounter.domain.port.SesionRepositoryPort;
 import com.akine.encounter.domain.port.SugerenciaEvolucionRepositoryPort;
 import com.akine.encounter.spi.CitaGuardada;
 import com.akine.knowledge.spi.BibliotecaDirectory;
-import com.akine.knowledge.spi.PasajeRecuperado;
-import com.akine.knowledge.spi.ResultadoBusqueda;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
@@ -71,10 +68,8 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -82,7 +77,7 @@ import java.util.stream.Collectors;
  * Sugerencias de revision del tratamiento sobre un Caso Clinico, respaldadas por la biblioteca del
  * centro (M31 fase 2, {@code docs/diseno/AKINE-analizador-de-evolucion-fase2.md}).
  *
- * <h2>Tres tramos, y la llamada al modelo fuera de toda transaccion (diseno §4.2)</h2>
+ * <h2>Tres tramos, y la llamada al modelo fuera de toda transaccion (diseno Â§4.2)</h2>
  *
  * <ol>
  *   <li>Transaccion corta: el calculo de la fase 1, el permiso {@code evolucion:sugerir}, la puerta
@@ -106,10 +101,9 @@ public class SugerenciasDeEvolucionService {
 	/** Nombre del bean del modelo ({@code SugerenciasDeEvolucionConfig.MODELO}). */
 	static final String MODELO = "modeloEvolucion";
 	static final String TEXTO_OMITIDO = "TEXTO_OMITIDO";
-	static final int K = 4;
-	static final int MAXIMO_CONSULTA = 600;
 	static final int TEXTOS_DE_SESIONES = 3;
-	static final OpcionesGeneracion OPCIONES = new OpcionesGeneracion(new BigDecimal("0.2"), 1500, true);
+	/** Publica para el arnes de evaluacion, que llama al modelo igual que el servicio. */
+	public static final OpcionesGeneracion OPCIONES = new OpcionesGeneracion(new BigDecimal("0.2"), 1500, true);
 	static final String ERROR = "ERROR";
 	private static final String OPERACION = "Sugerencias de evolucion del caso";
 
@@ -181,7 +175,7 @@ public class SugerenciasDeEvolucionService {
 		long organizationId = organizacionDe(actor);
 		if (TransactionSynchronizationManager.isActualTransactionActive()) {
 			throw new IllegalStateException("Las sugerencias llaman al modelo: no pueden correr dentro de una"
-					+ " transaccion (diseno fase 2, §4.2)");
+					+ " transaccion (diseno fase 2, Â§4.2)");
 		}
 		if (!candado.tomar(actor.accountId())) {
 			throw new GeneracionEnCursoException();
@@ -286,61 +280,10 @@ public class SugerenciasDeEvolucionService {
 		return new SugerenciasView(generacionId, resultado, List.of(), 0, lectura.advertencias());
 	}
 
-	/**
-	 * Una busqueda por hallazgo (diseno §5.2). Un hallazgo entra solo si la busqueda alcanza, con sus
-	 * pasajes sobre el corte; un pasaje que aparece para dos hallazgos viaja una vez, con un solo id.
-	 */
+	/** Una busqueda por hallazgo (diseno Â§5.2), en {@link EvidenciaDeSugerencias}. */
 	private List<HallazgoConEvidencia> buscarEvidencia(long organizationId, CasoDetalleSnapshot caso,
 			List<Hallazgo> elegidos) {
-		Map<Hallazgo, List<PasajeRecuperado>> porHallazgo = new LinkedHashMap<>();
-		for (Hallazgo hallazgo : elegidos) {
-			ResultadoBusqueda resultado = biblioteca.buscar(organizationId, consulta(caso, hallazgo), K);
-			if (resultado.alcanza()) {
-				List<PasajeRecuperado> sobreElCorte = resultado.pasajes().stream()
-						.filter(PasajeRecuperado::superaCorte).toList();
-				if (!sobreElCorte.isEmpty()) {
-					porHallazgo.put(hallazgo, sobreElCorte);
-				}
-			}
-		}
-		Map<ClaveDePasaje, Set<CodigoDeHallazgo>> duenios = new LinkedHashMap<>();
-		Map<ClaveDePasaje, PasajeRecuperado> pasajes = new LinkedHashMap<>();
-		porHallazgo.forEach((hallazgo, lista) -> lista.forEach(p -> {
-			ClaveDePasaje clave = ClaveDePasaje.de(p);
-			pasajes.putIfAbsent(clave, p);
-			duenios.computeIfAbsent(clave, k -> new LinkedHashSet<>()).add(hallazgo.codigo());
-		}));
-		Map<ClaveDePasaje, PasajeEnviado> enviados = new LinkedHashMap<>();
-		int n = 0;
-		for (Map.Entry<ClaveDePasaje, PasajeRecuperado> e : pasajes.entrySet()) {
-			enviados.put(e.getKey(), new PasajeEnviado("P" + ++n, e.getValue(), duenios.get(e.getKey())));
-		}
-		List<HallazgoConEvidencia> evidencia = new ArrayList<>();
-		porHallazgo.forEach((hallazgo, lista) -> evidencia.add(new HallazgoConEvidencia(hallazgo,
-				lista.stream().map(p -> enviados.get(ClaveDePasaje.de(p))).distinct().toList())));
-		return evidencia;
-	}
-
-	/** Un mismo pasaje es el mismo libro, las mismas paginas y el mismo texto. */
-	private record ClaveDePasaje(long libroId, int paginaDesde, int paginaHasta, String texto) {
-
-		static ClaveDePasaje de(PasajeRecuperado p) {
-			return new ClaveDePasaje(p.libroId(), p.paginaDesde(), p.paginaHasta(), p.texto());
-		}
-	}
-
-	/** Diagnostico + la frase del codigo, + el nombre de la medicion si la hay; hasta 600 caracteres. */
-	static String consulta(CasoDetalleSnapshot caso, Hallazgo hallazgo) {
-		StringBuilder consulta = new StringBuilder();
-		if (caso.diagnosticoPresuntivo() != null && !caso.diagnosticoPresuntivo().isBlank()) {
-			consulta.append(caso.diagnosticoPresuntivo().strip()).append(". ");
-		}
-		consulta.append(RecursosDeSugerencias.consultaDe(hallazgo.codigo()));
-		String medicion = hallazgo.valores().get("medicion");
-		if (medicion != null && !medicion.isBlank()) {
-			consulta.append(". ").append(medicion.strip());
-		}
-		return consulta.length() > MAXIMO_CONSULTA ? consulta.substring(0, MAXIMO_CONSULTA) : consulta.toString();
+		return EvidenciaDeSugerencias.buscar(biblioteca, organizationId, caso.diagnosticoPresuntivo(), elegidos);
 	}
 
 	private static EntradaDelPrompt entrada(CasoAnalizado calculo) {
