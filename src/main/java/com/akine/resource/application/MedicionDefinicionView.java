@@ -4,6 +4,7 @@ import com.akine.resource.domain.CatalogoAlcance;
 import com.akine.resource.domain.MedicionDefinicion;
 import com.akine.resource.spi.MedicionDefinicionSnapshot;
 import com.akine.resource.spi.MedicionTipo;
+import com.akine.resource.spi.SentidoDeMejora;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -43,6 +44,8 @@ public record MedicionDefinicionView(
 
 		BigDecimal maximo,
 
+		SentidoDeMejora mejoraCuando,
+
 		String estado,
 
 		Instant deletedAt,
@@ -63,6 +66,7 @@ public record MedicionDefinicionView(
 				definicion.getUnidad(),
 				definicion.getMinimo(),
 				definicion.getMaximo(),
+				definicion.getMejoraCuando(),
 				definicion.isActive() ? "ACTIVO" : "INACTIVO",
 				definicion.getDeletedAt(),
 				definicion.getDeactivationReason(),
@@ -89,6 +93,7 @@ public record MedicionDefinicionView(
 				definicion.getMinimo(),
 				definicion.getMaximo(),
 				definicion.isOperable(),
-				definicion.getVersion());
+				definicion.getVersion(),
+				definicion.getMejoraCuando());
 	}
 }

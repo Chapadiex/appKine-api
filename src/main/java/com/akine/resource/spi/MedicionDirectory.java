@@ -48,4 +48,10 @@ public interface MedicionDirectory {
 	 * <p>Es la consulta de un selector, no la de un historico: las inactivas no aparecen.
 	 */
 	List<MedicionDefinicionSnapshot> definicionesVigentes(Long organizationId);
+
+	/**
+	 * Varias definiciones por id, en una consulta, <b>incluidas las inactivas</b>: las mediciones
+	 * viejas se siguen leyendo (M31). Las que no son visibles para la organizacion no vuelven.
+	 */
+	List<MedicionDefinicionSnapshot> findTodas(Long organizationId, java.util.Collection<Long> definicionIds);
 }

@@ -31,6 +31,15 @@ public interface MedicionDefinicionRepository
 	Optional<MedicionDefinicion> findVisible(
 			@Param("id") Long id, @Param("owners") Collection<Long> owners);
 
+	/** Varias definiciones visibles de una vez, incluidas las dadas de baja (M31). */
+	@Query(value = """
+			SELECT * FROM medicion_definicion
+			 WHERE id IN (:ids)
+			   AND owner_key IN (:owners)
+			""", nativeQuery = true)
+	List<MedicionDefinicion> findVisibles(
+			@Param("ids") Collection<Long> ids, @Param("owners") Collection<Long> owners);
+
 	@Override
 	@Query(value = """
 			SELECT * FROM medicion_definicion

@@ -2,6 +2,7 @@ package com.akine.resource.application;
 
 import com.akine.resource.domain.CatalogoAlcance;
 import com.akine.resource.spi.MedicionTipo;
+import com.akine.resource.spi.SentidoDeMejora;
 
 import java.math.BigDecimal;
 
@@ -35,5 +36,6 @@ public record MedicionDefinicionAltaCommand(
 		BigDecimal minimo,
 
 		/** {@code null} = sin techo. INCLUSIVE cuando esta. Solo en los tipos numericos. */
-		BigDecimal maximo) {
+		BigDecimal maximo,
+		SentidoDeMejora mejoraCuando) {
 }

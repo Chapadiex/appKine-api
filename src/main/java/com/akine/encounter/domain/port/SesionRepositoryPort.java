@@ -189,4 +189,17 @@ public interface SesionRepositoryPort {
 
 	/** Las sesiones vivas de origen grupal de una clase, en la sede (AKINE-08.05, el panel). */
 	java.util.List<Sesion> findVivasDeLaClase(long organizationId, long consultorioId, long claseId);
+
+	/**
+	 * Las sesiones CERRADAS y vivas de un Caso, de la mas reciente a la mas vieja, hasta {@code tope}
+	 * (M31, RNF-M31-002). La fila ya tiene los valores vigentes: una enmienda reescribe la sesion.
+	 */
+	List<Sesion> findCerradasDelCaso(long organizationId, long casoId, int tope);
+
+	/**
+	 * Cuantas sesiones cerradas de la historia NO tienen caso y se cerraron en {@code [desde, hasta]}
+	 * (M31, RN-M31-005): no entran en el analisis, y la respuesta lo avisa.
+	 */
+	long contarCerradasSinCasoDeHistoria(
+			long organizationId, long historiaClinicaId, java.time.Instant desde, java.time.Instant hasta);
 }

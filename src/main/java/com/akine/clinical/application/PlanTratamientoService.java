@@ -799,6 +799,16 @@ public class PlanTratamientoService {
 		auditarLectura(actor, acceso, plan, "AVANCE", ahora);
 		registrarSoporte(acceso, actor, plan, "Ver el avance de un plan de tratamiento", ahora);
 
+		return calcularAvance(plan, version);
+	}
+
+	/**
+	 * El calculo del avance, sin permiso ni auditoria: los pone quien llama. Lo comparten
+	 * {@link #avance} y la lectura del plan vigente para M31 ({@code PlanVigenteDelCaso}), para que
+	 * el numero que ve la pantalla del plan y el que ve la evolucion del caso sea el mismo.
+	 */
+	AvanceDelPlanView calcularAvance(PlanTratamiento plan, PlanTratamientoVersion version) {
+		long organizationId = plan.getOrganizationId();
 		Map<Long, RealizadoPorOferta> porOferta = new LinkedHashMap<>();
 		for (RealizadoPorOferta conteo
 				: realizado.contarPorOfertaEnElCasoDesde(organizationId, plan.getCasoClinicoId(), plan.getActivadoEn())) {

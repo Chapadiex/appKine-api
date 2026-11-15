@@ -4,6 +4,7 @@ import com.akine.clinical.application.CasoNumeradorIniciador;
 import com.akine.clinical.domain.CasoClinico;
 import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoClinicoRepositoryPort;
 import com.akine.clinical.domain.port.CasoRepositoryPorts.CasoSesionNumeradorPort;
+import com.akine.clinical.spi.CasoDetalleSnapshot;
 import com.akine.clinical.spi.CasoDirectory;
 import com.akine.clinical.spi.CasoSnapshot;
 import org.springframework.stereotype.Component;
@@ -46,6 +47,19 @@ public class ClinicalCasoDirectory implements CasoDirectory {
 	public Optional<CasoSnapshot> find(long organizationId, long casoId) {
 		return casos.findByIdAndOrganizationId(casoId, organizationId)
 				.map(ClinicalCasoDirectory::instantanea);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Optional<CasoDetalleSnapshot> detalle(long organizationId, long casoId) {
+		return casos.findByIdAndOrganizationId(casoId, organizationId)
+				.map(caso -> new CasoDetalleSnapshot(
+						caso.getId(),
+						caso.getHistoriaClinicaId(),
+						caso.getNumeroCaso(),
+						caso.getEstado().name(),
+						caso.getDiagnosticoPresuntivo(),
+						caso.getObjetivoTerapeutico()));
 	}
 
 	/**

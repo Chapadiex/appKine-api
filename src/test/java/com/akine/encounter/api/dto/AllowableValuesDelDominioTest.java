@@ -9,6 +9,8 @@ import com.akine.resource.spi.MedicionTipo;
 import com.akine.encounter.domain.ModoSesion;
 import com.akine.encounter.domain.ProximaConducta;
 import com.akine.encounter.domain.Tolerancia;
+import com.akine.encounter.domain.evolucion.CodigoDeHallazgo;
+import com.akine.encounter.domain.evolucion.Hallazgo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,6 +45,8 @@ class AllowableValuesDelDominioTest {
 	/** Campos que viajan como {@code String} y el enum de dominio que los origina. */
 	private static final Map<String, Class<? extends Enum<?>>> ENUM_DE_CADA_CAMPO_TEXTO = Map.ofEntries(
 			Map.entry("SesionResponse.estado", EstadoSesion.class),
+			Map.entry("EvolucionDelCasoHallazgoResponse.codigo", CodigoDeHallazgo.class),
+			Map.entry("EvolucionDelCasoHallazgoResponse.severidad", Hallazgo.Severidad.class),
 			Map.entry("CierreResponse.asistencia", Asistencia.class),
 			Map.entry("CierreResponse.tolerancia", Tolerancia.class),
 			Map.entry("CierreResponse.proximaConducta", ProximaConducta.class),

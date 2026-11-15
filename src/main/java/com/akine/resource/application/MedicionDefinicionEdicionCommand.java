@@ -1,5 +1,7 @@
 package com.akine.resource.application;
 
+import com.akine.resource.spi.SentidoDeMejora;
+
 import java.math.BigDecimal;
 
 /**
@@ -32,6 +34,8 @@ public record MedicionDefinicionEdicionCommand(
 		 * nulables no puede expresar. Misma forma que {@code clearValidUntil} en M06.
 		 */
 		boolean clearRango,
+		SentidoDeMejora mejoraCuando,
+		boolean clearMejoraCuando,
 
 		long expectedVersion) {
 }

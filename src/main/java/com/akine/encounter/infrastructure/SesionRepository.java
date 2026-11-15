@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
@@ -475,4 +477,41 @@ public interface SesionRepository extends JpaRepository<Sesion, Long>, SesionRep
 			@Param("organizationId") long organizationId,
 			@Param("consultorioId") long consultorioId,
 			@Param("claseId") long claseId);
+
+	// =================================================================================
+	// M31 — evolucion del caso
+	// =================================================================================
+
+	@Override
+	@QueryHints(@QueryHint(name = org.hibernate.jpa.HibernateHints.HINT_READ_ONLY, value = "true"))
+	@Query(value = """
+			SELECT s.* FROM sesion s
+			 WHERE s.organization_id = :organizationId
+			   AND s.caso_id = :casoId
+			   AND s.estado = 'CERRADA'
+			   AND s.deleted_at IS NULL
+			 ORDER BY s.cerrada_en DESC, s.id DESC
+			 LIMIT :tope
+			""", nativeQuery = true)
+	List<Sesion> findCerradasDelCaso(
+			@Param("organizationId") long organizationId,
+			@Param("casoId") long casoId,
+			@Param("tope") int tope);
+
+	@Override
+	@Query(value = """
+			SELECT COUNT(*) FROM sesion s
+			 WHERE s.organization_id = :organizationId
+			   AND s.historia_clinica_id = :historiaClinicaId
+			   AND s.caso_id IS NULL
+			   AND s.estado = 'CERRADA'
+			   AND s.deleted_at IS NULL
+			   AND s.cerrada_en >= :desde
+			   AND s.cerrada_en <= :hasta
+			""", nativeQuery = true)
+	long contarCerradasSinCasoDeHistoria(
+			@Param("organizationId") long organizationId,
+			@Param("historiaClinicaId") long historiaClinicaId,
+			@Param("desde") Instant desde,
+			@Param("hasta") Instant hasta);
 }

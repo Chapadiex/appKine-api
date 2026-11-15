@@ -1,5 +1,6 @@
 package com.akine.resource.api.dto;
 
+import com.akine.resource.spi.SentidoDeMejora;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -53,6 +54,15 @@ public record UpdateMedicionDefinicionRequest(
 				example = "false",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		Boolean clearRango,
+
+		@Schema(description = "Nuevo sentido de mejora. Se ignora si clearMejoraCuando es true",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		SentidoDeMejora mejoraCuando,
+
+		@Schema(description = "Deja la medida sin sentido de mejora declarado",
+				example = "false",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		Boolean clearMejoraCuando,
 
 		@Schema(
 				description = "Version que el cliente leyo. Si quedo vieja, 409 "
