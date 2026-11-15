@@ -1,8 +1,9 @@
 package com.akine.assistant.application;
 
-import com.akine.assistant.domain.port.MensajeChat;
-import com.akine.assistant.domain.port.MensajeChat.Rol;
-import com.akine.assistant.domain.port.ModeloDeLenguaje;
+import com.akine.assistant.domain.exception.ModeloNoDisponibleException;
+import com.akine.platform.spi.modelo.MensajeChat;
+import com.akine.platform.spi.modelo.MensajeChat.Rol;
+import com.akine.platform.spi.modelo.ModeloDeLenguaje;
 import com.akine.assistant.spi.Intencion;
 import com.akine.platform.spi.listado.TextoDeBusqueda;
 import org.slf4j.Logger;
@@ -37,8 +38,8 @@ import java.util.function.Supplier;
  * periodo de la pregunta anterior. Un campo que la intencion usa y que el modelo deja vacio se hereda
  * de la interpretacion anterior. Es la misma regla que necesito la biblioteca v2.
  *
- * <p>Si el modelo no responde, {@code ModeloNoDisponibleException} se propaga: no se responde
- * "fuera de alcance" a una pregunta que no se llego a interpretar.
+ * <p>Si el modelo no responde, o su cupo esta lleno, se lanza la {@code ModeloNoDisponibleException}
+ * del asistente: no se responde "fuera de alcance" a una pregunta que no se llego a interpretar.
  */
 public class Interpretador {
 
@@ -79,7 +80,14 @@ public class Interpretador {
 						.map(t -> new TurnoPrevio(t.pregunta(), sanear(t.interpretacion())))
 						.toList();
 
-		String crudo = modelo.get().completarJson(mensajes(texto, previos), plazo);
+		String crudo;
+		try {
+			crudo = modelo.get().completarJson(mensajes(texto, previos), null, plazo);
+		}
+		catch (com.akine.platform.spi.modelo.ModeloNoDisponibleException e) {
+			// Incluye el cupo lleno (ModeloOcupadoException): los dos son 503 asistente-no-disponible.
+			throw new ModeloNoDisponibleException(e);
+		}
 		Interpretacion leida = leer(crudo);
 		return previos.isEmpty() ? leida : heredar(leida, previos.getLast().interpretacion(), esSeguimiento(texto));
 	}

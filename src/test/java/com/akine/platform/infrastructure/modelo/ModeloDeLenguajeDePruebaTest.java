@@ -1,8 +1,8 @@
-package com.akine.knowledge.infrastructure;
+package com.akine.platform.infrastructure.modelo;
 
-import com.akine.knowledge.domain.port.MensajeChat;
-import com.akine.knowledge.domain.port.MensajeChat.Rol;
-import com.akine.knowledge.domain.port.OpcionesGeneracion;
+import com.akine.platform.spi.modelo.MensajeChat;
+import com.akine.platform.spi.modelo.MensajeChat.Rol;
+import com.akine.platform.spi.modelo.OpcionesGeneracion;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;

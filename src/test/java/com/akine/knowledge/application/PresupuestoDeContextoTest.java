@@ -1,7 +1,7 @@
 package com.akine.knowledge.application;
 
-import com.akine.knowledge.domain.port.MensajeChat;
-import com.akine.knowledge.domain.port.MensajeChat.Rol;
+import com.akine.platform.spi.modelo.MensajeChat;
+import com.akine.platform.spi.modelo.MensajeChat.Rol;
 import com.akine.knowledge.spi.PasajeRecuperado;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

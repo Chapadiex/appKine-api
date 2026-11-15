@@ -1,8 +1,6 @@
-package com.akine.knowledge.domain;
+package com.akine.platform.spi.texto;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
-import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
@@ -26,12 +24,5 @@ class DetectorDeInstruccionesTest {
 		assertThat(detector.esSospechoso("El glúteo medio actúa como estabilizador de la pelvis")).isFalse();
 		assertThat(detector.esSospechoso("the central nervous system: the brain and spinal cord")).isFalse();
 		assertThat(detector.esSospechoso("you are now ready to start the exercise")).isFalse();
-	}
-
-	@Test
-	void casiSinTextoDetectaEscaneados() {
-		assertThat(DetectorDeInstrucciones.casiSinTexto(List.of())).isTrue();
-		assertThat(DetectorDeInstrucciones.casiSinTexto(List.of(new PaginaDeTexto(1, " \n"), new PaginaDeTexto(2, "ab")))).isTrue();
-		assertThat(DetectorDeInstrucciones.casiSinTexto(List.of(new PaginaDeTexto(1, "x".repeat(60))))).isFalse();
 	}
 }

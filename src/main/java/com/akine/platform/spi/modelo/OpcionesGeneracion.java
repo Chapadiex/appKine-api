@@ -1,4 +1,4 @@
-package com.akine.knowledge.domain.port;
+package com.akine.platform.spi.modelo;
 
 import java.math.BigDecimal;
 

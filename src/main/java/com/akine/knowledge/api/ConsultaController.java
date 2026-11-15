@@ -15,8 +15,9 @@ import com.akine.knowledge.application.ConsultaService;
 import com.akine.knowledge.application.PlanDeRespuesta;
 import com.akine.knowledge.domain.exception.AsistenteNoDisponibleException;
 import com.akine.knowledge.domain.exception.ConsultaOcupadaException;
-import com.akine.knowledge.domain.port.EstadisticasDeGeneracion;
-import com.akine.knowledge.domain.port.ModeloDeLenguaje;
+import com.akine.platform.spi.modelo.EstadisticasDeGeneracion;
+import com.akine.platform.spi.modelo.ModeloDeLenguaje;
+import com.akine.platform.spi.modelo.ModeloNoDisponibleException;
 import com.akine.platform.spi.problem.ProblemType;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -33,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -121,7 +123,7 @@ public class ConsultaController implements DisposableBean {
 	public ConsultaController(
 			ConsultaService consultas,
 			ColaDeConsultas cola,
-			ObjectProvider<ModeloDeLenguaje> modelo,
+			@Qualifier("modeloBiblioteca") ObjectProvider<ModeloDeLenguaje> modelo,
 			KnowledgeApiActor apiActor,
 			MeterRegistry metricas) {
 		this.consultas = consultas;
@@ -308,12 +310,17 @@ public class ConsultaController implements DisposableBean {
 					throw new AsistenteNoDisponibleException();
 				}
 				enviar(emitter, EVENTO_ETAPA, new ConsultaEventoEtapa(ConsultaEventoEtapa.REDACTANDO));
-				EstadisticasDeGeneracion estadisticas = llm.generar(plan.mensajes(), plan.opciones(), plazo,
-						fragmento -> {
-							enviar(emitter, EVENTO_TEXTO, new ConsultaEventoTexto(fragmento));
-							medicion.primeraPalabra();
-						},
-						cancelado::get);
+				EstadisticasDeGeneracion estadisticas;
+				try {
+					estadisticas = llm.generar(plan.mensajes(), plan.opciones(), plazo,
+							fragmento -> {
+								enviar(emitter, EVENTO_TEXTO, new ConsultaEventoTexto(fragmento));
+								medicion.primeraPalabra();
+							},
+							cancelado::get);
+				} catch (ModeloNoDisponibleException e) {
+					throw new AsistenteNoDisponibleException(e);
+				}
 				medicion.estadisticas = estadisticas == null ? EstadisticasDeGeneracion.NINGUNA : estadisticas;
 				if (cancelado.get()) {
 					return;

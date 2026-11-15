@@ -1,13 +1,14 @@
 package com.akine.knowledge.application;
 
 import com.akine.knowledge.domain.BibliotecaAjustes;
-import com.akine.knowledge.domain.DetectorDeInstrucciones;
+import com.akine.platform.spi.texto.DetectorDeInstrucciones;
 import com.akine.knowledge.domain.EstadoLibro;
 import com.akine.knowledge.domain.Libro;
 import com.akine.knowledge.domain.LibroFragmento;
 import com.akine.knowledge.domain.LimpiadorDePaginas;
 import com.akine.knowledge.domain.PaginaDeTexto;
 import com.akine.knowledge.domain.Pedazo;
+import com.akine.knowledge.domain.TextoExtraido;
 import com.akine.knowledge.domain.ProcesamientoAjustes;
 import com.akine.knowledge.domain.Troceador;
 import com.akine.knowledge.domain.Vectores;
@@ -212,7 +213,7 @@ public class ProcesamientoDeLibroService {
 		if (caracteres > MAX_CARACTERES) {
 			throw new DocumentoIlegibleException(MOTIVO_DEMASIADO_TEXTO);
 		}
-		if (DetectorDeInstrucciones.casiSinTexto(paginas)) {
+		if (TextoExtraido.casiSinTexto(paginas)) {
 			throw new DocumentoIlegibleException(MOTIVO_SIN_TEXTO);
 		}
 		// Sin relleno (derechos, indice, miembros, referencias), encabezados ni pies repetidos: no

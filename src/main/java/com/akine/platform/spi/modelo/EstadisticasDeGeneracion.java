@@ -1,4 +1,4 @@
-package com.akine.knowledge.domain.port;
+package com.akine.platform.spi.modelo;
 
 /**
  * Cantidades y tiempos de una generacion, como los informa el servidor del modelo en la ultima

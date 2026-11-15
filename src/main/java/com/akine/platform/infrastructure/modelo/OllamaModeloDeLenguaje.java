@@ -1,10 +1,10 @@
-package com.akine.knowledge.infrastructure;
+package com.akine.platform.infrastructure.modelo;
 
-import com.akine.knowledge.domain.exception.AsistenteNoDisponibleException;
-import com.akine.knowledge.domain.port.EstadisticasDeGeneracion;
-import com.akine.knowledge.domain.port.MensajeChat;
-import com.akine.knowledge.domain.port.ModeloDeLenguaje;
-import com.akine.knowledge.domain.port.OpcionesGeneracion;
+import com.akine.platform.spi.modelo.ModeloNoDisponibleException;
+import com.akine.platform.spi.modelo.EstadisticasDeGeneracion;
+import com.akine.platform.spi.modelo.MensajeChat;
+import com.akine.platform.spi.modelo.ModeloDeLenguaje;
+import com.akine.platform.spi.modelo.OpcionesGeneracion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
@@ -36,14 +36,22 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 /**
- * Modelo de lenguaje sobre Ollama ({@code POST {url}/api/chat}). Conexion rechazada, 5xx o plazo
- * vencido terminan en {@link AsistenteNoDisponibleException}. No registra el contenido de los
- * mensajes ni de las respuestas.
+ * Modelo de lenguaje sobre Ollama ({@code POST {url}/api/chat}). Conexion rechazada, status distinto
+ * de 2xx, respuesta ilegible o plazo vencido terminan en {@link ModeloNoDisponibleException}. No
+ * registra el contenido de los mensajes ni de las respuestas.
+ *
+ * <p>Une los dos adaptadores que tenian {@code knowledge} ({@code completar} y {@code generar}) y
+ * {@code assistant} ({@code completarJson}) (D-3). {@code num_ctx} es 4096 en todas las llamadas, para
+ * que Ollama no recargue el modelo al alternar entre consumidores.
+ *
+ * <p>{@code completarJson} usa los parametros que midio el asistente el 15/11
+ * ({@code docs/asistente/evaluacion/}): temperatura 0 y 120 tokens, que sobran para un objeto corto.
  */
 public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 
 	private static final Logger log = LoggerFactory.getLogger(OllamaModeloDeLenguaje.class);
-	private static final int NUM_CTX = 4096;
+	static final int NUM_CTX = 4096;
+	static final int MAX_TOKENS_JSON = 120;
 	private static final ScheduledExecutorService VIGILANTE = Executors.newSingleThreadScheduledExecutor(r -> {
 		Thread t = new Thread(r, "ollama-plazo");
 		t.setDaemon(true);
@@ -56,23 +64,39 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 	private final String modelo;
 	private final String keepAlive;
 
+	/** Con un cliente HTTP propio que corta la conexion a los 5 s. */
 	public OllamaModeloDeLenguaje(String url, String modelo, String keepAlive) {
+		this(url, modelo, keepAlive, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build());
+	}
+
+	public OllamaModeloDeLenguaje(String url, String modelo, String keepAlive, HttpClient http) {
 		this.endpoint = URI.create(url.replaceAll("/+$", "") + "/api/chat");
 		this.modelo = modelo;
 		this.keepAlive = keepAlive;
-		this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+		this.http = http;
 	}
 
 	@Override
 	public String completar(List<MensajeChat> mensajes, OpcionesGeneracion opciones, Duration plazo) {
-		HttpRequest request = armar(mensajes, opciones, false, plazo);
+		return enviar(armar(mensajes, opciones, false, plazo));
+	}
+
+	@Override
+	public String completarJson(List<MensajeChat> mensajes, String esquemaJson, Duration plazo) {
+		Map<String, Object> cuerpo = cuerpo(mensajes, false);
+		cuerpo.put("format", esquemaJson == null ? "json" : esquema(esquemaJson));
+		cuerpo.put("options", Map.of("temperature", 0, "num_predict", MAX_TOKENS_JSON, "num_ctx", NUM_CTX));
+		return enviar(pedido(cuerpo, plazo));
+	}
+
+	private String enviar(HttpRequest request) {
 		HttpResponse<String> respuesta;
 		try {
 			respuesta = http.send(request, HttpResponse.BodyHandlers.ofString());
 		}
 		catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
-			throw new AsistenteNoDisponibleException(e);
+			throw new ModeloNoDisponibleException(e);
 		}
 		catch (IOException | RuntimeException e) {
 			throw noDisponible(e);
@@ -84,7 +108,7 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 	/**
 	 * Emite fragmentos. Un vigilante revisa cada 250 ms {@code cancelado} y el plazo, tambien mientras
 	 * se esperan los encabezados o el proximo token: si se cancela termina sin lanzar; si vence el
-	 * plazo lanza {@link AsistenteNoDisponibleException}. Lo que lance {@code alFragmento} se propaga
+	 * plazo lanza {@link ModeloNoDisponibleException}. Lo que lance {@code alFragmento} se propaga
 	 * tal cual.
 	 */
 	@Override
@@ -143,7 +167,7 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 				}
 			}
 			if (porPlazo.get()) {
-				throw new AsistenteNoDisponibleException();
+				throw new ModeloNoDisponibleException();
 			}
 			return EstadisticasDeGeneracion.NINGUNA;
 		}
@@ -151,7 +175,7 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 			if (porCancelacion.get() && !porPlazo.get()) {
 				return EstadisticasDeGeneracion.NINGUNA;
 			}
-			throw new AsistenteNoDisponibleException();
+			throw new ModeloNoDisponibleException();
 		}
 		finally {
 			vigia.cancel(false);
@@ -195,7 +219,7 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 		}
 		catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
-			throw new AsistenteNoDisponibleException(e);
+			throw new ModeloNoDisponibleException(e);
 		}
 		catch (ExecutionException e) {
 			throw noDisponible(e.getCause() instanceof Exception c ? c : e);
@@ -225,7 +249,7 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 		}
 		catch (JacksonException e) {
 			log.warn("Respuesta de Ollama ilegible");
-			throw new AsistenteNoDisponibleException();
+			throw new ModeloNoDisponibleException();
 		}
 	}
 
@@ -235,18 +259,12 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 		}
 		catch (JacksonException e) {
 			log.warn("Respuesta de Ollama ilegible");
-			throw new AsistenteNoDisponibleException();
+			throw new ModeloNoDisponibleException();
 		}
 	}
 
 	private HttpRequest armar(List<MensajeChat> mensajes, OpcionesGeneracion opciones, boolean stream, Duration plazo) {
-		Map<String, Object> cuerpo = new LinkedHashMap<>();
-		cuerpo.put("model", modelo);
-		cuerpo.put("messages", mensajes.stream()
-				.map(m -> Map.of("role", rol(m.rol()), "content", m.texto()))
-				.toList());
-		cuerpo.put("stream", stream);
-		cuerpo.put("keep_alive", keepAlive);
+		Map<String, Object> cuerpo = cuerpo(mensajes, stream);
 		if (opciones.json()) {
 			cuerpo.put("format", "json");
 		}
@@ -254,6 +272,31 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 				"temperature", opciones.temperatura().doubleValue(),
 				"num_predict", opciones.maxTokens(),
 				"num_ctx", NUM_CTX));
+		return pedido(cuerpo, plazo);
+	}
+
+	private Map<String, Object> cuerpo(List<MensajeChat> mensajes, boolean stream) {
+		Map<String, Object> cuerpo = new LinkedHashMap<>();
+		cuerpo.put("model", modelo);
+		cuerpo.put("messages", mensajes.stream()
+				.map(m -> Map.of("role", rol(m.rol()), "content", m.texto()))
+				.toList());
+		cuerpo.put("stream", stream);
+		cuerpo.put("keep_alive", keepAlive);
+		return cuerpo;
+	}
+
+	/** El esquema viaja como objeto, no como texto: Ollama lo espera en {@code format}. */
+	private JsonNode esquema(String esquemaJson) {
+		try {
+			return json.readTree(esquemaJson);
+		}
+		catch (JacksonException e) {
+			throw new IllegalArgumentException("El esquema JSON del modelo no es JSON valido", e);
+		}
+	}
+
+	private HttpRequest pedido(Map<String, Object> cuerpo, Duration plazo) {
 		return HttpRequest.newBuilder(endpoint)
 				.timeout(plazo)
 				.header("Content-Type", "application/json")
@@ -270,13 +313,14 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 	}
 
 	private static void exigirOk(int status) {
-		if (status != 200) {
-			throw new AsistenteNoDisponibleException();
+		if (status / 100 != 2) {
+			log.warn("Ollama respondio con status={}", status);
+			throw new ModeloNoDisponibleException();
 		}
 	}
 
-	private static AsistenteNoDisponibleException noDisponible(Exception causa) {
+	private static ModeloNoDisponibleException noDisponible(Exception causa) {
 		log.warn("Ollama no disponible: {}", causa.getClass().getSimpleName());
-		return new AsistenteNoDisponibleException(causa);
+		return new ModeloNoDisponibleException(causa);
 	}
 }

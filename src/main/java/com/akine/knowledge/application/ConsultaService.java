@@ -4,7 +4,7 @@ import com.akine.knowledge.application.Interpretacion.Aclarar;
 import com.akine.knowledge.application.Interpretacion.Buscar;
 import com.akine.knowledge.domain.BibliotecaAjustes;
 import com.akine.knowledge.domain.exception.BibliotecaDeshabilitadaException;
-import com.akine.knowledge.domain.port.OpcionesGeneracion;
+import com.akine.platform.spi.modelo.OpcionesGeneracion;
 import com.akine.knowledge.spi.CaminoBusqueda;
 import com.akine.knowledge.spi.PasajeRecuperado;
 import org.slf4j.Logger;

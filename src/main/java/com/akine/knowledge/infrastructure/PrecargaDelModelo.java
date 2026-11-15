@@ -6,6 +6,8 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 /**
  * Al arrancar con la consulta prendida, pide a Ollama que cargue el modelo (diseño consulta v2,
@@ -19,17 +21,18 @@ public class PrecargaDelModelo implements ApplicationListener<ApplicationReadyEv
 	/** Cargar el modelo desde el disco puede llevar minutos en una maquina fria. */
 	static final Duration PLAZO = Duration.ofMinutes(5);
 
-	private final OllamaModeloDeLenguaje modelo;
+	/** Pide la precarga con un plazo; el futuro termina con el status HTTP. */
+	private final Function<Duration, CompletableFuture<Integer>> precargar;
 
-	public PrecargaDelModelo(OllamaModeloDeLenguaje modelo) {
-		this.modelo = modelo;
+	public PrecargaDelModelo(Function<Duration, CompletableFuture<Integer>> precargar) {
+		this.precargar = precargar;
 	}
 
 	@Override
 	public void onApplicationEvent(ApplicationReadyEvent event) {
 		long inicio = System.nanoTime();
 		try {
-			modelo.precargar(PLAZO).whenComplete((status, error) -> {
+			precargar.apply(PLAZO).whenComplete((status, error) -> {
 				long ms = Duration.ofNanos(System.nanoTime() - inicio).toMillis();
 				if (error != null) {
 					log.warn("Precarga del modelo de la consulta fallida: {}", causa(error));

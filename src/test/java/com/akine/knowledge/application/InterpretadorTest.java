@@ -2,7 +2,7 @@ package com.akine.knowledge.application;
 
 import com.akine.knowledge.application.Interpretacion.Aclarar;
 import com.akine.knowledge.application.Interpretacion.Buscar;
-import com.akine.knowledge.infrastructure.ModeloDeLenguajeDePrueba;
+import com.akine.platform.infrastructure.modelo.ModeloDeLenguajeDePrueba;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

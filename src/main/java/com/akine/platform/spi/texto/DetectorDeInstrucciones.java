@@ -1,4 +1,4 @@
-package com.akine.knowledge.domain;
+package com.akine.platform.spi.texto;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -12,10 +12,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-/** Marca los pedazos de texto que parecen instrucciones dirigidas a un modelo. */
+/**
+ * Marca los pedazos de texto que parecen instrucciones dirigidas a un modelo. Lo usa todo modulo que
+ * le pasa texto de terceros a un modelo de lenguaje.
+ */
 public final class DetectorDeInstrucciones {
 
-	static final String RECURSO_POR_DEFECTO = "knowledge/frases-sospechosas.txt";
+	static final String RECURSO_POR_DEFECTO = "platform/frases-sospechosas.txt";
 
 	/** Rol al principio de linea (texto crudo en minusculas), o tokens que nunca son prosa. */
 	private static final Pattern MARCADORES = Pattern
@@ -24,8 +27,6 @@ public final class DetectorDeInstrucciones {
 	private static final Pattern MARCAS_COMBINANTES = Pattern.compile("\\p{M}+");
 
 	private static final Pattern ESPACIOS = Pattern.compile("\\s+");
-
-	private static final int MIN_CARACTERES_POR_PAGINA = 50;
 
 	private final List<Pattern> frases;
 
@@ -76,26 +77,6 @@ public final class DetectorDeInstrucciones {
 			}
 		}
 		return false;
-	}
-
-	/** Menos de 50 caracteres no blancos por pagina en promedio (el escaneado). */
-	public static boolean casiSinTexto(List<PaginaDeTexto> paginas) {
-		if (paginas.isEmpty()) {
-			return true;
-		}
-		long total = 0;
-		for (PaginaDeTexto p : paginas) {
-			String t = p.texto();
-			if (t == null) {
-				continue;
-			}
-			for (int i = 0; i < t.length(); i++) {
-				if (!Character.isWhitespace(t.charAt(i))) {
-					total++;
-				}
-			}
-		}
-		return total < (long) MIN_CARACTERES_POR_PAGINA * paginas.size();
 	}
 
 	static String normalizar(String texto) {

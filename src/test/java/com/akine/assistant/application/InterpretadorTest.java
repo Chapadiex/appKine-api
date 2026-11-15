@@ -1,9 +1,9 @@
 package com.akine.assistant.application;
 
 import com.akine.assistant.domain.exception.ModeloNoDisponibleException;
-import com.akine.assistant.domain.port.MensajeChat;
-import com.akine.assistant.domain.port.MensajeChat.Rol;
-import com.akine.assistant.domain.port.ModeloDeLenguaje;
+import com.akine.platform.spi.modelo.MensajeChat;
+import com.akine.platform.spi.modelo.MensajeChat.Rol;
+import com.akine.platform.spi.modelo.ModeloSoloJson;
 import com.akine.assistant.spi.Intencion;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -22,7 +22,7 @@ class InterpretadorTest {
 	private final List<List<MensajeChat>> llamadas = new ArrayList<>();
 
 	private Interpretador conRespuesta(String json) {
-		ModeloDeLenguaje modelo = (mensajes, plazo) -> {
+		ModeloSoloJson modelo = (mensajes, esquema, plazo) -> {
 			llamadas.add(mensajes);
 			return json;
 		};
@@ -172,7 +172,7 @@ class InterpretadorTest {
 	@Test
 	void si_el_modelo_no_responde_no_se_inventa_una_interpretacion() {
 		AtomicInteger intentos = new AtomicInteger();
-		ModeloDeLenguaje caido = (mensajes, plazo) -> {
+		ModeloSoloJson caido = (mensajes, esquema, plazo) -> {
 			intentos.incrementAndGet();
 			throw new ModeloNoDisponibleException();
 		};
