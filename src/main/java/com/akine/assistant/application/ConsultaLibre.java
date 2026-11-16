@@ -1,10 +1,10 @@
 package com.akine.assistant.application;
 
-import com.akine.assistant.domain.port.MensajeChat;
-import com.akine.assistant.domain.port.MensajeChat.Rol;
+import com.akine.platform.spi.modelo.MensajeChat;
+import com.akine.platform.spi.modelo.MensajeChat.Rol;
 import com.akine.assistant.domain.port.LectorDeVistas;
 import com.akine.assistant.domain.port.LectorDeVistas.ConsultaInvalidaException;
-import com.akine.assistant.domain.port.ModeloDeLenguaje;
+import com.akine.platform.spi.modelo.ModeloDeLenguaje;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
@@ -50,6 +50,16 @@ public class ConsultaLibre {
 		this.limiteFilas = limiteFilas;
 	}
 
+	/** JSON libre (sin esquema), como el respaldo del Interpretador; el cupo lleno tambien es 503. */
+	private String completar(List<MensajeChat> mensajes) {
+		try {
+			return modelo.get().completarJson(mensajes, null, plazo);
+		}
+		catch (com.akine.platform.spi.modelo.ModeloNoDisponibleException e) {
+			throw new com.akine.assistant.domain.exception.ModeloNoDisponibleException(e);
+		}
+	}
+
 	/** Lo que devolvio una consulta libre. {@code sql} es la que se ejecuto, o la ultima que se intento. */
 	public record Resultado(String sql, List<Map<String, Object>> filas, boolean truncado, String error) {
 
@@ -60,7 +70,7 @@ public class ConsultaLibre {
 
 	/**
 	 * @param hoy el dia en la zona de la sede: el modelo lo necesita para "este mes" o "ayer"
-	 * @throws com.akine.assistant.domain.exception.ModeloNoDisponibleException si el modelo no responde
+	 * @throws com.akine.assistant.domain.exception.ModeloNoDisponibleException si el modelo no responde o su cupo esta lleno
 	 */
 	public Resultado responder(String pregunta, LocalDate hoy, long organizationId, long consultorioId) {
 		List<MensajeChat> mensajes = new ArrayList<>();
@@ -69,7 +79,7 @@ public class ConsultaLibre {
 		String sql = null;
 		String error = null;
 		for (int intento = 1; intento <= INTENTOS; intento++) {
-			String crudo = modelo.get().completarJson(mensajes, plazo);
+			String crudo = completar(mensajes);
 			sql = extraerSql(crudo).orElse(null);
 			if (sql == null) {
 				error = "El modelo no devolvio una consulta";

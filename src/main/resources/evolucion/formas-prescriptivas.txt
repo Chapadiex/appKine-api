@@ -1,0 +1,14 @@
+# Formas prescriptivas que un texto de sugerencia no puede usar. Una por linea; se comparan sin tildes ni mayusculas.
+indicar
+indicado
+indicada
+debe
+deberá
+debería suspender
+prescribir
+prescripto
+diagnóstico de
+es necesario
+es fundamental
+se debe
+hay que

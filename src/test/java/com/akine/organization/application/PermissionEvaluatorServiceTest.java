@@ -715,7 +715,9 @@ class PermissionEvaluatorServiceTest {
 							// lo hace el reporte, no la lista que oculta botones.
 							"reporte:read",
 							// M30, RF-M30-012: consultar la biblioteca, por base.
-							"biblioteca:consultar", "asistente:use");
+							"biblioteca:consultar", "asistente:use",
+							// M31 fase 2: sugerencias de evolucion, solo el profesional.
+							"evolucion:sugerir");
 		}
 	}
 

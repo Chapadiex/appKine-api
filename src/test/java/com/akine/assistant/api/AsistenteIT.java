@@ -1,8 +1,8 @@
 package com.akine.assistant.api;
 
 import com.akine.TestcontainersConfiguration;
-import com.akine.assistant.domain.port.ModeloDeLenguaje;
-import com.akine.assistant.infrastructure.ModeloDelAsistenteDePrueba;
+import com.akine.platform.spi.modelo.ModeloDeLenguaje;
+import com.akine.platform.infrastructure.modelo.ModeloDeLenguajeDePrueba;
 import com.akine.organization.application.MembershipService;
 import com.akine.organization.spi.DirectMembershipCommand;
 import com.akine.person.application.OperatingActor;
@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * El asistente de datos de punta a punta: HTTP real, login y contexto por el camino real,
  * PostgreSQL, y las herramientas llamando a los servicios reales de cada modulo. Solo el modelo es
- * de prueba ({@link ModeloDelAsistenteDePrueba}), porque lo que se prueba aca son las reglas que no
+ * de prueba ({@link ModeloDeLenguajeDePrueba}), porque lo que se prueba aca son las reglas que no
  * dependen de el: permiso, aislamiento entre organizaciones, que el SQL de cada herramienta corra
  * contra el motor y que la auditoria nunca guarde la pregunta.
  *
@@ -67,7 +67,7 @@ class AsistenteIT {
 			.connectTimeout(Duration.ofSeconds(10))
 			.build();
 
-	private ModeloDelAsistenteDePrueba modelo;
+	private ModeloDeLenguajeDePrueba modelo;
 	private Sesion centroA;
 	private Sesion centroB;
 	private String apellidoEnA;
@@ -75,7 +75,7 @@ class AsistenteIT {
 
 	@BeforeAll
 	void sembrar() throws Exception {
-		modelo = (ModeloDelAsistenteDePrueba) modeloDeLenguaje;
+		modelo = (ModeloDeLenguajeDePrueba) modeloDeLenguaje;
 		centroA = altaCompleta("asistente-a");
 		centroB = altaCompleta("asistente-b");
 		apellidoEnA = "Zarate" + sufijo();

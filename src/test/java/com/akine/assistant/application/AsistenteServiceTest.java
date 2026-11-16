@@ -4,7 +4,7 @@ import com.akine.assistant.application.RespuestaDelAsistente.Resultado;
 import com.akine.assistant.domain.AsistenteAjustes;
 import com.akine.assistant.domain.exception.AsistenteDeshabilitadoException;
 import com.akine.assistant.domain.exception.SedeNoEncontradaException;
-import com.akine.assistant.domain.port.ModeloDeLenguaje;
+import com.akine.platform.spi.modelo.ModeloSoloJson;
 import com.akine.assistant.spi.ActorDelAsistente;
 import com.akine.assistant.spi.ClavesDeFila;
 import com.akine.assistant.spi.HerramientaDelAsistente;
@@ -65,7 +65,7 @@ class AsistenteServiceTest {
 	}
 
 	private AsistenteService servicio(boolean prendido, HerramientaDelAsistente... herramientas) {
-		ModeloDeLenguaje modelo = (mensajes, plazo) -> {
+		ModeloSoloJson modelo = (mensajes, esquema, plazo) -> {
 			llamadasAlModelo++;
 			return respuestaDelModelo;
 		};

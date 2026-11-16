@@ -20382,7 +20382,7 @@ Sin tope de libros, una organización con muchísimos pedazos vuelve lenta y pes
 
 ## 1. Objetivo
 
-Dar al profesional una lectura calculada de cómo evoluciona un Caso Clínico a partir de sus sesiones cerradas: indicadores (dolor, evolución declarada, tolerancia, mediciones, adherencia, frecuencia y avance del plan) y alertas que señalan qué conviene revisar del tratamiento. Es un cálculo con reglas, sin modelo de lenguaje. La redacción de sugerencias con respaldo en la biblioteca (M30) queda fuera del alcance de M31 por ahora. Diseño: `docs/diseno/AKINE-analizador-de-evolucion.md`.
+Dar al profesional una lectura calculada de cómo evoluciona un Caso Clínico a partir de sus sesiones cerradas: indicadores (dolor, evolución declarada, tolerancia, mediciones, adherencia, frecuencia y avance del plan) y alertas que señalan qué conviene revisar del tratamiento. Es un cálculo con reglas, sin modelo de lenguaje. La fase 2 agrega sugerencias para revisar, redactadas por un modelo local con respaldo en la biblioteca (M30) y siempre sujetas a la decisión del profesional (RF-M31-004 y RF-M31-005). Diseño: `docs/diseno/AKINE-analizador-de-evolucion.md` y `docs/diseno/AKINE-analizador-de-evolucion-fase2.md`.
 
 ## 2. Actores
 
@@ -20409,6 +20409,13 @@ Dar al profesional una lectura calculada de cómo evoluciona un Caso Clínico a 
 - **RN-M31-008:** La adherencia distingue la inasistencia registrada en la sesión de la registrada en el turno y no cuenta dos veces el mismo hecho. Las cancelaciones del profesional o de la institución no cuentan en contra del paciente.
 - **RN-M31-009:** Una medición sólo se juzga como mejora o empeoramiento si su definición declara el sentido de mejora. Sin él, la serie se muestra y no se califica.
 - **RN-M31-010:** La función está detrás de un interruptor del despliegue, apagado por defecto.
+- **RN-M31-011:** Una sugerencia sólo se muestra si cita al menos un pasaje de la biblioteca del centro que pertenece al hallazgo que la motiva. Sin cita válida de su propio hallazgo se descarta.
+- **RN-M31-012:** Una sugerencia no prescribe: el texto dice qué conviene revisar, no qué indicar. Tampoco puede traer un número que no figure en los datos del caso ni en el pasaje citado.
+- **RN-M31-013:** Las sugerencias no escriben en el plan, la sesión ni el caso. Aceptar una sugerencia no cambia el plan: a lo sumo precarga el motivo de una nueva versión que el profesional edita y guarda por su cuenta.
+- **RN-M31-014:** Las sugerencias descartadas por el validador no se muestran ni se guardan: la respuesta informa cuántas fueron y la auditoría cuenta cuántas fallaron cada regla.
+- **RN-M31-015:** Sin material suficiente en la biblioteca para ningún hallazgo, o sin hallazgos elegibles, el sistema se abstiene: no llama al modelo y lo informa con su propio resultado.
+- **RN-M31-016:** Pedir y responder sugerencias exige `evolucion:sugerir`, además de `hc:read` y de relación asistencial o justificación declarada. El historial de sugerencias es lectura clínica y se audita. Ningún registro de auditoría ni de log lleva texto clínico.
+- **RN-M31-017:** La función de sugerencias está detrás de su propio interruptor, apagado por defecto, y requiere además los de la evolución (RN-M31-010) y la biblioteca. Los valores por defecto del modelo y de los umbrales requieren revisión clínica antes de encenderla en un centro real.
 
 ## 5. Requerimientos funcionales detallados
 
@@ -20490,6 +20497,67 @@ Dar al profesional una lectura calculada de cómo evoluciona un Caso Clínico a 
 **Criterios de aceptación:**
 - **CA-M31-003-01:** una definición numérica acepta y devuelve su sentido de mejora.
 - **CA-M31-003-02:** declararlo en una definición de texto o booleana responde 400 `validation-error`.
+
+### RF-M31-004 — Sugerencias para revisar con respaldo de la biblioteca
+
+**Descripción:** A pedido del profesional, proponer hasta cinco puntos para revisar del tratamiento, cada uno atado a un hallazgo de RF-M31-002 y a un pasaje de un libro de la biblioteca del centro.
+
+**Precondiciones generales:**
+- Las de RF-M31-001.
+- Actor con `evolucion:sugerir`.
+- Interruptores de evolución, de sugerencias y de biblioteca encendidos.
+
+**Disparador:**
+- El profesional pide sugerencias desde la tarjeta "Evolución" del caso.
+
+**Flujo principal:**
+1. El sistema valida caso, permisos y acceso clínico, y que no haya otro pedido de la misma cuenta en curso.
+2. Calcula los hallazgos de RF-M31-002 y se queda con los elegibles: `DOLOR_SIN_MEJORA`, `DOLOR_EN_AUMENTO`, `EVOLUCION_DESFAVORABLE`, `MALA_TOLERANCIA`, `MEDICION_SIN_CAMBIO`, `MEDICION_EMPEORA`, `BAJA_ADHERENCIA`, `FRECUENCIA_BAJO_PLAN` y `PLAN_EXCEDIDO_EN_TIEMPO`. Toma hasta tres, primero los de mayor severidad.
+3. Busca en la biblioteca del centro pasajes para cada hallazgo. Sólo siguen los hallazgos con material suficiente.
+4. Pide al modelo local las sugerencias, sin identificadores del paciente y con los textos libres filtrados.
+5. Valida cada sugerencia contra sus hallazgos y pasajes (cita válida del propio hallazgo, sin números inventados, sin forma prescriptiva, largos acotados).
+6. Guarda las válidas con sus citas y sesiones de origen, audita sin texto clínico y responde.
+
+**Resultados:**
+- `SUGERENCIAS`: se llamó al modelo con material de la biblioteca. Puede traer cero sugerencias si el validador descartó todas las propuestas; en ese caso `descartadas` es mayor que cero.
+- `SIN_MATERIAL`: hay hallazgos elegibles pero la biblioteca no tiene material suficiente para ninguno; no se llama al modelo.
+- `SIN_HALLAZGOS_ELEGIBLES`: el caso no tiene ningún hallazgo elegible, por ejemplo con menos de tres sesiones presentes; no se busca ni se llama al modelo.
+
+**Flujos alternativos / excepciones:**
+- Otro pedido de la misma cuenta en curso: rechazo `generacion-en-curso` (429).
+- Cupo del modelo lleno durante todo el plazo: `modelo-ocupado` (503). Plazo vencido o modelo caído: `modelo-no-disponible` (503). En ambos casos los hallazgos de RF-M31-002 siguen disponibles.
+- Salida del modelo inválida o sin sugerencias aprovechables: respuesta sin sugerencias y con `descartadas` mayor que cero, nunca un error del servidor.
+- Un texto libre sospechoso de contener instrucciones se reemplaza y la respuesta advierte `TEXTO_OMITIDO`.
+
+**Criterios de aceptación:**
+- **CA-M31-004-01:** con hallazgos elegibles y material en la biblioteca, el resultado es `SUGERENCIAS`, cada sugerencia cita un pasaje de su hallazgo y queda registrada como `PENDIENTE`.
+- **CA-M31-004-02:** con hallazgos elegibles y sin material suficiente, el resultado es `SIN_MATERIAL` y el modelo no se llama.
+- **CA-M31-004-03:** con un caso sin hallazgos elegibles, incluido el de menos de tres sesiones presentes, el resultado es `SIN_HALLAZGOS_ELEGIBLES`, sin búsqueda ni llamada al modelo.
+- **CA-M31-004-04:** una sugerencia cuya cita pertenece a otro hallazgo, o con un número que no figura en los datos enviados, no se muestra ni se guarda y suma a `descartadas`.
+- **CA-M31-004-05:** con cualquiera de los tres interruptores apagados las operaciones responden 404 antes de mirar permisos.
+- **CA-M31-004-06:** dos pedidos simultáneos de la misma cuenta: uno se atiende y el otro recibe 429, sin dejar el candado tomado si el primero falla.
+- **CA-M31-004-07:** sin `evolucion:sugerir` el pedido responde 403; sin relación asistencial ni justificación, 403 `justificacion-de-acceso-requerida`.
+
+### RF-M31-005 — Historial y respuesta del profesional
+
+**Descripción:** Consultar las sugerencias anteriores de un caso y registrar si el profesional las aceptó o las descartó.
+
+**Flujo principal:**
+1. El sistema lista las sugerencias del caso, de la más nueva a la más vieja, con su estado, citas y sesiones de origen; la lectura se audita.
+2. El profesional acepta una sugerencia `PENDIENTE`, o la descarta indicando el motivo.
+3. El sistema registra quién respondió y cuándo, que puede ser alguien distinto de quien la pidió.
+
+**Reglas:**
+- Sólo se responde desde `PENDIENTE`. La respuesta lleva la versión leída (control optimista).
+- Descartar exige motivo, de hasta 300 caracteres.
+- Aceptar con un plan `ACTIVO` o `SUSPENDIDO` versionable permite abrir una nueva versión del plan con el texto como motivo precargado; sin plan versionable, o sin permiso para versionarlo, se registra la aceptación y no se abre nada. En ambos casos la aceptación queda registrada aunque el profesional no guarde ninguna versión.
+
+**Criterios de aceptación:**
+- **CA-M31-005-01:** aceptar una sugerencia `PENDIENTE` con un plan versionable la deja `ACEPTADA` sin modificar el plan, y el motivo precargado de la nueva versión es el texto de la sugerencia.
+- **CA-M31-005-02:** aceptar una sugerencia en un caso sin plan versionable la deja `ACEPTADA` y no abre ninguna versión.
+- **CA-M31-005-03:** descartar con motivo la deja `DESCARTADA` con ese motivo; sin motivo responde 400 `validation-error`.
+- **CA-M31-005-04:** responder una sugerencia ya respondida, o con una versión vieja, responde 409 (`sugerencia-ya-respondida` o `concurrent-modification`) sin pisar la primera respuesta.
+- **CA-M31-005-05:** el historial de otro caso o de otra organización responde 404, y leerlo audita `SUGERENCIAS_DE_EVOLUCION_CONSULTADAS`.
 
 ## 6. Requerimientos no funcionales específicos
 

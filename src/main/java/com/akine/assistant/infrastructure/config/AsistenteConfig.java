@@ -6,11 +6,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.assistant.application.Interpretador;
 import com.akine.assistant.domain.AsistenteAjustes;
-import com.akine.assistant.domain.port.ModeloDeLenguaje;
-import com.akine.assistant.infrastructure.ModeloConCupo;
-import com.akine.assistant.infrastructure.ModeloDelAsistenteDePrueba;
-import com.akine.assistant.infrastructure.OllamaModeloDelAsistente;
+import com.akine.platform.spi.modelo.ConfiguracionDeModelo;
+import com.akine.platform.spi.modelo.FabricaDeModelos;
+import com.akine.platform.spi.modelo.ModeloDeLenguaje;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -28,10 +28,9 @@ import java.util.Set;
  * Cableado del modulo {@code assistant}.
  *
  * <p>El modelo existe solo con el asistente prendido: apagado no hay bean de
- * {@link ModeloDeLenguaje} y quien lo use lo pide por {@code ObjectProvider}. Los nombres de los
- * beans no repiten los de {@code knowledge} ({@code ollamaModeloDeLenguaje},
- * {@code modeloDeLenguajeDePrueba}): con la biblioteca y el asistente prendidos a la vez, dos beans
- * con el mismo nombre no dejan arrancar a Spring.
+ * {@link ModeloDeLenguaje} y quien lo use lo pide por {@code ObjectProvider}. El puerto es el de
+ * {@code platform.spi.modelo}, compartido con {@code knowledge}: con la biblioteca y el asistente
+ * prendidos hay dos beans del mismo tipo, y cada uno se pide por su nombre ({@link #MODELO}).
  */
 @Configuration
 @EnableConfigurationProperties(AsistenteProperties.class)
@@ -40,6 +39,13 @@ public class AsistenteConfig {
 	static final String PROMPT = "asistente/prompt-interpretador.txt";
 	static final String PROMPT_SQL = "asistente/prompt-sql.txt";
 	static final Set<String> TIPOS_DE_MODELO = Set.of("ollama", "prueba");
+
+	/** Nombre del bean del modelo del asistente: hay otros del mismo tipo. */
+	public static final String MODELO = "modeloAsistente";
+
+	/** Lo que contesta el modelo de prueba por defecto. */
+	static final String FUERA_DE_ALCANCE = "{\"intencion\":\"FUERA_DE_ALCANCE\",\"persona\":null,"
+			+ "\"clase\":null,\"periodo\":null,\"reporte\":null}";
 
 	@Bean
 	public AsistenteAjustes asistenteAjustes(AsistenteProperties properties) {
@@ -62,7 +68,8 @@ public class AsistenteConfig {
 	 * apagado no hay bean de modelo y nadie lo llama (el servicio corta antes con 409).
 	 */
 	@Bean
-	public Interpretador interpretadorDelAsistente(ObjectProvider<ModeloDeLenguaje> modelo, AsistenteAjustes ajustes) {
+	public Interpretador interpretadorDelAsistente(@Qualifier(MODELO) ObjectProvider<ModeloDeLenguaje> modelo,
+			AsistenteAjustes ajustes) {
 		return new Interpretador(modelo::getObject, leerPrompt(PROMPT), ajustes.plazo());
 	}
 
@@ -88,20 +95,25 @@ public class AsistenteConfig {
 		}
 	}
 
-	@Bean
+	/**
+	 * El modelo del asistente, solo con el asistente prendido. Con {@code ollama} va con cupo
+	 * ({@code akine.asistente.modelo.concurrencia}, al menos 1); el de prueba, sin cupo y contestando
+	 * {@code FUERA_DE_ALCANCE} hasta que un test le pida otra cosa.
+	 */
+	@Bean(MODELO)
 	@ConditionalOnExpression("${akine.asistente.enabled:false}"
-			+ " and '${akine.asistente.modelo.tipo:ollama}' == 'ollama'")
-	public ModeloDeLenguaje modeloDelAsistente(AsistenteProperties properties) {
-		AsistenteProperties.Modelo modelo = properties.modelo();
-		return new ModeloConCupo(new OllamaModeloDelAsistente(modelo.url(), modelo.nombre(), modelo.keepAlive()),
-				modelo.concurrencia());
+			+ " and ('${akine.asistente.modelo.tipo:ollama}' == 'ollama'"
+			+ " or '${akine.asistente.modelo.tipo:ollama}' == 'prueba')")
+	public ModeloDeLenguaje modeloAsistente(FabricaDeModelos fabrica, AsistenteProperties properties) {
+		return fabrica.crear(configuracionDelModelo(properties.modelo()));
 	}
 
-	/** Determinista, para tests y desarrollo sin Ollama. */
-	@Bean
-	@ConditionalOnExpression("${akine.asistente.enabled:false}"
-			+ " and '${akine.asistente.modelo.tipo:ollama}' == 'prueba'")
-	public ModeloDeLenguaje modeloDelAsistenteDePrueba() {
-		return new ModeloDelAsistenteDePrueba();
+	static ConfiguracionDeModelo configuracionDelModelo(AsistenteProperties.Modelo modelo) {
+		boolean ollama = ConfiguracionDeModelo.OLLAMA.equals(modelo.tipo());
+		if (ollama && modelo.concurrencia() < 1) {
+			throw new IllegalArgumentException("La concurrencia del modelo tiene que ser al menos 1");
+		}
+		return new ConfiguracionDeModelo(modelo.tipo(), modelo.url(), modelo.nombre(), modelo.keepAlive(),
+				ollama ? modelo.concurrencia() : 0, FUERA_DE_ALCANCE);
 	}
 }

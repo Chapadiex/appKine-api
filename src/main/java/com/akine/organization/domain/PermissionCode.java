@@ -409,6 +409,14 @@ public enum PermissionCode {
 	ASISTENTE_USE("asistente:use"),
 
 	/**
+	 * Pedir y responder sugerencias de revision sobre la evolucion de un Caso Clinico (M31 fase 2,
+	 * {@code docs/diseno/AKINE-analizador-de-evolucion-fase2.md} §8.2). Por base solo para el
+	 * {@code PROFESIONAL}, con alcance de organizacion; no se otorga por grant. Se exige ademas de
+	 * {@code hc:read} y relacion asistencial o justificacion.
+	 */
+	EVOLUCION_SUGERIR("evolucion:sugerir"),
+
+	/**
 	 * Consultas libres del asistente: cuando la pregunta no entra en ninguna intencion, el modelo
 	 * escribe un SELECT sobre las vistas de solo lectura de {@code asistente_sql}
 	 * (docs/diseno/AKINE-asistente-sql.md). Por base solo para {@code ORG_ADMIN} y

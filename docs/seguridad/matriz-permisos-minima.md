@@ -1039,3 +1039,15 @@ El asistente que responde preguntas sobre turnos, sesiones, clases y reportes (`
 - **No es otorgable por grant**, y `PACIENTE` y `PLATFORM_ADMIN` no lo tienen.
 - **Asistente apagado:** con `akine.asistente.enabled` en `false`, toda consulta responde 409 `asistente-deshabilitado` aunque el actor tenga el permiso.
 - **`asistente:sql`, consultas libres** (`docs/diseno/AKINE-asistente-sql.md`): si la pregunta no entra en ninguna intención, el modelo escribe un `SELECT` sobre las vistas de `asistente_sql`, recortadas a la organización y a la sede. Las vistas **no** aplican el recorte por actividad propia del profesional, por eso el permiso es sólo de los dos roles de administración, que ya ven todo de la sede. No es otorgable por grant y exige además `akine.asistente.sql.enabled` (apagado por defecto); sin el permiso o apagado, la pregunta recibe la ayuda de siempre.
+
+## 24. Enmiendas — Sugerencias de evolución (15/11/2026)
+
+M31 fase 2: sugerencias de revisión del tratamiento sobre un Caso Clínico, respaldadas por la biblioteca del centro (`docs/diseno/AKINE-analizador-de-evolucion-fase2.md` §8.2).
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `evolucion:sugerir` | — | — | — | Org | — | — |
+
+- **Se exige además de la puerta clínica:** `hc:read` y relación asistencial o justificación declarada, igual que la evolución de la fase 1. Pedir, listar y responder exigen las dos cosas, y las tres se auditan.
+- **Sólo el profesional**, con alcance `ORGANIZACION` (el caso es de la organización). No es otorgable por grant.
+- **Función apagada:** sin `akine.evolucion.sugerencias.enabled`, `akine.evolucion.enabled` y `akine.biblioteca.enabled` encendidos, las tres operaciones responden 404 antes de mirar permisos.
