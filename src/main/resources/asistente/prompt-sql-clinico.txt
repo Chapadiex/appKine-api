@@ -7,7 +7,7 @@ clinico_tratamientos(tratamiento_id, sesion_id, persona_id, profesional_id, fech
   -- lo aplicado en cada sesión (aparatos y técnicas: magnetoterapia, ultrasonido, TENS...): buscá con lower(practica) LIKE lower('%magneto%') OR lower(tecnica) LIKE lower('%magneto%').
 clinico_tratamiento_parametros(parametro_id, tratamiento_id, parametro, tipo_dato, valor_numerico, valor_texto, valor_booleano, unidad, orden)
 clinico_mediciones(medicion_id, sesion_id, persona_id, fecha, definicion_id, codigo, medicion, tipo, unidad, mejora_cuando, lateralidad, valor_numerico, valor_texto, valor_booleano, nota, registrada_en)
-clinico_antecedentes(antecedente_id, persona_id, tipo, descripcion, origen, registrado_en, revisado_en)
+clinico_antecedentes(antecedente_id, persona_id, tipo, descripcion, registrado_en)
   -- tipo: MEDICO, QUIRURGICO, ALERGIA, MEDICACION, FAMILIAR, HABITO, OTRO.
 clinico_planes(plan_id, caso_id, persona_id, numero_plan, estado, version_vigente, objetivos, indicaciones, frecuencia_semanal, duracion_semanas, items, sesiones_planificadas, creado_en, activado_en, suspendido_en, motivo_suspension, finalizado_en, motivo_finalizacion)
   -- estado: BORRADOR, ACTIVO, SUSPENDIDO, FINALIZADO.

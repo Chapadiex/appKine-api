@@ -491,9 +491,7 @@ SELECT an.id AS antecedente_id,
 	hc.persona_id,
 	an.tipo,
 	an.descripcion,
-	an.origen,
-	an.registrado_en,
-	an.revisado_en
+	an.registrado_en
 FROM historia_clinica_antecedente an
 JOIN historia_clinica hc ON hc.id = an.historia_clinica_id
 WHERE an.organization_id = asistente_sql.org() AND an.deleted_at IS NULL AND hc.deleted_at IS NULL;
