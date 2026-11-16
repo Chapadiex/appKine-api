@@ -1,5 +1,6 @@
 package com.akine.assistant.infrastructure;
 
+import com.akine.assistant.domain.exception.DictadoInvalidoException;
 import com.akine.assistant.domain.exception.DictadoNoDisponibleException;
 import com.akine.assistant.domain.port.Transcriptor;
 import org.slf4j.Logger;
@@ -58,6 +59,11 @@ public class WhisperTranscriptor implements Transcriptor {
 		catch (IOException | RuntimeException e) {
 			log.warn("Whisper no disponible: {}", e.getClass().getSimpleName());
 			throw new DictadoNoDisponibleException(e);
+		}
+		if (respuesta.statusCode() == 415) {
+			// speaches responde 415 cuando no puede decodificar el audio: la grabacion esta rota o
+			// cortada, no es que el servicio falte. Reintentar no sirve; volver a grabar si.
+			throw new DictadoInvalidoException("No se pudo leer la grabacion. Volve a grabar.");
 		}
 		if (respuesta.statusCode() != 200) {
 			log.warn("Whisper respondio con status={}", respuesta.statusCode());

@@ -54,8 +54,16 @@ del navegador porque mandan la voz, que en la historia clínica es dato de salud
 - **El micrófono exige HTTPS.** `getUserMedia` sólo funciona en un contexto seguro: `localhost` o
   HTTPS. Una tablet que entra por `http://192.168.x.x` no ve el botón. El despliegue tiene que
   servir HTTPS, cosa que ya hacía falta por el login.
-- **Latencia en CPU.** `small` int8 tarda, a estimar en el destino, unos 2–4 s por cada 10 s de
-  audio. Es el mismo tema que U-02. Con GPU es menos de 1 s.
+- **Latencia en CPU.** Medido el 16/11/2026 en la máquina de desarrollo (Docker con 12 núcleos),
+  con 10 s de audio: **~4 s** directo a Whisper y **~5 s** por el backend con `int8`; con el
+  `compute_type` por defecto (float32) eran ~6,5 s, con el mismo texto. Proponer la evaluación
+  sobre ese texto tarda ~2,3 s con Ollama caliente. El destino hay que medirlo (U-02); con GPU
+  la transcripción baja a menos de 1 s.
+- **El modelo queda cargado.** speaches descarga el modelo de memoria a los 5 minutos sin uso, y
+  el primer dictado después de una pausa pasaba de ~7 s a ~15 s. El compose fija
+  `WHISPER__TTL=-1` (y `WHISPER__COMPUTE_TYPE=int8`); el despliegue tiene que hacer lo mismo.
+- **Audio que Whisper no decodifica** (speaches responde 415) es 400 `validation-error` con
+  "Volvé a grabar", no 503: reintentar el mismo archivo no sirve.
 - **Vocabulario.** Se le pasa a Whisper un `prompt` con términos frecuentes (EVA, lumbalgia,
   cervicalgia, isquiotibiales, etc.) para que los escriba bien. Es una sugerencia, no una garantía.
 - El formato de audio lo decide el navegador: Chrome graba `audio/webm;codecs=opus` y Safari

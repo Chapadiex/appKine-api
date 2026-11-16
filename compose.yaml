@@ -119,6 +119,12 @@ services:
     image: ghcr.io/speaches-ai/speaches@sha256:1d4f852ff5b148d675bcd751f414835c0bcef2541c1df8ffdeb43714968aafe6
     container_name: akine-whisper
     restart: unless-stopped
+    environment:
+      # Sin esto el modelo se descarga de memoria a los 5 minutos sin uso y el primer dictado
+      # despues de una pausa espera la recarga (de ~7 s a ~15 s, medido el 16/11/2026).
+      WHISPER__TTL: "-1"
+      # En CPU el valor por defecto calcula en float32; int8 es mas rapido y no se noto peor.
+      WHISPER__COMPUTE_TYPE: int8
     ports:
       # Solo en la maquina local: speaches no tiene autenticacion.
       - "127.0.0.1:8000:8000"
