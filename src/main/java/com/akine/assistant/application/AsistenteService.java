@@ -14,6 +14,7 @@ import com.akine.assistant.spi.PedidoDeHerramienta;
 import com.akine.assistant.spi.ResultadoDeHerramienta;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.organization.spi.ZonaDeSede;
@@ -57,18 +58,24 @@ public class AsistenteService {
 	private final Interpretador interpretador;
 	private final AuditoriaDelAsistente auditoria;
 	private final Map<Intencion, HerramientaDelAsistente> herramientas;
+	private final PermissionEvaluator permisos;
+	private final ConsultaLibre consultaLibre;
 	private final Clock clock;
 
 	/** El de Spring. El otro fija el reloj para los tests; con dos, Spring necesita que se le diga cual. */
 	@Autowired
 	public AsistenteService(AsistenteAjustes ajustes, PermissionGuard permissionGuard, ConsultorioDirectory sedes,
-			Interpretador interpretador, AuditoriaDelAsistente auditoria, List<HerramientaDelAsistente> herramientas) {
-		this(ajustes, permissionGuard, sedes, interpretador, auditoria, herramientas, Clock.systemUTC());
+			Interpretador interpretador, AuditoriaDelAsistente auditoria, List<HerramientaDelAsistente> herramientas,
+			PermissionEvaluator permisos, ConsultaLibre consultaLibre) {
+		this(ajustes, permissionGuard, sedes, interpretador, auditoria, herramientas, permisos, consultaLibre,
+				Clock.systemUTC());
 	}
 
 	AsistenteService(AsistenteAjustes ajustes, PermissionGuard permissionGuard, ConsultorioDirectory sedes,
 			Interpretador interpretador, AuditoriaDelAsistente auditoria, List<HerramientaDelAsistente> herramientas,
-			Clock clock) {
+			PermissionEvaluator permisos, ConsultaLibre consultaLibre, Clock clock) {
+		this.permisos = permisos;
+		this.consultaLibre = consultaLibre;
 		this.ajustes = ajustes;
 		this.permissionGuard = permissionGuard;
 		this.sedes = sedes;
@@ -131,7 +138,13 @@ public class AsistenteService {
 	private RespuestaDelAsistente responder(ActorDelAsistente actor, Interpretacion interpretacion, String pregunta,
 			RangoDeDias rango, ZoneId zona, String sede, Long personaElegida) {
 		if (interpretacion.fueraDeAlcance() || !herramientas.containsKey(interpretacion.intencion())) {
+			if (!pideCambio(pregunta) && puedeConsultaLibre(actor)) {
+				return consultaLibre(actor, pregunta, zona);
+			}
 			return simple(Plantillas.AYUDA, Interpretacion.FUERA_DE_ALCANCE, Resultado.FUERA_DE_ALCANCE);
+		}
+		if (interpretacion.intencion() == Intencion.REPORTE && pideDetalle(pregunta) && puedeConsultaLibre(actor)) {
+			return consultaLibre(actor, pregunta, zona);
 		}
 
 		Map<String, Object> persona = null;
@@ -156,6 +169,59 @@ public class AsistenteService {
 				interpretacion.reporte(), rango, zona, sede, resultado.filas(), Instant.now(clock));
 		return new RespuestaDelAsistente(cuerpo, interpretacion, resultado.filas(), List.of(), enlace,
 				resultado.advertencias(), Resultado.RESPONDIDA);
+	}
+
+	private static final java.util.regex.Pattern PIDE_DETALLE = java.util.regex.Pattern.compile(
+			"\\b(quien|quienes|cual|cuales|que profesional|que obra|obras? sociales?|cobertura|pacientes|padron"
+					+ "|ranking|lista|listado|listame|por profesional|por servicio|mas|menos)\\b");
+
+	/**
+	 * Un reporte da los totales de un periodo. "¿Quién nos debe?", "¿qué profesional tiene más turnos?"
+	 * o "¿cuántos pacientes tenemos?" el modelo las clasifica REPORTE y el reporte no las responde: con
+	 * consultas libres van al SQL. Regla en el backend y no en el prompt: cada ejemplo nuevo en el prompt
+	 * del modelo de 4B movio otras preguntas medidas (docs/diseno/AKINE-asistente-sql.md, §6).
+	 */
+	static boolean pideDetalle(String pregunta) {
+		return pregunta != null && PIDE_DETALLE.matcher(TextoDeBusqueda.plegar(pregunta)).find();
+	}
+
+	private static final java.util.regex.Pattern PIDE_CAMBIO = java.util.regex.Pattern.compile(
+			"\\b(borra|borrar|elimina|eliminar|crea|crear|reserva|reservar|cancela|cancelar|cobra|cobrar"
+					+ "|registra|registrar|modifica|modificar|cambia|cambiar|agrega|agregar|anota|anotar|actualiza"
+					+ "|actualizar|carga|cargar|ignora|ignorar|olvida|olvidar|instrucciones)\\b");
+
+	/**
+	 * Un pedido de crear, borrar o modificar, o de cambiar las instrucciones, no es una consulta: no va al
+	 * SQL aunque el modelo lo deje fuera de alcance (el SELECT que inventaria responderia otra cosa).
+	 */
+	static boolean pideCambio(String pregunta) {
+		return pregunta != null && PIDE_CAMBIO.matcher(TextoDeBusqueda.plegar(pregunta)).find();
+	}
+
+	/** Interruptor prendido y {@code asistente:sql} en la sede. Sin el permiso, la ayuda de siempre. */
+	private boolean puedeConsultaLibre(ActorDelAsistente actor) {
+		return ajustes.sql() && consultaLibre != null && permisos.evaluate(new PermissionQuery(actor.accountId(),
+				PermissionCodes.ASISTENTE_SQL, actor.organizationId(), actor.consultorioId(), null,
+				Instant.now(clock))).granted();
+	}
+
+	/**
+	 * Respaldo: el modelo escribe un SELECT sobre {@code asistente_sql}. El texto lo arma la plantilla
+	 * con las filas; el modelo no las ve.
+	 */
+	private RespuestaDelAsistente consultaLibre(ActorDelAsistente actor, String pregunta, ZoneId zona) {
+		ConsultaLibre.Resultado r = consultaLibre.responder(pregunta, LocalDate.now(clock.withZone(zona)),
+				actor.organizationId(), actor.consultorioId());
+		if (!r.respondida()) {
+			return new RespuestaDelAsistente(Plantillas.CONSULTA_FALLIDA, Interpretacion.FUERA_DE_ALCANCE, List.of(),
+					List.of(), null, List.of(), Resultado.FUERA_DE_ALCANCE, r.sql());
+		}
+		List<String> advertencias = r.truncado()
+				? List.of("Hay más resultados de los que se muestran: precisá la pregunta para verlos todos.")
+				: List.of();
+		return new RespuestaDelAsistente(Plantillas.consultaLibre(r.filas(), r.truncado()),
+				Interpretacion.FUERA_DE_ALCANCE, r.filas(), List.of(), null, advertencias, Resultado.RESPONDIDA,
+				r.sql());
 	}
 
 	/**
@@ -263,6 +329,10 @@ public class AsistenteService {
 		detalles.put("desde", rango.desde().toString());
 		detalles.put("hasta", rango.hasta().toString());
 		detalles.put("filas", String.valueOf(respuesta.filas().size()));
+		if (respuesta.consulta() != null) {
+			// Solo que fue libre: el SELECT puede llevar el nombre de una persona.
+			detalles.put("consulta", "LIBRE");
+		}
 		if (respuesta.interpretacion().reporte() != null) {
 			detalles.put("reporte", respuesta.interpretacion().reporte());
 		}

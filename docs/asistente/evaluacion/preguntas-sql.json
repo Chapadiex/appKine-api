@@ -1,0 +1,12 @@
+[
+  {"id":"Q1","q":"el padron?","e":{"intencion":"FUERA_DE_ALCANCE"}},
+  {"id":"Q2","q":"¿cuántos pacientes tenemos?","e":{"intencion":"REPORTE"}},
+  {"id":"Q3","q":"¿quién nos debe plata?","e":{"intencion":"REPORTE"}},
+  {"id":"Q4","q":"¿qué profesional tiene más turnos?","e":{"intencion":"REPORTE"}},
+  {"id":"Q5","q":"¿qué obras sociales tienen los pacientes?","e":{"intencion":"FUERA_DE_ALCANCE"}},
+  {"id":"Q6","q":"listame los pacientes mayores de 60","e":{"intencion":"FUERA_DE_ALCANCE"}},
+  {"id":"Q7","q":"¿cuántos casos clínicos hay abiertos?","e":{"intencion":"FUERA_DE_ALCANCE"}},
+  {"id":"Q8","q":"¿qué servicios ofrecemos y a qué precio?","e":{"intencion":"FUERA_DE_ALCANCE"}},
+  {"id":"Q9","q":"¿cuánto se facturó este mes?","e":{"intencion":"REPORTE","reporte":"ECONOMICO","periodo":"ESTE_MES"}},
+  {"id":"Q10","q":"¿cuántos turnos se cancelaron este mes?","e":{"intencion":"REPORTE","reporte":"TURNOS","periodo":"ESTE_MES"}}
+]

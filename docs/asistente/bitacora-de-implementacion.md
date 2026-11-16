@@ -108,3 +108,23 @@ La base de QA no tenía clases. Se armó una por la API, como lo haría el admin
 | 57 | Por la regla de correr sólo lo que toca el cambio, esos tests no se habían corrido en local, y el CI cortó en la etapa de unitarios | Antes de volver a subir se corrió la suite unitaria completa en local (4741 tests, 0 fallas) y los IT de permisos (`PermisosEsquemaIT` 11/11, `MatrizDePermisosIT` 14/14) |
 
 **Estado final del CI (15/11, 14:19Z):** los dos PR están en verde en todos sus checks y en estado `CLEAN`/`MERGEABLE`. appKine-api#204: build, tests unitarios y de integración, contrato, imagen y SBOM, vulnerabilidades, CodeQL, ZAP y Sonar. appKine-web#175: lint, build y tests, cliente alineado con el contrato, contraste WCAG, E2E, imagen, CodeQL y Sonar. Falta sólo el merge, que decide el usuario: primero #204 y después #175, y borrar la rama espejo `akine-asistente-web` de `appKine-api`.
+
+## Después del merge (15/11, tarde)
+
+| # | Problema | Solución aplicada |
+|---|---|---|
+| 58 | Probando sobre `main`, la primera pregunta respondió 503 `asistente-no-disponible`: Ollama había descargado el modelo y cargarlo en frío tardó ~15 s, justo el plazo por defecto (`HttpTimeoutException` en `OllamaModeloDelAsistente`). El `keep_alive` de 2 h evita la descarga mientras hay uso, pero no la primera consulta después de reiniciar Ollama o de que cargue otro modelo | El plazo por defecto pasó de 15 s a 60 s (`AsistenteProperties` y `application.yml`). Sigue cortando un Ollama colgado; `AKINE_ASISTENTE_TIMEOUT_SEGUNDOS` lo ajusta por despliegue |
+
+## Consultas libres en SQL (15/11, noche)
+
+Diseño: `docs/diseno/AKINE-asistente-sql.md`.
+
+| # | Problema | Solución aplicada |
+|---|---|---|
+| 59 | "el padrón?" o "¿cuántos pacientes tenemos?" no entran en ninguna de las seis intenciones y el usuario quiere preguntar sobre toda la base | Respaldo en SQL: si la pregunta queda fuera de alcance, el modelo escribe un SELECT sobre las vistas de `asistente_sql` (`V21`), con interruptor `akine.asistente.sql.enabled` y permiso `asistente:sql` (ORG_ADMIN y CONSULTORIO_ADMIN) |
+| 60 | El usuario `akine` no tiene `CREATEROLE`: no se puede crear un rol de base de solo lectura | Tres barreras sin rol propio: vistas recortadas por parámetros de transacción, validador y transacción READ ONLY con `search_path` en las vistas |
+| 61 | Con JSqlParser en el classpath, Spring Data JPA 4 lo usa para todas las consultas nativas y la aplicación no arranca (`PersonaRepository.contar`) | Sin la dependencia: validador por tokens, con lista de vistas, lista de funciones y palabras prohibidas |
+| 62 | El interpretador clasifica como `REPORTE` "¿quién nos debe?", "¿qué profesional tiene más turnos?" y "¿cuántos pacientes tenemos?", y el reporte no las responde | Tres intentos de corregirlo en el prompt rompieron entre 2 y 5 preguntas medidas; se revirtió y la regla quedó en el backend (`pideDetalle`), que las manda al SQL |
+| 63 | "borrá todos los turnos de hoy" y una inyección llegaban al SQL y el modelo inventaba un SELECT que respondía otra cosa | `pideCambio` frena los pedidos de crear, borrar o cambiar y los de cambiar las instrucciones; el prompt de SQL devuelve `{"sql": null}` |
+| 64 | El ejemplo del prompt de SQL filtraba por `ATENDIDO` y el modelo lo copiaba en "¿qué profesional tiene más turnos?" | El ejemplo cuenta todo menos lo cancelado y una regla dice que se filtra por estado sólo si se pide |
+| 65 | Los valores de estado del prompt de SQL estaban inventados (OBRA_SOCIAL, SALDADA, ABIERTO) | Se leyeron de los CHECK de la base y de los enums: FINANCIADA/PARTICULAR, PAGADA, ACTIVO/CERRADO |

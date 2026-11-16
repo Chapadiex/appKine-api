@@ -9,6 +9,12 @@ public final class PermissionCodes {
 	 */
 	public static final String ASISTENTE_USE = "asistente:use";
 
+	/**
+	 * Consultas libres: si la pregunta no entra en ninguna intencion, el modelo escribe un SELECT
+	 * sobre las vistas de {@code asistente_sql}. Solo los dos roles de administracion, por base.
+	 */
+	public static final String ASISTENTE_SQL = "asistente:sql";
+
 	private PermissionCodes() {
 	}
 }
