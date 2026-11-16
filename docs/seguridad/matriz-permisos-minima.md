@@ -1039,3 +1039,15 @@ El asistente que responde preguntas sobre turnos, sesiones, clases y reportes (`
 - **No es otorgable por grant**, y `PACIENTE` y `PLATFORM_ADMIN` no lo tienen.
 - **Asistente apagado:** con `akine.asistente.enabled` en `false`, toda consulta responde 409 `asistente-deshabilitado` aunque el actor tenga el permiso.
 - **`asistente:sql`, consultas libres** (`docs/diseno/AKINE-asistente-sql.md`): si la pregunta no entra en ninguna intención, el modelo escribe un `SELECT` sobre las vistas de `asistente_sql`, recortadas a la organización y a la sede. Las vistas **no** aplican el recorte por actividad propia del profesional, por eso el permiso es sólo de los dos roles de administración, que ya ven todo de la sede. No es otorgable por grant y exige además `akine.asistente.sql.enabled` (apagado por defecto); sin el permiso o apagado, la pregunta recibe la ayuda de siempre.
+
+## 24. Enmiendas — Dictado por voz (16/11/2026)
+
+Dictar en los campos de texto con un Whisper local (`docs/diseno/AKINE-dictado-por-voz.md`).
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `dictado:use` | — | Org | Org | Org | Org | — |
+
+- **No lee datos del centro**: sólo transcribe lo que dice quien lo usa, y propone cómo repartirlo en la evaluación sin escribir en la sesión. Lo dictado se guarda cuando el profesional guarda la pantalla, con el permiso y la auditoría de esa pantalla.
+- **No es otorgable por grant**, y `PACIENTE` y `PLATFORM_ADMIN` no lo tienen.
+- **Dictado apagado:** con `akine.dictado.enabled` en `false`, todo responde 409 `dictado-deshabilitado`.

@@ -15,6 +15,12 @@ public final class PermissionCodes {
 	 */
 	public static final String ASISTENTE_SQL = "asistente:sql";
 
+	/**
+	 * Dictar por voz en los campos de texto (docs/diseno/AKINE-dictado-por-voz.md). Los cuatro roles
+	 * de personal, por base.
+	 */
+	public static final String DICTADO_USE = "dictado:use";
+
 	private PermissionCodes() {
 	}
 }

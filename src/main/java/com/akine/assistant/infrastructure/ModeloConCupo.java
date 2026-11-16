@@ -34,6 +34,12 @@ public class ModeloConCupo implements ModeloDeLenguaje {
 
 	@Override
 	public String completarJson(List<MensajeChat> mensajes, Duration plazo) {
+		return completarJson(mensajes, plazo, -1);
+	}
+
+	/** {@code maxTokens} negativo: el tope por defecto del modelo. */
+	@Override
+	public String completarJson(List<MensajeChat> mensajes, Duration plazo, int maxTokens) {
 		long inicio = System.nanoTime();
 		boolean conCupo;
 		try {
@@ -52,7 +58,8 @@ public class ModeloConCupo implements ModeloDeLenguaje {
 			if (restante.isNegative() || restante.isZero()) {
 				throw new ModeloNoDisponibleException();
 			}
-			return modelo.completarJson(mensajes, restante);
+			return maxTokens < 0 ? modelo.completarJson(mensajes, restante)
+					: modelo.completarJson(mensajes, restante, maxTokens);
 		}
 		finally {
 			cupos.release();

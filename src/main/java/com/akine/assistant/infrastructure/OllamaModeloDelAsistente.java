@@ -51,9 +51,14 @@ public class OllamaModeloDelAsistente implements ModeloDeLenguaje {
 
 	@Override
 	public String completarJson(List<MensajeChat> mensajes, Duration plazo) {
+		return completarJson(mensajes, plazo, MAX_TOKENS);
+	}
+
+	@Override
+	public String completarJson(List<MensajeChat> mensajes, Duration plazo, int maxTokens) {
 		HttpResponse<String> respuesta;
 		try {
-			respuesta = http.send(armar(mensajes, plazo), HttpResponse.BodyHandlers.ofString());
+			respuesta = http.send(armar(mensajes, plazo, maxTokens), HttpResponse.BodyHandlers.ofString());
 		}
 		catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
@@ -71,6 +76,10 @@ public class OllamaModeloDelAsistente implements ModeloDeLenguaje {
 	}
 
 	HttpRequest armar(List<MensajeChat> mensajes, Duration plazo) {
+		return armar(mensajes, plazo, MAX_TOKENS);
+	}
+
+	HttpRequest armar(List<MensajeChat> mensajes, Duration plazo, int maxTokens) {
 		Map<String, Object> cuerpo = new LinkedHashMap<>();
 		cuerpo.put("model", modelo);
 		cuerpo.put("messages", mensajes.stream()
@@ -79,7 +88,7 @@ public class OllamaModeloDelAsistente implements ModeloDeLenguaje {
 		cuerpo.put("stream", false);
 		cuerpo.put("keep_alive", keepAlive);
 		cuerpo.put("format", "json");
-		cuerpo.put("options", Map.of("temperature", 0, "num_predict", MAX_TOKENS, "num_ctx", NUM_CTX));
+		cuerpo.put("options", Map.of("temperature", 0, "num_predict", maxTokens, "num_ctx", NUM_CTX));
 		return HttpRequest.newBuilder(endpoint)
 				.timeout(plazo)
 				.header("Content-Type", "application/json")

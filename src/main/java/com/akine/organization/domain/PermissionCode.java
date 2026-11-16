@@ -409,6 +409,13 @@ public enum PermissionCode {
 	ASISTENTE_USE("asistente:use"),
 
 	/**
+	 * Dictar por voz en los campos de texto (docs/diseno/AKINE-dictado-por-voz.md). Por base para
+	 * los mismos cuatro roles que {@link #ASISTENTE_USE}, con alcance de organizacion; no se otorga
+	 * por grant. No lee datos del centro: solo transcribe lo que dice quien lo usa.
+	 */
+	DICTADO_USE("dictado:use"),
+
+	/**
 	 * Consultas libres del asistente: cuando la pregunta no entra en ninguna intencion, el modelo
 	 * escribe un SELECT sobre las vistas de solo lectura de {@code asistente_sql}
 	 * (docs/diseno/AKINE-asistente-sql.md). Por base solo para {@code ORG_ADMIN} y

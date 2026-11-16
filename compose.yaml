@@ -111,8 +111,23 @@ services:
     volumes:
       - akine-ollama-data:/root/.ollama
 
+  # Transcripcion del dictado por voz (docs/diseno/AKINE-dictado-por-voz.md): speaches, servidor
+  # faster-whisper con la API de OpenAI. Opcional: sin el, solo el dictado responde 503. Bajar el
+  # modelo una vez: curl -X POST http://localhost:8000/v1/models/Systran/faster-whisper-small
+  whisper:
+    image: ghcr.io/speaches-ai/speaches:0.8.3-cpu
+    container_name: akine-whisper
+    restart: unless-stopped
+    ports:
+      # Solo en la maquina local: speaches no tiene autenticacion.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - akine-whisper-data:/home/ubuntu/.cache/huggingface/hub
+
 volumes:
   akine-postgres-data:
     name: akine-postgres-data
   akine-ollama-data:
     name: akine-ollama-data
+  akine-whisper-data:
+    name: akine-whisper-data

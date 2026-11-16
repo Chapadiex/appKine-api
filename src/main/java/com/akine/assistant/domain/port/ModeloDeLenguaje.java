@@ -20,4 +20,12 @@ public interface ModeloDeLenguaje {
 	 *         responde, responde con error o vence el plazo
 	 */
 	String completarJson(List<MensajeChat> mensajes, Duration plazo);
+
+	/**
+	 * Igual, con otro tope de tokens de salida. El interpretador entra en 120; la propuesta de
+	 * evaluacion dictada copia frases enteras y necesita mas. Por defecto ignora el tope.
+	 */
+	default String completarJson(List<MensajeChat> mensajes, Duration plazo, int maxTokens) {
+		return completarJson(mensajes, plazo);
+	}
 }

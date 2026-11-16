@@ -624,7 +624,7 @@ class PermissionEvaluatorServiceTest {
 							// AKINE-G-1 (DP-15): "Si" en Ver Reportes.
 							"reporte:read",
 							// M30: la biblioteca de libros, solo ORG_ADMIN.
-							"biblioteca:manage", "biblioteca:consultar", "asistente:use", "asistente:sql");
+							"biblioteca:manage", "biblioteca:consultar", "asistente:use", "dictado:use", "asistente:sql");
 		}
 
 		@Test
@@ -715,7 +715,7 @@ class PermissionEvaluatorServiceTest {
 							// lo hace el reporte, no la lista que oculta botones.
 							"reporte:read",
 							// M30, RF-M30-012: consultar la biblioteca, por base.
-							"biblioteca:consultar", "asistente:use");
+							"biblioteca:consultar", "asistente:use", "dictado:use");
 		}
 	}
 
