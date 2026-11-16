@@ -16,7 +16,11 @@ public record SugerenciasProperties(
 	/**
 	 * {@code tipo}: {@code ollama} o {@code prueba}. {@code plazoSegundos}: 50, debajo de los 60 s con
 	 * que el nginx del frontend corta {@code /api/} (diseno §5.4). {@code concurrencia}: generaciones
-	 * que esperan al modelo a la vez en esta instancia; la siguiente responde 503 {@code modelo-ocupado}.
+	 * que llaman al modelo a la vez en esta instancia. La siguiente no falla enseguida: espera un lugar
+	 * hasta agotar el plazo ({@code ModeloConCupo}), y lo que espero se descuenta del plazo de su
+	 * llamada. Por eso, con concurrencia 1, un segundo pedido casi siempre termina en 503
+	 * {@code modelo-no-disponible} (consiguio lugar sin tiempo para generar); {@code modelo-ocupado}
+	 * sale solo si en todo el plazo no se libero ningun lugar (diseno §8.1).
 	 * {@code keepAlive}: el mismo valor que el asistente, para que Ollama no descargue el modelo que
 	 * comparten.
 	 */

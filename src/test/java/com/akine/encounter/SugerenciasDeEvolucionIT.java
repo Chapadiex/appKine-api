@@ -12,6 +12,7 @@ import com.akine.encounter.domain.exception.EvolucionDeshabilitadaException;
 import com.akine.encounter.domain.exception.GeneracionEnCursoException;
 import com.akine.encounter.domain.exception.ModeloDeEvolucionNoDisponibleException;
 import com.akine.encounter.domain.exception.MotivoObligatorioException;
+import com.akine.encounter.domain.exception.SugerenciaNoAccesibleException;
 import com.akine.encounter.domain.exception.SugerenciaYaRespondidaException;
 import com.akine.encounter.spi.CitaGuardada;
 import com.akine.encounter.support.EncounterFixtures;
@@ -268,6 +269,27 @@ class SugerenciasDeEvolucionIT {
 		assertThatThrownBy(() -> servicio.generar(otro.actor(), otro.consultorioId(), caso, null))
 				.isInstanceOf(CasoNoAsignableException.class);
 		assertThat(llamadasAlModelo).hasValue(0);
+	}
+
+	@Test
+	@DisplayName("CA-M31-005-05: historial y respuesta desde otra organizacion, o por otro caso, responden 404")
+	void aislamiento_de_listar_y_responder() {
+		Mundo m = fixtures.crearMundo();
+		long caso = casoConDolorYMedicionSinCambio(m, "Sintetica");
+		SugerenciasView.Sugerencia s = servicio.generar(m.actor(), m.consultorioId(), caso, null)
+				.sugerencias().getFirst();
+		long otroCaso = fixtures.crearCaso(m, 2);
+		Mundo otro = fixtures.crearMundo();
+
+		assertThatThrownBy(() -> servicio.listar(otro.actor(), otro.consultorioId(), caso, null, PageRequest.of(0, 10)))
+				.isInstanceOf(CasoNoAsignableException.class);
+		assertThatThrownBy(() -> servicio.responder(otro.actor(), otro.consultorioId(), caso, s.id(),
+				Respuesta.ACEPTADA, null, s.version(), null)).isInstanceOf(CasoNoAsignableException.class);
+		assertThatThrownBy(() -> servicio.responder(m.actor(), m.consultorioId(), otroCaso, s.id(),
+				Respuesta.ACEPTADA, null, s.version(), null)).isInstanceOf(SugerenciaNoAccesibleException.class);
+
+		assertThat(jdbc.queryForObject("SELECT respuesta FROM sugerencia_evolucion WHERE id = ?", String.class,
+				s.id())).isEqualTo("PENDIENTE");
 	}
 
 	@Test
