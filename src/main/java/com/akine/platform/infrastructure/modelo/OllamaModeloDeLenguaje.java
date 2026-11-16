@@ -41,20 +41,19 @@ import java.util.stream.Stream;
  * registra el contenido de los mensajes ni de las respuestas.
  *
  * <p>Une los dos adaptadores que tenian {@code knowledge} ({@code completar} y {@code generar}) y
- * {@code assistant} ({@code completarJson}) (D-3). {@code num_ctx} es 4096 en todas las llamadas, para
- * que Ollama no recargue el modelo al alternar entre consumidores, salvo en {@code completarJson} con
- * {@link OpcionesGeneracion}, que manda {@link OpcionesGeneracion#numCtx()}: las sugerencias de evolucion piden
- * 8192 porque su prompt llega a 3 hallazgos con 12 pasajes, y eso recarga el modelo si otro consumidor lo tenia
- * cargado con 4096.
+ * {@code assistant} ({@code completarJson}) (D-3). {@code num_ctx} es 8192 en todas las llamadas
+ * ({@link OpcionesGeneracion#NUM_CTX_POR_DEFECTO}), para que Ollama no recargue el modelo al alternar entre
+ * consumidores: las sugerencias de evolucion lo necesitan para 3 hallazgos con 12 pasajes, y la consulta libre
+ * del asistente para el esquema de las vistas (con las clinicas no entra en 4096 y Ollama responde 400).
  *
  * <p>{@code completarJson} usa los parametros que midio el asistente el 15/11
- * ({@code docs/asistente/evaluacion/}): temperatura 0 y 120 tokens, que sobran para un objeto corto.
+ * ({@code docs/asistente/evaluacion/}): temperatura 0 y 300 tokens: 120 cortaba los SELECT de la consulta libre con dos JOIN.
  */
 public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 
 	private static final Logger log = LoggerFactory.getLogger(OllamaModeloDeLenguaje.class);
-	static final int NUM_CTX = 4096;
-	static final int MAX_TOKENS_JSON = 120;
+	static final int NUM_CTX = OpcionesGeneracion.NUM_CTX_POR_DEFECTO;
+	static final int MAX_TOKENS_JSON = 300;
 	private static final ScheduledExecutorService VIGILANTE = Executors.newSingleThreadScheduledExecutor(r -> {
 		Thread t = new Thread(r, "ollama-plazo");
 		t.setDaemon(true);

@@ -172,8 +172,16 @@ public class Interpretador {
 	 * la semana pasada (lo encontro la prueba de punta a punta del 15/11).
 	 */
 	static Interpretacion heredar(Interpretacion actual, Interpretacion anterior, boolean seguimiento) {
-		if (actual.fueraDeAlcance() || anterior.fueraDeAlcance()) {
+		if (actual.fueraDeAlcance()) {
 			return actual;
+		}
+		if (anterior.fueraDeAlcance()) {
+			// Una consulta libre que encontro a una sola persona la deja anotada: "Acosta" y despues
+			// "¿vino esta semana?" sigue hablando de Acosta. Nada mas se hereda de ahi.
+			return actual.usaPersona() && actual.persona() == null && anterior.persona() != null
+					? new Interpretacion(actual.intencion(), anterior.persona(), actual.clase(), actual.periodo(),
+							actual.reporte())
+					: actual;
 		}
 		String persona = actual.usaPersona() && actual.persona() == null ? anterior.persona() : actual.persona();
 		String clase = actual.usaClase() && actual.clase() == null ? anterior.clase() : actual.clase();

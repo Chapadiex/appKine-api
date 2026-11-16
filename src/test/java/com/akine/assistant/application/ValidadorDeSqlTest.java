@@ -46,4 +46,14 @@ class ValidadorDeSqlTest {
 	void rechazaTodoLoDemas(String sql) {
 		assertThat(ValidadorDeSql.rechazo(sql)).isPresent();
 	}
+
+	@org.junit.jupiter.api.Test
+	void lasVistasClinicasSoloConPermiso() {
+		String sql = "SELECT p.apellido FROM clinico_casos c JOIN personas p ON p.persona_id = c.persona_id"
+				+ " WHERE lower(c.diagnostico) LIKE lower('%lumbalgia%')";
+		assertThat(ValidadorDeSql.rechazo(sql, false)).hasValueSatisfying(m -> assertThat(m).contains("hc:read"));
+		assertThat(ValidadorDeSql.rechazo(sql, true)).isEmpty();
+		assertThat(ValidadorDeSql.vistasClinicas(sql)).containsExactly("clinico_casos");
+		assertThat(ValidadorDeSql.vistasClinicas("SELECT 'clinico_casos' FROM jornadas_caja")).isEmpty();
+	}
 }

@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -34,18 +35,30 @@ public class ConsultaLibre {
 
 	static final int INTENTOS = 2;
 
+	/** Cuantas preguntas anteriores ve el modelo: alcanzan para un "¿y ella?" sin agrandar el prompt. */
+	static final int ANTERIORES = 3;
+
+	/** El error de una pregunta que necesita las vistas clinicas y el actor no las tiene. */
+	public static final String NECESITA_CLINICO = "NECESITA_CLINICO";
+
+	static final String SIN_CLINICAS = "Los datos clinicos (diagnosticos o afecciones, motivos de consulta, tratamientos o aparatos "
+			+ "aplicados, mediciones, antecedentes, planes) NO estan disponibles para este usuario. Si la pregunta "
+			+ "los necesita, devolve {\"sql\": null, \"clinico\": true}.";
+
 	private final Supplier<ModeloDeLenguaje> modelo;
 	private final LectorDeVistas lector;
 	private final String prompt;
+	private final String promptClinico;
 	private final Duration plazo;
 	private final int limiteFilas;
 	private final JsonMapper json = JsonMapper.builder().build();
 
-	public ConsultaLibre(Supplier<ModeloDeLenguaje> modelo, LectorDeVistas lector, String prompt, Duration plazo,
-			int limiteFilas) {
+	public ConsultaLibre(Supplier<ModeloDeLenguaje> modelo, LectorDeVistas lector, String prompt,
+			String promptClinico, Duration plazo, int limiteFilas) {
 		this.modelo = modelo;
 		this.lector = lector;
 		this.prompt = prompt;
+		this.promptClinico = promptClinico;
 		this.plazo = plazo;
 		this.limiteFilas = limiteFilas;
 	}
@@ -61,7 +74,8 @@ public class ConsultaLibre {
 	}
 
 	/** Lo que devolvio una consulta libre. {@code sql} es la que se ejecuto, o la ultima que se intento. */
-	public record Resultado(String sql, List<Map<String, Object>> filas, boolean truncado, String error) {
+	public record Resultado(String sql, List<Map<String, Object>> filas, boolean truncado, String error,
+			Set<String> vistasClinicas) {
 
 		public boolean respondida() {
 			return error == null;
@@ -72,20 +86,22 @@ public class ConsultaLibre {
 	 * @param hoy el dia en la zona de la sede: el modelo lo necesita para "este mes" o "ayer"
 	 * @throws com.akine.assistant.domain.exception.ModeloNoDisponibleException si el modelo no responde o su cupo esta lleno
 	 */
-	public Resultado responder(String pregunta, LocalDate hoy, long organizationId, long consultorioId) {
+	public Resultado responder(String pregunta, List<String> anteriores, String persona, boolean clinicas,
+			LocalDate hoy, long organizationId, long consultorioId) {
 		List<MensajeChat> mensajes = new ArrayList<>();
-		mensajes.add(new MensajeChat(Rol.SISTEMA, prompt.replace("{{HOY}}", hoy.toString())));
-		mensajes.add(new MensajeChat(Rol.USUARIO, pregunta));
+		mensajes.add(new MensajeChat(Rol.SISTEMA, prompt.replace("{{HOY}}", hoy.toString())
+				.replace("{{VISTAS_CLINICAS}}", clinicas ? promptClinico : SIN_CLINICAS)));
+		mensajes.add(new MensajeChat(Rol.USUARIO, conAnteriores(pregunta, anteriores, persona)));
 		String sql = null;
 		String error = null;
 		for (int intento = 1; intento <= INTENTOS; intento++) {
 			String crudo = completar(mensajes);
 			sql = extraerSql(crudo).orElse(null);
 			if (sql == null) {
-				error = "El modelo no devolvio una consulta";
+				error = !clinicas && pideClinico(crudo) ? NECESITA_CLINICO : "El modelo no devolvio una consulta";
 				break;
 			}
-			Optional<String> rechazo = ValidadorDeSql.rechazo(sql);
+			Optional<String> rechazo = ValidadorDeSql.rechazo(sql, clinicas);
 			if (rechazo.isPresent()) {
 				error = rechazo.get();
 			}
@@ -93,7 +109,8 @@ public class ConsultaLibre {
 				try {
 					List<Map<String, Object>> filas = lector.leer(sql, organizationId, consultorioId, limiteFilas + 1);
 					boolean truncado = filas.size() > limiteFilas;
-					return new Resultado(sql, truncado ? filas.subList(0, limiteFilas) : filas, truncado, null);
+					return new Resultado(sql, truncado ? filas.subList(0, limiteFilas) : filas, truncado, null,
+							ValidadorDeSql.vistasClinicas(sql));
 				}
 				catch (ConsultaInvalidaException e) {
 					error = e.getMessage();
@@ -104,7 +121,38 @@ public class ConsultaLibre {
 			mensajes.add(new MensajeChat(Rol.USUARIO, "La consulta fallo: " + error
 					+ ". Corregila y devolve solo el JSON con la consulta."));
 		}
-		return new Resultado(sql, List.of(), false, error);
+		return new Resultado(sql, List.of(), false, error, Set.of());
+	}
+
+	/**
+	 * La pregunta con las ultimas anteriores de la charla, para que "¿tiene turno?" despues de "Lucia"
+	 * hable de Lucia. Solo preguntas: el modelo sigue sin ver filas.
+	 */
+	static String conAnteriores(String pregunta, List<String> anteriores, String persona) {
+		if ((anteriores == null || anteriores.isEmpty()) && persona == null) {
+			return pregunta;
+		}
+		StringBuilder texto = new StringBuilder();
+		if (anteriores != null && !anteriores.isEmpty()) {
+			texto.append("Preguntas anteriores de la charla, de la mas vieja a la mas nueva:\n");
+			anteriores.subList(Math.max(0, anteriores.size() - ANTERIORES), anteriores.size())
+					.forEach(a -> texto.append("- ").append(a).append('\n'));
+		}
+		if (persona != null) {
+			texto.append("Persona de la que se habla: ").append(persona).append('\n');
+		}
+		return texto.append("Pregunta actual: ").append(pregunta).toString();
+	}
+
+	/** {@code {"sql": null, "clinico": true}}: la pregunta necesita datos clinicos que el actor no puede ver. */
+	boolean pideClinico(String crudo) {
+		try {
+			JsonNode clinico = json.readTree(crudo).get("clinico");
+			return clinico != null && clinico.asBoolean(false);
+		}
+		catch (JacksonException | NullPointerException e) {
+			return false;
+		}
 	}
 
 	/** {@code {"sql": "..."}}; tolera que el modelo devuelva la consulta sola. */

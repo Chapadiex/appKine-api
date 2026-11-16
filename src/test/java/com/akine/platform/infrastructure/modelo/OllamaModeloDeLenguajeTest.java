@@ -199,7 +199,7 @@ class OllamaModeloDeLenguajeTest {
 		assertThat(cuerpo.path("format").asString()).isEqualTo("json");
 		assertThat(cuerpo.path("stream").asBoolean()).isFalse();
 		assertThat(cuerpo.path("options").path("temperature").asInt()).isZero();
-		assertThat(cuerpo.path("options").path("num_ctx").asInt()).isEqualTo(4096);
+		assertThat(cuerpo.path("options").path("num_ctx").asInt()).isEqualTo(8192);
 		assertThat(cuerpo.path("messages").get(0).path("role").asString()).isEqualTo("system");
 		assertThat(cuerpo.path("messages").get(1).path("content").asString()).isEqualTo("juan vino hoy?");
 	}

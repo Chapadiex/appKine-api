@@ -35,6 +35,21 @@ public class AuditoriaDelAsistente {
 		this.auditTrail = auditTrail;
 	}
 
+	/**
+	 * Una consulta libre que leyo vistas {@code clinico_*}: evento propio, para que la auditoria
+	 * clinica la encuentre aparte. Sin la pregunta ni las filas: solo que vistas y cuantas filas.
+	 */
+	@Transactional
+	public void registrarLecturaClinica(long organizationId, long consultorioId, long accountId,
+			java.util.Set<String> vistas, int filas) {
+		auditTrail.record(new AuditEntry(organizationId, consultorioId, accountId, EVENTO_CLINICO, ENTIDAD, null,
+				null, null, Map.of("vistas", String.join(",", vistas), "filas", String.valueOf(filas),
+						"justificacion", "Consulta al asistente de datos"),
+				null, MDC.get("traceId"), Instant.now()));
+	}
+
+	static final String EVENTO_CLINICO = "ASISTENTE_LECTURA_CLINICA";
+
 	@Transactional
 	public void registrar(long organizationId, long consultorioId, long accountId, Map<String, String> detalles) {
 		auditTrail.record(new AuditEntry(organizationId, consultorioId, accountId, EVENTO, ENTIDAD, null,

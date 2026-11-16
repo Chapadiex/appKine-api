@@ -16,6 +16,7 @@ import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.organization.spi.ZonaDeSede;
 import com.akine.platform.spi.listado.TextoDeBusqueda;
@@ -120,7 +121,8 @@ public class AsistenteService {
 		RangoDeDias rango;
 		try {
 			rango = rango(interpretacion, pregunta, LocalDate.now(clock.withZone(zona)));
-			respuesta = responder(enLaSede, interpretacion, pregunta, rango, zona, sede.name(), personaId);
+			respuesta = responder(enLaSede, interpretacion, pregunta, historial == null ? List.of() : historial,
+					rango, zona, sede.name(), personaId);
 		}
 		catch (RuntimeException e) {
 			// La consulta pudo haber leido datos antes de fallar (la busqueda de persona): se audita igual.
@@ -136,15 +138,37 @@ public class AsistenteService {
 
 	@SuppressWarnings("unchecked")
 	private RespuestaDelAsistente responder(ActorDelAsistente actor, Interpretacion interpretacion, String pregunta,
-			RangoDeDias rango, ZoneId zona, String sede, Long personaElegida) {
+			List<TurnoPrevio> historial, RangoDeDias rango, ZoneId zona, String sede, Long personaElegida) {
+		if (interpretacion.persona() == null && !interpretacion.usaClase() && !interpretacion.usaReporte()
+				&& !pideCambio(pregunta) && esContinuacion(pregunta)) {
+			// "¿tiene turno?" sin decir de quien: es de la persona de la pregunta anterior. Si no hay
+			// ninguna (o la anterior encontro varias), se repregunta en vez de adivinar.
+			String previa = historial.isEmpty() ? null : historial.getLast().interpretacion().persona();
+			if (previa == null) {
+				return simple(Plantillas.FALTA_PERSONA, interpretacion, Resultado.FALTA_PERSONA);
+			}
+			if (interpretacion.usaPersona()) {
+				interpretacion = new Interpretacion(interpretacion.intencion(), previa, null, interpretacion.periodo(),
+						null);
+			}
+			else if (puedeConsultaLibre(actor)) {
+				return consultaLibre(actor, pregunta, historial, previa, zona);
+			}
+		}
 		if (interpretacion.fueraDeAlcance() || !herramientas.containsKey(interpretacion.intencion())) {
 			if (!pideCambio(pregunta) && puedeConsultaLibre(actor)) {
-				return consultaLibre(actor, pregunta, zona);
+				return consultaLibre(actor, pregunta, historial, null, zona);
 			}
 			return simple(Plantillas.AYUDA, Interpretacion.FUERA_DE_ALCANCE, Resultado.FUERA_DE_ALCANCE);
 		}
 		if (interpretacion.intencion() == Intencion.REPORTE && pideDetalle(pregunta) && puedeConsultaLibre(actor)) {
-			return consultaLibre(actor, pregunta, zona);
+			return consultaLibre(actor, pregunta, historial, null, zona);
+		}
+		if (interpretacion.usaPersona() && interpretacion.persona() == null && personaElegida == null
+				&& puedeConsultaLibre(actor)) {
+			// "¿A quién se le aplicó magnetoterapia?" pregunta QUIÉN, no da un nombre: lo responde el SQL.
+			// Las continuaciones sin persona ya se repreguntaron arriba.
+			return consultaLibre(actor, pregunta, historial, null, zona);
 		}
 
 		Map<String, Object> persona = null;
@@ -173,7 +197,9 @@ public class AsistenteService {
 
 	private static final java.util.regex.Pattern PIDE_DETALLE = java.util.regex.Pattern.compile(
 			"\\b(quien|quienes|cual|cuales|que profesional|que obra|obras? sociales?|cobertura|pacientes|padron"
-					+ "|ranking|lista|listado|listame|por profesional|por servicio|mas|menos)\\b");
+					+ "|ranking|lista|listado|listame|por profesional|por servicio|mas|menos"
+					+ "|packs?|abonos?|pases?|vendimos|vendieron|gastos?|proveedor|proveedores|presentaciones"
+					+ "|liquidaciones)\\b");
 
 	/**
 	 * Un reporte da los totales de un periodo. "¿Quién nos debe?", "¿qué profesional tiene más turnos?"
@@ -183,6 +209,50 @@ public class AsistenteService {
 	 */
 	static boolean pideDetalle(String pregunta) {
 		return pregunta != null && PIDE_DETALLE.matcher(TextoDeBusqueda.plegar(pregunta)).find();
+	}
+
+	private static final java.util.regex.Pattern DATO_CLINICO = java.util.regex.Pattern.compile(
+			"\\b(diagnostic\\w*|afeccion\\w*|patologi\\w*|lesion\\w*|dolor\\w*|evolucion\\w*|antecedente\\w*"
+					+ "|alergi\\w*|medicacion\\w*|cirugi\\w*|operad[oa]s?|medicion\\w*|tratamiento\\w*|aplic\\w*"
+					+ "|aparato\\w*|magneto\\w*|ultrasonido\\w*|tens|laser\\w*|electro\\w*|onda\\w*|crioterapia"
+					+ "|kinesiotape|vendaje\\w*|algia\\w*|\\w+algia|\\w+itis|artrosis|fractura\\w*|esguince\\w*"
+					+ "|hernia\\w*|contractura\\w*|motivo de consulta|historia clinica)\\b");
+
+	/** La pregunta nombra un dato clinico: sin hc:read no se intenta el SQL. */
+	static boolean pideDatoClinico(String pregunta) {
+		return pregunta != null && DATO_CLINICO.matcher(TextoDeBusqueda.plegar(pregunta)).find();
+	}
+
+	private static final java.util.regex.Pattern HABLA_DE_ALGUIEN =java.util.regex.Pattern.compile(
+			"\\b(tiene|tenia|tuvo|vino|viene|vendra|falto|falta|debe|debia|pago|esta|estuvo|atendio|atendieron"
+					+ "|ella|el|su|sus|le|lo)\\b");
+
+	private static final java.util.regex.Pattern NOMBRA_OTRA_COSA = java.util.regex.Pattern.compile(
+			"\\b(quien|quienes|pacientes|personas|todos|todas|profesional|profesionales|clase|clases|sede|centro"
+					+ "|caja|reporte)\\b");
+
+	/**
+	 * "¿tiene turno?", "¿vino?", "¿cuánto debe?": corta, en singular y sin nombrar a nadie ni a un grupo.
+	 * Una pregunta que trae su propio sujeto ("¿quiénes vienen hoy?") no es continuación.
+	 */
+	static boolean esContinuacion(String pregunta) {
+		if (pregunta == null) {
+			return false;
+		}
+		String plegada = TextoDeBusqueda.plegar(pregunta);
+		return plegada.split("\\s+").length <= 6 && HABLA_DE_ALGUIEN.matcher(plegada).find()
+				&& !NOMBRA_OTRA_COSA.matcher(plegada).find() && !tieneNombrePropio(pregunta);
+	}
+
+	/** Una palabra con mayuscula que no abre la oracion: "¿vino Lucia?" nombra a alguien. */
+	private static boolean tieneNombrePropio(String pregunta) {
+		String[] palabras = pregunta.replaceAll("[¿?¡!.,]", " ").strip().split("\\s+");
+		for (int i = 1; i < palabras.length; i++) {
+			if (!palabras[i].isEmpty() && Character.isUpperCase(palabras[i].charAt(0))) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static final java.util.regex.Pattern PIDE_CAMBIO = java.util.regex.Pattern.compile(
@@ -206,22 +276,75 @@ public class AsistenteService {
 	}
 
 	/**
+	 * Las vistas {@code clinico_*}: hace falta {@code hc:read} en la sede, y no recortado a los pacientes
+	 * propios. Las vistas no saben de relacion asistencial, asi que un alcance restringido no alcanza.
+	 */
+	private boolean puedeLeerClinico(ActorDelAsistente actor) {
+		PermissionDecision decision = permisos.evaluate(new PermissionQuery(actor.accountId(), HC_READ,
+				actor.organizationId(), actor.consultorioId(), null, Instant.now(clock)));
+		return decision.granted() && !ALCANCES_RECORTADOS.contains(decision.grantedByScope());
+	}
+
+	private static final String HC_READ = "hc:read";
+
+	/** Alcances de {@code hc:read} que exigen recortar filas por paciente: las vistas no pueden. */
+	private static final java.util.Set<String> ALCANCES_RECORTADOS = java.util.Set.of("RESTRINGIDO",
+			PermissionDecision.ALCANCE_ACTIVIDAD_PROPIA);
+
+	/**
 	 * Respaldo: el modelo escribe un SELECT sobre {@code asistente_sql}. El texto lo arma la plantilla
 	 * con las filas; el modelo no las ve.
 	 */
-	private RespuestaDelAsistente consultaLibre(ActorDelAsistente actor, String pregunta, ZoneId zona) {
-		ConsultaLibre.Resultado r = consultaLibre.responder(pregunta, LocalDate.now(clock.withZone(zona)),
-				actor.organizationId(), actor.consultorioId());
+	private RespuestaDelAsistente consultaLibre(ActorDelAsistente actor, String pregunta, List<TurnoPrevio> historial,
+			String personaConocida, ZoneId zona) {
+		List<String> anteriores = historial.stream().map(TurnoPrevio::pregunta).toList();
+		boolean clinico = puedeLeerClinico(actor);
+		if (!clinico && pideDatoClinico(pregunta)) {
+			// El modelo de 4B no siempre avisa que le faltan las vistas clinicas: improvisa con otra
+			// tabla y responde "no hay datos", que es falso. La regla va en el backend.
+			return simple(Plantillas.SIN_PERMISO_CLINICO, Interpretacion.FUERA_DE_ALCANCE, Resultado.SIN_PERMISO);
+		}
+		ConsultaLibre.Resultado r = consultaLibre.responder(pregunta, anteriores, personaConocida, clinico,
+				LocalDate.now(clock.withZone(zona)), actor.organizationId(), actor.consultorioId());
+		if (!r.vistasClinicas().isEmpty()) {
+			// DP-03: toda lectura clinica se audita. La justificacion es la consulta al asistente; las
+			// vistas leidas quedan anotadas, la pregunta no (puede traer nombres).
+			auditoria.registrarLecturaClinica(actor.organizationId(), actor.consultorioId(), actor.accountId(),
+					r.vistasClinicas(), r.filas().size());
+		}
+		if (ConsultaLibre.NECESITA_CLINICO.equals(r.error())) {
+			return simple(Plantillas.SIN_PERMISO_CLINICO, Interpretacion.FUERA_DE_ALCANCE, Resultado.SIN_PERMISO);
+		}
 		if (!r.respondida()) {
 			return new RespuestaDelAsistente(Plantillas.CONSULTA_FALLIDA, Interpretacion.FUERA_DE_ALCANCE, List.of(),
 					List.of(), null, List.of(), Resultado.FUERA_DE_ALCANCE, r.sql());
 		}
+		List<String> personas = personasEn(r.filas());
+		if (personaConocida != null && personas.size() > 1) {
+			// La continuacion trajo a mas de una persona con ese nombre: se pregunta de cual se habla.
+			return simple(Plantillas.variasPersonas(personas), Interpretacion.FUERA_DE_ALCANCE,
+					Resultado.FALTA_PERSONA);
+		}
+		// Queda anotada la persona de la que se hablo, para que la proxima pregunta la siga.
+		String persona = personaConocida != null ? personaConocida : personas.size() == 1 ? personas.getFirst() : null;
+		Interpretacion interpretacion = new Interpretacion(Intencion.FUERA_DE_ALCANCE, persona, null, null, null);
 		List<String> advertencias = r.truncado()
 				? List.of("Hay más resultados de los que se muestran: precisá la pregunta para verlos todos.")
 				: List.of();
-		return new RespuestaDelAsistente(Plantillas.consultaLibre(r.filas(), r.truncado()),
-				Interpretacion.FUERA_DE_ALCANCE, r.filas(), List.of(), null, advertencias, Resultado.RESPONDIDA,
-				r.sql());
+		String texto = r.filas().isEmpty() && personaConocida != null
+				? "No encontré datos de " + personaConocida + " para esa pregunta."
+				: Plantillas.consultaLibre(r.filas(), r.truncado());
+		return new RespuestaDelAsistente(texto, interpretacion, r.filas(),
+				List.of(), null, advertencias, Resultado.RESPONDIDA, r.sql());
+	}
+
+	/** "Nombre Apellido" distintos entre las filas que traen las dos columnas, en orden de aparicion. */
+	static List<String> personasEn(List<Map<String, Object>> filas) {
+		return filas.stream()
+				.filter(f -> f.get("nombre") != null && f.get("apellido") != null)
+				.map(f -> f.get("nombre") + " " + f.get("apellido"))
+				.distinct()
+				.toList();
 	}
 
 	/**
