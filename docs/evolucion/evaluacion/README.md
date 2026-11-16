@@ -25,6 +25,20 @@ las metas son automáticas y la columna de pertinencia es **juicio del autor, no
   latencia sin GPU, que no se midió.
 - Detalle y pertinencia (juicio del autor, no clínico) en `2026-11-15-v2-qwen3-4b-instruct.md`.
 
+## Decisión pendiente del usuario: `num_ctx` y la recarga del modelo
+
+Las sugerencias piden `num_ctx` **8192** y el asistente de datos pide **4096**, los dos sobre el mismo
+`qwen3:4b-instruct`. Ollama trata un `num_ctx` distinto como otra carga del modelo: si los dos consumidores
+se alternan, cada cambio lo recarga. Con GPU apenas se nota; **sin GPU, la recarga más la generación puede
+pasar los 50 s del plazo** y el asistente también se degrada (hoy tarda 7–9 s por respuesta, U-02). No se
+midió. Diseño §5.4 y A-17.
+
+| Opción | Qué implica |
+|---|---|
+| 4096 para todos | Sin recargas. El prompt más grande del set entra (2.806 tokens), pero no queda lugar para los 1.500 de salida en el peor caso (3 hallazgos con 12 pasajes): Ollama recorta en silencio |
+| 8192 para todos | Sin recargas y con margen. Más memoria por carga y respuestas algo más lentas del asistente; cambia la configuración de un módulo ya cerrado |
+| Aceptar la recarga | Lo que hay hoy. Razonable con GPU o con poco uso cruzado; sin GPU, riesgo de 503 `modelo-no-disponible` en el primer pedido después de un cambio de consumidor |
+
 ## Qué hay acá
 
 | Archivo | Qué es |

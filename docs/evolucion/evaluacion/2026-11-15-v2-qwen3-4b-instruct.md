@@ -15,7 +15,7 @@
 | Nombre propio en la salida (sin meta numérica en el diseño) | 0 | 0 de 2 (en la salida cruda: 0) | sí |
 | Casos con material y al menos una sugerencia que sobrevive al validador | ≥ 70 % | 16 de 18 (89 %); solo grupos 1 y 2: 11 de 13 | sí |
 | Descartes de la regla 4 (`CITA_DE_OTRO_HALLAZGO`) | ≤ 40 % de los descartes, si no → enfoque C | 2 de 22 (9 %) | sí |
-| Latencia del modelo p50 / p95 (ver dónde corrió en la cabecera) | se informa (U-02) | 18.1 s / 23.2 s (máx. 35.0 s; 0 errores o plazos vencidos) || — (sin meta) |
+| Latencia del modelo p50 / p95 (ver dónde corrió en la cabecera) | se informa (U-02) | 18.1 s / 23.2 s (máx. 35.0 s; 0 errores o plazos vencidos) | — (sin meta) |
 
 Tokens del prompt (`prompt_eval_count` de Ollama): mínimo 1250, máximo 2806. Con `num_ctx` 8192 y hasta 1500 de salida, un prompt de más de 6692 tokens deja menos lugar que el tope de salida; 0 caso(s) lo superan.
 

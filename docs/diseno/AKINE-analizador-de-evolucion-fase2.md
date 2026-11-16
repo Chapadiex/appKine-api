@@ -174,7 +174,10 @@ Lo mismo que el §6.1 de fase 1, con dos cambios: cada hallazgo lleva **sus** pa
 números del hallazgo viajan como datos (`valores` del `Hallazgo`).
 
 - **Sin identificadores**: no viajan nombre, documento, fecha de nacimiento, cobertura ni contacto.
-  Las fechas de sesión se pasan como "sesión 1…n".
+  Las fechas de sesión se pasan como "sesión 1…n". La regla vale para los **campos estructurados**:
+  los textos libres de abajo los escribe el profesional y pueden traer un nombre (del paciente, de
+  un familiar, de otro profesional). No se filtran; la mitigación es que el modelo es local y nada
+  sale del servidor.
 - **Textos libres** (`respuesta_tratamiento`, `limitacion_funcional`, `nota_de_cierre` de las
   últimas 3 sesiones, y diagnóstico y objetivos): cada uno pasa por el `DetectorDeInstrucciones`.
   Si un texto es sospechoso, **se reemplaza** por `[texto omitido]` y la respuesta suma la
@@ -204,6 +207,15 @@ terminaría en un 504 sin cuerpo en vez del 503 tipado. Si la evaluación del §
 es una decisión nueva. Temperatura 0,2. Ante un JSON inválido **no se reintenta**: el validador
 lo cuenta como descarte y la respuesta lo dice.
 
+Contexto: **`num_ctx` 8192**. Con hasta 3 hallazgos, sus pasajes, los textos de 3 sesiones y la
+salida, el prompt se acerca a los 4096 que usa el asistente y Ollama recorta en silencio lo que no
+entra. **Costo, sin resolver (A-17):** el asistente pide `num_ctx` 4096 sobre el mismo
+`qwen3:4b-instruct`, y Ollama trata un `num_ctx` distinto como otra carga del modelo. Si los dos
+consumidores se alternan, cada cambio recarga el modelo; sin GPU, la recarga más la generación puede
+pasar los 50 s y el asistente también se degrada (sus 7–9 s de U-02 suben). Las opciones son 4096
+para todos, 8192 para todos o aceptar la recarga; es decisión del usuario
+(`docs/evolucion/evaluacion/README.md`).
+
 ## 6. Validador (dominio puro, sin Spring)
 
 `ValidadorDeSugerencias` recibe la salida cruda, los hallazgos enviados y los pasajes enviados.
@@ -226,7 +238,9 @@ Una sugerencia **se descarta** si falla cualquiera de estas reglas:
 
    La comparación normaliza coma y punto decimal (`6,5` = `6.5`) e ignora la unidad pegada al número.
    La lista de números permitidos se arma al construir el prompt, así que el validador compara contra
-   lo que de verdad viajó. Es el anti-objetivo de los números inventados.
+   lo que de verdad viajó. Es el anti-objetivo de los números inventados. De hecho también quedan
+   permitidos los índices de sesión `1…n` y los conteos que viajan en DATOS (cantidad de sesiones,
+   de citas, de tratamientos), porque figuran en el prompt aunque no sean un valor clínico.
 6. `texto` empieza con o contiene una forma prescriptiva de la lista negra (`indicar`, `indicado`,
    `debe`, `debería suspender`, `prescribir`, `diagnóstico de`…), en un recurso versionado.
 7. Hay texto vacío o largo de más (`texto` hasta 280 caracteres, `fundamento` hasta 600).
@@ -278,9 +292,13 @@ Errores tipados nuevos:
 - `generacion-en-curso` (429): la misma cuenta ya tiene un pedido de sugerencias corriendo. Es un
   candado por cuenta, propio de este servicio. `ColaDeConsultas` es una cola de toda la instancia y
   no sirve para esto.
-- `modelo-ocupado` (503): se llenó el cupo de evolución en la instancia, por defecto 1 generación a
-  la vez (`akine.evolucion.sugerencias.modelo.concurrencia`). Es el mismo patrón que
-  `ModeloConCupo` del asistente.
+- `modelo-ocupado` (503): el cupo de evolución en la instancia, por defecto 1 generación a la vez
+  (`akine.evolucion.sugerencias.modelo.concurrencia`), siguió lleno **durante todo el plazo**.
+  `ModeloConCupo`, compartido con el asistente, no rechaza enseguida: espera un lugar hasta agotar
+  el plazo y descuenta lo esperado del plazo de la llamada. Con concurrencia 1, un segundo pedido de
+  otra cuenta casi siempre consigue lugar cuando termina el primero, pero sin tiempo para generar, y
+  termina en `modelo-no-disponible`; `modelo-ocupado` queda para cuando ningún lugar se liberó en
+  todo el plazo. No se cambió `ModeloConCupo` porque es del asistente.
 - `modelo-no-disponible` (503): venció el plazo o Ollama está caído.
 
 No hay un tope global compartido con la biblioteca y el asistente: cada módulo conserva el suyo y
@@ -298,7 +316,8 @@ La versión de contrato se confirma al rebasear: en `main` está 0.170.0 y hay u
   quien pidió la sugerencia: el caso tiene equipo.
 - `akine.evolucion.sugerencias.enabled=false` por defecto; funciona sólo si también están
   encendidos `akine.evolucion.enabled` y `akine.biblioteca.enabled`.
-  `akine.evolucion.sugerencias.modelo=qwen3:4b-instruct` y `…plazo=90s`.
+  `akine.evolucion.sugerencias.modelo.nombre=qwen3:4b-instruct` y `…modelo.plazo-segundos=50`
+  (§5.4, A-10).
 - Auditoría: `SUGERENCIAS_DE_EVOLUCION_GENERADAS` (caso, resultado, códigos, cantidad de
   sugerencias y descartes por regla) y `SUGERENCIA_DE_EVOLUCION_RESPONDIDA` (id, respuesta). Sin
   texto clínico.
@@ -419,11 +438,12 @@ Se agregan a M31 del integrado, antes del código:
 | A-7 | `evolucion:sugerir` para los roles con `sesion:register`, que hoy es sólo `PROFESIONAL` | Es quien atiende; el administrativo no sugiere tratamientos |
 | A-10 | Plazo de 50 s, menor que los 60 s del nginx | Un 504 sin cuerpo dejaría una sugerencia guardada que nadie ve |
 | A-11 | Números permitidos = todo lo que viajó al modelo, no sólo los `valores` del hallazgo | La regla estricta descartaba "4 sesiones" aunque el dato estuviera en el prompt |
-| A-12 | Candado por cuenta (429) + cupo propio de 1 (503); sin tope compartido | No cambia el comportamiento de biblioteca ni asistente |
+| A-12 | Candado por cuenta (429) + cupo propio de 1 (503); sin tope compartido | No cambia el código de biblioteca ni asistente; el comportamiento sí puede cambiar por la recarga del modelo (A-17) |
 | A-13 | Configuración del modelo por consumidor; sólo se comparte el código | El refactor no toca variables de entorno de módulos cerrados |
 | A-14 | El GET del historial pide justificación y audita | Devuelve texto clínico: regla 9 del proyecto |
 | A-15 | Sin plan versionable, "Marcar como útil" en vez de navegar | La base no admite motivo en la primera versión |
 | A-16 | `SIN_MEDICIONES` queda fuera | Es falta de datos, no un problema del tratamiento |
+| A-17 | `num_ctx` 8192 para evolución, aunque el asistente pide 4096 sobre el mismo modelo | Con 4096 el prompt podía recortarse en silencio. Costo: alternar los dos consumidores recarga el modelo en Ollama, y sin GPU la recarga más la generación puede pasar los 50 s y degradar al asistente. **Pendiente del usuario:** 4096 para todos, 8192 para todos o aceptar la recarga (§5.4) |
 | A-8 | Sin reintento ante JSON inválido | El reintento duplica la latencia sin garantía |
 | A-9 | Evaluación fuera del CI | Necesita Ollama y `akine_rag`, como la del asistente |
 

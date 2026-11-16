@@ -20519,13 +20519,13 @@ Dar al profesional una lectura calculada de cómo evoluciona un Caso Clínico a 
 6. Guarda las válidas con sus citas y sesiones de origen, audita sin texto clínico y responde.
 
 **Resultados:**
-- `SUGERENCIAS`: hay al menos una sugerencia válida.
+- `SUGERENCIAS`: se llamó al modelo con material de la biblioteca. Puede traer cero sugerencias si el validador descartó todas las propuestas; en ese caso `descartadas` es mayor que cero.
 - `SIN_MATERIAL`: hay hallazgos elegibles pero la biblioteca no tiene material suficiente para ninguno; no se llama al modelo.
 - `SIN_HALLAZGOS_ELEGIBLES`: el caso no tiene ningún hallazgo elegible, por ejemplo con menos de tres sesiones presentes; no se busca ni se llama al modelo.
 
 **Flujos alternativos / excepciones:**
 - Otro pedido de la misma cuenta en curso: rechazo `generacion-en-curso` (429).
-- Cupo del modelo lleno: `modelo-ocupado` (503). Plazo vencido o modelo caído: `modelo-no-disponible` (503). En ambos casos los hallazgos de RF-M31-002 siguen disponibles.
+- Cupo del modelo lleno durante todo el plazo: `modelo-ocupado` (503). Plazo vencido o modelo caído: `modelo-no-disponible` (503). En ambos casos los hallazgos de RF-M31-002 siguen disponibles.
 - Salida del modelo inválida o sin sugerencias aprovechables: respuesta sin sugerencias y con `descartadas` mayor que cero, nunca un error del servidor.
 - Un texto libre sospechoso de contener instrucciones se reemplaza y la respuesta advierte `TEXTO_OMITIDO`.
 
