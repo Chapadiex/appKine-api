@@ -13,6 +13,8 @@ import java.util.Map;
  * @param enlace         ruta del frontend donde ver el detalle, o {@code null}
  * @param advertencias   lo que hay que saber para no leer mal la respuesta
  * @param resultado      como termino la consulta (ver {@link Resultado})
+ * @param consulta       el SELECT de una consulta libre, para que el usuario vea de donde sale el
+ *                       numero; {@code null} en las intenciones del catalogo
  */
 public record RespuestaDelAsistente(
 		String texto,
@@ -21,7 +23,13 @@ public record RespuestaDelAsistente(
 		List<OpcionDePersona> opciones,
 		String enlace,
 		List<String> advertencias,
-		Resultado resultado) {
+		Resultado resultado,
+		String consulta) {
+
+	public RespuestaDelAsistente(String texto, Interpretacion interpretacion, List<Map<String, Object>> filas,
+			List<OpcionDePersona> opciones, String enlace, List<String> advertencias, Resultado resultado) {
+		this(texto, interpretacion, filas, opciones, enlace, advertencias, resultado, null);
+	}
 
 	public RespuestaDelAsistente {
 		filas = filas == null ? List.of() : List.copyOf(filas);

@@ -27,12 +27,16 @@ public record RespuestaAsistenteResponse(
 		List<OpcionDePersonaResponse> opciones,
 		@Schema(description = "Ruta del frontend donde ver el detalle", example = "/pacientes/123") String enlace,
 		@ArraySchema(arraySchema = @Schema(requiredMode = Schema.RequiredMode.REQUIRED))
-		List<String> advertencias) {
+		List<String> advertencias,
+		@Schema(description = "El SELECT que respondio una consulta libre (la pregunta no entraba en ninguna "
+				+ "intencion y el usuario tiene asistente:sql); null en las demas",
+				example = "SELECT count(*) AS pacientes FROM personas WHERE es_paciente AND activa")
+		String consulta) {
 
 	public static RespuestaAsistenteResponse de(RespuestaDelAsistente r) {
 		return new RespuestaAsistenteResponse(r.texto(), InterpretacionDto.de(r.interpretacion()), r.resultado().name(),
 				r.filas(), r.opciones().stream().map(o -> new OpcionDePersonaResponse(o.personaId(), o.etiqueta())).toList(),
-				r.enlace(), r.advertencias());
+				r.enlace(), r.advertencias(), r.consulta());
 	}
 
 	/** Una persona entre las que elegir. */

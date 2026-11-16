@@ -53,6 +53,54 @@ final class Plantillas {
 	private Plantillas() {
 	}
 
+	static final String CONSULTA_FALLIDA = "No pude armar una consulta para eso. Probá con otras palabras.";
+
+	/**
+	 * Texto de una consulta libre. Un solo valor se dice ("pacientes: 22"); una fila con varias columnas
+	 * se enumera; varias filas se cuentan y van a la tabla.
+	 */
+	static String consultaLibre(List<Map<String, Object>> filas, boolean truncado) {
+		if (filas.isEmpty()) {
+			return "No encontré datos para esa pregunta.";
+		}
+		if (filas.size() == 1) {
+			Map<String, Object> fila = filas.getFirst();
+			if (fila.size() == 1) {
+				Map.Entry<String, Object> unico = fila.entrySet().iterator().next();
+				return capitalizar(etiqueta(unico.getKey())) + ": " + formatear(unico.getValue()) + ".";
+			}
+			StringBuilder texto = new StringBuilder("Resultado:");
+			fila.forEach((clave, valor) -> texto.append("\n· ").append(etiqueta(clave)).append(": ")
+					.append(formatear(valor)));
+			return texto.toString();
+		}
+		return "Encontré " + filas.size() + (truncado ? " resultados o más (se muestran los primeros)." : " resultados.")
+				+ " Están en la tabla.";
+	}
+
+	private static String etiqueta(String columna) {
+		return columna.replace('_', ' ');
+	}
+
+	private static String capitalizar(String texto) {
+		return texto.isEmpty() ? texto : Character.toUpperCase(texto.charAt(0)) + texto.substring(1);
+	}
+
+	private static String formatear(Object valor) {
+		if (valor == null) {
+			return "sin dato";
+		}
+		if (valor instanceof Boolean b) {
+			return b ? "sí" : "no";
+		}
+		if (valor instanceof Number n) {
+			java.text.NumberFormat formato = java.text.NumberFormat.getNumberInstance(ES_AR);
+			formato.setMaximumFractionDigits(2);
+			return formato.format(n);
+		}
+		return String.valueOf(valor);
+	}
+
 	static String personaNoEncontrada(String texto) {
 		return "No encontré a \"" + texto + "\" en el padrón.";
 	}

@@ -30,7 +30,7 @@ import java.util.UUID;
 @Table(name = "sugerencia_evolucion")
 public class SugerenciaEvolucion {
 
-	/** Largo maximo del motivo de descarte: el de la columna de V18. */
+	/** Largo maximo del motivo de descarte: el de la columna de V22. */
 	public static final int MOTIVO_MAXIMO = 300;
 
 	public enum Respuesta { PENDIENTE, ACEPTADA, DESCARTADA }

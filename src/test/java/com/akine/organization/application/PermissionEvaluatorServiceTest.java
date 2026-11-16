@@ -624,7 +624,7 @@ class PermissionEvaluatorServiceTest {
 							// AKINE-G-1 (DP-15): "Si" en Ver Reportes.
 							"reporte:read",
 							// M30: la biblioteca de libros, solo ORG_ADMIN.
-							"biblioteca:manage", "biblioteca:consultar", "asistente:use");
+							"biblioteca:manage", "biblioteca:consultar", "asistente:use", "asistente:sql");
 		}
 
 		@Test

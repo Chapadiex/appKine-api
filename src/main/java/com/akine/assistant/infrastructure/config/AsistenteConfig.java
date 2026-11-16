@@ -1,5 +1,9 @@
 package com.akine.assistant.infrastructure.config;
 
+import com.akine.assistant.application.ConsultaLibre;
+import com.akine.assistant.infrastructure.JdbcLectorDeVistas;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
 import com.akine.assistant.application.Interpretador;
 import com.akine.assistant.domain.AsistenteAjustes;
 import com.akine.platform.spi.modelo.ConfiguracionDeModelo;
@@ -33,6 +37,7 @@ import java.util.Set;
 public class AsistenteConfig {
 
 	static final String PROMPT = "asistente/prompt-interpretador.txt";
+	static final String PROMPT_SQL = "asistente/prompt-sql.txt";
 	static final Set<String> TIPOS_DE_MODELO = Set.of("ollama", "prueba");
 
 	/** Nombre del bean del modelo del asistente: hay otros del mismo tipo. */
@@ -46,7 +51,7 @@ public class AsistenteConfig {
 	public AsistenteAjustes asistenteAjustes(AsistenteProperties properties) {
 		exigirTipoDeModelo(properties);
 		return new AsistenteAjustes(properties.enabled(),
-				Duration.ofSeconds(properties.modelo().timeoutSegundos()));
+				Duration.ofSeconds(properties.modelo().timeoutSegundos()), properties.sql().enabled());
 	}
 
 	/** Prendido con un tipo desconocido no habria modelo y nadie se enteraria: no arranca. */
@@ -66,6 +71,15 @@ public class AsistenteConfig {
 	public Interpretador interpretadorDelAsistente(@Qualifier(MODELO) ObjectProvider<ModeloDeLenguaje> modelo,
 			AsistenteAjustes ajustes) {
 		return new Interpretador(modelo::getObject, leerPrompt(PROMPT), ajustes.plazo());
+	}
+
+	/** Respaldo de consultas libres. Existe siempre; el servicio lo usa solo con el interruptor prendido. */
+	@Bean
+	public ConsultaLibre consultaLibreDelAsistente(ObjectProvider<ModeloDeLenguaje> modelo, AsistenteAjustes ajustes,
+			AsistenteProperties properties, JdbcTemplate jdbc, PlatformTransactionManager transacciones) {
+		AsistenteProperties.Sql sql = properties.sql();
+		return new ConsultaLibre(modelo::getObject, new JdbcLectorDeVistas(jdbc, transacciones, sql.tiempoMaximoMs()),
+				leerPrompt(PROMPT_SQL), ajustes.plazo(), sql.limiteFilas());
 	}
 
 	/**

@@ -250,7 +250,7 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						// M30: la biblioteca de libros, solo ORG_ADMIN.
 						"biblioteca:manage", "biblioteca:consultar",
 						// Asistente de datos (D-2): la puerta, por base.
-						"asistente:use",
+						"asistente:use", "asistente:sql",
 						// Agenda de profesionales: horario habitual y excepciones, separados de
 						// consultorio:manage (docs/diseno/AKINE-agenda-roles.md).
 						"agenda:horario", "agenda:excepciones");

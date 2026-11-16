@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.171.0
+  version: 0.174.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -44318,6 +44318,13 @@ components:
           type: array
           items:
             type: string
+        consulta:
+          type: string
+          description: El SELECT que respondio una consulta libre (la pregunta no
+            entraba en ninguna intencion y el usuario tiene asistente:sql); null en
+            las demas
+          example: SELECT count(*) AS pacientes FROM personas WHERE es_paciente AND
+            activa
         enlace:
           type: string
           description: Ruta del frontend donde ver el detalle

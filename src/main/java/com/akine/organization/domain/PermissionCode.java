@@ -414,7 +414,16 @@ public enum PermissionCode {
 	 * {@code PROFESIONAL}, con alcance de organizacion; no se otorga por grant. Se exige ademas de
 	 * {@code hc:read} y relacion asistencial o justificacion.
 	 */
-	EVOLUCION_SUGERIR("evolucion:sugerir");
+	EVOLUCION_SUGERIR("evolucion:sugerir"),
+
+	/**
+	 * Consultas libres del asistente: cuando la pregunta no entra en ninguna intencion, el modelo
+	 * escribe un SELECT sobre las vistas de solo lectura de {@code asistente_sql}
+	 * (docs/diseno/AKINE-asistente-sql.md). Por base solo para {@code ORG_ADMIN} y
+	 * {@code CONSULTORIO_ADMIN}: las vistas cruzan padron, turnos y caja, y saltean el recorte por
+	 * actividad propia del profesional. No se otorga por grant.
+	 */
+	ASISTENTE_SQL("asistente:sql");
 
 	private final String code;
 
