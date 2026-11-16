@@ -16,6 +16,7 @@ import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.organization.spi.ZonaDeSede;
 import com.akine.platform.spi.listado.TextoDeBusqueda;
@@ -163,6 +164,12 @@ public class AsistenteService {
 		if (interpretacion.intencion() == Intencion.REPORTE && pideDetalle(pregunta) && puedeConsultaLibre(actor)) {
 			return consultaLibre(actor, pregunta, historial, null, zona);
 		}
+		if (interpretacion.usaPersona() && interpretacion.persona() == null && personaElegida == null
+				&& puedeConsultaLibre(actor)) {
+			// "¿A quién se le aplicó magnetoterapia?" pregunta QUIÉN, no da un nombre: lo responde el SQL.
+			// Las continuaciones sin persona ya se repreguntaron arriba.
+			return consultaLibre(actor, pregunta, historial, null, zona);
+		}
 
 		Map<String, Object> persona = null;
 		if (interpretacion.usaPersona()) {
@@ -190,7 +197,9 @@ public class AsistenteService {
 
 	private static final java.util.regex.Pattern PIDE_DETALLE = java.util.regex.Pattern.compile(
 			"\\b(quien|quienes|cual|cuales|que profesional|que obra|obras? sociales?|cobertura|pacientes|padron"
-					+ "|ranking|lista|listado|listame|por profesional|por servicio|mas|menos)\\b");
+					+ "|ranking|lista|listado|listame|por profesional|por servicio|mas|menos"
+					+ "|packs?|abonos?|pases?|vendimos|vendieron|gastos?|proveedor|proveedores|presentaciones"
+					+ "|liquidaciones)\\b");
 
 	/**
 	 * Un reporte da los totales de un periodo. "¿Quién nos debe?", "¿qué profesional tiene más turnos?"
@@ -202,7 +211,19 @@ public class AsistenteService {
 		return pregunta != null && PIDE_DETALLE.matcher(TextoDeBusqueda.plegar(pregunta)).find();
 	}
 
-	private static final java.util.regex.Pattern HABLA_DE_ALGUIEN = java.util.regex.Pattern.compile(
+	private static final java.util.regex.Pattern DATO_CLINICO = java.util.regex.Pattern.compile(
+			"\\b(diagnostic\\w*|afeccion\\w*|patologi\\w*|lesion\\w*|dolor\\w*|evolucion\\w*|antecedente\\w*"
+					+ "|alergi\\w*|medicacion\\w*|cirugi\\w*|operad[oa]s?|medicion\\w*|tratamiento\\w*|aplic\\w*"
+					+ "|aparato\\w*|magneto\\w*|ultrasonido\\w*|tens|laser\\w*|electro\\w*|onda\\w*|crioterapia"
+					+ "|kinesiotape|vendaje\\w*|algia\\w*|\\w+algia|\\w+itis|artrosis|fractura\\w*|esguince\\w*"
+					+ "|hernia\\w*|contractura\\w*|motivo de consulta|historia clinica)\\b");
+
+	/** La pregunta nombra un dato clinico: sin hc:read no se intenta el SQL. */
+	static boolean pideDatoClinico(String pregunta) {
+		return pregunta != null && DATO_CLINICO.matcher(TextoDeBusqueda.plegar(pregunta)).find();
+	}
+
+	private static final java.util.regex.Pattern HABLA_DE_ALGUIEN =java.util.regex.Pattern.compile(
 			"\\b(tiene|tenia|tuvo|vino|viene|vendra|falto|falta|debe|debia|pago|esta|estuvo|atendio|atendieron"
 					+ "|ella|el|su|sus|le|lo)\\b");
 
@@ -255,14 +276,45 @@ public class AsistenteService {
 	}
 
 	/**
+	 * Las vistas {@code clinico_*}: hace falta {@code hc:read} en la sede, y no recortado a los pacientes
+	 * propios. Las vistas no saben de relacion asistencial, asi que un alcance restringido no alcanza.
+	 */
+	private boolean puedeLeerClinico(ActorDelAsistente actor) {
+		PermissionDecision decision = permisos.evaluate(new PermissionQuery(actor.accountId(), HC_READ,
+				actor.organizationId(), actor.consultorioId(), null, Instant.now(clock)));
+		return decision.granted() && !ALCANCES_RECORTADOS.contains(decision.grantedByScope());
+	}
+
+	private static final String HC_READ = "hc:read";
+
+	/** Alcances de {@code hc:read} que exigen recortar filas por paciente: las vistas no pueden. */
+	private static final java.util.Set<String> ALCANCES_RECORTADOS = java.util.Set.of("RESTRINGIDO",
+			PermissionDecision.ALCANCE_ACTIVIDAD_PROPIA);
+
+	/**
 	 * Respaldo: el modelo escribe un SELECT sobre {@code asistente_sql}. El texto lo arma la plantilla
 	 * con las filas; el modelo no las ve.
 	 */
 	private RespuestaDelAsistente consultaLibre(ActorDelAsistente actor, String pregunta, List<TurnoPrevio> historial,
 			String personaConocida, ZoneId zona) {
 		List<String> anteriores = historial.stream().map(TurnoPrevio::pregunta).toList();
-		ConsultaLibre.Resultado r = consultaLibre.responder(pregunta, anteriores, personaConocida,
+		boolean clinico = puedeLeerClinico(actor);
+		if (!clinico && pideDatoClinico(pregunta)) {
+			// El modelo de 4B no siempre avisa que le faltan las vistas clinicas: improvisa con otra
+			// tabla y responde "no hay datos", que es falso. La regla va en el backend.
+			return simple(Plantillas.SIN_PERMISO_CLINICO, Interpretacion.FUERA_DE_ALCANCE, Resultado.SIN_PERMISO);
+		}
+		ConsultaLibre.Resultado r = consultaLibre.responder(pregunta, anteriores, personaConocida, clinico,
 				LocalDate.now(clock.withZone(zona)), actor.organizationId(), actor.consultorioId());
+		if (!r.vistasClinicas().isEmpty()) {
+			// DP-03: toda lectura clinica se audita. La justificacion es la consulta al asistente; las
+			// vistas leidas quedan anotadas, la pregunta no (puede traer nombres).
+			auditoria.registrarLecturaClinica(actor.organizationId(), actor.consultorioId(), actor.accountId(),
+					r.vistasClinicas(), r.filas().size());
+		}
+		if (ConsultaLibre.NECESITA_CLINICO.equals(r.error())) {
+			return simple(Plantillas.SIN_PERMISO_CLINICO, Interpretacion.FUERA_DE_ALCANCE, Resultado.SIN_PERMISO);
+		}
 		if (!r.respondida()) {
 			return new RespuestaDelAsistente(Plantillas.CONSULTA_FALLIDA, Interpretacion.FUERA_DE_ALCANCE, List.of(),
 					List.of(), null, List.of(), Resultado.FUERA_DE_ALCANCE, r.sql());

@@ -38,6 +38,7 @@ public class AsistenteConfig {
 
 	static final String PROMPT = "asistente/prompt-interpretador.txt";
 	static final String PROMPT_SQL = "asistente/prompt-sql.txt";
+	static final String PROMPT_SQL_CLINICO = "asistente/prompt-sql-clinico.txt";
 	static final Set<String> TIPOS_DE_MODELO = Set.of("ollama", "prueba");
 
 	/** Nombre del bean del modelo del asistente: hay otros del mismo tipo. */
@@ -79,7 +80,7 @@ public class AsistenteConfig {
 			AsistenteProperties properties, JdbcTemplate jdbc, PlatformTransactionManager transacciones) {
 		AsistenteProperties.Sql sql = properties.sql();
 		return new ConsultaLibre(modelo::getObject, new JdbcLectorDeVistas(jdbc, transacciones, sql.tiempoMaximoMs()),
-				leerPrompt(PROMPT_SQL), ajustes.plazo(), sql.limiteFilas());
+				leerPrompt(PROMPT_SQL), leerPrompt(PROMPT_SQL_CLINICO), ajustes.plazo(), sql.limiteFilas());
 	}
 
 	/**

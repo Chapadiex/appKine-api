@@ -13,7 +13,7 @@ import java.math.BigDecimal;
  */
 public record OpcionesGeneracion(BigDecimal temperatura, int maxTokens, boolean json, int numCtx) {
 
-	public static final int NUM_CTX_POR_DEFECTO = 4096;
+	public static final int NUM_CTX_POR_DEFECTO = 8192;
 
 	public OpcionesGeneracion {
 		if (numCtx <= 0) {
