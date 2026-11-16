@@ -34,6 +34,9 @@ public class ConsultaLibre {
 
 	static final int INTENTOS = 2;
 
+	/** Cuantas preguntas anteriores ve el modelo: alcanzan para un "¿y ella?" sin agrandar el prompt. */
+	static final int ANTERIORES = 3;
+
 	private final Supplier<ModeloDeLenguaje> modelo;
 	private final LectorDeVistas lector;
 	private final String prompt;
@@ -72,10 +75,11 @@ public class ConsultaLibre {
 	 * @param hoy el dia en la zona de la sede: el modelo lo necesita para "este mes" o "ayer"
 	 * @throws com.akine.assistant.domain.exception.ModeloNoDisponibleException si el modelo no responde o su cupo esta lleno
 	 */
-	public Resultado responder(String pregunta, LocalDate hoy, long organizationId, long consultorioId) {
+	public Resultado responder(String pregunta, List<String> anteriores, String persona, LocalDate hoy,
+			long organizationId, long consultorioId) {
 		List<MensajeChat> mensajes = new ArrayList<>();
 		mensajes.add(new MensajeChat(Rol.SISTEMA, prompt.replace("{{HOY}}", hoy.toString())));
-		mensajes.add(new MensajeChat(Rol.USUARIO, pregunta));
+		mensajes.add(new MensajeChat(Rol.USUARIO, conAnteriores(pregunta, anteriores, persona)));
 		String sql = null;
 		String error = null;
 		for (int intento = 1; intento <= INTENTOS; intento++) {
@@ -105,6 +109,26 @@ public class ConsultaLibre {
 					+ ". Corregila y devolve solo el JSON con la consulta."));
 		}
 		return new Resultado(sql, List.of(), false, error);
+	}
+
+	/**
+	 * La pregunta con las ultimas anteriores de la charla, para que "¿tiene turno?" despues de "Lucia"
+	 * hable de Lucia. Solo preguntas: el modelo sigue sin ver filas.
+	 */
+	static String conAnteriores(String pregunta, List<String> anteriores, String persona) {
+		if ((anteriores == null || anteriores.isEmpty()) && persona == null) {
+			return pregunta;
+		}
+		StringBuilder texto = new StringBuilder();
+		if (anteriores != null && !anteriores.isEmpty()) {
+			texto.append("Preguntas anteriores de la charla, de la mas vieja a la mas nueva:\n");
+			anteriores.subList(Math.max(0, anteriores.size() - ANTERIORES), anteriores.size())
+					.forEach(a -> texto.append("- ").append(a).append('\n'));
+		}
+		if (persona != null) {
+			texto.append("Persona de la que se habla: ").append(persona).append('\n');
+		}
+		return texto.append("Pregunta actual: ").append(pregunta).toString();
 	}
 
 	/** {@code {"sql": "..."}}; tolera que el modelo devuelva la consulta sola. */

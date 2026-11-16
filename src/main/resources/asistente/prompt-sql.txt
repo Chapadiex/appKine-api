@@ -10,6 +10,9 @@ Reglas:
 - Para buscar a una persona por nombre usá lower(apellido) LIKE lower('%texto%') o lower(nombre) LIKE lower('%texto%').
 - Poné alias en castellano y legibles a las columnas calculadas (AS cantidad, AS total).
 - Si la pregunta pide un listado, ordenalo y limitalo a 50 filas.
+- Si la pregunta actual es solo un nombre, buscá a esa persona en personas (como el ejemplo "Marta"); no busques turnos.
+- Si viene "Persona de la que se habla", la pregunta actual es sobre esa persona: filtrá por su nombre y su apellido.
+- Si vienen preguntas anteriores, la actual puede continuarlas: si no nombra a nadie ("¿tiene turno?", "¿y ella?", "¿cuándo vino?"), habla de la persona o del tema de la última pregunta anterior que lo nombra. Si la anterior fue solo un nombre, la actual pregunta sobre esa persona.
 - Funciones permitidas: count, sum, avg, min, max, coalesce, nullif, round, lower, upper, trim, concat, length, date_trunc, date_part, extract, age, now, to_char, string_agg, row_number, rank. No uses otras.
 
 Vistas:
@@ -53,5 +56,14 @@ Pregunta: ¿quién nos debe más plata?
 
 Pregunta: ¿qué profesional tiene más turnos este mes?
 {"sql": "SELECT pr.apellido, pr.nombre, count(*) AS turnos FROM turnos t JOIN profesionales pr ON pr.profesional_id = t.profesional_id WHERE t.estado <> 'CANCELADO' AND date_trunc('month', t.fecha) = date_trunc('month', CURRENT_DATE) GROUP BY pr.apellido, pr.nombre ORDER BY turnos DESC LIMIT 50"}
+
+Pregunta: Marta
+{"sql": "SELECT apellido, nombre, edad, es_paciente, paciente_desde FROM personas WHERE lower(nombre) LIKE lower('%marta%') OR lower(apellido) LIKE lower('%marta%') ORDER BY apellido, nombre LIMIT 50"}
+
+Pregunta:
+Preguntas anteriores de la charla, de la mas vieja a la mas nueva:
+- Marta
+Pregunta actual: ¿tiene turno?
+{"sql": "SELECT p.apellido, p.nombre, t.inicio, t.estado FROM turnos t JOIN personas p ON p.persona_id = t.persona_id WHERE (lower(p.nombre) LIKE lower('%marta%') OR lower(p.apellido) LIKE lower('%marta%')) AND t.estado <> 'CANCELADO' AND t.fecha >= CURRENT_DATE ORDER BY t.inicio LIMIT 50"}
 
 Filtrá por estado solo si la pregunta lo pide (atendidos, cancelados, ausentes).
