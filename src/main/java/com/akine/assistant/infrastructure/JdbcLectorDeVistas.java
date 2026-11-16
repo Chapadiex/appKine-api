@@ -11,7 +11,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -68,20 +72,27 @@ public class JdbcLectorDeVistas implements LectorDeVistas {
 		ResultSetMetaData meta = rs.getMetaData();
 		Map<String, Object> fila = new LinkedHashMap<>();
 		for (int i = 1; i <= meta.getColumnCount(); i++) {
-			Object valor = rs.getObject(i);
-			if (valor instanceof Timestamp ts) {
-				valor = ts.toInstant();
-			}
-			else if (valor instanceof java.sql.Date d) {
-				valor = d.toLocalDate();
-			}
-			else if (valor != null && !(valor instanceof Number) && !(valor instanceof Boolean)
-					&& !(valor instanceof String)) {
+			// Por el nombre del tipo de PostgreSQL: el driver informa timestamptz como Types.TIMESTAMP.
+			Object valor = switch (meta.getColumnTypeName(i)) {
+				case "date" -> rs.getObject(i, LocalDate.class);
+				case "timestamptz" -> instante(rs.getObject(i, OffsetDateTime.class));
+				case "timestamp" -> {
+					LocalDateTime local = rs.getObject(i, LocalDateTime.class);
+					yield local == null ? null : local.toInstant(ZoneOffset.UTC);
+				}
+				default -> rs.getObject(i);
+			};
+			if (valor != null && !(valor instanceof Number) && !(valor instanceof Boolean)
+					&& !(valor instanceof String) && !(valor instanceof LocalDate) && !(valor instanceof Instant)) {
 				valor = valor.toString();
 			}
 			fila.put(meta.getColumnLabel(i), valor);
 		}
 		return fila;
+	}
+
+	private static Instant instante(OffsetDateTime valor) {
+		return valor == null ? null : valor.toInstant();
 	}
 
 }
