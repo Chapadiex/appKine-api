@@ -30,7 +30,8 @@ public record ServicioView(
 		String estado,
 		Instant deletedAt,
 		String deactivationReason,
-		long version) {
+		long version,
+		Long personalizaServicioId) {
 
 	public static ServicioView de(Servicio servicio) {
 		return new ServicioView(
@@ -46,7 +47,8 @@ public record ServicioView(
 				servicio.isActive() ? "ACTIVO" : "INACTIVO",
 				servicio.getDeletedAt(),
 				servicio.getDeactivationReason(),
-				servicio.getVersion());
+				servicio.getVersion(),
+				servicio.getPersonalizaServicioId());
 	}
 
 	static String alcanceDe(Servicio servicio) {

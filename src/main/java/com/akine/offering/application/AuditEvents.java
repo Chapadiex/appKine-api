@@ -37,6 +37,12 @@ final class AuditEvents {
 	 */
 	static final String SERVICIO_DEACTIVATED = "SERVICIO_DEACTIVATED";
 
+	/**
+	 * Una organizacion personaliza un servicio global: nace su copia y sus ofertas, en todas sus
+	 * sedes, pasan a apuntarle. El global no cambia.
+	 */
+	static final String SERVICIO_PERSONALIZED = "SERVICIO_PERSONALIZED";
+
 	static final String ENTITY_SERVICIO = "Servicio";
 
 	// --- Ofertas de servicio por consultorio (M27/M03, AKINE-02.06) ---------------------

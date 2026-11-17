@@ -655,6 +655,17 @@ public enum ProblemType {
 	 * no admite es reclasificarse.
 	 */
 	ADJUNTO_CLINICO_INACTIVO("adjunto-clinico-inactivo"),
+	/** DP-47: dar de baja un dato declarado que ya reviso un profesional (409). Lo da de baja el profesional desde la historia. */
+	DATO_DECLARADO_REVISADO("dato-declarado-revisado"),
+	/** DP-47: revisar un dato que no es declarado (409). Lo que carga el profesional no lleva revision. */
+	DATO_NO_DECLARADO("dato-no-declarado"),
+	/**
+	 * DP-47: declarar un archivo que ya esta en la historia, cargado por un profesional (409). No
+	 * nombra al existente: quien declara no lee lo que cargo el profesional.
+	 */
+	ADJUNTO_YA_EN_HISTORIA("adjunto-ya-en-historia"),
+	/** Ficha de ingreso: la enfermedad que se declara ya la cargo un profesional. Sin datos del existente. */
+	DATO_YA_EN_HISTORIA("dato-ya-en-historia"),
 	/**
 	 * La metadata del adjunto clinico existe pero el almacenamiento no tiene su contenido (409).
 	 *

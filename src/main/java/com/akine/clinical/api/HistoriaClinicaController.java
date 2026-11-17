@@ -318,7 +318,7 @@ public class HistoriaClinicaController {
 			String justificacion) {
 
 		AntecedenteResponse cuerpo = AntecedenteResponse.from(antecedenteService.registrar(
-				apiActor.current(), personaId, request.tipo(), request.descripcion(),
+				apiActor.current(), personaId, request.tipo(), request.descripcion(), request.detalle(),
 				justificacion));
 		return ResponseEntity.status(HttpStatus.CREATED).body(cuerpo);
 	}
@@ -370,5 +370,44 @@ public class HistoriaClinicaController {
 
 		return AntecedenteResponse.from(antecedenteService.darDeBaja(
 				apiActor.current(), personaId, antecedenteId, request.motivo(), justificacion));
+	}
+
+	@PutMapping(path = "/antecedentes/{antecedenteId}/revision",
+			produces = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "revisarAntecedente",
+			summary = "Marcar revisado un antecedente declarado por el paciente",
+			description = """
+					DP-47. El profesional valida lo que declaro el paciente. Idempotente: revisar uno \
+					ya revisado devuelve como esta. Un antecedente que no es DECLARADO es 409 \
+					dato-no-declarado. Exige hc:write y se audita como DATO_DECLARADO_REVISADO.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Antecedente revisado",
+					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = AntecedenteResponse.class))),
+			@ApiResponse(responseCode = "403", description = "Sin contexto, sin hc:write o sin motivo",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = "La persona no tiene historia o el "
+					+ "antecedente no es de ella",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409", description = "El antecedente no es declarado",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public AntecedenteResponse revisarAntecedente(
+
+			@Parameter(description = "Persona titular de la historia", example = "12")
+			@PathVariable long personaId,
+
+			@Parameter(description = "Antecedente declarado", example = "41")
+			@PathVariable long antecedenteId,
+
+			@Parameter(description = AccesoClinicoHeaders.JUSTIFICACION_DOC)
+			@RequestHeader(name = AccesoClinicoHeaders.JUSTIFICACION, required = false)
+			String justificacion) {
+
+		return AntecedenteResponse.from(antecedenteService.revisar(
+				apiActor.current(), personaId, antecedenteId, justificacion));
 	}
 }

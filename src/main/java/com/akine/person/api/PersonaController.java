@@ -9,6 +9,7 @@ import com.akine.person.api.dto.PersonaResponse;
 import com.akine.person.api.dto.ResumenDePersonaResponse;
 import com.akine.person.api.dto.UpdatePersonaRequest;
 import com.akine.person.application.ActividadFiltro;
+import com.akine.person.application.HistoriaFiltro;
 import com.akine.person.application.OperatingActor;
 import com.akine.person.application.PerfilFiltro;
 import com.akine.person.application.PerfilPacienteService;
@@ -187,6 +188,10 @@ public class PersonaController {
 					+ "Por defecto indistinto. Se combina con perfil")
 			@RequestParam(required = false) ActividadFiltro actividad,
 
+			@Parameter(description = "Filtro por historia clinica vigente en la organizacion. "
+					+ "Por defecto indistinto")
+			@RequestParam(required = false) HistoriaFiltro historia,
+
 			@Parameter(description = "Pagina, base cero")
 			@RequestParam(defaultValue = PAGINA_POR_DEFECTO) int page,
 
@@ -206,7 +211,7 @@ public class PersonaController {
 				OrdenDeListado.leer(sort, PersonaBusqueda.CAMPOS_DE_ORDEN));
 
 		PersonaPagina resultado = personaService.buscar(
-				actor, new PersonaBusqueda(q, estado, perfil, orden, actividad), pagina, tamano);
+				actor, new PersonaBusqueda(q, estado, perfil, orden, actividad, historia), pagina, tamano);
 
 		return PersonaPageResponse.of(resultado, pagina, tamano);
 	}

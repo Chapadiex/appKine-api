@@ -42,7 +42,8 @@ public record HistoriaClinicaView(
 		List<AntecedenteView> antecedentes,
 		List<EventoClinico> eventos,
 		boolean conRelacionAsistencial,
-		long version) {
+		long version,
+		long declaradosSinRevisar) {
 
 	public HistoriaClinicaView {
 		antecedentes = antecedentes == null ? List.of() : List.copyOf(antecedentes);
@@ -54,7 +55,8 @@ public record HistoriaClinicaView(
 			PacienteSnapshot paciente,
 			List<AntecedenteView> antecedentes,
 			List<EventoClinico> eventos,
-			boolean conRelacionAsistencial) {
+			boolean conRelacionAsistencial,
+			long declaradosSinRevisar) {
 
 		return new HistoriaClinicaView(
 				historia.getId(),
@@ -70,7 +72,8 @@ public record HistoriaClinicaView(
 				antecedentes,
 				eventos,
 				conRelacionAsistencial,
-				historia.getVersion());
+				historia.getVersion(),
+				declaradosSinRevisar);
 	}
 
 	/**
@@ -105,7 +108,8 @@ public record HistoriaClinicaView(
 				List.of(),
 				List.of(),
 				conRelacionAsistencial,
-				version);
+				version,
+				0);
 	}
 
 	private static String documentoDe(PacienteSnapshot paciente) {

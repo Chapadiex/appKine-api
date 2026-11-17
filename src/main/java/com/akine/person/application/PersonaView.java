@@ -39,7 +39,15 @@ public record PersonaView(
 		String estado,
 		Instant deletedAt,
 		String deactivationReason,
-		long version) {
+		long version,
+		Boolean tieneHistoriaClinica) {
+
+	/** La misma vista con el dato de historia clinica, que solo resuelve la busqueda. */
+	public PersonaView conHistoriaClinica(boolean tiene) {
+		return new PersonaView(id, tipoDocumento, numeroDocumento, apellido, nombre,
+				fechaNacimiento, email, telefono, notas, esPaciente, perfilPacienteId,
+				perfilActivadoEn, estado, deletedAt, deactivationReason, version, tiene);
+	}
 
 	/** Sin perfil: la persona existe y no es paciente. Es el estado normal de un alta nueva. */
 	public static PersonaView de(Persona persona) {
@@ -63,6 +71,7 @@ public record PersonaView(
 				persona.isActive() ? "ACTIVO" : "INACTIVO",
 				persona.getDeletedAt(),
 				persona.getDeactivationReason(),
-				persona.getVersion());
+				persona.getVersion(),
+				null);
 	}
 }

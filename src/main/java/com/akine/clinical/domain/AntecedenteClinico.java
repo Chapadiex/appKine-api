@@ -72,6 +72,33 @@ public class AntecedenteClinico extends MarcaTemporal {
 	@Column(name = "version", nullable = false)
 	private long version;
 
+	/** DP-47. Inmutable despues del alta. */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "origen", nullable = false, length = 16, updatable = false)
+	private OrigenDato origen = OrigenDato.PROFESIONAL;
+
+	/** Las escribe solo el UPDATE condicionado de la revision: el flush no las toca. */
+	@Column(name = "revisado_por", insertable = false, updatable = false)
+	private Long revisadoPor;
+
+	@Column(name = "revisado_en", insertable = false, updatable = false)
+	private Instant revisadoEn;
+
+	/** Ficha de ingreso: detalle opcional de una cirugia. Inmutable, como la descripcion. */
+	@Column(name = "zona", length = 120, updatable = false)
+	private String zona;
+
+	@Column(name = "anio", updatable = false)
+	private Short anio;
+
+	@Column(name = "lugar", length = 160, updatable = false)
+	private String lugar;
+
+	/** Ficha de ingreso: enfermedad de la lista. Solo en antecedentes MEDICO (CHECK de V26). */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "codigo", length = 40, updatable = false)
+	private EnfermedadDeIngreso codigo;
+
 	protected AntecedenteClinico() {
 		// Requerido por JPA.
 	}
@@ -116,6 +143,76 @@ public class AntecedenteClinico extends MarcaTemporal {
 	/** {@code true} mientras el antecedente siga aplicando. */
 	public boolean isVigente() {
 		return active && deletedAt == null;
+	}
+
+	/** Marca el alta como declarada por el paciente (DP-47). Solo antes de persistir. */
+	public AntecedenteClinico comoDeclarado() {
+		if (id != null) {
+			throw new IllegalStateException("El origen de un antecedente no cambia despues del alta");
+		}
+		this.origen = OrigenDato.DECLARADO;
+		return this;
+	}
+
+	/** Zona, año y lugar de una cirugia (ficha de ingreso). Solo antes de persistir. */
+	public AntecedenteClinico conDetalle(String zona, Short anio, String lugar) {
+		exigirSinPersistir();
+		this.zona = textoOpcional(zona);
+		this.anio = anio;
+		this.lugar = textoOpcional(lugar);
+		return this;
+	}
+
+	/** Enfermedad de la lista de la ficha de ingreso. Solo en antecedentes MEDICO. */
+	public AntecedenteClinico conCodigo(EnfermedadDeIngreso codigo) {
+		exigirSinPersistir();
+		if (codigo != null && tipo != TipoAntecedente.MEDICO) {
+			throw new IllegalArgumentException("Una enfermedad de la ficha es siempre un antecedente medico");
+		}
+		this.codigo = codigo;
+		return this;
+	}
+
+	private void exigirSinPersistir() {
+		if (id != null) {
+			throw new IllegalStateException("El detalle de un antecedente no cambia despues del alta");
+		}
+	}
+
+	private static String textoOpcional(String valor) {
+		return valor == null || valor.isBlank() ? null : valor.strip();
+	}
+
+	public String getZona() {
+		return zona;
+	}
+
+	public Short getAnio() {
+		return anio;
+	}
+
+	public String getLugar() {
+		return lugar;
+	}
+
+	public EnfermedadDeIngreso getCodigo() {
+		return codigo;
+	}
+
+	public boolean estaDeclaradoSinRevisar() {
+		return origen == OrigenDato.DECLARADO && revisadoEn == null;
+	}
+
+	public OrigenDato getOrigen() {
+		return origen;
+	}
+
+	public Long getRevisadoPor() {
+		return revisadoPor;
+	}
+
+	public Instant getRevisadoEn() {
+		return revisadoEn;
 	}
 
 	private static <T> T exigirNoNulo(T valor, String mensaje) {

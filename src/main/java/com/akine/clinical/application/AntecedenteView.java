@@ -3,6 +3,7 @@ package com.akine.clinical.application;
 import com.akine.clinical.domain.AntecedenteClinico;
 
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * Un antecedente tal como sale del servicio.
@@ -20,7 +21,16 @@ public record AntecedenteView(
 		boolean vigente,
 		Instant deletedAt,
 		String deactivationReason,
-		long version) {
+		long version,
+		String origen,
+		String cargadoPorNombre,
+		Long revisadoPor,
+		String revisadoPorNombre,
+		Instant revisadoEn,
+		String zona,
+		Short anio,
+		String lugar,
+		String codigo) {
 
 	public static AntecedenteView de(AntecedenteClinico antecedente) {
 		return new AntecedenteView(
@@ -32,6 +42,22 @@ public record AntecedenteView(
 				antecedente.isVigente(),
 				antecedente.getDeletedAt(),
 				antecedente.getDeactivationReason(),
-				antecedente.getVersion());
+				antecedente.getVersion(),
+				antecedente.getOrigen().name(),
+				null,
+				antecedente.getRevisadoPor(),
+				null,
+				antecedente.getRevisadoEn(),
+				antecedente.getZona(),
+				antecedente.getAnio(),
+				antecedente.getLugar(),
+				antecedente.getCodigo() == null ? null : antecedente.getCodigo().name());
+	}
+
+	/** La misma vista con los nombres de quien lo cargo y quien lo reviso (DP-47). Ausente = null. */
+	public AntecedenteView conNombres(Map<Long, String> nombres) {
+		return new AntecedenteView(id, tipo, descripcion, registradoEn, registradoPor, vigente, deletedAt,
+				deactivationReason, version, origen, nombres.get(registradoPor), revisadoPor,
+				revisadoPor == null ? null : nombres.get(revisadoPor), revisadoEn, zona, anio, lugar, codigo);
 	}
 }

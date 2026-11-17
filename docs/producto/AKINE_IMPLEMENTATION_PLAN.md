@@ -996,6 +996,35 @@ solo lo mutaba `PLATFORM_ADMIN` (02.06, ADR-0023). Las clases, además, se progr
 **Implementada en:** `appKine-api` y `appKine-web`, rama `akine-clases-servicios`. Contrato
 0.163.0, migración `V143`.
 
+## DP-47 — Datos que declara el paciente en la Historia Clínica
+
+**Estado:** DECIDIDA el 14/11/2026 por el usuario. Diseño en
+[AKINE-datos-declarados.md](../diseno/AKINE-datos-declarados.md).
+
+**Contexto.** Cuando el paciente llega con estudios, medicación o alergias, nadie podía cargarlos
+antes de la primera atención salvo el profesional: el `ADMINISTRATIVO` tiene "Editar HC: No" (matriz
+§2) y no otorgable (§3).
+
+**Decisión.**
+
+1. **Permiso nuevo `hc:declarar`**, de base para `ADMINISTRATIVO`, `PROFESIONAL`,
+   `CONSULTORIO_ADMIN` y `ORG_ADMIN` (este último por decisión del usuario del 15/11: el dueño
+   también carga); no otorgable a `PACIENTE`. El `ORG_ADMIN` sigue sin `hc:read` ni `hc:write`. Permite **declarar** antecedentes
+   y adjuntos (estudio, informe, imagen u otro) en la historia de un paciente vigente, **sin leerla**:
+   no implica `hc:read`. La primera declaración abre la historia.
+2. **Lo declarado vive en la historia, marcado.** `historia_clinica_antecedente` y `adjunto_clinico`
+   llevan `origen` (`PROFESIONAL` | `DECLARADO`) y la revisión (`revisado_por`, `revisado_en`). Quien
+   tiene `hc:write` lo revisa; revisar no copia nada.
+3. **Quien declara ve y abre sólo lo declarado**, revisado o no, y da de baja lo que no fue
+   revisado. Nunca ve lo que cargó un profesional.
+
+**Desviación declarada de la especificación.** La matriz §2 ("Editar HC: No" para el
+`ADMINISTRATIVO`) no cambia: declarar no es editar la historia, es una carga marcada que el
+profesional valida. La fila nueva "Declarar datos del paciente" se agrega a la matriz mínima.
+
+**Implementada en:** `appKine-api` rama `akine-servicio-personalizado` y `appKine-web` rama
+`akine-web-estetica-3`. Contrato 0.172.0, migración `V16`.
+
 # 8. Modelo funcional consolidado
 
 ## 8.1 Núcleo organizacional

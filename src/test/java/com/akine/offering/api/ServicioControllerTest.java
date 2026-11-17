@@ -5,6 +5,7 @@ import com.akine.offering.application.ServicioAltaCommand;
 import com.akine.offering.application.ServicioBusqueda;
 import com.akine.offering.application.ServicioEdicionCommand;
 import com.akine.offering.application.ServicioEstadoFiltro;
+import com.akine.offering.application.ServicioPersonalizacionService;
 import com.akine.offering.application.ServicioService;
 import com.akine.offering.application.ServicioView;
 import com.akine.offering.domain.exception.ServicioCodigoTakenException;
@@ -66,6 +67,7 @@ class ServicioControllerTest {
 	@Autowired private MockMvc mockMvc;
 
 	@MockitoBean private ServicioService servicioService;
+	@MockitoBean private ServicioPersonalizacionService personalizacionService;
 	@MockitoBean private TenantContextHolder tenantContextHolder;
 
 	@BeforeEach
@@ -216,7 +218,7 @@ class ServicioControllerTest {
 
 	private static ServicioView vista() {
 		return new ServicioView(12L, "KINESIOLOGIA_SESION", "Sesion de kinesiologia", null,
-				"TERAPEUTICO", "INDIVIDUAL", false, true, "GLOBAL", "ACTIVO", null, null, 0L);
+				"TERAPEUTICO", "INDIVIDUAL", false, true, "GLOBAL", "ACTIVO", null, null, 0L, null);
 	}
 
 	private record PrincipalDePrueba(long accountId, boolean platformAdmin)

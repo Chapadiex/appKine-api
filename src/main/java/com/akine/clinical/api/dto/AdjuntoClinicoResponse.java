@@ -80,7 +80,21 @@ public record AdjuntoClinicoResponse(
 		String deactivationReason,
 
 		@Schema(description = "Version para el bloqueo optimista", example = "0")
-		long version) {
+		long version,
+
+		@Schema(description = "Por que camino entro (DP-47): PROFESIONAL desde la historia, o "
+				+ "DECLARADO por el paciente, que espera revision", example = "PROFESIONAL",
+				allowableValues = {"PROFESIONAL", "DECLARADO"})
+		String origen,
+
+		@Schema(description = "Nombre de quien lo subio, o null si la cuenta ya no resuelve")
+		String cargadoPorNombre,
+
+		@Schema(description = "Nombre del profesional que reviso el dato declarado, o null")
+		String revisadoPorNombre,
+
+		@Schema(description = "Instante UTC de la revision de un dato declarado, o null si no se reviso")
+		Instant revisadoEn) {
 
 	public static AdjuntoClinicoResponse from(AdjuntoClinicoView view) {
 		return new AdjuntoClinicoResponse(
@@ -100,6 +114,10 @@ public record AdjuntoClinicoResponse(
 				view.estadoCicloDeVida(),
 				view.deletedAt(),
 				view.deactivationReason(),
-				view.version());
+				view.version(),
+				view.origen(),
+				view.cargadoPorNombre(),
+				view.revisadoPorNombre(),
+				view.revisadoEn());
 	}
 }

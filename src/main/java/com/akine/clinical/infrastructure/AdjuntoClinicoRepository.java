@@ -3,6 +3,7 @@ package com.akine.clinical.infrastructure;
 import com.akine.clinical.domain.AdjuntoClinico;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.AdjuntoClinicoRepositoryPort;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -125,4 +126,42 @@ public interface AdjuntoClinicoRepository
 			@Param("categoria") String categoria,
 			@Param("entradaId") Long entradaId,
 			@Param("activoFiltro") int activoFiltro);
+
+	// DP-47. Mismo criterio que AntecedenteClinicoRepository#marcarRevisado.
+	@Override
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query(value = """
+			UPDATE adjunto_clinico
+			   SET revisado_por = :revisadoPor, revisado_en = :revisadoEn, version = version + 1
+			 WHERE organization_id = :organizationId AND id = :id
+			   AND origen = 'DECLARADO' AND revisado_en IS NULL
+			""", nativeQuery = true)
+	int marcarRevisado(
+			@Param("organizationId") long organizationId,
+			@Param("id") long id,
+			@Param("revisadoPor") long revisadoPor,
+			@Param("revisadoEn") Instant revisadoEn);
+
+	@Override
+	@Query("""
+			SELECT a FROM AdjuntoClinico a
+			 WHERE a.organizationId = :organizationId
+			   AND a.historiaClinicaId = :historiaClinicaId
+			   AND a.origen = com.akine.clinical.domain.OrigenDato.DECLARADO
+			   AND a.active = true
+			 ORDER BY a.subidoEn DESC, a.id DESC
+			""")
+	List<AdjuntoClinico> buscarDeclaradosVigentes(
+			@Param("organizationId") long organizationId,
+			@Param("historiaClinicaId") long historiaClinicaId);
+
+	@Override
+	@Query(value = """
+			SELECT COUNT(*) FROM adjunto_clinico
+			 WHERE organization_id = :organizationId AND historia_clinica_id = :historiaClinicaId
+			   AND origen = 'DECLARADO' AND revisado_en IS NULL AND active
+			""", nativeQuery = true)
+	long contarDeclaradosSinRevisar(
+			@Param("organizationId") long organizationId,
+			@Param("historiaClinicaId") long historiaClinicaId);
 }

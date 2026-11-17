@@ -76,7 +76,11 @@ public record PersonaResponse(
 
 		@Schema(description = "Version para el bloqueo optimista. Reenviarla al editar",
 				example = "0")
-		long version) {
+		long version,
+
+		@Schema(description = "Si tiene historia clinica vigente en la organizacion. Solo lo "
+				+ "informa la busqueda del padron; en las demas respuestas viaja null")
+		Boolean tieneHistoriaClinica) {
 
 	public static PersonaResponse from(PersonaView view) {
 		return new PersonaResponse(
@@ -95,6 +99,7 @@ public record PersonaResponse(
 				view.estado(),
 				view.deletedAt(),
 				view.deactivationReason(),
-				view.version());
+				view.version(),
+				view.tieneHistoriaClinica());
 	}
 }

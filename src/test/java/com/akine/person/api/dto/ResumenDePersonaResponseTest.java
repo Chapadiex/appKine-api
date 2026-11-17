@@ -86,6 +86,6 @@ class ResumenDePersonaResponseTest {
 
 	private static PersonaView unaPersona() {
 		return new PersonaView(500L, "DNI", "27888999", "Perez", "Ana", null, null, null, null,
-				false, null, null, "ACTIVO", null, null, 0L);
+				false, null, null, "ACTIVO", null, null, 0L, null);
 	}
 }

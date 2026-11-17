@@ -357,6 +357,6 @@ class ClinicalApiTest {
 				vigente ? "ACTIVO" : "INACTIVO",
 				vigente ? null : Instant.EPOCH,
 				vigente ? null : "Historia equivocada",
-				0L);
+				0L, "PROFESIONAL", null, null, null, null);
 	}
 }

@@ -73,7 +73,14 @@ public record ServicioResponse(
 				description = "Version para el control optimista. Se manda de vuelta en "
 						+ "expectedVersion al editar o dar de baja",
 				example = "0")
-		long version) {
+		long version,
+
+		@Schema(
+				description = "Servicio del catalogo de AKINE que este personaliza para la "
+						+ "organizacion (todas sus sedes), o null. Mientras este vigente, el de AKINE "
+						+ "no se lista para esa organizacion y sus ofertas apuntan a este",
+				example = "3")
+		Long personalizaServicioId) {
 
 	public static ServicioResponse de(ServicioView view) {
 		return new ServicioResponse(
@@ -89,6 +96,7 @@ public record ServicioResponse(
 				view.estado(),
 				view.deletedAt(),
 				view.deactivationReason(),
-				view.version());
+				view.version(),
+				view.personalizaServicioId());
 	}
 }

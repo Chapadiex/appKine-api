@@ -26,11 +26,15 @@ public interface ServicioRepository extends JpaRepository<Servicio, Long>, Servi
 	 */
 	@Override
 	@Query(value = """
-			SELECT * FROM servicio
-			 WHERE owner_key IN (:owners)
-			   AND (:activoFiltro = -1 OR active = (:activoFiltro = 1))
-			   AND (nombre LIKE :patron OR codigo LIKE :patron)
-			 ORDER BY nombre ASC
+			SELECT s.* FROM servicio s
+			 WHERE s.owner_key IN (:owners)
+			   AND (:activoFiltro = -1 OR s.active = (:activoFiltro = 1))
+			   AND (s.nombre LIKE :patron OR s.codigo LIKE :patron)
+			   AND NOT EXISTS (SELECT 1 FROM servicio p
+			                    WHERE p.personaliza_servicio_id = s.id
+			                      AND p.owner_key IN (:owners)
+			                      AND p.active)
+			 ORDER BY s.nombre ASC
 			""", nativeQuery = true)
 	List<Servicio> buscarVisibles(
 			@Param("owners") List<Long> owners,
@@ -40,4 +44,15 @@ public interface ServicioRepository extends JpaRepository<Servicio, Long>, Servi
 	@Override
 	@Query(value = "SELECT * FROM servicio WHERE id = :id AND owner_key IN (:owners)", nativeQuery = true)
 	Optional<Servicio> findVisible(@Param("id") Long id, @Param("owners") List<Long> owners);
+
+	@Override
+	@Query(value = """
+			SELECT * FROM servicio
+			 WHERE organization_id = :organizationId
+			   AND personaliza_servicio_id = :servicioGlobalId
+			   AND active
+			""", nativeQuery = true)
+	Optional<Servicio> findPersonalizacionVigente(
+			@Param("organizationId") Long organizationId,
+			@Param("servicioGlobalId") Long servicioGlobalId);
 }
