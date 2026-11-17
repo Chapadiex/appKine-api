@@ -54,6 +54,17 @@ public class ResourceMedicionDirectory implements MedicionDirectory {
 				.toList();
 	}
 
+	@Override
+	@Transactional(readOnly = true)
+	public List<MedicionDefinicionSnapshot> findTodas(Long organizationId, java.util.Collection<Long> definicionIds) {
+		if (definicionIds.isEmpty()) {
+			return List.of();
+		}
+		return definiciones.findVisibles(definicionIds, owners(organizationId)).stream()
+				.map(MedicionDefinicionView::snapshotDe)
+				.toList();
+	}
+
 	/**
 	 * Lo global, mas lo propio si el llamador trae tenant.
 	 *

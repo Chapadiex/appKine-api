@@ -20378,6 +20378,212 @@ Sin tope de libros, una organización con muchísimos pedazos vuelve lenta y pes
 
 ---
 
+# M31 — Evolución del caso clínico
+
+## 1. Objetivo
+
+Dar al profesional una lectura calculada de cómo evoluciona un Caso Clínico a partir de sus sesiones cerradas: indicadores (dolor, evolución declarada, tolerancia, mediciones, adherencia, frecuencia y avance del plan) y alertas que señalan qué conviene revisar del tratamiento. Es un cálculo con reglas, sin modelo de lenguaje. La fase 2 agrega sugerencias para revisar, redactadas por un modelo local con respaldo en la biblioteca (M30) y siempre sujetas a la decisión del profesional (RF-M31-004 y RF-M31-005). Diseño: `docs/diseno/AKINE-analizador-de-evolucion.md` y `docs/diseno/AKINE-analizador-de-evolucion-fase2.md`.
+
+## 2. Actores
+
+- Profesional y demás roles con `hc:read`
+- Sistema (cálculo al leer)
+
+## 3. Dependencias
+
+- M10 Caso Clínico y M11 Plan de Tratamiento
+- M12–M14 Sesión, examen, mediciones y tratamientos realizados
+- M09 Turnos (inasistencias y cancelaciones del caso)
+- M06 Catálogo de definiciones de medición
+- M24 Auditoría
+
+## 4. Reglas de negocio
+
+- **RN-M31-001:** El análisis es de sólo lectura. No modifica la sesión, el caso ni el plan, y no cierra ni suspende nada por su cuenta.
+- **RN-M31-002:** El análisis no se guarda: se calcula al leer con los datos vigentes. No existe tabla de resultados.
+- **RN-M31-003:** Exige `hc:read` y relación asistencial con la persona o justificación declarada, igual que la Historia Clínica. Toda lectura se audita, sin texto clínico en el registro.
+- **RN-M31-004:** Los umbrales de las alertas son configuración del despliegue. Sus valores por defecto requieren aprobación clínica antes de mostrarse a profesionales en producción.
+- **RN-M31-005:** El análisis es por Caso Clínico. Las sesiones sin caso asignado no entran, y la respuesta informa cuántas hay en el período.
+- **RN-M31-006:** Sólo entran sesiones cerradas. Las series de valores usan las de asistencia `PRESENTE`; las `AUSENTE` cuentan para adherencia.
+- **RN-M31-007:** Con menos de tres sesiones presentes no se evalúa ninguna alerta: la respuesta trae los indicadores y el aviso de datos insuficientes.
+- **RN-M31-008:** La adherencia distingue la inasistencia registrada en la sesión de la registrada en el turno y no cuenta dos veces el mismo hecho. Las cancelaciones del profesional o de la institución no cuentan en contra del paciente.
+- **RN-M31-009:** Una medición sólo se juzga como mejora o empeoramiento si su definición declara el sentido de mejora. Sin él, la serie se muestra y no se califica.
+- **RN-M31-010:** La función está detrás de un interruptor del despliegue, apagado por defecto.
+- **RN-M31-011:** Una sugerencia sólo se muestra si cita al menos un pasaje de la biblioteca del centro que pertenece al hallazgo que la motiva. Sin cita válida de su propio hallazgo se descarta.
+- **RN-M31-012:** Una sugerencia no prescribe: el texto dice qué conviene revisar, no qué indicar. Tampoco puede traer un número que no figure en los datos del caso ni en el pasaje citado.
+- **RN-M31-013:** Las sugerencias no escriben en el plan, la sesión ni el caso. Aceptar una sugerencia no cambia el plan: a lo sumo precarga el motivo de una nueva versión que el profesional edita y guarda por su cuenta.
+- **RN-M31-014:** Las sugerencias descartadas por el validador no se muestran ni se guardan: la respuesta informa cuántas fueron y la auditoría cuenta cuántas fallaron cada regla.
+- **RN-M31-015:** Sin material suficiente en la biblioteca para ningún hallazgo, o sin hallazgos elegibles, el sistema se abstiene: no llama al modelo y lo informa con su propio resultado.
+- **RN-M31-016:** Pedir y responder sugerencias exige `evolucion:sugerir`, además de `hc:read` y de relación asistencial o justificación declarada. El historial de sugerencias es lectura clínica y se audita. Ningún registro de auditoría ni de log lleva texto clínico.
+- **RN-M31-017:** La función de sugerencias está detrás de su propio interruptor, apagado por defecto, y requiere además los de la evolución (RN-M31-010) y la biblioteca. Los valores por defecto del modelo y de los umbrales requieren revisión clínica antes de encenderla en un centro real.
+
+## 5. Requerimientos funcionales detallados
+
+### RF-M31-001 — Analizar la evolución de un caso
+
+**Descripción:** Calcular y mostrar los indicadores de evolución de un Caso Clínico.
+
+**Precondiciones generales:**
+- Usuario autenticado con contexto de organización y sede resueltos.
+- Actor con `hc:read` y relación asistencial o justificación declarada.
+- Función habilitada en el despliegue.
+
+**Disparador:**
+- El profesional abre la pestaña "Evolución" del caso.
+
+**Flujo principal:**
+1. El sistema valida que el caso sea de la organización, el permiso y el acceso clínico.
+2. Reúne las sesiones cerradas del caso, el plan vigente con su avance y los turnos del caso.
+3. Calcula: serie de dolor, evolución declarada, tolerancia, series de mediciones por definición y lado, adherencia, frecuencia real contra la planificada, avance del plan y tratamientos realizados.
+4. Evalúa las alertas (RF-M31-002).
+5. Audita la lectura y responde.
+
+**Flujos alternativos / excepciones:**
+- Caso de otra organización o inexistente: no encontrado.
+- Sin permiso, o sin relación asistencial ni justificación: rechazo auditado.
+- Menos de tres sesiones presentes: indicadores y aviso de datos insuficientes.
+- Una serie cuya unidad cambió entre sesiones viaja marcada y no se evalúa.
+
+**Criterios de aceptación:**
+- **CA-M31-001-01:** un caso con sesiones cerradas responde sus indicadores y deja un registro de auditoría.
+- **CA-M31-001-02:** un caso de otra organización responde 404.
+- **CA-M31-001-03:** sin `hc:read` responde 403; sin relación asistencial ni justificación responde 403 `justificacion-de-acceso-requerida`.
+- **CA-M31-001-04:** con menos de tres sesiones presentes no hay alertas y sí el aviso de datos insuficientes.
+- **CA-M31-001-05:** con la función apagada la operación no está disponible.
+- **CA-M31-001-06:** las sesiones sin caso del período se informan como advertencia y no alteran los indicadores.
+
+### RF-M31-002 — Alertas de evolución
+
+**Descripción:** Señalar situaciones del caso que conviene revisar, cada una con las sesiones o turnos que la originan.
+
+**Alertas:**
+
+| Código | Situación |
+|---|---|
+| `DOLOR_SIN_MEJORA` | El dolor no baja de forma relevante en las últimas sesiones y sigue alto |
+| `DOLOR_EN_AUMENTO` | El dolor sube de forma relevante |
+| `EVOLUCION_DESFAVORABLE` | Evolución declarada peor, o igual, en sesiones seguidas |
+| `MALA_TOLERANCIA` | Mala tolerancia en sesiones seguidas |
+| `MEDICION_SIN_CAMBIO` | Una medición no varía a lo largo de varias sesiones |
+| `MEDICION_EMPEORA` | Una medición con sentido de mejora declarado va en contra |
+| `BAJA_ADHERENCIA` | Proporción alta de inasistencias en las últimas citas |
+| `FRECUENCIA_BAJO_PLAN` | La frecuencia real es mucho menor que la planificada |
+| `PLAN_COMPLETO_ABIERTO` | Todos los ítems del plan están completos y el plan sigue activo |
+| `PLAN_EXCEDIDO_EN_TIEMPO` | Pasó más tiempo que la duración planificada |
+| `SIN_PLAN_ACTIVO` | El caso está activo, tiene sesiones y no tiene plan activo |
+| `CONDUCTA_SIN_SEGUIR` | Una sesión cerró indicando alta, derivación o reevaluación y el caso siguió sin cambios |
+| `SIN_MEDICIONES` | No hay mediciones ni dolor registrados en las últimas sesiones |
+
+**Reglas:**
+- Cada alerta lleva código, severidad, texto y la lista de sesiones o turnos que la disparan.
+- El texto dice qué se observó. No indica conducta.
+
+**Criterios de aceptación:**
+- **CA-M31-002-01:** cada alerta dispara con un caso que cumple su regla y no dispara en el borde inmediato inferior.
+- **CA-M31-002-02:** una cancelación de la institución no cuenta para `BAJA_ADHERENCIA`.
+- **CA-M31-002-03:** una ausencia registrada en el turno y en la sesión cuenta una sola vez.
+- **CA-M31-002-04:** una medición sin sentido de mejora nunca dispara `MEDICION_EMPEORA`.
+- **CA-M31-002-05:** un plan suspendido no dispara `PLAN_COMPLETO_ABIERTO` ni `PLAN_EXCEDIDO_EN_TIEMPO`.
+
+### RF-M31-003 — Sentido de mejora de una medición
+
+**Descripción:** Declarar, en la definición de una medición numérica o de escala, si mejora cuando el valor sube o cuando baja.
+
+**Reglas:**
+- Es opcional. Valores: `SUBE`, `BAJA` o sin definir.
+- Sólo aplica a definiciones `NUMERICO` y `ESCALA`.
+- Cambiarlo reinterpreta la serie completa: no se copia a las mediciones ya registradas.
+
+**Criterios de aceptación:**
+- **CA-M31-003-01:** una definición numérica acepta y devuelve su sentido de mejora.
+- **CA-M31-003-02:** declararlo en una definición de texto o booleana responde 400 `validation-error`.
+
+### RF-M31-004 — Sugerencias para revisar con respaldo de la biblioteca
+
+**Descripción:** A pedido del profesional, proponer hasta cinco puntos para revisar del tratamiento, cada uno atado a un hallazgo de RF-M31-002 y a un pasaje de un libro de la biblioteca del centro.
+
+**Precondiciones generales:**
+- Las de RF-M31-001.
+- Actor con `evolucion:sugerir`.
+- Interruptores de evolución, de sugerencias y de biblioteca encendidos.
+
+**Disparador:**
+- El profesional pide sugerencias desde la tarjeta "Evolución" del caso.
+
+**Flujo principal:**
+1. El sistema valida caso, permisos y acceso clínico, y que no haya otro pedido de la misma cuenta en curso.
+2. Calcula los hallazgos de RF-M31-002 y se queda con los elegibles: `DOLOR_SIN_MEJORA`, `DOLOR_EN_AUMENTO`, `EVOLUCION_DESFAVORABLE`, `MALA_TOLERANCIA`, `MEDICION_SIN_CAMBIO`, `MEDICION_EMPEORA`, `BAJA_ADHERENCIA`, `FRECUENCIA_BAJO_PLAN` y `PLAN_EXCEDIDO_EN_TIEMPO`. Toma hasta tres, primero los de mayor severidad.
+3. Busca en la biblioteca del centro pasajes para cada hallazgo. Sólo siguen los hallazgos con material suficiente.
+4. Pide al modelo local las sugerencias, sin identificadores del paciente y con los textos libres filtrados.
+5. Valida cada sugerencia contra sus hallazgos y pasajes (cita válida del propio hallazgo, sin números inventados, sin forma prescriptiva, largos acotados).
+6. Guarda las válidas con sus citas y sesiones de origen, audita sin texto clínico y responde.
+
+**Resultados:**
+- `SUGERENCIAS`: se llamó al modelo con material de la biblioteca. Puede traer cero sugerencias si el validador descartó todas las propuestas; en ese caso `descartadas` es mayor que cero.
+- `SIN_MATERIAL`: hay hallazgos elegibles pero la biblioteca no tiene material suficiente para ninguno; no se llama al modelo.
+- `SIN_HALLAZGOS_ELEGIBLES`: el caso no tiene ningún hallazgo elegible, por ejemplo con menos de tres sesiones presentes; no se busca ni se llama al modelo.
+
+**Flujos alternativos / excepciones:**
+- Otro pedido de la misma cuenta en curso: rechazo `generacion-en-curso` (429).
+- Cupo del modelo lleno durante todo el plazo: `modelo-ocupado` (503). Plazo vencido o modelo caído: `modelo-no-disponible` (503). En ambos casos los hallazgos de RF-M31-002 siguen disponibles.
+- Salida del modelo inválida o sin sugerencias aprovechables: respuesta sin sugerencias y con `descartadas` mayor que cero, nunca un error del servidor.
+- Un texto libre sospechoso de contener instrucciones se reemplaza y la respuesta advierte `TEXTO_OMITIDO`.
+
+**Criterios de aceptación:**
+- **CA-M31-004-01:** con hallazgos elegibles y material en la biblioteca, el resultado es `SUGERENCIAS`, cada sugerencia cita un pasaje de su hallazgo y queda registrada como `PENDIENTE`.
+- **CA-M31-004-02:** con hallazgos elegibles y sin material suficiente, el resultado es `SIN_MATERIAL` y el modelo no se llama.
+- **CA-M31-004-03:** con un caso sin hallazgos elegibles, incluido el de menos de tres sesiones presentes, el resultado es `SIN_HALLAZGOS_ELEGIBLES`, sin búsqueda ni llamada al modelo.
+- **CA-M31-004-04:** una sugerencia cuya cita pertenece a otro hallazgo, o con un número que no figura en los datos enviados, no se muestra ni se guarda y suma a `descartadas`.
+- **CA-M31-004-05:** con cualquiera de los tres interruptores apagados las operaciones responden 404 antes de mirar permisos.
+- **CA-M31-004-06:** dos pedidos simultáneos de la misma cuenta: uno se atiende y el otro recibe 429, sin dejar el candado tomado si el primero falla.
+- **CA-M31-004-07:** sin `evolucion:sugerir` el pedido responde 403; sin relación asistencial ni justificación, 403 `justificacion-de-acceso-requerida`.
+
+### RF-M31-005 — Historial y respuesta del profesional
+
+**Descripción:** Consultar las sugerencias anteriores de un caso y registrar si el profesional las aceptó o las descartó.
+
+**Flujo principal:**
+1. El sistema lista las sugerencias del caso, de la más nueva a la más vieja, con su estado, citas y sesiones de origen; la lectura se audita.
+2. El profesional acepta una sugerencia `PENDIENTE`, o la descarta indicando el motivo.
+3. El sistema registra quién respondió y cuándo, que puede ser alguien distinto de quien la pidió.
+
+**Reglas:**
+- Sólo se responde desde `PENDIENTE`. La respuesta lleva la versión leída (control optimista).
+- Descartar exige motivo, de hasta 300 caracteres.
+- Aceptar con un plan `ACTIVO` o `SUSPENDIDO` versionable permite abrir una nueva versión del plan con el texto como motivo precargado; sin plan versionable, o sin permiso para versionarlo, se registra la aceptación y no se abre nada. En ambos casos la aceptación queda registrada aunque el profesional no guarde ninguna versión.
+
+**Criterios de aceptación:**
+- **CA-M31-005-01:** aceptar una sugerencia `PENDIENTE` con un plan versionable la deja `ACEPTADA` sin modificar el plan, y el motivo precargado de la nueva versión es el texto de la sugerencia.
+- **CA-M31-005-02:** aceptar una sugerencia en un caso sin plan versionable la deja `ACEPTADA` y no abre ninguna versión.
+- **CA-M31-005-03:** descartar con motivo la deja `DESCARTADA` con ese motivo; sin motivo responde 400 `validation-error`.
+- **CA-M31-005-04:** responder una sugerencia ya respondida, o con una versión vieja, responde 409 (`sugerencia-ya-respondida` o `concurrent-modification`) sin pisar la primera respuesta.
+- **CA-M31-005-05:** el historial de otro caso o de otra organización responde 404, y leerlo audita `SUGERENCIAS_DE_EVOLUCION_CONSULTADAS`.
+
+## 6. Requerimientos no funcionales específicos
+
+### RNF-M31-001 — Aislamiento entre organizaciones
+
+Toda lectura se acota por la organización del actor. Un caso de otra organización responde como inexistente.
+
+### RNF-M31-002 — Costo acotado
+
+La lectura usa una cantidad fija de consultas, independiente de la cantidad de sesiones, y analiza como máximo las 200 sesiones más recientes del caso; si recorta, lo informa.
+
+### RNF-M31-003 — Privacidad
+
+Ningún dato sale del servidor. La auditoría registra el caso, la cantidad de sesiones y los códigos de alerta, nunca texto clínico.
+
+## 7. Casos borde mínimos de QA
+
+- Un paciente con dos casos activos y sesiones sin caso asignado.
+- Un caso atendido por dos profesionales: quien no atendió necesita justificación.
+- Una sesión enmendada: el análisis usa la versión vigente.
+- Un turno reprogramado y después atendido: no es inasistencia.
+- Una medición cuya unidad cambió entre sesiones.
+- Un plan suspendido con todos sus ítems completos.
+
+---
+
 # 30. Visión funcional consolidada — Servicios, Clases y Circuito de Salud
 
 ## 30.1 Evolución del alcance de AKINE

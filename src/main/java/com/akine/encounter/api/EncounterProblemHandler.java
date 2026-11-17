@@ -13,6 +13,7 @@ import com.akine.encounter.domain.exception.PracticaNoUtilizableException;
 import com.akine.encounter.domain.exception.ProfesionalNoAsignableException;
 import com.akine.encounter.domain.exception.TratamientoNoAccesibleException;
 import com.akine.encounter.domain.exception.EvaluacionIncoherenteException;
+import com.akine.encounter.domain.exception.EvolucionDeshabilitadaException;
 import com.akine.encounter.domain.exception.MedicionDefinicionInactivaException;
 import com.akine.encounter.domain.exception.MedicionDefinicionNoAccesibleException;
 import com.akine.encounter.domain.exception.MedicionFueraDeRangoException;
@@ -30,6 +31,11 @@ import com.akine.encounter.domain.exception.CasoClinicoRequeridoException;
 import com.akine.encounter.domain.exception.EnmiendaFueraDeVentanaException;
 import com.akine.encounter.domain.exception.MotivoObligatorioException;
 import com.akine.encounter.domain.exception.OfertaNoAtendibleException;
+import com.akine.encounter.domain.exception.GeneracionEnCursoException;
+import com.akine.encounter.domain.exception.ModeloDeEvolucionNoDisponibleException;
+import com.akine.encounter.domain.exception.ModeloDeEvolucionOcupadoException;
+import com.akine.encounter.domain.exception.SugerenciaNoAccesibleException;
+import com.akine.encounter.domain.exception.SugerenciaYaRespondidaException;
 import com.akine.platform.spi.problem.ProblemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -127,6 +133,12 @@ public class EncounterProblemHandler {
 		log.debug("Consultorio no accesible desde la atencion: consultorioId={}",
 				exception.getConsultorioId());
 		return noEncontrado("El consultorio no existe.");
+	}
+
+	@ExceptionHandler(EvolucionDeshabilitadaException.class)
+	public ProblemDetail handleEvolucionDeshabilitada(EvolucionDeshabilitadaException exception) {
+		log.debug("Evolucion del caso pedida con la funcion apagada");
+		return noEncontrado("La evolucion del caso no esta disponible.");
 	}
 
 	@ExceptionHandler(SesionNotAccessibleException.class)
@@ -592,6 +604,57 @@ public class EncounterProblemHandler {
 		problem.setType(IDEMPOTENCY_KEY_CONFLICT);
 		problem.setTitle("La clave de idempotencia ya se uso con otro pedido");
 		return problem;
+	}
+
+	// --- Sugerencias de evolucion (M31 fase 2) --------------------------------------------------
+
+	/** <b>429 {@code generacion-en-curso}</b>: la cuenta ya tiene un pedido de sugerencias corriendo. */
+	@ExceptionHandler(GeneracionEnCursoException.class)
+	public ProblemDetail handleGeneracionEnCurso(GeneracionEnCursoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS,
+				"Ya hay un pedido de sugerencias en curso. Espera a que termine.");
+		problem.setType(ProblemType.GENERACION_EN_CURSO.uri());
+		problem.setTitle("Pedido de sugerencias en curso");
+		return problem;
+	}
+
+	/**
+	 * <b>503 {@code modelo-ocupado}</b>. Es subclase de la de abajo: Spring elige el handler mas
+	 * especifico, asi que el cupo lleno nunca sale como {@code modelo-no-disponible}.
+	 */
+	@ExceptionHandler(ModeloDeEvolucionOcupadoException.class)
+	public ProblemDetail handleModeloOcupado(ModeloDeEvolucionOcupadoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE,
+				"El modelo de sugerencias esta ocupado. Proba de nuevo en unos segundos.");
+		problem.setType(ProblemType.MODELO_OCUPADO.uri());
+		problem.setTitle("Modelo ocupado");
+		return problem;
+	}
+
+	/** <b>503 {@code modelo-no-disponible}</b>: vencio el plazo o el modelo no responde. */
+	@ExceptionHandler(ModeloDeEvolucionNoDisponibleException.class)
+	public ProblemDetail handleModeloNoDisponible(ModeloDeEvolucionNoDisponibleException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE,
+				"El modelo de sugerencias no respondio a tiempo.");
+		problem.setType(ProblemType.MODELO_NO_DISPONIBLE.uri());
+		problem.setTitle("Modelo no disponible");
+		return problem;
+	}
+
+	/** <b>409 {@code sugerencia-ya-respondida}</b>: la primera respuesta no se pisa. */
+	@ExceptionHandler(SugerenciaYaRespondidaException.class)
+	public ProblemDetail handleSugerenciaYaRespondida(SugerenciaYaRespondidaException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+				"La sugerencia ya fue respondida.");
+		problem.setType(ProblemType.SUGERENCIA_YA_RESPONDIDA.uri());
+		problem.setTitle("Sugerencia ya respondida");
+		problem.setProperty("sugerenciaId", exception.getSugerenciaId());
+		return problem;
+	}
+
+	@ExceptionHandler(SugerenciaNoAccesibleException.class)
+	public ProblemDetail handleSugerenciaNoAccesible(SugerenciaNoAccesibleException exception) {
+		return noEncontrado("La sugerencia no existe.");
 	}
 
 	private static ProblemDetail noEncontrado(String detalle) {

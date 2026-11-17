@@ -287,7 +287,8 @@ public class MedicionDefinicionController {
 						request.tipo(),
 						request.unidad(),
 						request.minimo(),
-						request.maximo()));
+						request.maximo(),
+						request.mejoraCuando()));
 
 		return ResponseEntity
 				.created(URI.create("/api/v1/mediciones/definiciones/" + creada.id()))
@@ -375,6 +376,8 @@ public class MedicionDefinicionController {
 						request.minimo(),
 						request.maximo(),
 						Boolean.TRUE.equals(request.clearRango()),
+						request.mejoraCuando(),
+						Boolean.TRUE.equals(request.clearMejoraCuando()),
 						request.version()));
 
 		return ResponseEntity.ok(MedicionDefinicionResponse.from(actualizada));

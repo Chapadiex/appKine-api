@@ -1450,8 +1450,30 @@ public enum ProblemType {
 	/** La cola de consultas a la biblioteca esta llena (503, con {@code Retry-After}). */
 	CONSULTA_OCUPADA("consulta-ocupada"),
 
-	/** El modelo de lenguaje no responde o vencio el plazo (503). */
-	ASISTENTE_NO_DISPONIBLE("asistente-no-disponible");
+	/**
+	 * El modelo de lenguaje no responde o vencio el plazo (503). Lo emiten la consulta a la
+	 * biblioteca y el asistente de datos.
+	 */
+	ASISTENTE_NO_DISPONIBLE("asistente-no-disponible"),
+
+	// --- Asistente de datos (docs/diseno/AKINE-asistente-de-datos.md) -------------------------
+
+	/** El asistente de datos esta apagado por configuracion (409). */
+	ASISTENTE_DESHABILITADO("asistente-deshabilitado"),
+
+	// --- Sugerencias de evolucion (M31 fase 2) ------------------------------------------------
+
+	/** La misma cuenta ya tiene un pedido de sugerencias en curso en esta instancia (429). */
+	GENERACION_EN_CURSO("generacion-en-curso"),
+
+	/** Se lleno el cupo del modelo de sugerencias de esta instancia (503). */
+	MODELO_OCUPADO("modelo-ocupado"),
+
+	/** El modelo de sugerencias no respondio, respondio con error o vencio el plazo (503). */
+	MODELO_NO_DISPONIBLE("modelo-no-disponible"),
+
+	/** La sugerencia ya tiene respuesta; la primera no se pisa (409). */
+	SUGERENCIA_YA_RESPONDIDA("sugerencia-ya-respondida");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

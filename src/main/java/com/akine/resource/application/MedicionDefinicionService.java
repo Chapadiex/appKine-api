@@ -9,6 +9,7 @@ import com.akine.resource.domain.exception.CatalogoNameTakenException;
 import com.akine.resource.domain.exception.MedicionDefinicionInactivaException;
 import com.akine.resource.domain.exception.MedicionDefinicionNoAccesibleException;
 import com.akine.resource.domain.port.MedicionDefinicionRepositoryPort;
+import com.akine.resource.spi.SentidoDeMejora;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -145,6 +146,7 @@ public class MedicionDefinicionService {
 		MedicionDefinicion definicion = new MedicionDefinicion(
 				duenio, codigo, nombre, command.descripcion(),
 				command.tipo(), command.unidad(), command.minimo(), command.maximo());
+		definicion.declararSentidoDeMejora(command.mejoraCuando());
 
 		MedicionDefinicion creada;
 		try {
@@ -201,6 +203,7 @@ public class MedicionDefinicionService {
 		definicion.updateDatos(
 				nombre, command.descripcion(), command.unidad(),
 				command.minimo(), command.maximo(), command.clearRango());
+		definicion.declararSentidoDeMejora(sentidoResultante(command, definicion.getMejoraCuando()));
 
 		MedicionDefinicion guardada;
 		try {
@@ -312,7 +315,25 @@ public class MedicionDefinicionService {
 				detalles.put("maximo", definicion.getMaximo() + " -> " + command.maximo());
 			}
 		}
+		SentidoDeMejora sentido = sentidoResultante(command, definicion.getMejoraCuando());
+		if (sentido != definicion.getMejoraCuando()) {
+			detalles.put("mejoraCuando", definicion.getMejoraCuando() + " -> "
+					+ (sentido == null ? "(sin definir)" : sentido));
+		}
 		return detalles;
+	}
+
+	/**
+	 * El sentido de mejora despues de la edicion (RF-M31-003): {@code clearMejoraCuando} lo quita,
+	 * un valor lo reemplaza y su ausencia lo deja como estaba. Lo usan la edicion y su auditoria,
+	 * para que lo guardado y lo auditado no puedan divergir.
+	 */
+	private static SentidoDeMejora sentidoResultante(
+			MedicionDefinicionEdicionCommand command, SentidoDeMejora actual) {
+		if (command.clearMejoraCuando()) {
+			return null;
+		}
+		return command.mejoraCuando() != null ? command.mejoraCuando() : actual;
 	}
 
 	@SuppressWarnings("java:S107")

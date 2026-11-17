@@ -175,7 +175,7 @@ akine:
   # Version SemVer del contrato OpenAPI publicado. Debe coincidir con la propiedad
   # akine.contract.version del pom.xml.
   contract:
-    version: 0.173.0
+    version: 0.175.0
   security:
     cors:
       # Nunca comodin: allowCredentials(true) lo prohibe y el frontend necesita credentials
@@ -227,11 +227,51 @@ akine:
 
   # Biblioteca de libros PDF con busqueda vectorial (M30). Apagada por defecto: apagada no crea
   # workers ni modelo y toda operacion responde 409 biblioteca-deshabilitada.
+  # Evolucion del caso clinico (M31). Apagada por defecto: responde 404. Los umbrales de las
+  # alertas (akine.evolucion.minimo-sesiones, dolor-ventana, ...) arrancan en los valores del
+  # diseno y esperan aprobacion clinica (RN-M31-004): ver EvolucionProperties.
+  evolucion:
+    enabled: ${AKINE_EVOLUCION_ENABLED:false}
+    # Sugerencias de revision con respaldo de la biblioteca (M31 fase 2). Apagadas por defecto;
+    # exigen tambien evolucion.enabled y biblioteca.enabled: con cualquiera apagado, 404.
+    sugerencias:
+      enabled: ${AKINE_EVOLUCION_SUGERENCIAS_ENABLED:false}
+      modelo:
+        # ollama | prueba
+        tipo: ${AKINE_EVOLUCION_SUGERENCIAS_MODELO_TIPO:prueba}
+        url: ${AKINE_EVOLUCION_SUGERENCIAS_OLLAMA_URL:http://localhost:11434}
+        nombre: ${AKINE_EVOLUCION_SUGERENCIAS_MODELO:qwen3:4b-instruct}
+        # Debajo de los 60 s con que el nginx del frontend corta /api/: pasado el plazo, 503.
+        plazo-segundos: ${AKINE_EVOLUCION_SUGERENCIAS_PLAZO_SEGUNDOS:50}
+        # Generaciones que esperan al modelo a la vez en esta instancia; la siguiente, 503 modelo-ocupado.
+        concurrencia: ${AKINE_EVOLUCION_SUGERENCIAS_CONCURRENCIA:1}
   biblioteca:
     enabled: ${AKINE_BIBLIOTECA_ENABLED:false}
     # Consulta con un modelo de lenguaje local (RF-M30-012). Exige tambien biblioteca.enabled.
     consulta:
       enabled: ${AKINE_BIBLIOTECA_CONSULTA_ENABLED:false}
+
+  # Asistente de datos: preguntas en lenguaje natural sobre turnos, sesiones, clases y reportes
+  # (docs/diseno/AKINE-asistente-de-datos.md). Apagado por defecto: apagado no crea el modelo y
+  # toda consulta responde 409 asistente-deshabilitado. Independiente de la biblioteca, aunque
+  # puede usar el mismo Ollama y el mismo modelo.
+  asistente:
+    enabled: ${AKINE_ASISTENTE_ENABLED:false}
+    modelo:
+      # ollama | prueba
+      tipo: ${AKINE_ASISTENTE_MODELO_TIPO:ollama}
+      url: ${AKINE_ASISTENTE_OLLAMA_URL:http://localhost:11434}
+      nombre: ${AKINE_ASISTENTE_MODELO:qwen3:4b-instruct}
+      timeout-segundos: ${AKINE_ASISTENTE_TIMEOUT_SEGUNDOS:60}
+      # Consultas que esperan al modelo a la vez en esta instancia; la siguiente espera su plazo y,
+      # si no consigue lugar, responde 503 asistente-no-disponible.
+      concurrencia: ${AKINE_ASISTENTE_CONCURRENCIA:2}
+    # Consultas libres: si la pregunta no entra en ninguna intencion, el modelo escribe un SELECT
+    # sobre las vistas de asistente_sql (docs/diseno/AKINE-asistente-sql.md). Ademas exige asistente:sql.
+    sql:
+      enabled: ${AKINE_ASISTENTE_SQL_ENABLED:false}
+      limite-filas: ${AKINE_ASISTENTE_SQL_LIMITE_FILAS:200}
+      tiempo-maximo-ms: ${AKINE_ASISTENTE_SQL_TIEMPO_MAXIMO_MS:5000}
 
   notification:
     email:

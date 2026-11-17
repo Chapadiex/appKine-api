@@ -405,7 +405,32 @@ public enum PermissionCode {
 	 * basada en los libros. Por base para {@code ORG_ADMIN}, {@code CONSULTORIO_ADMIN},
 	 * {@code PROFESIONAL} y {@code ADMINISTRATIVO}; no se otorga por grant.
 	 */
-	BIBLIOTECA_CONSULTAR("biblioteca:consultar");
+	BIBLIOTECA_CONSULTAR("biblioteca:consultar"),
+
+	/**
+	 * Preguntarle al asistente de datos (docs/diseno/AKINE-asistente-de-datos.md, D-2). Por base
+	 * para {@code ORG_ADMIN}, {@code CONSULTORIO_ADMIN}, {@code PROFESIONAL} y
+	 * {@code ADMINISTRATIVO}, con alcance de organizacion; no se otorga por grant. Es solo la
+	 * puerta: lo que cada respuesta muestra lo decide el permiso de la herramienta que la produce.
+	 */
+	ASISTENTE_USE("asistente:use"),
+
+	/**
+	 * Pedir y responder sugerencias de revision sobre la evolucion de un Caso Clinico (M31 fase 2,
+	 * {@code docs/diseno/AKINE-analizador-de-evolucion-fase2.md} §8.2). Por base solo para el
+	 * {@code PROFESIONAL}, con alcance de organizacion; no se otorga por grant. Se exige ademas de
+	 * {@code hc:read} y relacion asistencial o justificacion.
+	 */
+	EVOLUCION_SUGERIR("evolucion:sugerir"),
+
+	/**
+	 * Consultas libres del asistente: cuando la pregunta no entra en ninguna intencion, el modelo
+	 * escribe un SELECT sobre las vistas de solo lectura de {@code asistente_sql}
+	 * (docs/diseno/AKINE-asistente-sql.md). Por base solo para {@code ORG_ADMIN} y
+	 * {@code CONSULTORIO_ADMIN}: las vistas cruzan padron, turnos y caja, y saltean el recorte por
+	 * actividad propia del profesional. No se otorga por grant.
+	 */
+	ASISTENTE_SQL("asistente:sql");
 
 	private final String code;
 

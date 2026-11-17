@@ -2,10 +2,10 @@ package com.akine.knowledge.application;
 
 import com.akine.knowledge.application.Interpretacion.Aclarar;
 import com.akine.knowledge.application.Interpretacion.Buscar;
-import com.akine.knowledge.domain.port.MensajeChat;
-import com.akine.knowledge.domain.port.MensajeChat.Rol;
-import com.akine.knowledge.domain.port.ModeloDeLenguaje;
-import com.akine.knowledge.domain.port.OpcionesGeneracion;
+import com.akine.platform.spi.modelo.MensajeChat;
+import com.akine.platform.spi.modelo.MensajeChat.Rol;
+import com.akine.platform.spi.modelo.ModeloDeLenguaje;
+import com.akine.platform.spi.modelo.OpcionesGeneracion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;

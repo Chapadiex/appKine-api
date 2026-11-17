@@ -36,6 +36,12 @@ public interface CasoDirectory {
 	Optional<CasoSnapshot> find(long organizationId, long casoId);
 
 	/**
+	 * El caso con su motivo y su estado, para mostrarlo fuera de {@code clinical} (M31). Es
+	 * contenido clinico: quien lo pide ya paso por {@link AccesoClinicoDirectory}.
+	 */
+	Optional<CasoDetalleSnapshot> detalle(long organizationId, long casoId);
+
+	/**
 	 * Reserva y devuelve el siguiente numero de sesion <b>dentro</b> de ese caso (regla maestra 3).
 	 *
 	 * <h2>Se llama DENTRO de la transaccion del llamador, y eso es parte del contrato</h2>

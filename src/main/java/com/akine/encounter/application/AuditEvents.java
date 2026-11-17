@@ -114,6 +114,23 @@ public final class AuditEvents {
 	 */
 	static final String TRATAMIENTO_CONSULTADO = "TRATAMIENTO_CONSULTADO";
 
+	// --- Sugerencias de evolucion (M31 fase 2) ----------------------------------------------
+
+	/** Tipo de entidad de los eventos de una sugerencia de evolucion. */
+	static final String ENTITY_SUGERENCIA_EVOLUCION = "SugerenciaEvolucion";
+
+	/**
+	 * Se pidieron sugerencias para un caso: resultado, codigos de hallazgo, cantidad guardada y
+	 * descartes por regla. Tambien con {@code resultado = ERROR} si el modelo fallo. Sin texto.
+	 */
+	static final String SUGERENCIAS_DE_EVOLUCION_GENERADAS = "SUGERENCIAS_DE_EVOLUCION_GENERADAS";
+
+	/** Alguien leyo el historial de sugerencias de un caso: es lectura clinica (DP-03). */
+	static final String SUGERENCIAS_DE_EVOLUCION_CONSULTADAS = "SUGERENCIAS_DE_EVOLUCION_CONSULTADAS";
+
+	/** Se acepto o descarto una sugerencia. El motivo del descarte no viaja: es prosa clinica. */
+	static final String SUGERENCIA_DE_EVOLUCION_RESPONDIDA = "SUGERENCIA_DE_EVOLUCION_RESPONDIDA";
+
 	private AuditEvents() {
 	}
 

@@ -2,6 +2,7 @@ package com.akine.resource.api.dto;
 
 import com.akine.resource.domain.CatalogoAlcance;
 import com.akine.resource.spi.MedicionTipo;
+import com.akine.resource.spi.SentidoDeMejora;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -85,5 +86,12 @@ public record CreateMedicionDefinicionRequest(
 				description = "Techo del rango admitido, INCLUSIVE. Solo en los tipos numericos",
 				example = "160",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-		BigDecimal maximo) {
+		BigDecimal maximo,
+
+		@Schema(
+				description = "Hacia donde se mueve el valor cuando el paciente mejora. Solo en "
+						+ "NUMERICO y ESCALA. Si se omite, la medida se muestra y no se califica",
+				example = "SUBE",
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
+		SentidoDeMejora mejoraCuando) {
 }

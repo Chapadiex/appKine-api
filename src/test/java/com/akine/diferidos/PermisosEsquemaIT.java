@@ -249,6 +249,8 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						"reporte:read",
 						// M30: la biblioteca de libros, solo ORG_ADMIN.
 						"biblioteca:manage", "biblioteca:consultar",
+						// Asistente de datos (D-2): la puerta, por base.
+						"asistente:use", "asistente:sql",
 						// Agenda de profesionales: horario habitual y excepciones, separados de
 						// consultorio:manage (docs/diseno/AKINE-agenda-roles.md).
 						"agenda:horario", "agenda:excepciones");
@@ -290,7 +292,11 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						// ve solo su propia actividad en los reportes.
 						"reporte:read",
 						// M30, RF-M30-012: consultar la biblioteca, por base.
-						"biblioteca:consultar");
+						"biblioteca:consultar",
+						// Asistente de datos (D-2): la puerta, por base.
+						"asistente:use",
+						// M31 fase 2: sugerencias de evolucion, solo el profesional.
+						"evolucion:sugerir");
 
 		membershipService.revoke(actorDe(tenant), tenant.organizationId(), membership, MOTIVO);
 

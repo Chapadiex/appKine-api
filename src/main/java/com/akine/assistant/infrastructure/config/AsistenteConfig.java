@@ -1,0 +1,120 @@
+package com.akine.assistant.infrastructure.config;
+
+import com.akine.assistant.application.ConsultaLibre;
+import com.akine.assistant.infrastructure.JdbcLectorDeVistas;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import com.akine.assistant.application.Interpretador;
+import com.akine.assistant.domain.AsistenteAjustes;
+import com.akine.platform.spi.modelo.ConfiguracionDeModelo;
+import com.akine.platform.spi.modelo.FabricaDeModelos;
+import com.akine.platform.spi.modelo.ModeloDeLenguaje;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ClassPathResource;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Set;
+
+/**
+ * Cableado del modulo {@code assistant}.
+ *
+ * <p>El modelo existe solo con el asistente prendido: apagado no hay bean de
+ * {@link ModeloDeLenguaje} y quien lo use lo pide por {@code ObjectProvider}. El puerto es el de
+ * {@code platform.spi.modelo}, compartido con {@code knowledge}: con la biblioteca y el asistente
+ * prendidos hay dos beans del mismo tipo, y cada uno se pide por su nombre ({@link #MODELO}).
+ */
+@Configuration
+@EnableConfigurationProperties(AsistenteProperties.class)
+public class AsistenteConfig {
+
+	static final String PROMPT = "asistente/prompt-interpretador.txt";
+	static final String PROMPT_SQL = "asistente/prompt-sql.txt";
+	static final String PROMPT_SQL_CLINICO = "asistente/prompt-sql-clinico.txt";
+	static final Set<String> TIPOS_DE_MODELO = Set.of("ollama", "prueba");
+
+	/** Nombre del bean del modelo del asistente: hay otros del mismo tipo. */
+	public static final String MODELO = "modeloAsistente";
+
+	/** Lo que contesta el modelo de prueba por defecto. */
+	static final String FUERA_DE_ALCANCE = "{\"intencion\":\"FUERA_DE_ALCANCE\",\"persona\":null,"
+			+ "\"clase\":null,\"periodo\":null,\"reporte\":null}";
+
+	@Bean
+	public AsistenteAjustes asistenteAjustes(AsistenteProperties properties) {
+		exigirTipoDeModelo(properties);
+		return new AsistenteAjustes(properties.enabled(),
+				Duration.ofSeconds(properties.modelo().timeoutSegundos()), properties.sql().enabled());
+	}
+
+	/** Prendido con un tipo desconocido no habria modelo y nadie se enteraria: no arranca. */
+	static void exigirTipoDeModelo(AsistenteProperties properties) {
+		String tipo = properties.modelo().tipo();
+		if (properties.enabled() && !TIPOS_DE_MODELO.contains(tipo)) {
+			throw new IllegalStateException("akine.asistente.modelo.tipo='" + tipo
+					+ "' no es valido: tiene que ser ollama o prueba");
+		}
+	}
+
+	/**
+	 * El interpretador existe siempre; el modelo lo pide en cada llamada, asi que con el asistente
+	 * apagado no hay bean de modelo y nadie lo llama (el servicio corta antes con 409).
+	 */
+	@Bean
+	public Interpretador interpretadorDelAsistente(@Qualifier(MODELO) ObjectProvider<ModeloDeLenguaje> modelo,
+			AsistenteAjustes ajustes) {
+		return new Interpretador(modelo::getObject, leerPrompt(PROMPT), ajustes.plazo());
+	}
+
+	/** Respaldo de consultas libres. Existe siempre; el servicio lo usa solo con el interruptor prendido. */
+	@Bean
+	public ConsultaLibre consultaLibreDelAsistente(ObjectProvider<ModeloDeLenguaje> modelo, AsistenteAjustes ajustes,
+			AsistenteProperties properties, JdbcTemplate jdbc, PlatformTransactionManager transacciones) {
+		AsistenteProperties.Sql sql = properties.sql();
+		return new ConsultaLibre(modelo::getObject, new JdbcLectorDeVistas(jdbc, transacciones, sql.tiempoMaximoMs()),
+				leerPrompt(PROMPT_SQL), leerPrompt(PROMPT_SQL_CLINICO), ajustes.plazo(), sql.limiteFilas());
+	}
+
+	/**
+	 * El mismo archivo que mide {@code docs/asistente/evaluacion/evaluar.mjs}: lo que corre es lo que
+	 * se midio. Si falta, la aplicacion no arranca.
+	 */
+	static String leerPrompt(String ruta) {
+		try (InputStream entrada = new ClassPathResource(ruta).getInputStream()) {
+			return new String(entrada.readAllBytes(), StandardCharsets.UTF_8);
+		}
+		catch (IOException e) {
+			throw new UncheckedIOException("No se pudo leer el prompt del interpretador: " + ruta, e);
+		}
+	}
+
+	/**
+	 * El modelo del asistente, solo con el asistente prendido. Con {@code ollama} va con cupo
+	 * ({@code akine.asistente.modelo.concurrencia}, al menos 1); el de prueba, sin cupo y contestando
+	 * {@code FUERA_DE_ALCANCE} hasta que un test le pida otra cosa.
+	 */
+	@Bean(MODELO)
+	@ConditionalOnExpression("${akine.asistente.enabled:false}"
+			+ " and ('${akine.asistente.modelo.tipo:ollama}' == 'ollama'"
+			+ " or '${akine.asistente.modelo.tipo:ollama}' == 'prueba')")
+	public ModeloDeLenguaje modeloAsistente(FabricaDeModelos fabrica, AsistenteProperties properties) {
+		return fabrica.crear(configuracionDelModelo(properties.modelo()));
+	}
+
+	static ConfiguracionDeModelo configuracionDelModelo(AsistenteProperties.Modelo modelo) {
+		boolean ollama = ConfiguracionDeModelo.OLLAMA.equals(modelo.tipo());
+		if (ollama && modelo.concurrencia() < 1) {
+			throw new IllegalArgumentException("La concurrencia del modelo tiene que ser al menos 1");
+		}
+		return new ConfiguracionDeModelo(modelo.tipo(), modelo.url(), modelo.nombre(), modelo.keepAlive(),
+				ollama ? modelo.concurrencia() : 0, FUERA_DE_ALCANCE);
+	}
+}

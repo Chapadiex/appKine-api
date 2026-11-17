@@ -1,0 +1,18 @@
+Vistas clínicas (historia clínica; usalas solo si la pregunta es sobre diagnósticos, motivos, tratamientos aplicados, mediciones, antecedentes o planes):
+clinico_casos(caso_id, persona_id, numero_caso, servicio_id, diagnostico, objetivo, estado, abierto_en, cerrado_en, motivo_cierre)
+  -- la afección o diagnóstico del paciente es "diagnostico" (texto libre): buscá con lower(diagnostico) LIKE lower('%lumbalgia%'). estado: ACTIVO o CERRADO.
+clinico_sesiones(sesion_id, persona_id, caso_id, turno_id, servicio_id, profesional_id, estado, numero_sesion, numero_en_caso, fecha, motivo, dolor_eva, dolor_zona, dolor_lateralidad, evolucion, objetivo_sesion, limitacion_funcional, respuesta_tratamiento, tolerancia, indicaciones, proxima_conducta, nota_de_cierre)
+  -- dolor_eva 0-10. evolucion: MEJOR, IGUAL, PEOR, SIN_REFERENCIA. tolerancia: BUENA, REGULAR, MALA. proxima_conducta: CONTINUA, ALTA, DERIVA, REEVALUA.
+clinico_tratamientos(tratamiento_id, sesion_id, persona_id, profesional_id, fecha, practica_id, practica_codigo, practica, tecnica, zona, lateralidad, duracion_minutos, espacio, observacion, registrado_en)
+  -- lo aplicado en cada sesión (aparatos y técnicas: magnetoterapia, ultrasonido, TENS...): buscá con lower(practica) LIKE lower('%magneto%') OR lower(tecnica) LIKE lower('%magneto%').
+clinico_tratamiento_parametros(parametro_id, tratamiento_id, parametro, tipo_dato, valor_numerico, valor_texto, valor_booleano, unidad, orden)
+clinico_mediciones(medicion_id, sesion_id, persona_id, fecha, definicion_id, codigo, medicion, tipo, unidad, mejora_cuando, lateralidad, valor_numerico, valor_texto, valor_booleano, nota, registrada_en)
+clinico_antecedentes(antecedente_id, persona_id, tipo, descripcion, registrado_en)
+  -- tipo: MEDICO, QUIRURGICO, ALERGIA, MEDICACION, FAMILIAR, HABITO, OTRO.
+clinico_planes(plan_id, caso_id, persona_id, numero_plan, estado, version_vigente, objetivos, indicaciones, frecuencia_semanal, duracion_semanas, items, sesiones_planificadas, creado_en, activado_en, suspendido_en, motivo_suspension, finalizado_en, motivo_finalizacion)
+  -- estado: BORRADOR, ACTIVO, SUSPENDIDO, FINALIZADO.
+clinico_derivaciones(derivacion_id, persona_id, caso_id, plan_id, servicio_id, origen, estado, motivo, derivada_en, revertida_en, motivo_reversion)
+
+Ejemplo clínico:
+Pregunta: ¿a quién se le aplicó magnetoterapia esta semana?
+{"sql": "SELECT DISTINCT p.apellido, p.nombre, t.fecha FROM clinico_tratamientos t JOIN personas p ON p.persona_id = t.persona_id WHERE (lower(t.practica) LIKE lower('%magneto%') OR lower(t.tecnica) LIKE lower('%magneto%')) AND date_trunc('week', t.fecha) = date_trunc('week', CURRENT_DATE) ORDER BY t.fecha LIMIT 50"}

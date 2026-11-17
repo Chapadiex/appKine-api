@@ -1,6 +1,8 @@
 package com.akine.encounter.api.dto;
 
+import com.akine.encounter.application.SugerenciasView;
 import com.akine.encounter.domain.Asistencia;
+import com.akine.encounter.domain.SugerenciaEvolucion;
 import com.akine.encounter.domain.EstadoSesion;
 import com.akine.encounter.domain.Evolucion;
 import com.akine.encounter.domain.Lateralidad;
@@ -9,6 +11,8 @@ import com.akine.resource.spi.MedicionTipo;
 import com.akine.encounter.domain.ModoSesion;
 import com.akine.encounter.domain.ProximaConducta;
 import com.akine.encounter.domain.Tolerancia;
+import com.akine.encounter.domain.evolucion.CodigoDeHallazgo;
+import com.akine.encounter.domain.evolucion.Hallazgo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,6 +47,11 @@ class AllowableValuesDelDominioTest {
 	/** Campos que viajan como {@code String} y el enum de dominio que los origina. */
 	private static final Map<String, Class<? extends Enum<?>>> ENUM_DE_CADA_CAMPO_TEXTO = Map.ofEntries(
 			Map.entry("SesionResponse.estado", EstadoSesion.class),
+			Map.entry("SugerenciaDeEvolucionGeneracionResponse.resultado", SugerenciasView.Resultado.class),
+			Map.entry("SugerenciaDeEvolucionResponse.respuesta", SugerenciaEvolucion.Respuesta.class),
+			Map.entry("SugerenciaDeEvolucionRespuestaRequest.respuesta", SugerenciaEvolucion.Respuesta.class),
+			Map.entry("EvolucionDelCasoHallazgoResponse.codigo", CodigoDeHallazgo.class),
+			Map.entry("EvolucionDelCasoHallazgoResponse.severidad", Hallazgo.Severidad.class),
 			Map.entry("CierreResponse.asistencia", Asistencia.class),
 			Map.entry("CierreResponse.tolerancia", Tolerancia.class),
 			Map.entry("CierreResponse.proximaConducta", ProximaConducta.class),
@@ -57,6 +66,13 @@ class AllowableValuesDelDominioTest {
 			Map.entry("TratamientoEnVersionResponse.lateralidad", Lateralidad.class),
 			Map.entry("MedicionEnVersionResponse.tipo", MedicionTipo.class),
 			Map.entry("MedicionEnVersionResponse.lateralidad", LateralidadMedicion.class));
+
+	/**
+	 * Campos de entrada que aceptan a proposito solo una parte del enum: publican un subconjunto, en el
+	 * orden del enum, y cada valor tiene que existir en el dominio. Responder una sugerencia no puede
+	 * volverla {@code PENDIENTE}.
+	 */
+	private static final Set<String> SUBCONJUNTOS = Set.of("SugerenciaDeEvolucionRespuestaRequest.respuesta");
 
 	@Test
 	@DisplayName("Los allowableValues de encounter coinciden exactamente con su enum de dominio")
@@ -86,6 +102,9 @@ class AllowableValuesDelDominioTest {
 						.map(valor -> ((Enum<?>) valor).name())
 						.toList();
 				List<String> publicados = List.of(schema.allowableValues());
+				if (SUBCONJUNTOS.contains(clave)) {
+					esperados = esperados.stream().filter(publicados::contains).toList();
+				}
 				if (!publicados.equals(esperados)) {
 					errores.add(clave + " publica " + publicados + " y " + enumDelCampo.getSimpleName()
 							+ " tiene " + esperados);

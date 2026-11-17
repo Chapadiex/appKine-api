@@ -1,6 +1,7 @@
 package com.akine.resource.domain;
 
 import com.akine.resource.spi.MedicionTipo;
+import com.akine.resource.spi.SentidoDeMejora;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -116,6 +117,10 @@ public class MedicionDefinicion extends MarcaTemporal {
 	@Column(name = "maximo", precision = 10, scale = 3)
 	private BigDecimal maximo;
 
+	@Enumerated(EnumType.STRING)
+	@Column(name = "mejora_cuando", length = 8)
+	private SentidoDeMejora mejoraCuando;
+
 	@Column(name = "active", nullable = false)
 	private boolean active = true;
 
@@ -222,6 +227,18 @@ public class MedicionDefinicion extends MarcaTemporal {
 	}
 
 	/**
+	 * Declara o quita el sentido de mejora (RF-M31-003). Solo los tipos numericos lo admiten:
+	 * "mejora cuando sube" sobre un texto o un booleano no significa nada.
+	 */
+	public void declararSentidoDeMejora(SentidoDeMejora sentido) {
+		if (sentido != null && !tipo.esNumerico()) {
+			throw new IllegalArgumentException(
+					"Una medida " + tipo + " no lleva sentido de mejora");
+		}
+		this.mejoraCuando = sentido;
+	}
+
+	/**
 	 * Baja logica con motivo declarado (RN-M06-001).
 	 *
 	 * <p>No borra nada y <b>no cascadea</b>: las mediciones existentes siguen legibles y
@@ -315,6 +332,10 @@ public class MedicionDefinicion extends MarcaTemporal {
 
 	public BigDecimal getMaximo() {
 		return maximo;
+	}
+
+	public SentidoDeMejora getMejoraCuando() {
+		return mejoraCuando;
 	}
 
 	public boolean isActive() {

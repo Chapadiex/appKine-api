@@ -5,6 +5,8 @@ import com.akine.scheduling.domain.Turno;
 import com.akine.scheduling.domain.port.SchedulingRepositoryPorts.TurnoRepositoryPort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
@@ -226,6 +228,21 @@ public interface TurnoRepository extends JpaRepository<Turno, Long>, TurnoReposi
 	List<Turno> findDeLosPlanes(
 			@Param("organizationId") long organizationId,
 			@Param("planIds") Collection<Long> planIds);
+
+	/**
+	 * Los turnos de un caso, <b>con</b> los cancelados (M31): cancelar sella {@code deleted_at} y
+	 * filtrarlo borraria justo lo que mide la adherencia.
+	 */
+	@QueryHints(@QueryHint(name = org.hibernate.jpa.HibernateHints.HINT_READ_ONLY, value = "true"))
+	@Query("""
+			SELECT t FROM Turno t
+			 WHERE t.organizationId = :organizationId
+			   AND t.casoId = :casoId
+			 ORDER BY t.inicio ASC, t.id ASC
+			""")
+	List<Turno> findDelCasoConCancelados(
+			@Param("organizationId") long organizationId,
+			@Param("casoId") long casoId);
 
 	@Override
 	default List<Turno> findDeLaPersonaEnSede(
