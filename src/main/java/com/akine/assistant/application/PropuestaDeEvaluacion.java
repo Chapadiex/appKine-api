@@ -22,4 +22,9 @@ public record PropuestaDeEvaluacion(
 
 	static final PropuestaDeEvaluacion VACIA =
 			new PropuestaDeEvaluacion(null, null, null, null, null, null, null, null);
+
+	PropuestaDeEvaluacion conRestante(String nuevo) {
+		return new PropuestaDeEvaluacion(dolorEva, dolorZona, dolorLateralidad, evolucion, objetivoSesion,
+				motivoClinico, limitacionFuncional, nuevo);
+	}
 }

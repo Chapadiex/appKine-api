@@ -76,6 +76,17 @@ del navegador porque mandan la voz, que en la historia clínica es dato de salud
   `WHISPER__TTL=-1` (y `WHISPER__COMPUTE_TYPE=int8`); el despliegue tiene que hacer lo mismo.
 - **Audio que Whisper no decodifica** (speaches responde 415) es 400 `validation-error` con
   "Volvé a grabar", no 503: reintentar el mismo archivo no sirve.
+- **Las notas son una lista.** El modelo devuelve `notas: [{tema, texto}]` y el backend arma
+  `restante` como una línea por ítem, `- Tema: texto` ("- Realizó: tren delantero"). El contrato no
+  cambia: sigue siendo un texto, y la pantalla lo suma a las notas en una línea nueva.
+- **Control contra el dictado, sin modelo** (`ControlDelDictado`, 18/11/2026). qwen3:4b falla para
+  los dos lados y se midió: se saltea frases ("post operatoria de ligamento cruzado" no iba a
+  ningún campo) e inventa (copió "ganar flexion" del ejemplo del prompt, puso "NO_APLICA" en campos
+  de texto y una evolución que nadie dijo). Por eso: un campo de texto o un ítem de notas cuyas
+  palabras no salen del dictado se descarta; dolor, lado y evolución exigen que el dictado diga un
+  número, un lado o una comparación; y cada frase del dictado que no quedó en ningún lado se suma a
+  las notas como `- Dictado: …`. Una frase de más se borra con una tecla; un dato perdido o
+  inventado no se ve.
 - **Vocabulario.** Se le pasa a Whisper un `prompt` con términos frecuentes (EVA, lumbalgia,
   cervicalgia, isquiotibiales, etc.) para que los escriba bien. Es una sugerencia, no una garantía.
 - El formato de audio lo decide el navegador: Chrome graba `audio/webm;codecs=opus` y Safari

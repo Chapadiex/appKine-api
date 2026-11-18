@@ -215,7 +215,8 @@ class AsistenteIT {
 				+ "\"evolucion\":\"MUCHO_MEJOR\",\"objetivoSesion\":\"ganar flexion\",\"restante\":\"Trajo estudios.\"}");
 
 		HttpResponse<String> r = post("/api/v1/consultorios/" + centroA.consultorioId() + "/dictado/evaluaciones",
-				centroA.token(), "{\"texto\":\"Dolor catorce en rodilla derecha, mucho mejor. Objetivo ganar flexion.\"}");
+				centroA.token(),
+				"{\"texto\":\"Dolor catorce en rodilla derecha, mucho mejor. Objetivo ganar flexion. Trajo estudios.\"}");
 
 		assertThat(r.statusCode()).as(r.body()).isEqualTo(200);
 		JsonNode p = JSON.readTree(r.body());
@@ -224,7 +225,8 @@ class AsistenteIT {
 		assertThat(p.get("dolorZona").asString()).isEqualTo("rodilla");
 		assertThat(p.get("dolorLateralidad").asString()).isEqualTo("DERECHA");
 		assertThat(p.get("objetivoSesion").asString()).isEqualTo("ganar flexion");
-		assertThat(p.get("restante").asString()).isEqualTo("Trajo estudios.");
+		// La evolucion fuera de catalogo no se pierde: la frase vuelve a las notas.
+		assertThat(p.get("restante").asString()).isEqualTo("- Trajo estudios.\n- Dictado: mucho mejor");
 	}
 
 	@Test

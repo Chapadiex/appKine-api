@@ -12,6 +12,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.text.Normalizer;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -22,7 +23,11 @@ import java.util.function.Supplier;
  *
  * <p>El modelo solo propone. Lo que no valida se descarta aca, sin error: un dolor fuera de 0 a
  * 10, una lateralidad o evolucion fuera del catalogo, un texto vacio. Lo que excede el largo de su
- * campo se corta, y el resto se suma a {@code restante} para que no se pierda.
+ * campo se corta, y el resto se suma a las notas para que no se pierda.
+ *
+ * <p>Las notas ({@code restante}) salen como una lista, una linea por item: {@code - Tema: texto}
+ * ("- Realizo: tren delantero", "- Estado: perfecto"). Al final, {@link ControlDelDictado} busca las
+ * frases del dictado que el modelo no puso en ningun lado y las suma como {@code - Dictado: ...}.
  *
  * <p>No registra el texto ni la respuesta del modelo.
  */
@@ -37,6 +42,9 @@ public class RepartidorDeEvaluacion {
 	static final int MAX_TOKENS = 1500;
 	static final int MAX_ZONA = 120;
 	static final int MAX_TEXTO_CAMPO = 500;
+	/** Un tema mas largo no es un rotulo: se descarta y queda el texto solo. */
+	static final int MAX_TEMA = 30;
+	static final String TEMA_SIN_UBICAR = "Dictado";
 	static final Set<String> LATERALIDADES = Set.of("IZQUIERDA", "DERECHA", "BILATERAL", "NO_APLICA");
 	static final Set<String> EVOLUCIONES = Set.of("MEJOR", "IGUAL", "PEOR", "SIN_REFERENCIA");
 
@@ -68,10 +76,24 @@ public class RepartidorDeEvaluacion {
 		catch (ModeloNoDisponibleException e) {
 			throw new DictadoNoDisponibleException(e);
 		}
-		return leer(crudo);
+		return leer(crudo, texto);
 	}
 
-	PropuestaDeEvaluacion leer(String crudo) {
+	PropuestaDeEvaluacion leer(String crudo, String dictado) {
+		PropuestaDeEvaluacion propuesta = interpretar(crudo, dictado);
+		List<String> perdidas = ControlDelDictado.sinUbicar(dictado, propuesta);
+		if (perdidas.isEmpty()) {
+			return propuesta;
+		}
+		List<String> items = new ArrayList<>();
+		if (propuesta.restante() != null) {
+			items.add(propuesta.restante());
+		}
+		perdidas.forEach(frase -> items.add(item(TEMA_SIN_UBICAR, frase)));
+		return propuesta.conRestante(String.join("\n", items));
+	}
+
+	private PropuestaDeEvaluacion interpretar(String crudo, String dictado) {
 		JsonNode raiz;
 		try {
 			raiz = json.readTree(crudo == null ? "" : crudo);
@@ -84,16 +106,16 @@ public class RepartidorDeEvaluacion {
 			return PropuestaDeEvaluacion.VACIA;
 		}
 		StringBuilder sobrante = new StringBuilder();
-		String zona = texto(raiz, "dolorZona", MAX_ZONA, sobrante);
-		String objetivo = texto(raiz, "objetivoSesion", MAX_TEXTO_CAMPO, sobrante);
-		String motivo = texto(raiz, "motivoClinico", MAX_TEXTO_CAMPO, sobrante);
-		String limitacion = texto(raiz, "limitacionFuncional", MAX_TEXTO_CAMPO, sobrante);
-		String restante = unir(texto(raiz, "restante", Integer.MAX_VALUE, sobrante), sobrante.toString());
+		String zona = dicho(texto(raiz, "dolorZona", MAX_ZONA, sobrante), dictado);
+		String objetivo = dicho(texto(raiz, "objetivoSesion", MAX_TEXTO_CAMPO, sobrante), dictado);
+		String motivo = dicho(texto(raiz, "motivoClinico", MAX_TEXTO_CAMPO, sobrante), dictado);
+		String limitacion = dicho(texto(raiz, "limitacionFuncional", MAX_TEXTO_CAMPO, sobrante), dictado);
+		String restante = notas(raiz, sobrante.toString(), dictado);
 		return new PropuestaDeEvaluacion(
-				dolor(raiz.get("dolorEva")),
+				ControlDelDictado.mencionaNumero(dictado) ? dolor(raiz.get("dolorEva")) : null,
 				zona,
-				catalogo(raiz, "dolorLateralidad", LATERALIDADES),
-				catalogo(raiz, "evolucion", EVOLUCIONES),
+				ControlDelDictado.mencionaLado(dictado) ? catalogo(raiz, "dolorLateralidad", LATERALIDADES) : null,
+				ControlDelDictado.mencionaEvolucion(dictado) ? catalogo(raiz, "evolucion", EVOLUCIONES) : null,
 				objetivo,
 				motivo,
 				limitacion,
@@ -164,12 +186,48 @@ public class RepartidorDeEvaluacion {
 		return corte.strip();
 	}
 
-	private static String unir(String a, String b) {
-		boolean hayA = a != null && !a.isBlank();
-		boolean hayB = b != null && !b.isBlank();
-		if (hayA && hayB) {
-			return a + " " + b;
+	/**
+	 * Las notas como lista. Acepta {@code "notas": [{"tema","texto"}]} y tambien un {@code restante}
+	 * en texto plano, por si el modelo no respeta la forma. Lo cortado de otros campos va al final.
+	 */
+	private static String notas(JsonNode raiz, String cortado, String dictado) {
+		List<String> items = new ArrayList<>();
+		JsonNode notas = raiz.get("notas");
+		if (notas != null && notas.isArray()) {
+			for (JsonNode nota : notas) {
+				String texto = nota.isString() ? nota.asString().strip() : textoDe(nota.get("texto"));
+				if (texto == null || texto.isEmpty() || !ControlDelDictado.estaDicho(texto, dictado)) {
+					continue;
+				}
+				items.add(item(nota.isObject() ? textoDe(nota.get("tema")) : null, texto));
+			}
 		}
-		return hayA ? a : (hayB ? b : null);
+		String plano = textoDe(raiz.get("restante"));
+		if (plano != null && !plano.isEmpty() && ControlDelDictado.estaDicho(plano, dictado)) {
+			items.add(item(null, plano));
+		}
+		if (!cortado.isBlank()) {
+			items.add(item(null, cortado));
+		}
+		return items.isEmpty() ? null : String.join("\n", items);
+	}
+
+	/** {@code - Tema: texto}, o {@code - texto} sin tema. El tema va con mayuscula inicial. */
+	static String item(String tema, String texto) {
+		String limpio = texto.strip();
+		String rotulo = tema == null ? "" : tema.strip().replaceAll(":+$", "").strip();
+		if (rotulo.isEmpty() || rotulo.length() > MAX_TEMA) {
+			return "- " + limpio;
+		}
+		return "- " + Character.toUpperCase(rotulo.charAt(0)) + rotulo.substring(1) + ": " + limpio;
+	}
+
+	/** El valor si sale del dictado; lo inventado (o un relleno como NO_APLICA) se descarta. */
+	private static String dicho(String valor, String dictado) {
+		return ControlDelDictado.estaDicho(valor, dictado) ? valor : null;
+	}
+
+	private static String textoDe(JsonNode nodo) {
+		return nodo != null && nodo.isString() ? nodo.asString().strip() : null;
 	}
 }
