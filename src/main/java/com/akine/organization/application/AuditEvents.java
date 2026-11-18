@@ -112,6 +112,9 @@ final class AuditEvents {
 	static final String ORGANIZATION_LOGO_UPDATED = "ORGANIZATION_LOGO_UPDATED";
 	static final String ORGANIZATION_LOGO_REMOVED = "ORGANIZATION_LOGO_REMOVED";
 
+	/** Funciones de IA que el centro decidio usar. */
+	static final String ORGANIZATION_IA_UPDATED = "ORGANIZATION_IA_UPDATED";
+
 	static final String ENTITY_ORGANIZATION = "Organization";
 	static final String ENTITY_SUBSCRIPTION = "Subscription";
 	static final String ENTITY_MEMBERSHIP = "Membership";

@@ -24,6 +24,9 @@ tags:
   name: Autorizaciones
 - description: Catalogo de ocupaciones de la ficha de ingreso
   name: Ocupaciones
+- description: Que funciones de IA usa el centro y en que estado esta el servidor
+    de modelos
+  name: Inteligencia artificial del centro
 - description: "Consulta, aceptacion y rechazo de una invitacion, con el token como\
     \ unica autoridad (M05)"
   name: Invitaciones recibidas
@@ -22195,6 +22198,211 @@ paths:
       summary: Busca una direccion para ubicar la sede
       tags:
       - Consultorios
+  /api/v1/organizations/{orgId}/ia:
+    get:
+      description: "Por cada funcion: si el servidor la ofrece, si el centro la quiere\
+        \ y si queda activa. Requiere ser miembro vigente. Un centro que nunca la\
+        \ edito responde todo lo que ofrece el servidor como activo, con version 0."
+      operationId: getFuncionesIaDeOrganizacion
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FuncionesIaResponse"
+          description: Funciones de IA
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada o falta el contexto
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o es de otro tenant"
+      summary: Funciones de IA del centro
+      tags:
+      - Inteligencia artificial del centro
+    put:
+      description: |-
+        Reemplazo completo de los cuatro interruptores. Requiere tenant:update (solo el ORG_ADMIN). Prender una funcion que el servidor no ofrece se guarda igual y queda inactiva hasta que el despliegue la tenga. Apagar EVOLUCION o BIBLIOTECA deja inactivas las SUGERENCIAS sin tocar su interruptor.
+
+        La version enviada se compara antes de mutar; si quedo vieja, 409 concurrent-modification.
+      operationId: updateFuncionesIaDeOrganizacion
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFuncionesIaRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FuncionesIaResponse"
+          description: "Funciones actualizadas, con la version nueva"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta algun interruptor o la version
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El actor no es ORG_ADMIN de la organizacion
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o es de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La version enviada quedo vieja: releer y reintentar"
+      summary: Elegir que funciones de IA usa el centro
+      tags:
+      - Inteligencia artificial del centro
+  /api/v1/organizations/{orgId}/ia/motor:
+    get:
+      description: "Si Ollama responde, que modelo usa cada funcion, si esta descargado\
+        \ y cargado, y si corre en GPU o en CPU. Siempre 200: un servidor caido viaja\
+        \ con alcanzable=false. Requiere tenant:update."
+      operationId: getEstadoDelMotorDeIa
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstadoDelMotorResponse"
+          description: Estado del motor
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El actor no es ORG_ADMIN de la organizacion
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o es de otro tenant"
+      summary: Estado del servidor de modelos
+      tags:
+      - Inteligencia artificial del centro
+  /api/v1/organizations/{orgId}/ia/motor/precarga:
+    post:
+      description: "Pide a Ollama cargar cada modelo configurado para que la primera\
+        \ pregunta no pague la carga, y devuelve el estado despues. Espera hasta 40\
+        \ s (el nginx corta a los 60); una sola carga o prueba por vez en todo el\
+        \ servidor. sigue cargando en el servidor y el estado lo muestra al volver\
+        \ a consultarlo. Requiere tenant:update."
+      operationId: precargarMotorDeIa
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstadoDelMotorResponse"
+          description: Estado del motor despues de cargar
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El actor no es ORG_ADMIN de la organizacion
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o es de otro tenant"
+      summary: Cargar los modelos en memoria
+      tags:
+      - Inteligencia artificial del centro
+  /api/v1/organizations/{orgId}/ia/motor/prueba:
+    post:
+      description: "Una pregunta minima al modelo del asistente, con el tiempo que\
+        \ tardo. Siempre 200: un fallo viaja con ok=false. No usa datos del centro.\
+        \ Requiere tenant:update."
+      operationId: probarMotorDeIa
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PruebaDelMotorResponse"
+          description: Resultado de la prueba
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El actor no es ORG_ADMIN de la organizacion
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o es de otro tenant"
+      summary: Probar el modelo
+      tags:
+      - Inteligencia artificial del centro
   /api/v1/organizations/{orgId}/marca:
     get:
       description: "Colores por tema, datos de contacto y logos cargados. Requiere\
@@ -36882,6 +37090,27 @@ components:
           format: int64
           description: Version a reenviar para editar
           example: 0
+    EstadoDelMotorResponse:
+      type: object
+      description: Servidor de modelos de lenguaje (Ollama) del despliegue
+      properties:
+        alcanzable:
+          type: boolean
+          description: Ollama respondio
+        error:
+          type: string
+          description: Motivo legible si no respondio
+        modelos:
+          type: array
+          description: "Un modelo por nombre, con las funciones que lo usan"
+          items:
+            $ref: "#/components/schemas/ModeloDelMotorResponse"
+        url:
+          type: string
+          description: Direccion del servidor; ausente si ninguna funcion usa Ollama
+      required:
+      - alcanzable
+      - modelos
     EvaluacionBase:
       type: object
       description: "Dolor, funcion y objetivo de la atencion"
@@ -38262,6 +38491,60 @@ components:
       - paginaDesde
       - paginaHasta
       - titulo
+    FuncionIaResponse:
+      type: object
+      description: Estado de una funcion de IA
+      properties:
+        activa:
+          type: boolean
+          description: "Queda disponible: despliegue y centro prendidos. SUGERENCIAS\
+            \ exige ademas EVOLUCION y BIBLIOTECA"
+        centro:
+          type: boolean
+          description: El centro la quiere usar. Para SUGERENCIAS es solo su propio
+            interruptor
+        despliegue:
+          type: boolean
+          description: El servidor la ofrece (variables de entorno del despliegue)
+        funcion:
+          type: string
+          description: Funcion
+          enum:
+          - ASISTENTE
+          - EVOLUCION
+          - SUGERENCIAS
+          - BIBLIOTECA
+          example: ASISTENTE
+      required:
+      - activa
+      - centro
+      - despliegue
+      - funcion
+    FuncionesIaResponse:
+      type: object
+      description: "Funciones de IA del centro: lo que ofrece el servidor, lo que\
+        \ eligio el centro y lo que queda activo"
+      properties:
+        funciones:
+          type: array
+          description: "Una entrada por funcion, siempre las cuatro"
+          items:
+            $ref: "#/components/schemas/FuncionIaResponse"
+        organizationId:
+          type: integer
+          format: int64
+          description: Identificador de la organizacion
+          example: 1
+        version:
+          type: integer
+          format: int64
+          description: Version para el bloqueo optimista; 0 si el centro nunca la
+            edito
+          example: 0
+      required:
+      - funciones
+      - organizationId
+      - version
     GrantPlatformRoleRequest:
       type: object
       description: Rol de plataforma a otorgar
@@ -40458,6 +40741,49 @@ components:
           type: string
           format: date-time
           description: "Momento hasta el que el vinculo es valido, o null si no vence"
+    ModeloDelMotorResponse:
+      type: object
+      description: Un modelo configurado
+      properties:
+        cargado:
+          type: boolean
+          description: "Esta en memoria, listo para responder"
+        descargado:
+          type: boolean
+          description: Ya esta bajado en el servidor
+        ejecucion:
+          type: string
+          description: "GPU, CPU o MIXTO; ausente si no esta cargado"
+          example: GPU
+        funciones:
+          type: array
+          description: Funciones que lo usan
+          example:
+          - ASISTENTE
+          - BIBLIOTECA
+          items:
+            type: string
+        memoriaGpuMb:
+          type: integer
+          format: int64
+          description: "De esa memoria, cuanta esta en la placa de video"
+          example: 4200
+        memoriaMb:
+          type: integer
+          format: int64
+          description: "Memoria que ocupa cargado, en MB"
+          example: 4200
+        nombre:
+          type: string
+          description: Nombre en Ollama
+          example: qwen3:4b-instruct
+      required:
+      - cargado
+      - descargado
+      - funciones
+      - memoriaGpuMb
+      - memoriaMb
+      - nombre
     ModificarPlanTratamientoRequest:
       type: object
       description: Cambio de contenido de un plan. Versiona o no segun el estado del
@@ -44050,6 +44376,28 @@ components:
           type: string
           description: Lo dicho que no entro en ningun campo; la pantalla ofrece llevarlo
             a las notas
+    PruebaDelMotorResponse:
+      type: object
+      description: Resultado de una pregunta minima al modelo
+      properties:
+        error:
+          type: string
+          description: Motivo legible si fallo
+        milisegundos:
+          type: integer
+          format: int64
+          description: "Cuanto tardo, incluida la carga si no estaba en memoria"
+          example: 850
+        modelo:
+          type: string
+          description: Modelo probado
+          example: qwen3:4b-instruct
+        ok:
+          type: boolean
+          description: El modelo contesto
+      required:
+      - milisegundos
+      - ok
     PuntoDeSerieDeReporte:
       type: object
       description: "Una barra: los dias `desde`..`hasta` inclusive y su valor. Cero\
@@ -49018,6 +49366,39 @@ components:
           - OTRO
       required:
       - expectedVersion
+    UpdateFuncionesIaRequest:
+      type: object
+      description: "Que funciones de IA quiere usar el centro. Reemplazo completo,\
+        \ con la version leida"
+      properties:
+        asistente:
+          type: boolean
+          description: Asistente de datos
+          example: true
+        biblioteca:
+          type: boolean
+          description: Biblioteca del centro y su consulta
+          example: true
+        evolucion:
+          type: boolean
+          description: Alertas e indicadores de evolucion del caso
+          example: true
+        sugerencias:
+          type: boolean
+          description: Sugerencias de revision con citas de la biblioteca
+          example: true
+        version:
+          type: integer
+          format: int64
+          description: Version leida
+          example: 0
+          minimum: 0
+      required:
+      - asistente
+      - biblioteca
+      - evolucion
+      - sugerencias
+      - version
     UpdateMarcaRequest:
       type: object
       description: "Marca completa de la organizacion, con la version para bloqueo\

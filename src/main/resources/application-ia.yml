@@ -1,0 +1,29 @@
+# Perfil `ia`: prende las funciones de IA contra el Ollama del compose.yaml. Se suma a `local`:
+#
+#   ./mvnw spring-boot:run -Dspring-boot.run.profiles=local,ia
+#
+# Es lo que hace ops/levantar.ps1, que ademas levanta Ollama con la GPU si la hay y precarga el
+# modelo. No va en application-local.yml a proposito: 150 tests de integracion corren con `local`
+# y esperan la IA apagada (en el CI no hay Ollama ni el modelo ONNX).
+#
+# Cada centro puede apagar cualquiera en Organizacion -> Inteligencia artificial. Para apagar una en
+# esta maquina sin tocar el archivo: AKINE_ASISTENTE_ENABLED=false, etc.
+
+akine:
+  asistente:
+    enabled: ${AKINE_ASISTENTE_ENABLED:true}
+  evolucion:
+    enabled: ${AKINE_EVOLUCION_ENABLED:true}
+    sugerencias:
+      enabled: ${AKINE_EVOLUCION_SUGERENCIAS_ENABLED:true}
+      modelo:
+        tipo: ${AKINE_EVOLUCION_SUGERENCIAS_MODELO_TIPO:ollama}
+  biblioteca:
+    enabled: ${AKINE_BIBLIOTECA_ENABLED:true}
+    # El modelo de embeddings ONNX vive en la carpeta modelos/ del workspace AKINE, al lado de
+    # appKine-api y de los worktrees wt-*. La ruta es relativa al directorio desde el que se arranca.
+    modelo:
+      ruta-modelo: ${AKINE_BIBLIOTECA_MODELO_RUTAMODELO:../modelos/e5-base/model.onnx}
+      ruta-tokenizer: ${AKINE_BIBLIOTECA_MODELO_RUTATOKENIZER:../modelos/e5-base/tokenizer.json}
+    consulta:
+      enabled: ${AKINE_BIBLIOTECA_CONSULTA_ENABLED:true}
