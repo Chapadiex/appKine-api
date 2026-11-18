@@ -4,6 +4,7 @@ import com.akine.clinical.domain.AntecedenteClinico;
 import com.akine.clinical.domain.TipoAntecedente;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.AntecedenteClinicoRepositoryPort;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -67,4 +68,56 @@ public interface AntecedenteClinicoRepository
 			@Param("historiaClinicaId") Long historiaClinicaId,
 			@Param("hasta") Instant hasta,
 			@Param("limite") int limite);
+
+	// DP-47. UPDATE nativo que mueve version (regla de los UPDATE nativos). Limpia el contexto:
+	// quien revisa relee la fila para devolver la version nueva.
+	@Override
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query(value = """
+			UPDATE historia_clinica_antecedente
+			   SET revisado_por = :revisadoPor, revisado_en = :revisadoEn, version = version + 1
+			 WHERE organization_id = :organizationId AND id = :id
+			   AND origen = 'DECLARADO' AND revisado_en IS NULL
+			""", nativeQuery = true)
+	int marcarRevisado(
+			@Param("organizationId") long organizationId,
+			@Param("id") long id,
+			@Param("revisadoPor") long revisadoPor,
+			@Param("revisadoEn") Instant revisadoEn);
+
+	@Override
+	@Query("""
+			SELECT a FROM AntecedenteClinico a
+			 WHERE a.organizationId = :organizationId
+			   AND a.historiaClinicaId = :historiaClinicaId
+			   AND a.origen = com.akine.clinical.domain.OrigenDato.DECLARADO
+			   AND a.active = true
+			 ORDER BY a.registradoEn DESC, a.id DESC
+			""")
+	List<AntecedenteClinico> buscarDeclaradosVigentes(
+			@Param("organizationId") long organizationId,
+			@Param("historiaClinicaId") long historiaClinicaId);
+
+	@Override
+	@Query(value = """
+			SELECT COUNT(*) FROM historia_clinica_antecedente
+			 WHERE organization_id = :organizationId AND historia_clinica_id = :historiaClinicaId
+			   AND origen = 'DECLARADO' AND revisado_en IS NULL AND active
+			""", nativeQuery = true)
+	long contarDeclaradosSinRevisar(
+			@Param("organizationId") long organizationId,
+			@Param("historiaClinicaId") long historiaClinicaId);
+
+	@Override
+	@Query("""
+			SELECT a FROM AntecedenteClinico a
+			 WHERE a.organizationId = :organizationId
+			   AND a.historiaClinicaId = :historiaClinicaId
+			   AND a.codigo = :codigo
+			   AND a.active = true
+			""")
+	Optional<AntecedenteClinico> buscarVigentePorCodigo(
+			@Param("organizationId") Long organizationId,
+			@Param("historiaClinicaId") Long historiaClinicaId,
+			@Param("codigo") com.akine.clinical.domain.EnfermedadDeIngreso codigo);
 }

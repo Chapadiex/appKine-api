@@ -520,6 +520,45 @@ public class AdjuntoClinicoController {
 	// Traduccion de la parte multipart
 	// =================================================================================
 
+	@org.springframework.web.bind.annotation.PutMapping(path = POR_ADJUNTO + "/revision",
+			produces = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "revisarAdjunto",
+			summary = "Marcar revisado un archivo declarado por el paciente",
+			description = """
+					DP-47. El profesional valida lo que trajo el paciente. Idempotente: revisar uno \
+					ya revisado devuelve como esta. Un adjunto que no es DECLARADO es 409 \
+					dato-no-declarado; uno dado de baja, 409 adjunto-clinico-inactivo. Exige \
+					hc:write y se audita como DATO_DECLARADO_REVISADO.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Adjunto revisado",
+					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = AdjuntoClinicoResponse.class))),
+			@ApiResponse(responseCode = "403", description = "Sin contexto, sin hc:write o sin motivo",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = "La historia o el adjunto no son accesibles",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409", description = "El adjunto no es declarado o esta dado de baja",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public AdjuntoClinicoResponse revisar(
+
+			@Parameter(description = HISTORIA_DOC, example = "88")
+			@PathVariable long historiaClinicaId,
+
+			@Parameter(description = "Adjunto declarado", example = "17")
+			@PathVariable long adjuntoId,
+
+			@Parameter(description = AccesoClinicoHeaders.JUSTIFICACION_DOC)
+			@RequestHeader(name = AccesoClinicoHeaders.JUSTIFICACION, required = false)
+			String justificacion) {
+
+		return AdjuntoClinicoResponse.from(adjuntoService.revisar(
+				apiActor.current(), historiaClinicaId, adjuntoId, justificacion));
+	}
+
 	/**
 	 * El nombre original del archivo, saneado.
 	 *
@@ -528,7 +567,7 @@ public class AdjuntoClinicoController {
 	 * un nombre con saltos de linea o comillas rompa la cabecera {@code Content-Disposition} de
 	 * la descarga.
 	 */
-	private static String nombreDe(MultipartFile archivo) {
+	static String nombreDe(MultipartFile archivo) {
 		String original = archivo.getOriginalFilename();
 		if (original == null || original.isBlank()) {
 			return "adjunto";
@@ -553,7 +592,7 @@ public class AdjuntoClinicoController {
 	 * negocio: se propaga como {@link UncheckedIOException} y termina en el 500 generico del
 	 * handler global, sin exponer nada.
 	 */
-	private static byte[] bytesDe(MultipartFile archivo) {
+	static byte[] bytesDe(MultipartFile archivo) {
 		try {
 			return archivo.getBytes();
 		} catch (IOException falla) {

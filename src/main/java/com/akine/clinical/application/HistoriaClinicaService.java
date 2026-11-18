@@ -4,6 +4,8 @@ import com.akine.clinical.domain.HistoriaClinica;
 import com.akine.clinical.domain.PermissionCodes;
 import com.akine.clinical.domain.exception.HistoriaClinicaNotAccessibleException;
 import com.akine.clinical.domain.exception.PacienteSinPerfilVigenteException;
+import com.akine.clinical.domain.port.ClinicalRepositoryPorts.AdjuntoClinicoRepositoryPort;
+import com.akine.clinical.domain.port.ClinicalRepositoryPorts.FichaDeIngresoRepositoryPort;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.AntecedenteClinicoRepositoryPort;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.HistoriaClinicaRepositoryPort;
 import com.akine.clinical.spi.EventoClinico;
@@ -71,6 +73,9 @@ public class HistoriaClinicaService {
 	private final List<EventoClinicoContributor> contribuyentes;
 	private final AuditTrail auditTrail;
 	private final ClinicalSupportAccessAuditor supportAccessAuditor;
+	private final AdjuntoClinicoRepositoryPort adjuntos;
+	private final FichaDeIngresoRepositoryPort fichas;
+	private final NombresDeAutores nombres;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public HistoriaClinicaService(
@@ -81,7 +86,13 @@ public class HistoriaClinicaService {
 			RelacionAsistencialProbe relaciones,
 			List<EventoClinicoContributor> contribuyentes,
 			AuditTrail auditTrail,
-			ClinicalSupportAccessAuditor supportAccessAuditor) {
+			ClinicalSupportAccessAuditor supportAccessAuditor,
+			AdjuntoClinicoRepositoryPort adjuntos,
+			FichaDeIngresoRepositoryPort fichas,
+			NombresDeAutores nombres) {
+		this.adjuntos = adjuntos;
+		this.fichas = fichas;
+		this.nombres = nombres;
 
 		this.historias = historias;
 		this.antecedentes = antecedentes;
@@ -340,9 +351,14 @@ public class HistoriaClinicaService {
 				.stream()
 				.map(AntecedenteView::de)
 				.toList();
+		// DP-47: el aviso del profesional cuenta lo declarado sin revisar de las dos fuentes.
+		long sinRevisar = antecedentes.contarDeclaradosSinRevisar(historia.getOrganizationId(), historia.getId())
+				+ adjuntos.contarDeclaradosSinRevisar(historia.getOrganizationId(), historia.getId())
+				+ fichas.buscarPorHistoria(historia.getOrganizationId(), historia.getId())
+						.filter(com.akine.clinical.domain.FichaDeIngreso::estaDeclaradaSinRevisar).map(f -> 1L).orElse(0L);
 
-		return HistoriaClinicaView.de(
-				historia, paciente, vigentes, timelineDe(historia), acceso.conRelacionAsistencial());
+		return HistoriaClinicaView.de(historia, paciente, nombres.antecedentes(vigentes), timelineDe(historia),
+				acceso.conRelacionAsistencial(), sinRevisar);
 	}
 
 	/**

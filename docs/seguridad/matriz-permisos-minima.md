@@ -107,6 +107,7 @@ Códigos `<dominio>:<acción>`. Estable, en minúsculas, sin significado de UI. 
 | `paciente:manage` | Gestionar paciente | F3 |
 | `paciente:read` | Ver el padrón y los datos administrativos de las personas (DP-22, §15) | F3 (DU-6) |
 | `hc:read` / `hc:write` | Ver / Editar Historia Clínica. `hc:read` cubre además ver la evolución del caso (M31) | F4 |
+| `hc:declarar` | Declarar datos del paciente en la HC, sin leerla. Base: `ADMINISTRATIVO`, `PROFESIONAL`, `CONSULTORIO_ADMIN` y `ORG_ADMIN` (sin `hc:read`); no otorgable a `PACIENTE`. Revisar lo declarado exige `hc:write` (DP-47) | Datos declarados |
 | ~~`caso:create`~~ | ~~Crear Caso Clínico~~ — **absorbido en `hc:write`** (U-04, §18.3) | F4 |
 | `sesion:register` | Registrar Sesión | F6 |
 | `sesion:amend` | Enmendar una sesión cerrada, dentro de la ventana de la organización (U-25, DP-43). Mismo reparto que Registrar Sesión: base del `PROFESIONAL` en su sede; no otorgable | F6 |

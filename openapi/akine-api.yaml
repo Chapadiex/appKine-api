@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.174.0
+  version: 0.175.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -22,6 +22,8 @@ tags:
 - description: Autorizaciones de financiador para un paciente (M17). Registran y habilitan;
     el consumo clinico es una integracion posterior
   name: Autorizaciones
+- description: Catalogo de ocupaciones de la ficha de ingreso
+  name: Ocupaciones
 - description: "Consulta, aceptacion y rechazo de una invitacion, con el token como\
     \ unica autoridad (M05)"
   name: Invitaciones recibidas
@@ -56,6 +58,8 @@ tags:
   name: Lista de espera
 - description: "Tableros operativos, clinicos y economicos del MVP (M23)"
   name: Reportes
+- description: "Lo que el paciente cuenta o trae, sin revisar (DP-47)"
+  name: Datos declarados
 - description: Turnos recurrentes con identidad propia y operaciones con alcance (DP-04)
   name: Series de turnos
 - description: Alta self-service y habilitacion de la cuenta
@@ -17778,6 +17782,68 @@ paths:
       summary: Dar de baja un antecedente clinico
       tags:
       - Historia clinica
+  /api/v1/historias-clinicas/por-persona/{personaId}/antecedentes/{antecedenteId}/revision:
+    put:
+      description: "DP-47. El profesional valida lo que declaro el paciente. Idempotente:\
+        \ revisar uno ya revisado devuelve como esta. Un antecedente que no es DECLARADO\
+        \ es 409 dato-no-declarado. Exige hc:write y se audita como DATO_DECLARADO_REVISADO."
+      operationId: revisarAntecedente
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Antecedente declarado
+        example: 41
+        in: path
+        name: antecedenteId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AntecedenteResponse"
+          description: Antecedente revisado
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:write o sin motivo"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona no tiene historia o el antecedente no es de ella
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El antecedente no es declarado
+      summary: Marcar revisado un antecedente declarado por el paciente
+      tags:
+      - Historia clinica
   /api/v1/historias-clinicas/por-persona/{personaId}/datos-administrativos:
     get:
       description: |-
@@ -17814,6 +17880,170 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: La persona es de otra organizacion o no es paciente
       summary: Ver los datos administrativos de la Historia Clinica de una persona
+      tags:
+      - Historia clinica
+  /api/v1/historias-clinicas/por-persona/{personaId}/ficha:
+    get:
+      description: 204 si todavia no se cargo. Exige hc:read mas relacion asistencial
+        o motivo.
+      operationId: verFichaDeIngreso
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FichaDeIngresoResponse"
+          description: La ficha
+        "204":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FichaDeIngresoResponse"
+          description: Sin ficha todavia
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:read o sin motivo"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona es de otra organizacion
+      summary: Ver la ficha de ingreso
+      tags:
+      - Historia clinica
+    put:
+      description: Reemplaza la ficha entera y exige la version leida (null si no
+        existe); otra version es 409 concurrent-modification. Queda revisada por quien
+        la guarda. La persona tiene que tener historia. Exige hc:write.
+      operationId: registrarFichaDeIngreso
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FichaDeIngresoRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FichaDeIngresoResponse"
+          description: Ficha guardada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Valores fuera de rango u ocupacion inexistente
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:write o sin motivo"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona no tiene historia o es de otra organizacion
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Version vieja
+      summary: Guardar la ficha de ingreso (profesional)
+      tags:
+      - Historia clinica
+  /api/v1/historias-clinicas/por-persona/{personaId}/ficha/revision:
+    put:
+      description: "Idempotente: una ya revisada se devuelve como esta. Exige hc:write."
+      operationId: revisarFichaDeIngreso
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FichaDeIngresoResponse"
+          description: Ficha revisada
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:write o sin motivo"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin historia o sin ficha
+      summary: Marcar revisada la ficha de ingreso
       tags:
       - Historia clinica
   /api/v1/historias-clinicas/por-persona/{personaId}/resumen:
@@ -18342,6 +18572,71 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: El almacenamiento no tiene el contenido
       summary: Descargar el contenido de un documento clinico
+      tags:
+      - Adjuntos clinicos
+  /api/v1/historias-clinicas/{historiaClinicaId}/adjuntos/{adjuntoId}/revision:
+    put:
+      description: "DP-47. El profesional valida lo que trajo el paciente. Idempotente:\
+        \ revisar uno ya revisado devuelve como esta. Un adjunto que no es DECLARADO\
+        \ es 409 dato-no-declarado; uno dado de baja, 409 adjunto-clinico-inactivo.\
+        \ Exige hc:write y se audita como DATO_DECLARADO_REVISADO."
+      operationId: revisarAdjunto
+      parameters:
+      - description: "Historia clinica de la que cuelga el adjunto. OBLIGATORIA: es\
+          \ la ficha cuya autorizacion clinica se evalua (RN-M25-003), no un dato\
+          \ de navegacion. Un adjunto pedido con la historia equivocada responde 404"
+        example: 88
+        in: path
+        name: historiaClinicaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Adjunto declarado
+        example: 17
+        in: path
+        name: adjuntoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdjuntoClinicoResponse"
+          description: Adjunto revisado
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:write o sin motivo"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La historia o el adjunto no son accesibles
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El adjunto no es declarado o esta dado de baja
+      summary: Marcar revisado un archivo declarado por el paciente
       tags:
       - Adjuntos clinicos
   /api/v1/historias-clinicas/{historiaClinicaId}/casos:
@@ -19191,6 +19486,67 @@ paths:
       summary: Vincular una cuenta existente con la organizacion
       tags:
       - Colaboradores
+  /api/v1/ocupaciones:
+    get:
+      description: "Las del producto y las que agrego el centro, por nombre. Alcanza\
+        \ con el contexto."
+      operationId: listarOcupaciones
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OcupacionResponse"
+          description: Ocupaciones visibles
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto
+      summary: Listar ocupaciones
+      tags:
+      - Ocupaciones
+    post:
+      description: "201 si se creo. Si ya existe con el mismo nombre (sin importar\
+        \ mayusculas, tildes ni espacios), 200 con la existente. Exige hc:declarar."
+      operationId: agregarOcupacion
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AltaDeOcupacionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OcupacionResponse"
+          description: Ya existia
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OcupacionResponse"
+          description: Ocupacion creada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Nombre vacio o largo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto o sin hc:declarar
+      summary: Agregar una ocupacion del centro
+      tags:
+      - Ocupaciones
   /api/v1/organizations:
     post:
       description: |-
@@ -23078,6 +23434,17 @@ paths:
           - CON_ACTIVIDAD
           - SIN_ACTIVIDAD
           - TODOS
+      - description: Filtro por historia clinica vigente en la organizacion. Por defecto
+          indistinto
+        in: query
+        name: historia
+        required: false
+        schema:
+          type: string
+          enum:
+          - CON_HISTORIA
+          - SIN_HISTORIA
+          - TODOS
       - description: "Pagina, base cero"
         in: query
         name: page
@@ -24766,6 +25133,430 @@ paths:
       summary: Elegir o quitar la cobertura principal del paciente
       tags:
       - Coberturas del paciente
+  /api/v1/personas/{personaId}/datos-declarados:
+    get:
+      description: "Antecedentes y archivos DECLARADO vigentes, con su estado de revision.\
+        \ Nada de lo que cargo un profesional. Sin historia: listas vacias e historiaClinicaId\
+        \ null. Exige hc:declarar mas motivo declarado; la lectura se audita."
+      operationId: verDatosDeclarados
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatosDeclaradosResponse"
+          description: Lo declarado
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:declarar o sin motivo"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona es de otra organizacion
+      summary: Ver los datos declarados de una persona
+      tags:
+      - Datos declarados
+  /api/v1/personas/{personaId}/datos-declarados/adjuntos:
+    post:
+      description: "Mismas reglas de archivo que subirAdjuntoClinico (tipo por bytes,\
+        \ tope de tamano). Categorias: ESTUDIO, INFORME, IMAGEN u OTRO; las demas\
+        \ son 400. Idempotente: el mismo archivo ya declarado devuelve 200 con el\
+        \ existente. Si el mismo archivo ya lo cargo un profesional, 409 adjunto-ya-en-historia,\
+        \ sin datos del existente. Abre la historia si falta. Exige hc:declarar."
+      operationId: declararAdjunto
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "ESTUDIO, INFORME, IMAGEN u OTRO"
+        in: query
+        name: categoria
+        required: true
+        schema:
+          type: string
+          enum:
+          - ESTUDIO
+          - INFORME
+          - IMAGEN
+          - CONSENTIMIENTO_CLINICO
+          - EVOLUCION_ESCANEADA
+          - OTRO
+      - description: "Titulo. Opcional, hasta 160 caracteres"
+        in: query
+        name: titulo
+        required: false
+        schema:
+          type: string
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                archivo:
+                  type: string
+                  format: binary
+                  description: El archivo
+              required:
+              - archivo
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdjuntoClinicoResponse"
+          description: "Ya estaba declarado: se devuelve el existente"
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdjuntoClinicoResponse"
+          description: Archivo declarado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Categoria no declarable, tipo no permitido o archivo demasiado\
+            \ grande"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:declarar o sin motivo"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona es de otra organizacion
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin perfil de paciente vigente, o el archivo ya esta en la\
+            \ historia"
+      summary: Declarar un archivo que trae el paciente
+      tags:
+      - Datos declarados
+  /api/v1/personas/{personaId}/datos-declarados/adjuntos/{adjuntoId}/contenido:
+    get:
+      description: "Los bytes de un archivo DECLARADO, revisado o no, para que quien\
+        \ lo cargo confirme que subio el correcto. Uno del profesional responde 404,\
+        \ igual que uno inexistente. Mismas cabeceras que descargarAdjuntoClinico\
+        \ (attachment, nosniff). Exige hc:declarar y se audita como ADJUNTO_CLINICO_DOWNLOADED."
+      operationId: verContenidoDeAdjuntoDeclarado
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Archivo declarado
+        example: 17
+        in: path
+        name: adjuntoId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/octet-stream: {}
+          description: El contenido del archivo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:declarar o sin motivo"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay un archivo declarado con ese id
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El almacenamiento no tiene el contenido
+      summary: Abrir un archivo declarado
+      tags:
+      - Datos declarados
+  /api/v1/personas/{personaId}/datos-declarados/antecedentes:
+    post:
+      description: Queda DECLARADO y sin revisar hasta que lo revisa un profesional.
+        Abre la historia si falta. La persona tiene que tener perfil de paciente vigente
+        (409 persona-sin-perfil-paciente). Exige hc:declarar.
+      operationId: declararAntecedente
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrarAntecedenteRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AntecedenteResponse"
+          description: Antecedente declarado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Cuerpo invalido
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:declarar o sin motivo"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona es de otra organizacion
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin perfil de paciente vigente
+      summary: Declarar un antecedente del paciente
+      tags:
+      - Datos declarados
+  /api/v1/personas/{personaId}/datos-declarados/ficha:
+    put:
+      description: "Ocupacion, peso, altura y actividad fisica. Reemplaza la ficha\
+        \ entera y exige la \n\t\t\t\t\tversion leida (null si todavia no existe);\
+        \ otra version es 409 \n\t\t\t\t\tconcurrent-modification. Queda DECLARADA\
+        \ y sin revisar, aunque ya estuviera \n\t\t\t\t\trevisada. Abre la historia\
+        \ si falta. Exige hc:declarar."
+      operationId: declararFichaDeIngreso
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FichaDeIngresoRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FichaDeIngresoResponse"
+          description: Ficha guardada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Valores fuera de rango u ocupacion inexistente
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:declarar o sin motivo"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La persona es de otra organizacion
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Version vieja o sin perfil de paciente
+      summary: Guardar la ficha de ingreso declarada
+      tags:
+      - Datos declarados
+  /api/v1/personas/{personaId}/datos-declarados/{tipoDato}/{id}/baja:
+    post:
+      description: "Corrige un error de carga: solo un dato DECLARADO sin revisar.\
+        \ Revisado: 409 dato-declarado-revisado (lo da de baja el profesional desde\
+        \ la historia). Uno del profesional: 404. Motivo obligatorio. Exige hc:declarar."
+      operationId: darDeBajaDatoDeclarado
+      parameters:
+      - description: Persona titular de la historia
+        example: 12
+        in: path
+        name: personaId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: antecedentes o adjuntos
+        example: antecedentes
+        in: path
+        name: tipoDato
+        required: true
+        schema:
+          type: string
+          enum:
+          - antecedentes
+          - adjuntos
+      - description: Dato declarado
+        example: 41
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: "Motivo declarado del acceso (DP-03). Obligatorio cuando quien\
+          \ opera no tiene relacion asistencial con el paciente, que HOY es siempre,\
+          \ porque la sonda de relacion asistencial todavia no tiene implementacion\
+          \ real. Viaja en cabecera y NO en query string: un motivo clinico en la\
+          \ URL termina en los logs de cualquier proxy. Queda auditado junto con el\
+          \ acceso."
+        in: header
+        name: X-Justificacion-Acceso
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BajaDeAntecedenteRequest"
+        required: true
+      responses:
+        "204":
+          description: Dado de baja
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin motivo o tipo de dato invalido
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin contexto, sin hc:declarar o sin motivo"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay un dato declarado con ese id
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya lo reviso un profesional
+      summary: Dar de baja un dato declarado sin revisar
+      tags:
+      - Datos declarados
   /api/v1/personas/{personaId}/elegibilidad:
     get:
       description: |-
@@ -27024,6 +27815,73 @@ paths:
       summary: Editar un servicio del catalogo
       tags:
       - Servicios y ofertas
+  /api/v1/servicios/{servicioId}/personalizacion:
+    post:
+      description: "Un servicio GLOBAL lo comparten todas las organizaciones: editarlo\
+        \ desde un \t\t\t\t\tcentro le cambiaria el dato a los demas. Esta operacion\
+        \ crea una COPIA propia \t\t\t\t\tde la organizacion del contexto, con los\
+        \ cambios del cuerpo aplicados sobre los \t\t\t\t\tdatos del global. La copia\
+        \ vale a nivel ORGANIZACION, para todas sus sedes, \t\t\t\t\tno para una sede.\n\
+        \nEfectos: las ofertas de la organizacion que prestaban el global pasan a\
+        \ \t\t\t\t\tprestar la copia; el global deja de listarse para la organizacion;\
+        \ el global \t\t\t\t\ty las demas organizaciones no cambian. La copia conserva\
+        \ el codigo y se edita \t\t\t\t\ty se da de baja como cualquier servicio propio.\n\
+        \nExige catalogo:manage en el contexto. expectedVersion es la del servicio\
+        \ \t\t\t\t\tGLOBAL que se esta personalizando. Un servicio que ya es de la\
+        \ organizacion \t\t\t\t\tresponde 400: se edita con updateServicio."
+      operationId: personalizarServicio
+      parameters:
+      - description: Identificador del servicio global
+        example: 3
+        in: path
+        name: servicioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateServicioRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServicioResponse"
+          description: Copia de la organizacion creada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Campos invalidos, o el servicio no es del catalogo de AKINE"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin catalogo:manage, sin contexto, o rol de plataforma (que\
+            \ edita el global)"
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El servicio no existe
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ya personalizado o version desactualizada (concurrent-modification),\
+            \ servicio dado de baja (servicio-inactivo), o codigo o nombre ya usados\
+            \ por un servicio propio (servicio-codigo-taken, servicio-nombre-taken)"
+      summary: Personalizar para la organizacion un servicio del catalogo de AKINE
+      tags:
+      - Servicios y ofertas
   /api/v1/terms:
     get:
       description: |-
@@ -27436,6 +28294,9 @@ components:
       type: object
       description: Documento clinico anclado a una Historia Clinica (M09/M25)
       properties:
+        cargadoPorNombre:
+          type: string
+          description: "Nombre de quien lo subio, o null si la cuenta ya no resuelve"
         categoria:
           type: string
           description: Clasificacion clinica del documento
@@ -27506,6 +28367,22 @@ components:
           type: string
           description: Nombre original del archivo
           example: rmn-rodilla.pdf
+        origen:
+          type: string
+          description: "Por que camino entro (DP-47): PROFESIONAL desde la historia,\
+            \ o DECLARADO por el paciente, que espera revision"
+          enum:
+          - PROFESIONAL
+          - DECLARADO
+          example: PROFESIONAL
+        revisadoEn:
+          type: string
+          format: date-time
+          description: "Instante UTC de la revision de un dato declarado, o null si\
+            \ no se reviso"
+        revisadoPorNombre:
+          type: string
+          description: "Nombre del profesional que reviso el dato declarado, o null"
         subidoEn:
           type: string
           format: date-time
@@ -27945,6 +28822,19 @@ components:
           enum:
           - CONSUMO_A_REVISAR
           example: CONSUMO_A_REVISAR
+    AltaDeOcupacionRequest:
+      type: object
+      description: Alta de una ocupacion propia del centro
+      properties:
+        nombre:
+          type: string
+          description: Nombre. Si ya existe (sin importar mayusculas ni tildes) se
+            devuelve esa
+          example: Guardavidas
+          maxLength: 80
+          minLength: 0
+      required:
+      - nombre
     AltaEnListaDeEspera:
       type: object
       description: Que lugar le serviria a esta persona.
@@ -28071,6 +28961,29 @@ components:
       type: object
       description: Antecedente clinico de una historia (RF-M09-002)
       properties:
+        anio:
+          type: integer
+          format: int32
+          description: "Año de una cirugia (ficha de ingreso), o null"
+          example: 2019
+        cargadoPorNombre:
+          type: string
+          description: "Nombre de quien lo registro, o null si la cuenta ya no resuelve"
+        codigo:
+          type: string
+          description: "Enfermedad de la lista de la ficha de ingreso, o null"
+          enum:
+          - DIABETES
+          - HIPERTENSION
+          - CARDIOPATIA
+          - MARCAPASOS
+          - OSTEOPOROSIS
+          - ANTICOAGULADO
+          - EMBARAZO
+          - CANCER
+          - EPILEPSIA
+          - RESPIRATORIA
+          example: DIABETES
         deactivationReason:
           type: string
           description: "Motivo declarado de la baja, o null"
@@ -28087,6 +29000,18 @@ components:
           format: int64
           description: Identificador del antecedente
           example: 41
+        lugar:
+          type: string
+          description: "Donde se hizo la cirugia (ficha de ingreso), o null"
+          example: Hospital Privado
+        origen:
+          type: string
+          description: "Por que camino entro (DP-47): PROFESIONAL desde la historia,\
+            \ o DECLARADO por el paciente, que espera revision"
+          enum:
+          - PROFESIONAL
+          - DECLARADO
+          example: PROFESIONAL
         registradoEn:
           type: string
           format: date-time
@@ -28096,6 +29021,14 @@ components:
           format: int64
           description: Cuenta que lo registro
           example: 8
+        revisadoEn:
+          type: string
+          format: date-time
+          description: "Instante UTC de la revision de un dato declarado, o null si\
+            \ no se reviso"
+        revisadoPorNombre:
+          type: string
+          description: "Nombre del profesional que reviso el dato declarado, o null"
         tipo:
           type: string
           description: Clase de antecedente
@@ -28117,6 +29050,10 @@ components:
           type: boolean
           description: Si el antecedente sigue vigente
           example: true
+        zona:
+          type: string
+          description: "Zona de una cirugia (ficha de ingreso), o null"
+          example: Rodilla derecha
     AnulacionDePase:
       type: object
       description: "Anula un pase vendido por error, con su deuda. Solo si no se uso\
@@ -34019,6 +34956,29 @@ components:
           type: boolean
           description: Falso si la persona todavia no tiene historia clinica
           example: true
+    DatosDeclaradosResponse:
+      type: object
+      description: "Lo que el paciente declaro en su historia (DP-47). Solo trae datos\
+        \ DECLARADO: lo que cargo un profesional no aparece"
+      properties:
+        adjuntos:
+          type: array
+          description: "Archivos declarados vigentes, mas recientes primero"
+          items:
+            $ref: "#/components/schemas/AdjuntoClinicoResponse"
+        antecedentes:
+          type: array
+          description: "Antecedentes declarados vigentes, mas recientes primero"
+          items:
+            $ref: "#/components/schemas/AntecedenteResponse"
+        ficha:
+          $ref: "#/components/schemas/FichaDeIngresoResponse"
+          description: "Ficha de ingreso de la historia, o null si todavia no se cargo"
+        historiaClinicaId:
+          type: integer
+          format: int64
+          description: "Historia clinica de la persona, o null si todavia no tiene"
+          example: 88
     DatosFiscalesEfectivosResponse:
       type: object
       description: "Datos fiscales efectivos de la sede: propios o heredados de la\
@@ -36686,6 +37646,116 @@ components:
             \ la fija el CHECK de la migracion y esta version del contrato no ramifica\
             \ comportamiento por tipo, solo lo muestra"
           example: INAMOVIBLE
+    FichaDeIngresoRequest:
+      type: object
+      description: "Ficha de ingreso del paciente: se guarda entera, con la version\
+        \ leida"
+      properties:
+        actividad:
+          type: string
+          description: "Nivel de actividad fisica, o null"
+          enum:
+          - SEDENTARIO
+          - OCASIONAL
+          - REGULAR
+          - DEPORTISTA
+          example: REGULAR
+        alturaCm:
+          type: number
+          description: "Altura en cm, de 30 a 250, un decimal"
+          example: 168
+          maximum: 250
+          minimum: 30
+        detalle:
+          type: string
+          description: "Que actividad hace, texto corto"
+          example: Camina 3 veces por semana
+          maxLength: 120
+          minLength: 0
+        ocupacionId:
+          type: integer
+          format: int64
+          description: "Ocupacion del catalogo (GET /ocupaciones), o null"
+          example: 17
+        pesoKg:
+          type: number
+          description: "Peso en kg, de 1 a 400, un decimal"
+          example: 72.5
+          maximum: 400
+          minimum: 1
+        version:
+          type: integer
+          format: int64
+          description: Version leida de la ficha; null si todavia no existe
+          example: 3
+    FichaDeIngresoResponse:
+      type: object
+      description: "Ficha de ingreso del paciente, con el IMC calculado y su estado\
+        \ de revision"
+      properties:
+        actividad:
+          type: string
+          description: "Nivel de actividad fisica, o null"
+          enum:
+          - SEDENTARIO
+          - OCASIONAL
+          - REGULAR
+          - DEPORTISTA
+          example: REGULAR
+        actualizadaEn:
+          type: string
+          format: date-time
+          description: Ultimo guardado
+        alturaCm:
+          type: number
+          description: "Altura en cm, o null"
+          example: 168.0
+        cargadoPorNombre:
+          type: string
+          description: "Nombre de quien la guardo por ultima vez, o null"
+        detalle:
+          type: string
+          description: "Que actividad hace, o null"
+        imc:
+          type: number
+          description: "IMC calculado con un decimal, o null si falta peso o altura"
+          example: 25.5
+        ocupacionId:
+          type: integer
+          format: int64
+          description: "Ocupacion elegida, o null"
+          example: 17
+        ocupacionNombre:
+          type: string
+          description: "Nombre de la ocupacion, o null"
+          example: Docente
+        origen:
+          type: string
+          description: "Quien la guardo por ultima vez: PROFESIONAL (queda revisada)\
+            \ o DECLARADO (espera revision)"
+          enum:
+          - PROFESIONAL
+          - DECLARADO
+          example: DECLARADO
+        pesoKg:
+          type: number
+          description: "Peso en kg, o null"
+          example: 72.0
+        revisadoEn:
+          type: string
+          format: date-time
+          description: "Instante de la revision, o null si espera revision"
+        revisadoPorNombre:
+          type: string
+          description: "Nombre de quien la reviso, o null"
+        version:
+          type: integer
+          format: int64
+          description: Version para el proximo guardado
+          example: 3
+      required:
+      - origen
+      - version
     FijarPoliticaDeEnmienda:
       type: object
       description: Dias desde el cierre en que una sesion se puede enmendar.
@@ -37258,6 +38328,12 @@ components:
           description: Si el acceso se autorizo por relacion asistencial (true) o
             por motivo declarado (false)
           example: false
+        declaradosSinRevisar:
+          type: integer
+          format: int64
+          description: Antecedentes y adjuntos declarados por el paciente que todavia
+            no reviso un profesional (DP-47)
+          example: 0
         eventos:
           type: array
           description: "Asomo del timeline: los hechos clinicos mas recientes, sin\
@@ -39830,6 +40906,26 @@ components:
           - TURNO
           - CLASE
           example: CLASE
+    OcupacionResponse:
+      type: object
+      description: Ocupacion del catalogo de la ficha de ingreso
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Identificador
+          example: 17
+        nombre:
+          type: string
+          description: Nombre
+          example: Docente
+        propia:
+          type: boolean
+          description: true si la agrego este centro; false si es del producto
+      required:
+      - id
+      - nombre
+      - propia
     OcurrenciaElegida:
       type: object
       description: "Un horario de la serie, tal como quedo despues de revisarla."
@@ -40963,6 +42059,10 @@ components:
           type: string
           description: "Telefono de contacto, o null"
           example: +54 11 5555-0000
+        tieneHistoriaClinica:
+          type: boolean
+          description: Si tiene historia clinica vigente en la organizacion. Solo
+            lo informa la busqueda del padron; en las demas respuestas viaja null
         tipoDocumento:
           type: string
           description: "Tipo de documento, o null si no declaro documento"
@@ -42342,6 +43442,10 @@ components:
       - https://akine.app/problems/justificacion-de-acceso-requerida
       - https://akine.app/problems/adjunto-clinico-no-accesible
       - https://akine.app/problems/adjunto-clinico-inactivo
+      - https://akine.app/problems/dato-declarado-revisado
+      - https://akine.app/problems/dato-no-declarado
+      - https://akine.app/problems/adjunto-ya-en-historia
+      - https://akine.app/problems/dato-ya-en-historia
       - https://akine.app/problems/adjunto-clinico-no-disponible
       - https://akine.app/problems/cursor-invalido
       - https://akine.app/problems/caso-clinico-no-accesible
@@ -43091,11 +44195,40 @@ components:
       type: object
       description: Alta de un antecedente clinico
       properties:
+        anio:
+          type: integer
+          format: int32
+          description: "Ficha de ingreso: año de una cirugia (1900 al actual)"
+          example: 2019
+          maximum: 2100
+          minimum: 1900
+        codigo:
+          type: string
+          description: "Ficha de ingreso: enfermedad de la lista. Exige tipo MEDICO;\
+            \ si ya hay una vigente con ese codigo se devuelve esa, sin otra alta"
+          enum:
+          - DIABETES
+          - HIPERTENSION
+          - CARDIOPATIA
+          - MARCAPASOS
+          - OSTEOPOROSIS
+          - ANTICOAGULADO
+          - EMBARAZO
+          - CANCER
+          - EPILEPSIA
+          - RESPIRATORIA
+          example: DIABETES
         descripcion:
           type: string
           description: Texto clinico del antecedente
           example: Alergia a la penicilina
           maxLength: 1000
+          minLength: 0
+        lugar:
+          type: string
+          description: "Ficha de ingreso: donde se hizo la cirugia"
+          example: Hospital Privado
+          maxLength: 160
           minLength: 0
         tipo:
           type: string
@@ -43109,6 +44242,12 @@ components:
           - HABITO
           - OTRO
           example: ALERGIA
+        zona:
+          type: string
+          description: "Ficha de ingreso: zona de una cirugia"
+          example: Rodilla derecha
+          maxLength: 120
+          minLength: 0
       required:
       - descripcion
       - tipo
@@ -45331,6 +46470,13 @@ components:
           type: string
           description: Nombre visible del servicio
           example: Sesion de kinesiologia
+        personalizaServicioId:
+          type: integer
+          format: int64
+          description: "Servicio del catalogo de AKINE que este personaliza para la\
+            \ organizacion (todas sus sedes), o null. Mientras este vigente, el de\
+            \ AKINE no se lista para esa organizacion y sus ofertas apuntan a este"
+          example: 3
         requiereCasoClinicoDefault:
           type: boolean
           description: Si por defecto la prestacion exige un caso clinico abierto

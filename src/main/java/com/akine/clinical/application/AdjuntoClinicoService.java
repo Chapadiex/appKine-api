@@ -4,12 +4,15 @@ import com.akine.clinical.domain.AdjuntoClinico;
 import com.akine.clinical.domain.CategoriaAdjuntoClinico;
 import com.akine.clinical.domain.EntradaClinica;
 import com.akine.clinical.domain.HistoriaClinica;
+import com.akine.clinical.domain.OrigenDato;
 import com.akine.clinical.domain.PermissionCodes;
 import com.akine.clinical.domain.TipoDeContenidoClinico;
 import com.akine.clinical.domain.exception.AdjuntoClinicoInactivoException;
 import com.akine.clinical.domain.exception.AdjuntoClinicoNoDisponibleException;
 import com.akine.clinical.domain.exception.AdjuntoClinicoNotAccessibleException;
+import com.akine.clinical.domain.exception.AdjuntoYaEnHistoriaException;
 import com.akine.clinical.domain.exception.ArchivoClinicoNoAceptadoException;
+import com.akine.clinical.domain.exception.DatoDeclaradoRevisadoException;
 import com.akine.clinical.domain.exception.HistoriaClinicaNotAccessibleException;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.AdjuntoClinicoRepositoryPort;
 import com.akine.clinical.domain.port.ClinicalRepositoryPorts.EntradaClinicaRepositoryPort;
@@ -112,6 +115,12 @@ public class AdjuntoClinicoService {
 	private final ClinicalSupportAccessAuditor supportAccessAuditor;
 	private final AdjuntoClinicoEscrituraAparte escrituraAparte;
 	private final TransactionTemplate transaccion;
+	private final NombresDeAutores nombres;
+
+	/** Categorias que se pueden declarar (DP-47): consentimiento y evolucion escaneada son del profesional. */
+	static final java.util.Set<CategoriaAdjuntoClinico> CATEGORIAS_DECLARABLES = java.util.EnumSet.of(
+			CategoriaAdjuntoClinico.ESTUDIO, CategoriaAdjuntoClinico.INFORME,
+			CategoriaAdjuntoClinico.IMAGEN, CategoriaAdjuntoClinico.OTRO);
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public AdjuntoClinicoService(
@@ -124,7 +133,8 @@ public class AdjuntoClinicoService {
 			AuditTrail auditTrail,
 			ClinicalSupportAccessAuditor supportAccessAuditor,
 			AdjuntoClinicoEscrituraAparte escrituraAparte,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			NombresDeAutores nombres) {
 
 		this.historias = historias;
 		this.entradas = entradas;
@@ -136,6 +146,7 @@ public class AdjuntoClinicoService {
 		this.supportAccessAuditor = supportAccessAuditor;
 		this.escrituraAparte = escrituraAparte;
 		this.transaccion = new TransactionTemplate(transactionManager);
+		this.nombres = nombres;
 	}
 
 	// =================================================================================
@@ -213,6 +224,7 @@ public class AdjuntoClinicoService {
 				.stream()
 				.map(AdjuntoClinicoView::de)
 				.toList();
+		contenido = nombres.adjuntos(contenido);
 
 		long total = adjuntos.contar(
 				organizationId, historia.getId(), filtroCategoria, entradaClinicaId, activoFiltro);
@@ -234,15 +246,33 @@ public class AdjuntoClinicoService {
 	@Transactional
 	public ContenidoDeAdjuntoClinico contenido(
 			OperatingActor actor, long historiaClinicaId, long adjuntoId, String justificacion) {
+		return contenido(actor, historiaClinicaId, adjuntoId, justificacion, OrigenDato.PROFESIONAL);
+	}
+
+	/**
+	 * Con {@code DECLARADO} (DP-47) autoriza con {@code hc:declarar} y solo entrega adjuntos
+	 * declarados, revisados o no: uno del profesional responde 404, como si no existiera.
+	 */
+	@Transactional
+	ContenidoDeAdjuntoClinico contenido(
+			OperatingActor actor, long historiaClinicaId, long adjuntoId, String justificacion,
+			OrigenDato camino) {
 
 		long organizationId = organizacionDe(actor);
 		HistoriaClinica historia = exigirHistoria(organizationId, historiaClinicaId);
+		boolean declarados = camino == OrigenDato.DECLARADO;
 
 		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
-				PermissionCodes.HC_READ, historia.getPersonaId(), justificacion,
-				"Descargar adjunto clinico");
+				declarados ? PermissionCodes.HC_DECLARAR : PermissionCodes.HC_READ,
+				historia.getPersonaId(), justificacion,
+				declarados ? "Abrir adjunto declarado" : "Descargar adjunto clinico");
 
-		AdjuntoClinico adjunto = cargar(organizationId, historia.getId(), adjuntoId);
+		AdjuntoClinico adjunto = cargar(organizationId, historia.getId(), adjuntoId, camino);
+		if (declarados && !adjunto.isVigente()) {
+			// Por el camino de declarados, uno dado de baja ya no existe (diseño §7): la lista no lo
+			// muestra y por id tampoco se abre. El profesional lo sigue descargando desde la historia.
+			throw new AdjuntoClinicoNotAccessibleException(adjuntoId);
+		}
 		byte[] bytes = contenidoDe(organizationId, historia.getId(), adjunto, adjuntoId);
 
 		Instant ahora = Instant.now();
@@ -306,10 +336,24 @@ public class AdjuntoClinicoService {
 			long historiaClinicaId,
 			AdjuntoClinicoAltaCommand command,
 			String justificacion) {
+		return subir(actor, historiaClinicaId, command, justificacion, OrigenDato.PROFESIONAL);
+	}
+
+	/**
+	 * La subida por cualquiera de los dos caminos. Con {@code DECLARADO} (DP-47): autoriza con
+	 * {@code hc:declarar}, admite solo {@link #CATEGORIAS_DECLARABLES}, marca la fila declarada, y
+	 * si el mismo archivo ya lo cargo un profesional responde 409 sin nombrarlo.
+	 */
+	AdjuntoClinicoAlta subir(
+			OperatingActor actor,
+			long historiaClinicaId,
+			AdjuntoClinicoAltaCommand command,
+			String justificacion,
+			OrigenDato origen) {
 
 		AlTerminarLaTransaccion.exigirSinTransaccion("La subida de un adjunto clinico");
 		Subida subida = transaccion.execute(
-				estado -> prepararSubida(actor, historiaClinicaId, command, justificacion));
+				estado -> prepararSubida(actor, historiaClinicaId, command, justificacion, origen));
 		if (subida.existente() != null) {
 			return new AdjuntoClinicoAlta(AdjuntoClinicoView.de(subida.existente()), false);
 		}
@@ -330,7 +374,8 @@ public class AdjuntoClinicoService {
 					+ "historiaClinicaId={}", historiaId);
 			return transaccion.execute(estado -> adjuntos.buscarVigentePorChecksum(
 							organizationId, historiaId, adjunto.getChecksumSha256()))
-					.map(existente -> new AdjuntoClinicoAlta(AdjuntoClinicoView.de(existente), false))
+					.map(existente -> new AdjuntoClinicoAlta(
+							AdjuntoClinicoView.de(exigirMismoCamino(existente, origen)), false))
 					.orElseThrow(() -> choque);
 		}
 
@@ -356,7 +401,9 @@ public class AdjuntoClinicoService {
 			if (guardado.getEntradaClinicaId() != null) {
 				detalles.put("entradaClinicaId", String.valueOf(guardado.getEntradaClinicaId()));
 			}
-			auditar(AuditEvents.ADJUNTO_CLINICO_UPLOADED, guardado.getId(),
+			auditar(origen == OrigenDato.DECLARADO
+							? AuditEvents.ADJUNTO_DECLARADO : AuditEvents.ADJUNTO_CLINICO_UPLOADED,
+					guardado.getId(),
 					actor, subida.acceso(), null, "VIGENTE", detalles, subida.ahora());
 			registrarSoporte(subida.acceso(), actor, guardado, "Subir adjunto clinico",
 					subida.ahora());
@@ -377,14 +424,21 @@ public class AdjuntoClinicoService {
 			OperatingActor actor,
 			long historiaClinicaId,
 			AdjuntoClinicoAltaCommand command,
-			String justificacion) {
+			String justificacion,
+			OrigenDato origen) {
 
 		long organizationId = organizacionDe(actor);
 		HistoriaClinica historia = exigirHistoria(organizationId, historiaClinicaId);
+		boolean declarado = origen == OrigenDato.DECLARADO;
 
 		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
-				PermissionCodes.HC_WRITE, historia.getPersonaId(), justificacion,
-				"Subir adjunto clinico");
+				declarado ? PermissionCodes.HC_DECLARAR : PermissionCodes.HC_WRITE,
+				historia.getPersonaId(), justificacion,
+				declarado ? "Declarar adjunto clinico" : "Subir adjunto clinico");
+		if (declarado && !CATEGORIAS_DECLARABLES.contains(command.categoria())) {
+			throw new IllegalArgumentException(
+					"Esa categoria no se declara: la carga el profesional desde la historia");
+		}
 
 		byte[] contenido = command.contenido();
 		exigirTamanoAceptable(contenido);
@@ -398,7 +452,7 @@ public class AdjuntoClinicoService {
 		if (yaExistente.isPresent()) {
 			log.debug("Subida clinica idempotente resuelta con el adjunto existente: "
 					+ "historiaClinicaId={}", historia.getId());
-			return new Subida(yaExistente.get(), null, acceso, null);
+			return new Subida(exigirMismoCamino(yaExistente.get(), origen), null, acceso, null);
 		}
 
 		Instant ahora = Instant.now();
@@ -418,7 +472,21 @@ public class AdjuntoClinicoService {
 				storageKey,
 				actor.accountId(),
 				ahora);
+		if (declarado) {
+			adjunto.comoDeclarado();
+		}
 		return new Subida(null, adjunto, acceso, ahora);
+	}
+
+	/**
+	 * Idempotencia por checksum sin cruzar caminos (DP-47): declarar un archivo que ya cargo un
+	 * profesional es 409 sin datos del existente; los demas casos devuelven el existente como hoy.
+	 */
+	private static AdjuntoClinico exigirMismoCamino(AdjuntoClinico existente, OrigenDato origen) {
+		if (origen == OrigenDato.DECLARADO && existente.getOrigen() != OrigenDato.DECLARADO) {
+			throw new AdjuntoYaEnHistoriaException("Ese archivo ya esta en la historia clinica");
+		}
+		return existente;
 	}
 
 	/**
@@ -499,15 +567,37 @@ public class AdjuntoClinicoService {
 			long adjuntoId,
 			String motivo,
 			String justificacion) {
+		return darDeBaja(actor, historiaClinicaId, adjuntoId, motivo, justificacion, OrigenDato.PROFESIONAL);
+	}
+
+	/**
+	 * Con {@code DECLARADO} (DP-47): autoriza con {@code hc:declarar}, solo alcanza adjuntos
+	 * declarados (uno del profesional es 404) y solo sin revisar (revisado es 409).
+	 */
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	@Transactional
+	AdjuntoClinicoView darDeBaja(
+			OperatingActor actor,
+			long historiaClinicaId,
+			long adjuntoId,
+			String motivo,
+			String justificacion,
+			OrigenDato camino) {
 
 		long organizationId = organizacionDe(actor);
 		HistoriaClinica historia = exigirHistoria(organizationId, historiaClinicaId);
+		boolean declarados = camino == OrigenDato.DECLARADO;
 
 		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
-				PermissionCodes.HC_WRITE, historia.getPersonaId(), justificacion,
-				"Dar de baja un adjunto clinico");
+				declarados ? PermissionCodes.HC_DECLARAR : PermissionCodes.HC_WRITE,
+				historia.getPersonaId(), justificacion,
+				declarados ? "Dar de baja un adjunto declarado" : "Dar de baja un adjunto clinico");
 
-		AdjuntoClinico adjunto = cargar(organizationId, historia.getId(), adjuntoId);
+		AdjuntoClinico adjunto = cargar(organizationId, historia.getId(), adjuntoId, camino);
+		if (declarados && adjunto.getRevisadoEn() != null) {
+			throw new DatoDeclaradoRevisadoException(
+					"Ya lo reviso un profesional: solo el lo da de baja desde la historia");
+		}
 		if (!adjunto.isVigente()) {
 			log.debug("Adjunto clinico ya dado de baja: id={}", adjuntoId);
 			return AdjuntoClinicoView.de(adjunto);
@@ -519,7 +609,8 @@ public class AdjuntoClinicoService {
 		// Mismo motivo que en reclasificar: la vista devuelve la version YA avanzada.
 		AdjuntoClinico guardado = adjuntos.saveAndFlush(adjunto);
 
-		auditar(AuditEvents.ADJUNTO_CLINICO_DEACTIVATED, guardado.getId(),
+		auditar(declarados ? AuditEvents.DATO_DECLARADO_DADO_DE_BAJA : AuditEvents.ADJUNTO_CLINICO_DEACTIVATED,
+				guardado.getId(),
 				actor, acceso, "VIGENTE", "DADO_DE_BAJA",
 				// EL MOTIVO DE LA BAJA NO VA, mismo criterio que EntradaClinicaService: es texto
 				// libre que escribe un profesional sobre un estudio clinico. "Se da de baja el
@@ -566,6 +657,59 @@ public class AdjuntoClinicoService {
 	private AdjuntoClinico cargar(long organizationId, long historiaClinicaId, long adjuntoId) {
 		return adjuntos.buscarDeLaHistoria(organizationId, historiaClinicaId, adjuntoId)
 				.orElseThrow(() -> new AdjuntoClinicoNotAccessibleException(adjuntoId));
+	}
+
+	/** Por el camino de declarados, uno del profesional no existe (404): no se confirma que este. */
+	private AdjuntoClinico cargar(
+			long organizationId, long historiaClinicaId, long adjuntoId, OrigenDato camino) {
+		AdjuntoClinico adjunto = cargar(organizationId, historiaClinicaId, adjuntoId);
+		if (camino == OrigenDato.DECLARADO && adjunto.getOrigen() != OrigenDato.DECLARADO) {
+			throw new AdjuntoClinicoNotAccessibleException(adjuntoId);
+		}
+		return adjunto;
+	}
+
+	/** Los adjuntos declarados vigentes de la historia, con nombres. No autoriza: lo hace quien llama. */
+	List<AdjuntoClinicoView> declaradosDeHistoria(long organizationId, long historiaClinicaId) {
+		return nombres.adjuntos(adjuntos.buscarDeclaradosVigentes(organizationId, historiaClinicaId)
+				.stream().map(AdjuntoClinicoView::de).toList());
+	}
+
+	/**
+	 * Marca revisado un adjunto declarado (DP-47). Exige {@code hc:write}. Idempotente: revisar uno
+	 * ya revisado devuelve como esta, sin evento. Uno del profesional es 409.
+	 */
+	@Transactional
+	public AdjuntoClinicoView revisar(
+			OperatingActor actor, long historiaClinicaId, long adjuntoId, String justificacion) {
+
+		long organizationId = organizacionDe(actor);
+		HistoriaClinica historia = exigirHistoria(organizationId, historiaClinicaId);
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
+				PermissionCodes.HC_WRITE, historia.getPersonaId(), justificacion,
+				"Revisar adjunto declarado");
+
+		AdjuntoClinico adjunto = cargar(organizationId, historia.getId(), adjuntoId);
+		if (!adjunto.isVigente()) {
+			throw new AdjuntoClinicoInactivoException(adjuntoId);
+		}
+		if (adjunto.getOrigen() != OrigenDato.DECLARADO) {
+			throw new com.akine.clinical.domain.exception.DatoNoDeclaradoException(
+					"Ese adjunto no es declarado: no lleva revision");
+		}
+
+		Instant ahora = Instant.now();
+		if (adjuntos.marcarRevisado(organizationId, adjuntoId, actor.accountId(), ahora) == 1) {
+			auditar(AuditEvents.DATO_DECLARADO_REVISADO, adjuntoId, actor, acceso, "SIN_REVISAR", "REVISADO",
+					Map.of("historiaClinicaId", String.valueOf(historia.getId()), "tipoDato", "ADJUNTO"),
+					ahora);
+			registrarSoporte(acceso, actor, adjunto, "Revisar adjunto declarado", ahora);
+		}
+		return nombres.adjunto(AdjuntoClinicoView.de(cargar(organizationId, historia.getId(), adjuntoId)));
+	}
+
+	long contarDeclaradosSinRevisar(long organizationId, long historiaClinicaId) {
+		return adjuntos.contarDeclaradosSinRevisar(organizationId, historiaClinicaId);
 	}
 
 	/**

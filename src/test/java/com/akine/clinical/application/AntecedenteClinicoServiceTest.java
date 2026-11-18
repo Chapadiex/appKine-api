@@ -82,7 +82,10 @@ class AntecedenteClinicoServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new AntecedenteClinicoService(historias, antecedentes, pacientes, permissionGuard,
-				relaciones, auditTrail, supportAccessAuditor);
+				relaciones, auditTrail, supportAccessAuditor,
+				org.mockito.Mockito.mock(HistoriaClinicaService.class),
+				new NombresDeAutores(org.mockito.Mockito.mock(
+						com.akine.platform.spi.identity.AccountIdentityDirectory.class)));
 
 		given(pacientes.find(ORG_ID, PERSONA_ID)).willReturn(Optional.of(new PacienteSnapshot(
 				PERSONA_ID, ORG_ID, "Perez", "Ana", "DNI", "30111222", LocalDate.of(1990, 1, 1),

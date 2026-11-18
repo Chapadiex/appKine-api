@@ -5,6 +5,7 @@ import com.akine.offering.domain.port.OfferingRepositoryPorts.OfertaRepositoryPo
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -76,4 +77,24 @@ public interface OfertaRepository
 	List<OfertaServicioConsultorio>
 			findAllByOrganizationIdAndConsultorioIdAndServicioIdOrderByNombreComercialAsc(
 					Long organizationId, Long consultorioId, Long servicioId);
+
+	/**
+	 * Nativa y con {@code version = version + 1}: un UPDATE masivo que no mueve la version deja que
+	 * una edicion concurrente de la oferta pise el cambio sin fallar (la regla de los UPDATE nativos
+	 * del §7). {@code clearAutomatically} descarta las ofertas que este contexto tuviera cargadas.
+	 */
+	@Override
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query(value = """
+			UPDATE oferta_servicio_consultorio
+			   SET servicio_id = :servicioNuevoId,
+			       version = version + 1,
+			       updated_at = CURRENT_TIMESTAMP
+			 WHERE organization_id = :organizationId
+			   AND servicio_id = :servicioAnteriorId
+			""", nativeQuery = true)
+	int reapuntarServicio(
+			@Param("organizationId") Long organizationId,
+			@Param("servicioAnteriorId") Long servicioAnteriorId,
+			@Param("servicioNuevoId") Long servicioNuevoId);
 }

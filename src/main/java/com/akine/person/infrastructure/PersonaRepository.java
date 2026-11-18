@@ -94,6 +94,11 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			                           AND ps.estado = 'ACTIVO'
 			                           AND ps.vigencia_desde <= :hoy
 			                           AND ps.vigencia_hasta >= :hoy)))
+			   AND (:historiaFiltro = -1
+			        OR (:historiaFiltro = 1) = EXISTS (SELECT 1 FROM historia_clinica hc
+			                                            WHERE hc.persona_id = p.id
+			                                              AND hc.organization_id = p.organization_id
+			                                              AND hc.deleted_at IS NULL))
 			   AND (p.documento_clave LIKE :patronClave
 			        OR p.apellido_clave LIKE :patronNombre
 			        OR p.nombre_clave LIKE :patronNombre
@@ -125,6 +130,7 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			@Param("activoFiltro") int activoFiltro,
 			@Param("perfilFiltro") int perfilFiltro,
 			@Param("actividadFiltro") int actividadFiltro,
+			@Param("historiaFiltro") int historiaFiltro,
 			@Param("hoy") LocalDate hoy,
 			@Param("orden") String orden,
 			@Param("offset") int offset,
@@ -162,6 +168,11 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			                           AND ps.estado = 'ACTIVO'
 			                           AND ps.vigencia_desde <= :hoy
 			                           AND ps.vigencia_hasta >= :hoy)))
+			   AND (:historiaFiltro = -1
+			        OR (:historiaFiltro = 1) = EXISTS (SELECT 1 FROM historia_clinica hc
+			                                            WHERE hc.persona_id = p.id
+			                                              AND hc.organization_id = p.organization_id
+			                                              AND hc.deleted_at IS NULL))
 			   AND (p.documento_clave LIKE :patronClave
 			        OR p.apellido_clave LIKE :patronNombre
 			        OR p.nombre_clave LIKE :patronNombre
@@ -181,7 +192,24 @@ public interface PersonaRepository extends JpaRepository<Persona, Long>, Persona
 			@Param("activoFiltro") int activoFiltro,
 			@Param("perfilFiltro") int perfilFiltro,
 			@Param("actividadFiltro") int actividadFiltro,
+			@Param("historiaFiltro") int historiaFiltro,
 			@Param("hoy") LocalDate hoy);
+
+	/**
+	 * Las personas de la lista con historia clinica vigente (13/11/2026). Lee la tabla de
+	 * {@code clinical} con SQL nativo, como el filtro de actividades lee las de {@code activity}:
+	 * sin dependencia de modulo, y en una sola consulta por pagina.
+	 */
+	@Override
+	@Query(value = """
+			SELECT hc.persona_id FROM historia_clinica hc
+			 WHERE hc.organization_id = :organizationId
+			   AND hc.persona_id IN (:personaIds)
+			   AND hc.deleted_at IS NULL
+			""", nativeQuery = true)
+	List<Long> conHistoriaClinica(
+			@Param("organizationId") Long organizationId,
+			@Param("personaIds") List<Long> personaIds);
 
 	/**
 	 * La persona vigente que ya tiene ese documento. Es la que se le muestra al operador cuando

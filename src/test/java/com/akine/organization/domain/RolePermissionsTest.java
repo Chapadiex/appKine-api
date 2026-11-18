@@ -557,4 +557,19 @@ class RolePermissionsTest {
 		assertThat(PermissionScope.SOPORTE.cubreLaOrganizacion()).isFalse();
 		assertThat(PermissionScope.RESTRINGIDO.cubreLaOrganizacion()).isFalse();
 	}
+
+	@Test
+	@DisplayName("DP-47: hc:declarar es de base para el mostrador, el profesional y el dueño, sin dar hc:read")
+	void hcDeclarar() {
+		for (RoleCode rol : List.of(RoleCode.ADMINISTRATIVO, RoleCode.PROFESIONAL, RoleCode.CONSULTORIO_ADMIN)) {
+			assertThat(RolePermissions.baseOf(rol))
+					.containsEntry(PermissionCode.HC_DECLARAR, PermissionScope.CONSULTORIO);
+		}
+		assertThat(RolePermissions.baseOf(RoleCode.ORG_ADMIN))
+				.containsEntry(PermissionCode.HC_DECLARAR, PermissionScope.ORGANIZACION)
+				.doesNotContainKey(PermissionCode.HC_READ)
+				.doesNotContainKey(PermissionCode.HC_WRITE);
+		assertThat(RolePermissions.baseOf(RoleCode.ADMINISTRATIVO)).doesNotContainKey(PermissionCode.HC_READ);
+		assertThat(RolePermissions.otorgableComoGrant(RoleCode.PACIENTE, PermissionCode.HC_DECLARAR)).isFalse();
+	}
 }

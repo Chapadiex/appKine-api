@@ -107,7 +107,9 @@ class AdjuntoClinicoServiceTest {
 	void setUp() {
 		service = new AdjuntoClinicoService(historias, entradas, adjuntos, storage,
 				permissionGuard, relaciones, auditTrail, supportAccessAuditor, escrituraAparte,
-				org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
+				org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class),
+				new NombresDeAutores(org.mockito.Mockito.mock(
+						com.akine.platform.spi.identity.AccountIdentityDirectory.class)));
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));

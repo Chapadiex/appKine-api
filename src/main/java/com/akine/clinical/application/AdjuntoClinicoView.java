@@ -3,6 +3,7 @@ package com.akine.clinical.application;
 import com.akine.clinical.domain.AdjuntoClinico;
 
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * Lo que sale de {@code application} sobre un adjunto clinico.
@@ -39,7 +40,12 @@ public record AdjuntoClinicoView(
 		String estadoCicloDeVida,
 		Instant deletedAt,
 		String deactivationReason,
-		long version) {
+		long version,
+		String origen,
+		String cargadoPorNombre,
+		Long revisadoPor,
+		String revisadoPorNombre,
+		Instant revisadoEn) {
 
 	public static AdjuntoClinicoView de(AdjuntoClinico adjunto) {
 		return new AdjuntoClinicoView(
@@ -59,6 +65,19 @@ public record AdjuntoClinicoView(
 				adjunto.isActive() ? "ACTIVO" : "INACTIVO",
 				adjunto.getDeletedAt(),
 				adjunto.getDeactivationReason(),
-				adjunto.getVersion());
+				adjunto.getVersion(),
+				adjunto.getOrigen().name(),
+				null,
+				adjunto.getRevisadoPor(),
+				null,
+				adjunto.getRevisadoEn());
+	}
+
+	/** La misma vista con los nombres de quien lo subio y quien lo reviso (DP-47). Ausente = null. */
+	public AdjuntoClinicoView conNombres(Map<Long, String> nombres) {
+		return new AdjuntoClinicoView(id, historiaClinicaId, entradaClinicaId, consultorioId, categoria, titulo,
+				nombreArchivo, contentType, tamanoBytes, checksumSha256, estado, subidoPor, subidoEn,
+				estadoCicloDeVida, deletedAt, deactivationReason, version, origen, nombres.get(subidoPor),
+				revisadoPor, revisadoPor == null ? null : nombres.get(revisadoPor), revisadoEn);
 	}
 }

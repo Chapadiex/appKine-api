@@ -200,19 +200,20 @@ class HistoriaClinicaControllerTest {
 		@DisplayName("registrar responde 201 con el antecedente")
 		void registrar_es_201() {
 			// AC-1
-			given(antecedenteService.registrar(any(), anyLong(), any(), anyString(), any()))
+			given(antecedenteService.registrar(any(), anyLong(), any(), anyString(), any(), any()))
 					.willReturn(unAntecedente(true));
 
 			ResponseEntity<AntecedenteResponse> respuesta = controller.registrarAntecedente(
 					PERSONA_ID,
-					new RegistrarAntecedenteRequest(TipoAntecedente.ALERGIA, "Penicilina"),
+					new RegistrarAntecedenteRequest(TipoAntecedente.ALERGIA, "Penicilina", null, null, null, null),
 					MOTIVO);
 
 			assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 			assertThat(respuesta.getBody()).isNotNull();
 			assertThat(respuesta.getBody().id()).isEqualTo(ANTECEDENTE_ID);
 			verify(antecedenteService).registrar(
-					any(), eq(PERSONA_ID), eq(TipoAntecedente.ALERGIA), eq("Penicilina"), eq(MOTIVO));
+					any(), eq(PERSONA_ID), eq(TipoAntecedente.ALERGIA), eq("Penicilina"),
+					eq(com.akine.clinical.application.DetalleDeAntecedente.NINGUNO), eq(MOTIVO));
 		}
 
 		@Test
@@ -261,7 +262,7 @@ class HistoriaClinicaControllerTest {
 		return new HistoriaClinicaView(
 				HISTORIA_ID, 10L, PERSONA_ID, "Paciente Sintetico", "DNI 30111222",
 				Instant.EPOCH, 8L, null, null, null,
-				List.of(), List.of(), false, version);
+				List.of(), List.of(), false, version, 0);
 	}
 
 	private static AntecedenteView unAntecedente(boolean vigente) {
@@ -269,6 +270,6 @@ class HistoriaClinicaControllerTest {
 				ANTECEDENTE_ID, "ALERGIA", "Penicilina", Instant.EPOCH, 8L, vigente,
 				vigente ? null : Instant.EPOCH,
 				vigente ? null : "Ya no aplica",
-				0L);
+				0L, "PROFESIONAL", null, null, null, null, null, null, null, null);
 	}
 }
