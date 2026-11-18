@@ -26,9 +26,9 @@ public record DictadoProperties(
 	public record Transcriptor(
 			@DefaultValue("whisper") String tipo,
 			@DefaultValue("http://localhost:8000") String url,
-			@DefaultValue("Systran/faster-whisper-small") String modelo,
+			@DefaultValue("deepdml/faster-whisper-large-v3-turbo-ct2") String modelo,
 			@DefaultValue("es") String idioma,
-			@DefaultValue("90") int timeoutSegundos,
+			@DefaultValue("180") int timeoutSegundos,
 			@DefaultValue("2") int concurrencia,
 			@DefaultValue("Sesión de kinesiología. Dolor EVA, lumbalgia, cervicalgia, dorsalgia, "
 					+ "isquiotibiales, cuádriceps, manguito rotador, esguince, tendinopatía, "

@@ -272,9 +272,9 @@ akine:
       # whisper | prueba
       tipo: ${AKINE_DICTADO_TRANSCRIPTOR_TIPO:whisper}
       url: ${AKINE_DICTADO_WHISPER_URL:http://localhost:8000}
-      modelo: ${AKINE_DICTADO_WHISPER_MODELO:Systran/faster-whisper-small}
+      modelo: ${AKINE_DICTADO_WHISPER_MODELO:deepdml/faster-whisper-large-v3-turbo-ct2}
       idioma: ${AKINE_DICTADO_IDIOMA:es}
-      timeout-segundos: ${AKINE_DICTADO_TIMEOUT_SEGUNDOS:90}
+      timeout-segundos: ${AKINE_DICTADO_TIMEOUT_SEGUNDOS:180}
       concurrencia: ${AKINE_DICTADO_CONCURRENCIA:2}
 
   notification:

@@ -13,7 +13,7 @@ del navegador porque mandan la voz, que en la historia clínica es dato de salud
 
 | Pieza | Qué hace |
 |---|---|
-| Servicio `whisper` (compose) | Servidor de transcripción compatible con la API de OpenAI (`POST /v1/audio/transcriptions`), modelo `faster-whisper` *small* en CPU (int8) |
+| Servicio `whisper` (compose) | Servidor de transcripción compatible con la API de OpenAI (`POST /v1/audio/transcriptions`), modelo `faster-whisper` *large-v3-turbo*: en CPU con int8, o en una GPU NVIDIA sumando `compose.gpu.yaml` |
 | `POST /api/v1/consultorios/{id}/dictado/transcripciones` | Recibe el audio (multipart `audio`) y devuelve `{ texto }`. No guarda nada |
 | `POST /api/v1/consultorios/{id}/dictado/evaluaciones` | Recibe un texto dictado y devuelve una **propuesta** de campos de la evaluación. No escribe en la sesión |
 | `[appDictado]` (web) | Directiva para cualquier `input`/`textarea`: pone un botón de micrófono al lado, graba, transcribe y agrega el texto en el campo |
@@ -54,11 +54,23 @@ del navegador porque mandan la voz, que en la historia clínica es dato de salud
 - **El micrófono exige HTTPS.** `getUserMedia` sólo funciona en un contexto seguro: `localhost` o
   HTTPS. Una tablet que entra por `http://192.168.x.x` no ve el botón. El despliegue tiene que
   servir HTTPS, cosa que ya hacía falta por el login.
-- **Latencia en CPU.** Medido el 16/11/2026 en la máquina de desarrollo (Docker con 12 núcleos),
-  con 10 s de audio: **~4 s** directo a Whisper y **~5 s** por el backend con `int8`; con el
-  `compute_type` por defecto (float32) eran ~6,5 s, con el mismo texto. Proponer la evaluación
-  sobre ese texto tarda ~2,3 s con Ollama caliente. El destino hay que medirlo (U-02); con GPU
-  la transcripción baja a menos de 1 s.
+- **Modelo: large-v3-turbo, no small.** El 17/11/2026, con la voz real del usuario, *small*
+  escribió cualquier cosa ("Felicidades y toro… chupetales") con el audio llegando entero; *turbo*
+  transcribió bien el mismo tipo de dictado. Por eso el valor por defecto es turbo
+  (`deepdml/faster-whisper-large-v3-turbo-ct2`, 1,6 GB).
+- **Latencia**, medida en la máquina de desarrollo (i5-13420H, 12 hilos; RTX 4050 Laptop 6 GB),
+  por cada 10 s de audio:
+
+  | | CPU int8 | GPU float16 |
+  |---|---|---|
+  | small | ~4 s (5 s por el backend) | — |
+  | large-v3-turbo | ~9 s (10,6 s por el backend) | **~1,1 s** (~1 s por el backend) |
+
+  En CPU turbo tarda casi lo mismo que el audio: 2 minutos de grabación son ~110 s, por eso el
+  plazo por defecto es 180 s. La primera transcripción después de arrancar el contenedor carga el
+  modelo (24 s en CPU, 52 s en GPU con el arranque de CUDA); speaches no tiene opción de precarga.
+  En la GPU turbo ocupa ~2 GB de memoria de video. Proponer la evaluación tarda ~2,3 s más con
+  Ollama caliente. **El destino hay que medirlo (U-02)**: sin GPU, turbo es lento y small no sirve.
 - **El modelo queda cargado.** speaches descarga el modelo de memoria a los 5 minutos sin uso, y
   el primer dictado después de una pausa pasaba de ~7 s a ~15 s. El compose fija
   `WHISPER__TTL=-1` (y `WHISPER__COMPUTE_TYPE=int8`); el despliegue tiene que hacer lo mismo.
