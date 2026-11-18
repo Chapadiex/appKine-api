@@ -72,7 +72,8 @@ class ContratacionRepository implements ContratacionRepositoryPort {
 				organizationId);
 	}
 
-	private boolean definida(long organizationId) {
+	@Override
+	public boolean definida(long organizationId) {
 		List<Boolean> marca = jdbc.queryForList(
 				"SELECT contratacion_definida FROM subscription WHERE organization_id = ?",
 				Boolean.class, organizationId);

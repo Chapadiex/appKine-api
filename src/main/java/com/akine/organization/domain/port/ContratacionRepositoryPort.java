@@ -12,6 +12,9 @@ public interface ContratacionRepositoryPort {
 
 	Set<Adicional> adicionalesDe(long organizationId);
 
+	/** Si la plataforma eligio la contratacion (alta o cambio); si no, el centro tiene todo. */
+	boolean definida(long organizationId);
+
 	/** Reemplaza las filas: borra las que sobran e inserta las elegidas. */
 	void reemplazar(long organizationId, Set<Servicio> servicios, Set<Adicional> adicionales);
 }

@@ -146,7 +146,7 @@ public class ContratacionService {
 				contratacionRepository.serviciosDe(organizationId),
 				contratacionRepository.adicionalesDe(organizationId),
 				subscription.getStatus(), subscription.getPruebaHasta(), soloLectura,
-				subscription.getVersion());
+				contratacionRepository.definida(organizationId), subscription.getVersion());
 	}
 
 	private static void exigirServicios(Set<Servicio> servicios) {
