@@ -198,12 +198,16 @@ public class OllamaModeloDeLenguaje implements ModeloDeLenguaje {
 	/**
 	 * Pide a Ollama cargar el modelo: un {@code /api/chat} sin mensajes con {@code keep_alive}.
 	 * Asincrono: el futuro termina con el status HTTP, o con la excepcion si no responde.
+	 *
+	 * <p>Con el mismo {@code num_ctx} que las llamadas: sin el, Ollama lo carga con 4096 y la primera
+	 * pregunta real (8192) lo vuelve a cargar, que es justo la espera que la precarga quiere evitar.
 	 */
 	public CompletableFuture<Integer> precargar(Duration plazo) {
 		Map<String, Object> cuerpo = new LinkedHashMap<>();
 		cuerpo.put("model", modelo);
 		cuerpo.put("messages", List.of());
 		cuerpo.put("keep_alive", keepAlive);
+		cuerpo.put("options", Map.of("num_ctx", NUM_CTX));
 		HttpRequest request = HttpRequest.newBuilder(endpoint)
 				.timeout(plazo)
 				.header("Content-Type", "application/json")

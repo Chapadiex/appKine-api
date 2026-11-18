@@ -230,7 +230,7 @@ class LibroConcurrenteIT {
 		// mockear PermissionGuard con @MockitoBean no arranca (su bean es tambien PermissionEvaluator).
 		PermissionGuard permisos = mock(PermissionGuard.class);
 		LibroService real = new LibroService(
-				new BibliotecaAcceso(new BibliotecaAjustes(true, 104857600L, 2000), permisos),
+				new BibliotecaAcceso(new BibliotecaAjustes(true, 104857600L, 2000), permisos, (org, f) -> true),
 				new BibliotecaAjustes(true, 104857600L, 2000), libros, fragmentos, version, almacen,
 				auditTrail, transactionManager);
 
