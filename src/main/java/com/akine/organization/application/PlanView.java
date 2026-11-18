@@ -16,10 +16,17 @@ public record PlanView(
 		String code,
 		String name,
 		List<PlanLimitView> limits,
-		List<FeatureCode> features) {
+		List<FeatureCode> features,
+		boolean ofrecido) {
 
 	public PlanView {
 		limits = List.copyOf(limits);
 		features = List.copyOf(features);
+	}
+
+	/** Un plan ofrecido (los anteriores al 18/11/2026 no lo son). */
+	public PlanView(long id, String code, String name, List<PlanLimitView> limits,
+			List<FeatureCode> features) {
+		this(id, code, name, limits, features, true);
 	}
 }

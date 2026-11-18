@@ -115,7 +115,9 @@ public class OrganizationMembershipDirectory implements MembershipDirectory {
 		}
 
 		TenantOperationalStatus estado =
-				traducir(Subscription.operationalStatus(contexto.estadoSuscripcion(), true));
+				traducir(Subscription.operationalStatus(Subscription.estadoEfectivo(
+						contexto.estadoSuscripcion(), contexto.pruebaHasta(), java.time.Instant.now()),
+						true));
 
 		return Optional.of(new TenantMembership(
 				membership.getId(), membership.getRoleCode().name(), estado));

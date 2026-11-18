@@ -96,6 +96,10 @@ final class Fixtures {
 	}
 
 	static Subscription suscripcionEn(long planId, SubscriptionStatus estado) {
+		if (estado == SubscriptionStatus.PRUEBA) {
+			return Subscription.enPrueba(ORG_ID, planId, Instant.now(),
+					Instant.now().plus(java.time.Duration.ofDays(30)));
+		}
 		Subscription subscription = suscripcionActiva(planId);
 		if (estado != SubscriptionStatus.ACTIVA) {
 			subscription.transitionTo(estado);

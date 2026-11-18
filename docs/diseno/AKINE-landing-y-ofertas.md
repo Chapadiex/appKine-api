@@ -1,6 +1,6 @@
 # AKINE — Landing, ofertas y prueba gratis de 30 días
 
-- **Estado:** plan, sin implementar
+- **Estado:** implementado en la tanda (backend y frontend), sin push. Ver §11
 - **Fecha:** 18/11/2026
 - **Rama:** tanda (`akine-api-tanda` y `akine-web-tanda`): se sube todo junto cuando el usuario lo pida
 - **Base:** `main` en contrato **0.177.0**, última migración **V27**
@@ -228,6 +228,41 @@ no se recortan; el resto, pocos tests, como dice `CLAUDE.md`.
 6. **Cobro de la suscripción:** fuera de este plan. Por ahora la plataforma pasa el centro de prueba
    a plan a mano; el cobro online es otra etapa.
 7. **Términos y privacidad:** la landing los enlaza, y el texto legal es del usuario.
+
+## 11. Cómo quedó (18/11/2026)
+
+**Contrato 0.178.0, migración `V28__contratacion_y_prueba`.** Ocho operaciones nuevas:
+`getContratacionDeOrganizacion`, `getContratacionDeCentroEnPlataforma`, `updateContratacionDeCentro`,
+`darDeAltaCentro`, `pedirPruebaGratis`, `listarSolicitudesDePrueba`, `verSolicitudDePrueba` y
+`descartarSolicitudDePrueba`.
+
+Decisiones que se tomaron al implementar y se apartan de §7:
+
+- **`subscription.contratacion_definida`.** En `false` (todo lo que existía y cualquier centro que
+  se registre solo) el centro tiene los dos servicios y la IA. Sólo el alta y el cambio de la
+  plataforma la prenden. Así no hubo que sembrar filas, y los 59 ITs que insertan organizaciones
+  por SQL siguen igual.
+- **La prueba vencida se calcula al leer** (`Subscription.estadoEfectivo`): `PRUEBA` con
+  `prueba_hasta` pasado se lee como `SUSPENDIDA`, que el filtro de contexto ya trata como sólo
+  lectura (lee, rechaza escrituras con 409 `subscription-suspended`). Sin tarea programada.
+- **Servicio no contratado = 409 `feature-not-available`** con la propiedad `servicio`, el mismo
+  tipo que una funcionalidad fuera del plan. No hizo falta un `problemType` nuevo.
+- **El bloqueo por servicio mira el paquete del controller** (`ServicioContratadoInterceptor`):
+  `clinical`, `encounter`, `contracting`, presentaciones, órdenes, autorizaciones y coberturas
+  son Kinesiología; `activity` es Actividades; el dictado exige la IA. El resto de la IA pasa por
+  `FuncionesIaDelCentro`, que ahora exige el adicional.
+- **Los planes viejos se conservan** (`plan.ofrecido = false`): `BASICO` y `PROFESIONAL` siguen
+  para quien los tiene y para los tests. Se ofrecen `BASE` (1 sede, 5 miembros), `CRECIMIENTO`
+  (3 sedes) y `RED` (sin tope).
+- **Autoregistro detrás de `akine.registro.autoservicio.enabled`**: apagado en `application.yml`
+  (404), prendido en el perfil `local` porque los ITs y el E2E se registran solos.
+- **El alta del centro vive en `identity`** (`AltaDeCentroPlataformaService`), como el registro:
+  `organization` crea el centro por `spi.AltaDeCentro` y `identity` invita al dueño con la
+  invitación de colaboradores, sin el chequeo de `colaborador:manage`.
+
+**Pendiente:** los correos (aviso a la plataforma cuando entra un pedido y avisos al dueño antes
+del vencimiento). Hoy el vencimiento se ve en la franja de la app y la plataforma ve la cantidad
+de pendientes en su bandeja.
 
 ## 10. Lo que no entra
 

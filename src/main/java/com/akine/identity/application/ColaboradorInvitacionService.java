@@ -246,6 +246,25 @@ public class ColaboradorInvitacionService {
 				command.consultorioId(),
 				null,
 				ahora));
+		return crear(organizationId, command, datos, actor.accountId(), ahora);
+	}
+
+	/**
+	 * Invita al duenio de un centro recien creado por la plataforma (18/11/2026): ORG_ADMIN de
+	 * toda la organizacion. Sin chequeo de {@code colaborador:manage}: quien llama es la
+	 * plataforma, que no es miembro, y el llamador ya verifico su rol. La membership nace al
+	 * aceptar, con la contrasenia que elige el duenio.
+	 */
+	@Transactional
+	public InvitacionView invitarDuenioDesdePlataforma(long organizationId, String email, long actorAccountId) {
+		return crear(organizationId, new InvitacionAltaCommand(email, "ORG_ADMIN", null), null,
+				actorAccountId, clock.now());
+	}
+
+	private InvitacionView crear(long organizationId, InvitacionAltaCommand command,
+			DatosAltaManual datos, long actorAccountId, Instant ahora) {
+		DirectMembershipService.Actor actor = new DirectMembershipService.Actor(
+				actorAccountId, organizationId, false);
 
 		// PASO 2 - Recien ahora el email. Antes del paso 1 seria un oraculo abierto.
 		String emailNormalizado = EmailNormalizado.of(command.email());

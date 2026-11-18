@@ -29,6 +29,8 @@ import com.akine.organization.domain.exception.InvalidSubscriptionTransitionExce
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
 import com.akine.organization.domain.exception.OrganizationSlugTakenException;
 import com.akine.organization.domain.exception.PlanLimitExceededException;
+import com.akine.organization.domain.exception.ServicioNoContratadoException;
+import com.akine.organization.domain.exception.SolicitudDePruebaNotFoundException;
 import com.akine.organization.domain.exception.SubscriptionSuspendedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -129,6 +131,11 @@ public class OrganizationProblemHandler {
 	 * enumerar los clientes del SaaS probando ids consecutivos: bastaria comparar 403 contra 404
 	 * para saber cuales existen. Para quien no tiene acceso, el recurso no existe.
 	 */
+	@ExceptionHandler(SolicitudDePruebaNotFoundException.class)
+	public ProblemDetail handleSolicitudDePruebaNotFound(SolicitudDePruebaNotFoundException exception) {
+		return noEncontrado();
+	}
+
 	@ExceptionHandler(OrganizationNotFoundException.class)
 	public ProblemDetail handleOrganizationNotFound(OrganizationNotFoundException exception) {
 		log.debug("Organizacion no accesible: organizationId={}", exception.getOrganizationId());
@@ -203,6 +210,22 @@ public class OrganizationProblemHandler {
 	}
 
 	/** Funcionalidad no incluida en el plan vigente. Se publica cual, para poder ofrecer upgrade. */
+	/**
+	 * El centro no contrato el servicio o el adicional (18/11/2026). Mismo {@code type} que una
+	 * funcionalidad fuera del plan, con la propiedad {@code servicio}.
+	 */
+	@ExceptionHandler(ServicioNoContratadoException.class)
+	public ProblemDetail handleServicioNoContratado(ServicioNoContratadoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT,
+				"El centro no tiene contratado " + exception.getContratable()
+						+ ". Se suma desde la plataforma.");
+		problem.setTitle("Servicio no contratado");
+		problem.setType(FEATURE_NOT_AVAILABLE);
+		problem.setProperty("servicio", exception.getContratable());
+		return problem;
+	}
+
 	@ExceptionHandler(FeatureNotAvailableException.class)
 	public ProblemDetail handleFeatureNotAvailable(FeatureNotAvailableException exception) {
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(

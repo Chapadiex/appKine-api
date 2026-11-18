@@ -77,9 +77,18 @@ public class AccountRegistrationController {
 	private final OnboardingService onboardingService;
 	private final AccountActivationService activationService;
 
+	/**
+	 * Autoregistro (18/11/2026): apagado por defecto, porque los centros los da de alta la
+	 * plataforma. El perfil {@code local} lo prende para los ITs y el E2E, que se registran solos.
+	 */
+	private final boolean autoregistro;
+
 	public AccountRegistrationController(
 			OnboardingService onboardingService,
-			AccountActivationService activationService) {
+			AccountActivationService activationService,
+			@org.springframework.beans.factory.annotation.Value("${akine.registro.autoservicio.enabled:false}")
+			boolean autoregistro) {
+		this.autoregistro = autoregistro;
 		this.onboardingService = onboardingService;
 		this.activationService = activationService;
 	}
@@ -168,6 +177,9 @@ public class AccountRegistrationController {
 
 			@Valid @RequestBody RegisterAccountRequest request) {
 
+		if (!autoregistro) {
+			throw new RegistroDeshabilitadoException();
+		}
 		if (idempotencyKey.isBlank()) {
 			throw new IllegalArgumentException("El header Idempotency-Key no puede estar vacio");
 		}

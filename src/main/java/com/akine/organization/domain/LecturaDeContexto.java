@@ -21,5 +21,12 @@ public record LecturaDeContexto(
 		Membership membership,
 		Long consultorioId,
 		Long organizacionId,
-		SubscriptionStatus estadoSuscripcion) {
+		SubscriptionStatus estadoSuscripcion,
+		java.time.Instant pruebaHasta) {
+
+	/** Sin prueba: el estado leido es el efectivo. */
+	public LecturaDeContexto(Membership membership, Long consultorioId, Long organizacionId,
+			SubscriptionStatus estadoSuscripcion) {
+		this(membership, consultorioId, organizacionId, estadoSuscripcion, null);
+	}
 }

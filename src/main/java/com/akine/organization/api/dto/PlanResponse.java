@@ -27,13 +27,16 @@ public record PlanResponse(
 		List<PlanLimitResponse> limits,
 
 		@Schema(description = "Funcionalidades habilitadas por el plan")
-		List<FeatureCode> features) {
+		List<FeatureCode> features,
+		@Schema(description = "Si la plataforma lo ofrece hoy al dar de alta o cambiar la contratacion de un centro. Los planes anteriores al 18/11/2026 siguen vigentes para quien los tiene y no se ofrecen")
+		boolean ofrecido) {
 
 	public static PlanResponse from(PlanView view) {
 		return new PlanResponse(
 				view.code(),
 				view.name(),
 				view.limits().stream().map(PlanLimitResponse::from).toList(),
-				view.features());
+				view.features(),
+				view.ofrecido());
 	}
 }

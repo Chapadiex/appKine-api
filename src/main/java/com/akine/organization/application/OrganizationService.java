@@ -56,6 +56,7 @@ public class OrganizationService {
 	private final SubscriptionTransitionRepositoryPort transitionRepository;
 	private final PlanCatalogService planCatalogService;
 	private final AuditTrail auditTrail;
+	private final ContratacionService contratacionService;
 
 	public OrganizationService(
 			OrganizationRepositoryPort organizationRepository,
@@ -63,7 +64,9 @@ public class OrganizationService {
 			SubscriptionRepositoryPort subscriptionRepository,
 			SubscriptionTransitionRepositoryPort transitionRepository,
 			PlanCatalogService planCatalogService,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			ContratacionService contratacionService) {
+		this.contratacionService = contratacionService;
 		this.organizationRepository = organizationRepository;
 		this.consultorioRepository = consultorioRepository;
 		this.subscriptionRepository = subscriptionRepository;
@@ -109,6 +112,17 @@ public class OrganizationService {
 	ProvisionedTenant provisionTenant(
 			String name, String slug, String timezone, Plan plan,
 			String consultorioName, Long actorAccountId) {
+		return provisionTenant(name, slug, timezone, plan, consultorioName, actorAccountId, null);
+	}
+
+	/**
+	 * Alta del tenant con prueba gratis: con {@code pruebaHasta} la suscripcion nace en
+	 * {@code PRUEBA}. Nace con la contratacion completa (los dos servicios y la IA); quien elige
+	 * otra la reemplaza en la misma transaccion (alta de la plataforma, 18/11/2026).
+	 */
+	ProvisionedTenant provisionTenant(
+			String name, String slug, String timezone, Plan plan,
+			String consultorioName, Long actorAccountId, Instant pruebaHasta) {
 
 		String slugFinal = slug == null || slug.isBlank()
 				? Slugs.derivar(name, organizationRepository::existsBySlug)
@@ -140,8 +154,10 @@ public class OrganizationService {
 		// lo que hace que el backfill de V17 sea exacto y no una aproximacion.
 		Consultorio consultorio = consultorioRepository.save(
 				new Consultorio(organization.getId(), consultorioName, zona, null));
-		Subscription subscription = subscriptionRepository.save(
-				new Subscription(organization.getId(), plan.getId(), ahora));
+		Subscription subscription = subscriptionRepository.save(pruebaHasta == null
+				? new Subscription(organization.getId(), plan.getId(), ahora)
+				: Subscription.enPrueba(organization.getId(), plan.getId(), ahora, pruebaHasta));
+		contratacionService.asignarCompleta(organization.getId());
 
 		// Fila inicial del historico: from = null significa "alta de la suscripcion". Sin ella,
 		// el historico de un tenant empezaria en su primera suspension y no habria forma de

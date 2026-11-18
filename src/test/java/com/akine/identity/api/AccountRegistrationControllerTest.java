@@ -36,7 +36,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * respuestas. Si alguien alguna vez agrega un {@code Location}, un id o un 409, ese test se
  * pone rojo, que es exactamente para lo que esta.
  */
-@WebMvcTest(AccountRegistrationController.class)
+@WebMvcTest(controllers = AccountRegistrationController.class,
+		// El autoregistro esta apagado por defecto desde el 18/11/2026; estos tests lo prueban prendido.
+		properties = "akine.registro.autoservicio.enabled=true")
 @Import(IdentityApiSliceSecurityConfig.class)
 class AccountRegistrationControllerTest {
 

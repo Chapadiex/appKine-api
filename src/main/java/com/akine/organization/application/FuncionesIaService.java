@@ -4,6 +4,8 @@ import com.akine.organization.domain.OrganizationIa;
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
 import com.akine.organization.domain.port.OrganizationIaRepositoryPort;
 import com.akine.organization.domain.port.OrganizationRepositoryPort;
+import com.akine.organization.domain.port.ContratacionRepositoryPort;
+import com.akine.organization.spi.Adicional;
 import com.akine.organization.spi.FuncionIa;
 import com.akine.organization.spi.FuncionesIaDelCentro;
 import com.akine.platform.spi.audit.AuditEntry;
@@ -34,12 +36,15 @@ public class FuncionesIaService implements FuncionesIaDelCentro {
 	private final OrganizationIaRepositoryPort iaRepository;
 	private final IaDelDespliegue despliegue;
 	private final AuditTrail auditTrail;
+	private final ContratacionRepositoryPort contratacion;
 
 	public FuncionesIaService(
 			OrganizationRepositoryPort organizationRepository,
 			OrganizationIaRepositoryPort iaRepository,
 			IaDelDespliegue despliegue,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			ContratacionRepositoryPort contratacion) {
+		this.contratacion = contratacion;
 		this.organizationRepository = organizationRepository;
 		this.iaRepository = iaRepository;
 		this.despliegue = despliegue;
@@ -49,6 +54,11 @@ public class FuncionesIaService implements FuncionesIaDelCentro {
 	@Override
 	@Transactional(readOnly = true)
 	public boolean prendida(long organizationId, FuncionIa funcion) {
+		// Desde el 18/11/2026 la IA es un adicional: sin contratarla, ninguna funcion anda,
+		// aunque el despliegue la ofrezca y el centro la haya dejado prendida.
+		if (!iaContratada(organizationId)) {
+			return false;
+		}
 		return iaRepository.findByOrganizationId(organizationId)
 				.map(ia -> delCentro(ia, funcion))
 				.orElse(true);
@@ -94,11 +104,18 @@ public class FuncionesIaService implements FuncionesIaDelCentro {
 		return vista(organizationId, Optional.of(guardada));
 	}
 
+	/** Si el centro contrato el adicional de IA. */
+	public boolean iaContratada(long organizationId) {
+		return contratacion.adicionalesDe(organizationId).contains(Adicional.IA);
+	}
+
 	private FuncionesIaView vista(long organizationId, Optional<OrganizationIa> ia) {
+		boolean contratada = iaContratada(organizationId);
 		List<FuncionesIaView.Funcion> funciones = Arrays.stream(FuncionIa.values())
 				.map(f -> {
 					boolean centro = ia.map(i -> propia(i, f)).orElse(true);
-					boolean activa = despliegue.ofrece(f) && ia.map(i -> delCentro(i, f)).orElse(true);
+					boolean activa = contratada && despliegue.ofrece(f)
+							&& ia.map(i -> delCentro(i, f)).orElse(true);
 					return new FuncionesIaView.Funcion(f, despliegue.ofrece(f), centro, activa);
 				})
 				.toList();

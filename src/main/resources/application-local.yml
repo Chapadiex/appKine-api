@@ -18,6 +18,11 @@ spring:
         format_sql: true
 
 akine:
+  # Autoregistro (18/11/2026): apagado en application.yml porque los centros los da de alta la
+  # plataforma. Aca se prende para que los ITs y el E2E sigan registrandose solos.
+  registro:
+    autoservicio:
+      enabled: ${AKINE_REGISTRO_AUTOSERVICIO_ENABLED:true}
   security:
     jwt:
       # Secreto de firma de DESARROLLO. Es publico —esta versionado— y por eso vive ACA y no

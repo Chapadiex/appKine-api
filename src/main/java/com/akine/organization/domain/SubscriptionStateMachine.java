@@ -53,7 +53,7 @@ public final class SubscriptionStateMachine {
 			return false;
 		}
 		if (from == null) {
-			return to == ESTADO_INICIAL;
+			return to == ESTADO_INICIAL || to == SubscriptionStatus.PRUEBA;
 		}
 		return TRANSICIONES.get(from).contains(to);
 	}
@@ -80,7 +80,7 @@ public final class SubscriptionStateMachine {
 	 */
 	public static Set<SubscriptionStatus> allowedTargets(SubscriptionStatus from) {
 		if (from == null) {
-			return EnumSet.of(ESTADO_INICIAL);
+			return EnumSet.of(ESTADO_INICIAL, SubscriptionStatus.PRUEBA);
 		}
 		return TRANSICIONES.get(from);
 	}
@@ -98,6 +98,11 @@ public final class SubscriptionStateMachine {
 	private static Map<SubscriptionStatus, Set<SubscriptionStatus>> construirTabla() {
 		Map<SubscriptionStatus, Set<SubscriptionStatus>> tabla =
 				new EnumMap<>(SubscriptionStatus.class);
+		// PRUEBA (18/11/2026): pasa a ACTIVA al contratar; se suspende o cancela como cualquiera.
+		tabla.put(SubscriptionStatus.PRUEBA,
+				Collections.unmodifiableSet(EnumSet.of(
+						SubscriptionStatus.ACTIVA, SubscriptionStatus.SUSPENDIDA,
+						SubscriptionStatus.CANCELADA)));
 		tabla.put(SubscriptionStatus.ACTIVA,
 				Collections.unmodifiableSet(EnumSet.of(
 						SubscriptionStatus.SUSPENDIDA, SubscriptionStatus.CANCELADA)));

@@ -115,6 +115,17 @@ final class AuditEvents {
 	/** Funciones de IA que el centro decidio usar. */
 	static final String ORGANIZATION_IA_UPDATED = "ORGANIZATION_IA_UPDATED";
 
+	/** La plataforma cambio el plan, los servicios o los adicionales de un centro (18/11/2026). */
+	static final String CONTRATACION_UPDATED = "CONTRATACION_UPDATED";
+
+	/** Llego un pedido de prueba gratis desde la landing. */
+	static final String SOLICITUD_PRUEBA_RECIBIDA = "SOLICITUD_PRUEBA_RECIBIDA";
+
+	/** La plataforma aprobo o descarto un pedido de prueba. */
+	static final String SOLICITUD_PRUEBA_RESUELTA = "SOLICITUD_PRUEBA_RESUELTA";
+
+	static final String ENTITY_SOLICITUD_PRUEBA = "SolicitudDePrueba";
+
 	static final String ENTITY_ORGANIZATION = "Organization";
 	static final String ENTITY_SUBSCRIPTION = "Subscription";
 	static final String ENTITY_MEMBERSHIP = "Membership";
