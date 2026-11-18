@@ -31,6 +31,13 @@ public class WhisperTranscriptor implements Transcriptor {
 
 	private static final Logger log = LoggerFactory.getLogger(WhisperTranscriptor.class);
 
+	/**
+	 * Lo unico que se acepta como tipo de la parte del audio. Viene del navegador: sin esto un salto
+	 * de linea podria agregar cabeceras o partes al cuerpo que se arma a mano.
+	 */
+	private static final java.util.regex.Pattern TIPO_MIME =
+			java.util.regex.Pattern.compile("[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*");
+
 	private final HttpClient http;
 	private final ObjectMapper json = JsonMapper.builder().build();
 	private final URI endpoint;
@@ -80,7 +87,10 @@ public class WhisperTranscriptor implements Transcriptor {
 
 	HttpRequest armar(byte[] audio, String tipoContenido, Duration plazo) {
 		String limite = "akine-" + UUID.randomUUID();
-		ByteArrayOutputStream cuerpo = new ByteArrayOutputStream(audio.length + 1024);
+		// Sin capacidad inicial calculada del audio: el tope lo pone el servicio (akine.dictado.max-bytes).
+		ByteArrayOutputStream cuerpo = new ByteArrayOutputStream();
+		String tipo = TIPO_MIME.matcher(tipoContenido == null ? "" : tipoContenido).matches()
+				? tipoContenido : "application/octet-stream";
 		campo(cuerpo, limite, "model", modelo);
 		campo(cuerpo, limite, "language", idioma);
 		campo(cuerpo, limite, "response_format", "json");
@@ -89,8 +99,8 @@ public class WhisperTranscriptor implements Transcriptor {
 			campo(cuerpo, limite, "prompt", vocabulario);
 		}
 		escribir(cuerpo, "--" + limite + "\r\n"
-				+ "Content-Disposition: form-data; name=\"file\"; filename=\"dictado." + extension(tipoContenido)
-				+ "\"\r\nContent-Type: " + tipoContenido + "\r\n\r\n");
+				+ "Content-Disposition: form-data; name=\"file\"; filename=\"dictado." + extension(tipo)
+				+ "\"\r\nContent-Type: " + tipo + "\r\n\r\n");
 		cuerpo.writeBytes(audio);
 		escribir(cuerpo, "\r\n--" + limite + "--\r\n");
 		return HttpRequest.newBuilder(endpoint)
