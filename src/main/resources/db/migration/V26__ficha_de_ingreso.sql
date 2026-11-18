@@ -79,7 +79,7 @@ ALTER TABLE historia_clinica_antecedente
     ADD CONSTRAINT ck_hc_antecedente_codigo_medico CHECK (codigo IS NULL OR tipo = 'MEDICO');
 
 CREATE UNIQUE INDEX ux_hc_antecedente_codigo_vigente
-    ON historia_clinica_antecedente (historia_clinica_id, codigo)
+    ON historia_clinica_antecedente (organization_id, historia_clinica_id, codigo)
     WHERE codigo IS NOT NULL AND active;
 
 COMMENT ON COLUMN historia_clinica_antecedente.codigo IS 'Enfermedad de la lista de la ficha de ingreso (EnfermedadDeIngreso). Una vigente por codigo y por historia';

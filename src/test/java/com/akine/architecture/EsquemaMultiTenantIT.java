@@ -125,6 +125,12 @@ class EsquemaMultiTenantIT {
 						+ "plataforma, valor = test propio del centro. El unique va sobre owner_key y la "
 						+ "decision de usarlo vive en la sesion, que lleva organization_id (ADR-0021, 06.03)"));
 
+		EXCEPCIONES.put("ocupacion", new Excepcion(Forma.NULLABLE,
+				"Dos poblaciones en la misma tabla, igual que especialidad: NULL = ocupacion sembrada "
+						+ "por el producto, valor = ocupacion que agrego el centro. El unique va sobre "
+						+ "owner_key y la eleccion vive en historia_clinica_ficha, que lleva "
+						+ "organization_id NOT NULL (ficha de ingreso, V26)"));
+
 		// --- ADR-0022 (superseded by 0023) — feriados -----------------------------------------
 		EXCEPCIONES.put("feriado", new Excepcion(Forma.SIN_COLUMNA,
 				"Hecho del calendario publico nacional. La decision de la sede —si cierra ese dia— vive "

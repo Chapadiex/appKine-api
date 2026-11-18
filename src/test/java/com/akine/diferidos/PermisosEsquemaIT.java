@@ -253,7 +253,9 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						"asistente:use", "asistente:sql",
 						// Agenda de profesionales: horario habitual y excepciones, separados de
 						// consultorio:manage (docs/diseno/AKINE-agenda-roles.md).
-						"agenda:horario", "agenda:excepciones");
+						"agenda:horario", "agenda:excepciones",
+						// DP-47: declarar datos del paciente en la HC sin leerla.
+						"hc:declarar");
 	}
 
 	@Test
@@ -296,7 +298,9 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						// Asistente de datos (D-2): la puerta, por base.
 						"asistente:use",
 						// M31 fase 2: sugerencias de evolucion, solo el profesional.
-						"evolucion:sugerir");
+						"evolucion:sugerir",
+						// DP-47: declarar datos del paciente en la HC.
+						"hc:declarar");
 
 		membershipService.revoke(actorDe(tenant), tenant.organizationId(), membership, MOTIVO);
 
