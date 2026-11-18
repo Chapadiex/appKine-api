@@ -49,6 +49,7 @@ class MensajesDeValidacionTest {
 	/** Los campos en ingles del contrato, y la palabra con la que los nombran los mensajes. */
 	private static final Map<String, List<String>> GLOSARIO = Map.ofEntries(
 			Map.entry("account", List.of("cuenta")),
+			Map.entry("anio", List.of("ano")),
 			Map.entry("address", List.of("direccion")),
 			Map.entry("duration", List.of("duracion")),
 			Map.entry("email", List.of("correo")),

@@ -135,6 +135,18 @@ public class AdjuntoClinico extends MarcaTemporal {
 	@Column(name = "version", nullable = false)
 	private long version;
 
+	/** DP-47. Inmutable despues del alta. */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "origen", nullable = false, length = 16, updatable = false)
+	private OrigenDato origen = OrigenDato.PROFESIONAL;
+
+	/** Las escribe solo el UPDATE condicionado de la revision: el flush no las toca. */
+	@Column(name = "revisado_por", insertable = false, updatable = false)
+	private Long revisadoPor;
+
+	@Column(name = "revisado_en", insertable = false, updatable = false)
+	private Instant revisadoEn;
+
 	protected AdjuntoClinico() {
 		// Requerido por JPA.
 	}
@@ -186,6 +198,31 @@ public class AdjuntoClinico extends MarcaTemporal {
 	 * forma correcta de reemplazar un documento es dar de baja el viejo y subir el nuevo, que
 	 * deja las dos versiones consultables.
 	 */
+	/** Marca el alta como declarada por el paciente (DP-47). Solo antes de persistir. */
+	public AdjuntoClinico comoDeclarado() {
+		if (id != null) {
+			throw new IllegalStateException("El origen de un adjunto no cambia despues del alta");
+		}
+		this.origen = OrigenDato.DECLARADO;
+		return this;
+	}
+
+	public boolean estaDeclaradoSinRevisar() {
+		return origen == OrigenDato.DECLARADO && revisadoEn == null;
+	}
+
+	public OrigenDato getOrigen() {
+		return origen;
+	}
+
+	public Long getRevisadoPor() {
+		return revisadoPor;
+	}
+
+	public Instant getRevisadoEn() {
+		return revisadoEn;
+	}
+
 	public void reclasificar(CategoriaAdjuntoClinico categoria, String titulo) {
 		if (categoria != null) {
 			this.categoria = categoria;

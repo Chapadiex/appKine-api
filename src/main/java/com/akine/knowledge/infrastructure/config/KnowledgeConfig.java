@@ -6,18 +6,19 @@ import com.akine.knowledge.application.Interpretador;
 import com.akine.knowledge.application.SondaDeEvidencia;
 import com.akine.knowledge.domain.BibliotecaAjustes;
 import com.akine.knowledge.domain.BusquedaAjustes;
-import com.akine.knowledge.domain.DetectorDeInstrucciones;
 import com.akine.knowledge.domain.ProcesamientoAjustes;
 import com.akine.knowledge.domain.ReindexadoAjustes;
 import com.akine.knowledge.domain.Troceador;
-import com.akine.knowledge.domain.port.ModeloDeLenguaje;
 import com.akine.knowledge.domain.port.ModeloEmbeddings;
-import com.akine.knowledge.infrastructure.ModeloDeLenguajeDePrueba;
-import com.akine.knowledge.infrastructure.OllamaModeloDeLenguaje;
 import com.akine.knowledge.infrastructure.PrecargaDelModelo;
 import com.akine.knowledge.infrastructure.ModeloEmbeddingsDePrueba;
 import com.akine.knowledge.infrastructure.OnnxModeloEmbeddings;
+import com.akine.platform.spi.modelo.ConfiguracionDeModelo;
+import com.akine.platform.spi.modelo.FabricaDeModelos;
+import com.akine.platform.spi.modelo.ModeloDeLenguaje;
+import com.akine.platform.spi.texto.DetectorDeInstrucciones;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -127,21 +128,34 @@ public class KnowledgeConfig {
 		return new ModeloEmbeddingsDePrueba();
 	}
 
-	/** Modelo de lenguaje local sobre Ollama, solo con la biblioteca y la consulta habilitadas. */
-	@Bean
+	/** Nombre del bean del modelo de lenguaje de la biblioteca: hay otros del mismo tipo. */
+	public static final String MODELO = "modeloBiblioteca";
+
+	/**
+	 * Modelo de lenguaje local (Ollama o el de prueba), solo con la biblioteca y la consulta
+	 * habilitadas. Sin cupo: la cola de consultas ya deja una sola en curso.
+	 */
+	@Bean(MODELO)
 	@ConditionalOnExpression("${akine.biblioteca.enabled:false} and ${akine.biblioteca.consulta.enabled:false}"
-			+ " and '${akine.biblioteca.consulta.tipo:ollama}' == 'ollama'")
-	public OllamaModeloDeLenguaje ollamaModeloDeLenguaje(BibliotecaProperties properties) {
+			+ " and ('${akine.biblioteca.consulta.tipo:ollama}' == 'ollama'"
+			+ " or '${akine.biblioteca.consulta.tipo:ollama}' == 'prueba')")
+	public ModeloDeLenguaje modeloBiblioteca(FabricaDeModelos fabrica, BibliotecaProperties properties) {
+		return fabrica.crear(configuracionDelModelo(properties));
+	}
+
+	static ConfiguracionDeModelo configuracionDelModelo(BibliotecaProperties properties) {
 		BibliotecaProperties.Consulta consulta = properties.consulta();
-		return new OllamaModeloDeLenguaje(consulta.url(), consulta.modelo(), consulta.keepAlive());
+		return new ConfiguracionDeModelo(consulta.tipo(), consulta.url(), consulta.modelo(), consulta.keepAlive(), 0,
+				null);
 	}
 
 	/** Carga el modelo en Ollama al arrancar, en segundo plano (diseño consulta v2, §4.9). */
 	@Bean
 	@ConditionalOnExpression("${akine.biblioteca.enabled:false} and ${akine.biblioteca.consulta.enabled:false}"
 			+ " and '${akine.biblioteca.consulta.tipo:ollama}' == 'ollama'")
-	public PrecargaDelModelo precargaDelModelo(OllamaModeloDeLenguaje modelo) {
-		return new PrecargaDelModelo(modelo);
+	public PrecargaDelModelo precargaDelModelo(FabricaDeModelos fabrica, BibliotecaProperties properties) {
+		ConfiguracionDeModelo configuracion = configuracionDelModelo(properties);
+		return new PrecargaDelModelo(plazo -> fabrica.precargar(configuracion, plazo));
 	}
 
 	/**
@@ -149,16 +163,8 @@ public class KnowledgeConfig {
 	 * consulta no hay bean, y la falla cae en el respaldo del interpretador.
 	 */
 	@Bean
-	public Interpretador interpretador(ObjectProvider<ModeloDeLenguaje> modelo, SondaDeEvidencia sonda,
-			BibliotecaProperties properties) {
+	public Interpretador interpretador(@Qualifier(MODELO) ObjectProvider<ModeloDeLenguaje> modelo,
+			SondaDeEvidencia sonda, BibliotecaProperties properties) {
 		return new Interpretador(modelo::getObject, sonda, properties.consulta().busqueda().corteVector());
-	}
-
-	/** Determinista, para tests y desarrollo sin Ollama. */
-	@Bean
-	@ConditionalOnExpression("${akine.biblioteca.enabled:false} and ${akine.biblioteca.consulta.enabled:false}"
-			+ " and '${akine.biblioteca.consulta.tipo:ollama}' == 'prueba'")
-	public ModeloDeLenguaje modeloDeLenguajeDePrueba() {
-		return new ModeloDeLenguajeDePrueba();
 	}
 }

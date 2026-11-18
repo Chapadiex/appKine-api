@@ -2,12 +2,13 @@ package com.akine.assistant.infrastructure.config;
 
 import com.akine.assistant.application.RepartidorDeEvaluacion;
 import com.akine.assistant.domain.DictadoAjustes;
-import com.akine.assistant.domain.port.ModeloDeLenguaje;
+import com.akine.platform.spi.modelo.ModeloDeLenguaje;
 import com.akine.assistant.domain.port.Transcriptor;
 import com.akine.assistant.infrastructure.TranscriptorConCupo;
 import com.akine.assistant.infrastructure.TranscriptorDePrueba;
 import com.akine.assistant.infrastructure.WhisperTranscriptor;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -51,7 +52,8 @@ public class DictadoConfig {
 
 	/** Usa el modelo del asistente si esta prendido; si no, la propuesta responde 503. */
 	@Bean
-	public RepartidorDeEvaluacion repartidorDeEvaluacionDictada(ObjectProvider<ModeloDeLenguaje> modelo,
+	public RepartidorDeEvaluacion repartidorDeEvaluacionDictada(
+			@Qualifier(AsistenteConfig.MODELO) ObjectProvider<ModeloDeLenguaje> modelo,
 			DictadoProperties properties) {
 		return new RepartidorDeEvaluacion(modelo::getIfAvailable, AsistenteConfig.leerPrompt(PROMPT_EVALUACION),
 				Duration.ofSeconds(properties.transcriptor().timeoutSegundos()));

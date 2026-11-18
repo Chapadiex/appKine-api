@@ -23,7 +23,7 @@ import com.akine.person.domain.ClaveDeBusqueda;
  */
 public record PersonaBusqueda(
 		String texto, PersonaEstadoFiltro estado, PerfilFiltro perfil, String orden,
-		ActividadFiltro actividad) {
+		ActividadFiltro actividad, HistoriaFiltro historia) {
 
 	/** DP-45: los campos por los que se ordena el padron. */
 	public static final java.util.Set<String> CAMPOS_DE_ORDEN =
@@ -31,13 +31,20 @@ public record PersonaBusqueda(
 
 	/** Sin orden pedido: el de siempre, apellido, nombre e id. */
 	public PersonaBusqueda(String texto, PersonaEstadoFiltro estado, PerfilFiltro perfil) {
-		this(texto, estado, perfil, "", null);
+		this(texto, estado, perfil, "", null, null);
 	}
 
 	/** Sin filtro por actividades. */
 	public PersonaBusqueda(
 			String texto, PersonaEstadoFiltro estado, PerfilFiltro perfil, String orden) {
-		this(texto, estado, perfil, orden, null);
+		this(texto, estado, perfil, orden, null, null);
+	}
+
+	/** Sin filtro por historia clinica. */
+	public PersonaBusqueda(
+			String texto, PersonaEstadoFiltro estado, PerfilFiltro perfil, String orden,
+			ActividadFiltro actividad) {
+		this(texto, estado, perfil, orden, actividad, null);
 	}
 
 	/** La clave {@code campo,dir} para el {@code CASE} de la consulta, o vacio. */
@@ -108,6 +115,16 @@ public record PersonaBusqueda(
 		return switch (efectivo) {
 			case CON_ACTIVIDAD -> 1;
 			case SIN_ACTIVIDAD -> 0;
+			case TODOS -> SIN_FILTRO;
+		};
+	}
+
+	/** {@code 1} con historia clinica vigente, {@code 0} sin ella, {@code -1} indistinto. */
+	public int historiaFiltro() {
+		HistoriaFiltro efectivo = historia == null ? HistoriaFiltro.TODOS : historia;
+		return switch (efectivo) {
+			case CON_HISTORIA -> 1;
+			case SIN_HISTORIA -> 0;
 			case TODOS -> SIN_FILTRO;
 		};
 	}

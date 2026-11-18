@@ -85,7 +85,13 @@ class HistoriaClinicaServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new HistoriaClinicaService(historias, antecedentes, pacientes, permissionGuard,
-				relaciones, List.of(), auditTrail, supportAccessAuditor);
+				relaciones, List.of(), auditTrail, supportAccessAuditor,
+				org.mockito.Mockito.mock(
+						com.akine.clinical.domain.port.ClinicalRepositoryPorts.AdjuntoClinicoRepositoryPort.class),
+				org.mockito.Mockito.mock(
+						com.akine.clinical.domain.port.ClinicalRepositoryPorts.FichaDeIngresoRepositoryPort.class),
+				new NombresDeAutores(org.mockito.Mockito.mock(
+						com.akine.platform.spi.identity.AccountIdentityDirectory.class)));
 
 		given(permissionGuard.requirePermission(any()))
 				.willReturn(PermissionDecision.concedida("CONSULTORIO", false));

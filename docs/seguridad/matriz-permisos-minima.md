@@ -107,6 +107,7 @@ Códigos `<dominio>:<acción>`. Estable, en minúsculas, sin significado de UI. 
 | `paciente:manage` | Gestionar paciente | F3 |
 | `paciente:read` | Ver el padrón y los datos administrativos de las personas (DP-22, §15) | F3 (DU-6) |
 | `hc:read` / `hc:write` | Ver / Editar Historia Clínica. `hc:read` cubre además ver la evolución del caso (M31) | F4 |
+| `hc:declarar` | Declarar datos del paciente en la HC, sin leerla. Base: `ADMINISTRATIVO`, `PROFESIONAL`, `CONSULTORIO_ADMIN` y `ORG_ADMIN` (sin `hc:read`); no otorgable a `PACIENTE`. Revisar lo declarado exige `hc:write` (DP-47) | Datos declarados |
 | ~~`caso:create`~~ | ~~Crear Caso Clínico~~ — **absorbido en `hc:write`** (U-04, §18.3) | F4 |
 | `sesion:register` | Registrar Sesión | F6 |
 | `sesion:amend` | Enmendar una sesión cerrada, dentro de la ventana de la organización (U-25, DP-43). Mismo reparto que Registrar Sesión: base del `PROFESIONAL` en su sede; no otorgable | F6 |
@@ -1040,7 +1041,19 @@ El asistente que responde preguntas sobre turnos, sesiones, clases y reportes (`
 - **Asistente apagado:** con `akine.asistente.enabled` en `false`, toda consulta responde 409 `asistente-deshabilitado` aunque el actor tenga el permiso.
 - **`asistente:sql`, consultas libres** (`docs/diseno/AKINE-asistente-sql.md`): si la pregunta no entra en ninguna intención, el modelo escribe un `SELECT` sobre las vistas de `asistente_sql`, recortadas a la organización y a la sede. Las vistas **no** aplican el recorte por actividad propia del profesional, por eso el permiso es sólo de los dos roles de administración, que ya ven todo de la sede. No es otorgable por grant y exige además `akine.asistente.sql.enabled` (apagado por defecto); sin el permiso o apagado, la pregunta recibe la ayuda de siempre.
 
-## 24. Enmiendas — Dictado por voz (16/11/2026)
+## 24. Enmiendas — Sugerencias de evolución (15/11/2026)
+
+M31 fase 2: sugerencias de revisión del tratamiento sobre un Caso Clínico, respaldadas por la biblioteca del centro (`docs/diseno/AKINE-analizador-de-evolucion-fase2.md` §8.2).
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `evolucion:sugerir` | — | — | — | Org | — | — |
+
+- **Se exige además de la puerta clínica:** `hc:read` y relación asistencial o justificación declarada, igual que la evolución de la fase 1. Pedir, listar y responder exigen las dos cosas, y las tres se auditan.
+- **Sólo el profesional**, con alcance `ORGANIZACION` (el caso es de la organización). No es otorgable por grant.
+- **Función apagada:** sin `akine.evolucion.sugerencias.enabled`, `akine.evolucion.enabled` y `akine.biblioteca.enabled` encendidos, las tres operaciones responden 404 antes de mirar permisos.
+
+## 25. Enmiendas — Dictado por voz (16/11/2026)
 
 Dictar en los campos de texto con un Whisper local (`docs/diseno/AKINE-dictado-por-voz.md`).
 

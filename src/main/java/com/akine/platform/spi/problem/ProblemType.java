@@ -655,6 +655,17 @@ public enum ProblemType {
 	 * no admite es reclasificarse.
 	 */
 	ADJUNTO_CLINICO_INACTIVO("adjunto-clinico-inactivo"),
+	/** DP-47: dar de baja un dato declarado que ya reviso un profesional (409). Lo da de baja el profesional desde la historia. */
+	DATO_DECLARADO_REVISADO("dato-declarado-revisado"),
+	/** DP-47: revisar un dato que no es declarado (409). Lo que carga el profesional no lleva revision. */
+	DATO_NO_DECLARADO("dato-no-declarado"),
+	/**
+	 * DP-47: declarar un archivo que ya esta en la historia, cargado por un profesional (409). No
+	 * nombra al existente: quien declara no lee lo que cargo el profesional.
+	 */
+	ADJUNTO_YA_EN_HISTORIA("adjunto-ya-en-historia"),
+	/** Ficha de ingreso: la enfermedad que se declara ya la cargo un profesional. Sin datos del existente. */
+	DATO_YA_EN_HISTORIA("dato-ya-en-historia"),
 	/**
 	 * La metadata del adjunto clinico existe pero el almacenamiento no tiene su contenido (409).
 	 *
@@ -1456,7 +1467,21 @@ public enum ProblemType {
 	DICTADO_DESHABILITADO("dictado-deshabilitado"),
 
 	/** Whisper, o el modelo que reparte el texto en campos, no responde o vencio el plazo (503). */
-	DICTADO_NO_DISPONIBLE("dictado-no-disponible");
+	DICTADO_NO_DISPONIBLE("dictado-no-disponible"),
+
+	// --- Sugerencias de evolucion (M31 fase 2) ------------------------------------------------
+
+	/** La misma cuenta ya tiene un pedido de sugerencias en curso en esta instancia (429). */
+	GENERACION_EN_CURSO("generacion-en-curso"),
+
+	/** Se lleno el cupo del modelo de sugerencias de esta instancia (503). */
+	MODELO_OCUPADO("modelo-ocupado"),
+
+	/** El modelo de sugerencias no respondio, respondio con error o vencio el plazo (503). */
+	MODELO_NO_DISPONIBLE("modelo-no-disponible"),
+
+	/** La sugerencia ya tiene respuesta; la primera no se pisa (409). */
+	SUGERENCIA_YA_RESPONDIDA("sugerencia-ya-respondida");
 
 	/** Prefijo unico de los {@code type} del proyecto (ADR-0005). */
 	public static final String BASE = "https://akine.app/problems/";

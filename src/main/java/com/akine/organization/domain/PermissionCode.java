@@ -192,6 +192,13 @@ public enum PermissionCode {
 	/** Editar Historia Clinica. F4. Sin asignacion base todavia: deniega. */
 	HC_WRITE("hc:write"),
 
+	/**
+	 * Declarar en la Historia Clinica lo que cuenta o trae el paciente (DP-47): antecedentes y
+	 * adjuntos marcados "declarado, sin revisar", que despues revisa quien tiene {@code hc:write}.
+	 * No implica {@code hc:read}: quien solo declara no lee la historia.
+	 */
+	HC_DECLARAR("hc:declarar"),
+
 	// `caso:create` (Crear Caso Clinico, F4) YA NO ES UN CODIGO: se absorbio en `hc:write` (U-04,
 	// matriz §18.3). Abrir un caso siempre se autorizo con `hc:write`, y desde G-5 eso da
 	// exactamente las celdas de la fila "Crear Caso Clinico": PROFESIONAL por base y
@@ -414,6 +421,14 @@ public enum PermissionCode {
 	 * por grant. No lee datos del centro: solo transcribe lo que dice quien lo usa.
 	 */
 	DICTADO_USE("dictado:use"),
+
+	/**
+	 * Pedir y responder sugerencias de revision sobre la evolucion de un Caso Clinico (M31 fase 2,
+	 * {@code docs/diseno/AKINE-analizador-de-evolucion-fase2.md} §8.2). Por base solo para el
+	 * {@code PROFESIONAL}, con alcance de organizacion; no se otorga por grant. Se exige ademas de
+	 * {@code hc:read} y relacion asistencial o justificacion.
+	 */
+	EVOLUCION_SUGERIR("evolucion:sugerir"),
 
 	/**
 	 * Consultas libres del asistente: cuando la pregunta no entra en ninguna intencion, el modelo

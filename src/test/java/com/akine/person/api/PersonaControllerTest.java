@@ -84,7 +84,7 @@ class PersonaControllerTest {
 		given(personaService.buscar(any(), any(), anyInt(), anyInt()))
 				.willReturn(new PersonaPagina(List.of(unaVista()), 1L));
 
-		PersonaPageResponse pagina = controller.buscar(null, null, null, null, -3, 9999, null);
+		PersonaPageResponse pagina = controller.buscar(null, null, null, null, null, -3, 9999, null);
 
 		assertThat(pagina.page()).isZero();
 		assertThat(pagina.size()).isEqualTo(100);
@@ -102,7 +102,7 @@ class PersonaControllerTest {
 				.willReturn(new PersonaPagina(List.of(), 0L));
 
 		controller.buscar("ab-1234", PersonaEstadoFiltro.TODOS, PerfilFiltro.SIN_PERFIL,
-				ActividadFiltro.CON_ACTIVIDAD, 0, 20, null);
+				ActividadFiltro.CON_ACTIVIDAD, null, 0, 20, null);
 
 		ArgumentCaptor<PersonaBusqueda> filtros = ArgumentCaptor.forClass(PersonaBusqueda.class);
 		verify(personaService).buscar(any(), filtros.capture(), anyInt(), anyInt());
@@ -195,12 +195,12 @@ class PersonaControllerTest {
 
 	private static PersonaView unaVista() {
 		return new PersonaView(PERSONA_ID, "DNI", "27888999", "Perez", "Ana", null, null,
-				"1155550000", null, false, null, null, "ACTIVO", null, null, 0L);
+				"1155550000", null, false, null, null, "ACTIVO", null, null, 0L, null);
 	}
 
 	private static PersonaView unaVistaDeBaja() {
 		return new PersonaView(PERSONA_ID, "DNI", "27888999", "Perez", "Ana", null, null,
 				"1155550000", null, false, null, null, "INACTIVO",
-				java.time.Instant.now(), "Ficha duplicada", 1L);
+				java.time.Instant.now(), "Ficha duplicada", 1L, null);
 	}
 }

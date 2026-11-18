@@ -1,6 +1,6 @@
 package com.akine.assistant.application;
 
-import com.akine.assistant.infrastructure.OllamaModeloDelAsistente;
+import com.akine.platform.infrastructure.modelo.OllamaModeloDeLenguaje;
 import com.akine.assistant.spi.Intencion;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -42,7 +42,7 @@ class InterpretadorContraOllamaTest {
 	void interpreta_los_casos_medidos() throws IOException {
 		String prompt = Files.readString(Path.of("src/main/resources/asistente/prompt-interpretador.txt"), StandardCharsets.UTF_8);
 		Interpretador interpretador = new Interpretador(
-				() -> new OllamaModeloDelAsistente(System.getenv("AKINE_OLLAMA_URL"),
+				() -> new OllamaModeloDeLenguaje(System.getenv("AKINE_OLLAMA_URL"),
 						Objects.requireNonNullElse(System.getenv("AKINE_OLLAMA_MODELO"), "qwen3:4b-instruct"), "2h"),
 				prompt, Duration.ofSeconds(30));
 

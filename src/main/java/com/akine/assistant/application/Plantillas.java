@@ -46,7 +46,17 @@ final class Plantillas {
 			+ "la sesión cargada, quiénes vienen un día, quiénes fueron a una clase, y los números de "
 			+ "facturación, turnos u ocupación de clases de un período.";
 	static final String SIN_PERMISO = "No tenés permiso para ver eso.";
+
+	static final String SIN_PERMISO_CLINICO = "Esa pregunta necesita datos de historia clínica y tu usuario no tiene "
+			+ "permiso para verlos (hc:read). Pedíselo a quien administra el centro.";
 	static final String FALTA_PERSONA = "¿De qué persona? Escribí el nombre.";
+
+	/** La continuacion encontro varias personas con el nombre de la charla. */
+	static String variasPersonas(List<String> personas) {
+		List<String> primeras = personas.subList(0, Math.min(5, personas.size()));
+		return "Hay varias personas con ese nombre: " + String.join(", ", primeras)
+				+ (personas.size() > primeras.size() ? " y otras" : "") + ". ¿De cuál? Escribí nombre y apellido.";
+	}
 
 	private static final DateTimeFormatter HORA = DateTimeFormatter.ofPattern("H:mm");
 

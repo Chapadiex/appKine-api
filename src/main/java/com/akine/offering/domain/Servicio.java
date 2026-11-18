@@ -113,6 +113,14 @@ public class Servicio extends MarcaTemporal {
 	@Column(name = "genera_registro_clinico_default", nullable = false)
 	private boolean generaRegistroClinicoDefault;
 
+	/**
+	 * Servicio GLOBAL que esta copia personaliza para su organizacion, o null. La copia vale para
+	 * todas las sedes de la organizacion: el servicio es un concepto de la organizacion, la sede
+	 * solo lo publica como oferta.
+	 */
+	@Column(name = "personaliza_servicio_id", updatable = false)
+	private Long personalizaServicioId;
+
 	@Column(name = "active", nullable = false)
 	private boolean active = true;
 
@@ -175,6 +183,27 @@ public class Servicio extends MarcaTemporal {
 	 * cambiar cualquiera de estos valores toca una sola {@link OfertaServicioConsultorio} ya
 	 * creada: ver la seccion de la clase sobre por que los defaults no se leen en tiempo real.
 	 */
+	/**
+	 * Copia de un servicio global para una organizacion. Conserva el codigo —es la clave con la que
+	 * las ofertas lo reconocen— y arranca con los datos del global; la edicion se aplica despues.
+	 */
+	public static Servicio personalizacionDe(Servicio global, long organizationId) {
+		if (!global.isGlobal()) {
+			throw new IllegalArgumentException("Solo se personaliza un servicio del catalogo global");
+		}
+		Servicio copia = new Servicio(
+				organizationId,
+				global.codigo,
+				global.nombre,
+				global.descripcion,
+				global.naturaleza,
+				global.modalidadDefault,
+				global.requiereCasoClinicoDefault,
+				global.generaRegistroClinicoDefault);
+		copia.personalizaServicioId = global.id;
+		return copia;
+	}
+
 	public void updateDatos(
 			String nombre,
 			String descripcion,
@@ -254,6 +283,10 @@ public class Servicio extends MarcaTemporal {
 	}
 
 	/** Del catalogo global de la plataforma, y no propio de un centro. */
+	public Long getPersonalizaServicioId() {
+		return personalizaServicioId;
+	}
+
 	public boolean isGlobal() {
 		return organizationId == null;
 	}

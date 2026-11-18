@@ -22,7 +22,7 @@
 		<springdoc.version>3.2.0</springdoc.version>
 		<jacoco.version>0.8.16</jacoco.version>
 		<maven-enforcer.version>3.7.0</maven-enforcer.version>
-		<bouncycastle.version>1.86</bouncycastle.version>
+		<bouncycastle.version>1.87</bouncycastle.version>
 		<greenmail.version>2.1.15</greenmail.version>
 		<dependency-check.version>12.2.2</dependency-check.version>
 		<pdfbox.version>3.0.8</pdfbox.version>
@@ -39,7 +39,7 @@
 		<jackson-2-bom.version>2.21.7</jackson-2-bom.version>
 		<!-- Version SemVer del contrato OpenAPI publicado. Se sube a mano en la etapa
 		     que cambie la API: minor para cambios aditivos, major para incompatibles. -->
-		<akine.contract.version>0.175.0</akine.contract.version>
+		<akine.contract.version>0.177.0</akine.contract.version>
 	</properties>
 
 	<dependencies>

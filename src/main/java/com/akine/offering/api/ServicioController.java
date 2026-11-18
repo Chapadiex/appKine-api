@@ -8,6 +8,7 @@ import com.akine.offering.application.ServicioAltaCommand;
 import com.akine.offering.application.ServicioBusqueda;
 import com.akine.offering.application.ServicioEdicionCommand;
 import com.akine.offering.application.ServicioEstadoFiltro;
+import com.akine.offering.application.ServicioPersonalizacionService;
 import com.akine.offering.application.ServicioService;
 import com.akine.offering.application.ServicioView;
 import io.swagger.v3.oas.annotations.Operation;
@@ -100,10 +101,15 @@ public class ServicioController {
 	private static final Logger log = LoggerFactory.getLogger(ServicioController.class);
 
 	private final ServicioService servicioService;
+	private final ServicioPersonalizacionService personalizacionService;
 	private final OfferingApiActor apiActor;
 
-	public ServicioController(ServicioService servicioService, OfferingApiActor apiActor) {
+	public ServicioController(
+			ServicioService servicioService,
+			ServicioPersonalizacionService personalizacionService,
+			OfferingApiActor apiActor) {
 		this.servicioService = servicioService;
+		this.personalizacionService = personalizacionService;
 		this.apiActor = apiActor;
 	}
 
@@ -306,6 +312,74 @@ public class ServicioController {
 						request.expectedVersion()));
 
 		return ResponseEntity.ok(ServicioResponse.de(actualizado));
+	}
+
+	@PostMapping(path = "/{servicioId}/personalizacion", consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "personalizarServicio",
+			summary = "Personalizar para la organizacion un servicio del catalogo de AKINE",
+			description = """
+					Un servicio GLOBAL lo comparten todas las organizaciones: editarlo desde un 					centro le cambiaria el dato a los demas. Esta operacion crea una COPIA propia 					de la organizacion del contexto, con los cambios del cuerpo aplicados sobre los 					datos del global. La copia vale a nivel ORGANIZACION, para todas sus sedes, 					no para una sede.
+
+					Efectos: las ofertas de la organizacion que prestaban el global pasan a 					prestar la copia; el global deja de listarse para la organizacion; el global 					y las demas organizaciones no cambian. La copia conserva el codigo y se edita 					y se da de baja como cualquier servicio propio.
+
+					Exige catalogo:manage en el contexto. expectedVersion es la del servicio 					GLOBAL que se esta personalizando. Un servicio que ya es de la organizacion 					responde 400: se edita con updateServicio.""")
+	@ApiResponses({
+			@ApiResponse(
+					responseCode = "201",
+					description = "Copia de la organizacion creada",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = ServicioResponse.class))),
+			@ApiResponse(
+					responseCode = "400",
+					description = "Campos invalidos, o el servicio no es del catalogo de AKINE",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "403",
+					description = "Sin catalogo:manage, sin contexto, o rol de plataforma (que edita el global)",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "404",
+					description = "El servicio no existe",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(
+					responseCode = "409",
+					description = "Ya personalizado o version desactualizada "
+							+ "(concurrent-modification), servicio dado de baja (servicio-inactivo), "
+							+ "o codigo o nombre ya usados por un servicio propio "
+							+ "(servicio-codigo-taken, servicio-nombre-taken)",
+					content = @Content(
+							mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<ServicioResponse> personalizar(
+
+			@Parameter(description = "Identificador del servicio global", example = "3")
+			@PathVariable long servicioId,
+
+			@Valid @RequestBody UpdateServicioRequest request) {
+
+		log.info("Personalizacion de servicio solicitada: servicioId={}", servicioId);
+
+		ServicioView copia = personalizacionService.personalizar(
+				apiActor.current(),
+				servicioId,
+				new ServicioEdicionCommand(
+						request.nombre(),
+						request.descripcion(),
+						request.naturaleza(),
+						request.modalidadDefault(),
+						request.requiereCasoClinicoDefault(),
+						request.generaRegistroClinicoDefault(),
+						request.expectedVersion()));
+
+		return ResponseEntity.status(201).body(ServicioResponse.de(copia));
 	}
 
 	// PRODUCES EXPLICITO. El 204 no lleva cuerpo, asi que lo unico que esta operacion declara

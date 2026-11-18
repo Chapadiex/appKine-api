@@ -996,6 +996,35 @@ solo lo mutaba `PLATFORM_ADMIN` (02.06, ADR-0023). Las clases, además, se progr
 **Implementada en:** `appKine-api` y `appKine-web`, rama `akine-clases-servicios`. Contrato
 0.163.0, migración `V143`.
 
+## DP-47 — Datos que declara el paciente en la Historia Clínica
+
+**Estado:** DECIDIDA el 14/11/2026 por el usuario. Diseño en
+[AKINE-datos-declarados.md](../diseno/AKINE-datos-declarados.md).
+
+**Contexto.** Cuando el paciente llega con estudios, medicación o alergias, nadie podía cargarlos
+antes de la primera atención salvo el profesional: el `ADMINISTRATIVO` tiene "Editar HC: No" (matriz
+§2) y no otorgable (§3).
+
+**Decisión.**
+
+1. **Permiso nuevo `hc:declarar`**, de base para `ADMINISTRATIVO`, `PROFESIONAL`,
+   `CONSULTORIO_ADMIN` y `ORG_ADMIN` (este último por decisión del usuario del 15/11: el dueño
+   también carga); no otorgable a `PACIENTE`. El `ORG_ADMIN` sigue sin `hc:read` ni `hc:write`. Permite **declarar** antecedentes
+   y adjuntos (estudio, informe, imagen u otro) en la historia de un paciente vigente, **sin leerla**:
+   no implica `hc:read`. La primera declaración abre la historia.
+2. **Lo declarado vive en la historia, marcado.** `historia_clinica_antecedente` y `adjunto_clinico`
+   llevan `origen` (`PROFESIONAL` | `DECLARADO`) y la revisión (`revisado_por`, `revisado_en`). Quien
+   tiene `hc:write` lo revisa; revisar no copia nada.
+3. **Quien declara ve y abre sólo lo declarado**, revisado o no, y da de baja lo que no fue
+   revisado. Nunca ve lo que cargó un profesional.
+
+**Desviación declarada de la especificación.** La matriz §2 ("Editar HC: No" para el
+`ADMINISTRATIVO`) no cambia: declarar no es editar la historia, es una carga marcada que el
+profesional valida. La fila nueva "Declarar datos del paciente" se agrega a la matriz mínima.
+
+**Implementada en:** `appKine-api` rama `akine-servicio-personalizado` y `appKine-web` rama
+`akine-web-estetica-3`. Contrato 0.172.0, migración `V16`.
+
 # 8. Modelo funcional consolidado
 
 ## 8.1 Núcleo organizacional
@@ -11698,3 +11727,15 @@ Diseño: `docs/diseno/AKINE-biblioteca-rag.md` (sección 12).
 **Medido.** 25 unitarias de reglas, `EvolucionDelCasoIT` 3/3 contra PostgreSQL, `OpenApiContractIT` 6/6 sin drift, ArchUnit 5/5, unitarias de `encounter`, `clinical`, `resource`, `scheduling` y arquitectura 1.404 en verde. Web: specs de `features/clinical/casos` 34/34, lint limpio, build de desarrollo. Pila aislada recorrida en pantalla (detalle en el registro).
 
 **Revisión y cierre.** Revisión de código del backend (6 hallazgos) y del frontend completo (5 hallazgos), todos corregidos; `EvolucionDelCasoIT` 4/4 con plan vigente, specs del catálogo 47/47. `/simplify` aplicado en los dos repos (22 hallazgos; lo que cambia el contrato o excede el diff quedó anotado en el registro, filas 29 y 30). Pantalla de medidas del examen físico con sentido de mejora en el catálogo clínico. **Quedó afuera.** Los umbrales son del diseño y esperan aprobación clínica (U-02, RN-M31-004). `api:check` del frontend fallará en local hasta que el contrato 0.170.0 llegue al `appKine-api` hermano. Fase 2 (sugerencias con modelo y biblioteca): plan propio.
+
+## Registro de avance — M31, evolución del caso clínico, fase 2 (15/11/2026)
+
+**Ramas, sin push:** `akine-evolucion-fase2` (`wt-API-EVOLUCION-F2`) y `akine-evolucion-fase2-web` (`wt-WEB-EVOLUCION-F2`). Diseño, plan y registro de problemas (filas 37 a 68): `docs/diseno/AKINE-analizador-de-evolucion-fase2*.md` y `docs/diseno/AKINE-analizador-de-evolucion-registro.md`.
+
+**Qué entró.** RF-M31-004 y 005 en el integrado. Sugerencias para revisar el tratamiento de un caso: hasta tres hallazgos elegibles de la fase 1, una búsqueda en la biblioteca del centro (M30) por hallazgo y un modelo local (`qwen3:4b-instruct` por Ollama) que redacta hasta cinco sugerencias citando esos pasajes. Un validador de dominio, sin modelo, descarta las que citan un pasaje de otro hallazgo, traen un número que no viajó, prescriben, exceden el largo o parecen instrucciones; las demás se guardan `PENDIENTE` y el profesional las acepta o las descarta con motivo. La llamada al modelo corre fuera de toda transacción, con un candado por cuenta (429 `generacion-en-curso`) y un cupo propio (503 `modelo-ocupado` / `modelo-no-disponible`, plazo 50 s). Antes, un refactor sin cambio de comportamiento unificó el puerto del modelo en `platform.spi.modelo` (biblioteca, asistente y evolución). Permiso nuevo `evolucion:sugerir` (PROFESIONAL), lectura clínica con justificación y auditoría de las tres operaciones sin texto clínico. `V18`: `sugerencia_evolucion`. Contrato **0.171.0**, aditivo (tres operaciones, cuatro problem types). Interruptor `akine.evolucion.sugerencias.enabled`, **apagado por defecto**, y además exige `akine.evolucion.enabled` y `akine.biblioteca.enabled`. Frontend: sección de sugerencias en la tarjeta Evolución del caso, "Usar en nueva versión del plan" o "Marcar como útil", descarte con motivo e historial, cliente 0.171.0.
+
+**Medido.** `SugerenciasDeEvolucionIT` contra PostgreSQL (generación, descarte por regla, ida y vuelta del `jsonb`, sin material, sin hallazgos, texto omitido, carrera de la misma cuenta, respuesta única con control optimista, aislamiento de otra organización y de otro caso, modelo caído y biblioteca apagada): la persistencia y la auditoría quedaron verificadas ahí. `SugerenciasDeEvolucionControllerTest` cubre la capa HTTP (429, 503 de los dos tipos, 409, 400 del `@Pattern` y la cabecera de justificación). Evaluación manual con el modelo real sobre 24 casos sintéticos (`docs/evolucion/evaluacion/`): en la v2, 16 de 18 casos con material con al menos una sugerencia aceptada (**89 %, dentro de la muestra**: los cambios de la v2 se hicieron mirando las fallas de la v1 sobre los mismos casos), cero números inventados, citas ajenas o inyecciones en lo aceptado, **abstención 0 de 4** y latencia p50/p95 de 18,1/23,2 s **medida sólo con GPU**.
+
+**Revisión y cierre.** Revisión por tarea y de toda la rama en los dos repos; los hallazgos importantes de la revisión final (documentos de cierre, costo de recarga del modelo, prueba HTTP, IT de aislamiento y documentación desalineada) se corrigieron en la última tanda. **La función queda apagada hasta la revisión clínica de U-02.** El QA manual en una pila aislada no se hizo en esta tanda: es parte de U-01.
+
+**Decisiones pendientes del usuario.** (1) **Abstención**: con `multilingual-e5-base` los puntajes de los cuadros que la biblioteca no trata se superponen con los que sí; ningún corte separa, y no se arregla cambiando de modelo (subir el corte para este consumidor, exigir que el pasaje nombre el diagnóstico, búsqueda híbrida o aceptar el límite). (2) **Latencia sin GPU**: extrapolada a más de 100 s de p50, por encima del plazo de 50 s; la salida sería un pedido asíncrono, que cambia el contrato. (3) **Citas fuera de tema** (diseño §13.8): el validador comprueba que la cita sea del propio hallazgo, no que el pasaje trate el cuadro del paciente; en la evaluación pasó una sugerencia de infiltraciones para una ATM desde un pasaje de osteoartritis. (4) **`num_ctx` y la recarga del modelo**: evolución pide 8192 y el asistente 4096 sobre el mismo modelo; alternarlos lo recarga en Ollama (4096 para todos, 8192 para todos o aceptar la recarga; diseño A-17).

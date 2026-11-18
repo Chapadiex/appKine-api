@@ -60,7 +60,11 @@ public record HistoriaClinicaResponse(
 
 		@Schema(description = "Version de la historia. Se devuelve como expectedVersion al "
 				+ "actualizar el resumen", example = "0")
-		long version) {
+		long version,
+
+		@Schema(description = "Antecedentes y adjuntos declarados por el paciente que todavia no "
+				+ "reviso un profesional (DP-47)", example = "0")
+		long declaradosSinRevisar) {
 
 	public static HistoriaClinicaResponse from(HistoriaClinicaView view) {
 		return new HistoriaClinicaResponse(
@@ -76,6 +80,7 @@ public record HistoriaClinicaResponse(
 				view.antecedentes().stream().map(AntecedenteResponse::from).toList(),
 				view.eventos().stream().map(EventoClinicoResponse::from).toList(),
 				view.conRelacionAsistencial(),
-				view.version());
+				view.version(),
+				view.declaradosSinRevisar());
 	}
 }

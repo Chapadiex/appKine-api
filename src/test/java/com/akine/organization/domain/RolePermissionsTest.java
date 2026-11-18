@@ -97,6 +97,8 @@ class RolePermissionsTest {
 			"CONSULTORIO_ADMIN,  ASISTENTE_SQL,           ORGANIZACION",
 			"PROFESIONAL,        ASISTENTE_USE,           ORGANIZACION",
 			"ADMINISTRATIVO,     ASISTENTE_USE,           ORGANIZACION",
+			// M31 fase 2: sugerencias de evolucion, solo el profesional.
+			"PROFESIONAL,        EVOLUCION_SUGERIR,       ORGANIZACION",
 			"CONSULTORIO_ADMIN,  AGENDA_HORARIO,          CONSULTORIO",
 			"CONSULTORIO_ADMIN,  AGENDA_EXCEPCIONES,      CONSULTORIO",
 			"ADMINISTRATIVO,     AGENDA_EXCEPCIONES,      CONSULTORIO",
@@ -116,6 +118,10 @@ class RolePermissionsTest {
 			// organizacion y ver su suscripcion, y deja el cambio de plan y la suspension para
 			// PLATFORM_ADMIN.
 			"ORG_ADMIN,          TENANT_MANAGE",
+			// M31 fase 2: sugerir es de quien atiende, no de quien administra.
+			"ORG_ADMIN,          EVOLUCION_SUGERIR",
+			"CONSULTORIO_ADMIN,  EVOLUCION_SUGERIR",
+			"ADMINISTRATIVO,     EVOLUCION_SUGERIR",
 			// "No por defecto (grant)": no es base para nadie. Ponerlo aca con algun alcance
 			// convertiria en implicito justo lo que la matriz define como explicito.
 			"ORG_ADMIN,          AUDITORIA_READ_CLINICA",
@@ -550,5 +556,20 @@ class RolePermissionsTest {
 		assertThat(PermissionScope.CATALOGO.cubreLaOrganizacion()).isFalse();
 		assertThat(PermissionScope.SOPORTE.cubreLaOrganizacion()).isFalse();
 		assertThat(PermissionScope.RESTRINGIDO.cubreLaOrganizacion()).isFalse();
+	}
+
+	@Test
+	@DisplayName("DP-47: hc:declarar es de base para el mostrador, el profesional y el dueño, sin dar hc:read")
+	void hcDeclarar() {
+		for (RoleCode rol : List.of(RoleCode.ADMINISTRATIVO, RoleCode.PROFESIONAL, RoleCode.CONSULTORIO_ADMIN)) {
+			assertThat(RolePermissions.baseOf(rol))
+					.containsEntry(PermissionCode.HC_DECLARAR, PermissionScope.CONSULTORIO);
+		}
+		assertThat(RolePermissions.baseOf(RoleCode.ORG_ADMIN))
+				.containsEntry(PermissionCode.HC_DECLARAR, PermissionScope.ORGANIZACION)
+				.doesNotContainKey(PermissionCode.HC_READ)
+				.doesNotContainKey(PermissionCode.HC_WRITE);
+		assertThat(RolePermissions.baseOf(RoleCode.ADMINISTRATIVO)).doesNotContainKey(PermissionCode.HC_READ);
+		assertThat(RolePermissions.otorgableComoGrant(RoleCode.PACIENTE, PermissionCode.HC_DECLARAR)).isFalse();
 	}
 }

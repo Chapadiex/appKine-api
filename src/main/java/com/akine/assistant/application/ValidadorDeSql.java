@@ -26,10 +26,22 @@ public final class ValidadorDeSql {
 
 	public static final String ESQUEMA = "asistente_sql";
 
-	/** Las vistas de {@code V21__asistente_vistas_sql.sql}. */
+	/** Las vistas sin datos clinicos de {@code V21} y {@code V23}. */
 	public static final Set<String> VISTAS = Set.of("personas", "coberturas", "profesionales", "servicios", "turnos",
 			"sesiones", "casos", "clases", "inscripciones", "asistencias_clase", "deudas", "cobros",
-			"movimientos_caja", "egresos", "financiadores");
+			"movimientos_caja", "egresos", "financiadores",
+			"sedes", "espacios", "jornadas_caja", "presentaciones", "presentacion_items", "pagos_financiador",
+			"pagos_egreso", "liquidaciones_honorarios", "liquidaciones_honorarios_clase", "practicas", "convenios",
+			"aranceles", "ordenes_medicas", "autorizaciones", "lista_espera", "recepciones", "productos", "pases",
+			"feriados", "disponibilidad");
+
+	/**
+	 * Las vistas {@code clinico_*} de {@code V23}: diagnosticos, motivos, tratamientos, mediciones. Solo
+	 * con {@code hc:read} sin recorte, y cada consulta que las lee se audita como lectura clinica.
+	 */
+	public static final Set<String> VISTAS_CLINICAS = Set.of("clinico_casos", "clinico_sesiones",
+			"clinico_tratamientos", "clinico_tratamiento_parametros", "clinico_mediciones", "clinico_antecedentes",
+			"clinico_planes", "clinico_derivaciones");
 
 	static final Set<String> FUNCIONES = Set.of("count", "sum", "avg", "min", "max", "coalesce", "nullif",
 			"greatest", "least", "round", "floor", "ceil", "abs", "lower", "upper", "trim", "concat", "concat_ws",
@@ -66,6 +78,15 @@ public final class ValidadorDeSql {
 	 * @return el motivo del rechazo, o vacio si la consulta se puede ejecutar
 	 */
 	public static Optional<String> rechazo(String sql) {
+		return rechazo(sql, false);
+	}
+
+	/**
+	 * @param clinicas si el actor puede leer las vistas {@code clinico_*} (asistente:sql y hc:read sin
+	 *                 recorte); sin eso, una consulta que las nombra se rechaza
+	 * @return el motivo del rechazo, o vacio si la consulta se puede ejecutar
+	 */
+	public static Optional<String> rechazo(String sql, boolean clinicas) {
 		if (sql == null || sql.isBlank()) {
 			return Optional.of("La consulta esta vacia");
 		}
@@ -107,7 +128,12 @@ public final class ValidadorDeSql {
 				}
 				nombre = origen.group(4).toLowerCase(Locale.ROOT);
 			}
-			if (!VISTAS.contains(nombre) && !propias.contains(nombre)) {
+			if (VISTAS_CLINICAS.contains(nombre) && !propias.contains(nombre)) {
+				if (!clinicas) {
+					return Optional.of("Esa vista tiene datos clinicos y hace falta hc:read: " + nombre);
+				}
+			}
+			else if (!VISTAS.contains(nombre) && !propias.contains(nombre)) {
 				return Optional.of("Esa tabla no existe para el asistente: " + nombre);
 			}
 		}
@@ -121,5 +147,18 @@ public final class ValidadorDeSql {
 			}
 		}
 		return Optional.empty();
+	}
+
+	/** Las vistas {@code clinico_*} que nombra una consulta ya validada: si hay alguna, la lectura se audita como clinica. */
+	public static Set<String> vistasClinicas(String sql) {
+		Set<String> encontradas = new java.util.TreeSet<>();
+		Matcher origen = ORIGEN.matcher(LITERAL.matcher(sql).replaceAll("0"));
+		while (origen.find()) {
+			String nombre = (origen.group(4) != null ? origen.group(4) : origen.group(2)).toLowerCase(Locale.ROOT);
+			if (VISTAS_CLINICAS.contains(nombre)) {
+				encontradas.add(nombre);
+			}
+		}
+		return encontradas;
 	}
 }

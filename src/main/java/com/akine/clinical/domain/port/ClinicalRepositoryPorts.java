@@ -2,9 +2,12 @@ package com.akine.clinical.domain.port;
 
 import com.akine.clinical.domain.AdjuntoClinico;
 import com.akine.clinical.domain.AntecedenteClinico;
+import com.akine.clinical.domain.EnfermedadDeIngreso;
 import com.akine.clinical.domain.EntradaClinica;
+import com.akine.clinical.domain.FichaDeIngreso;
 import com.akine.clinical.domain.EntradaClinicaVersion;
 import com.akine.clinical.domain.HistoriaClinica;
+import com.akine.clinical.domain.Ocupacion;
 import com.akine.clinical.domain.TipoAntecedente;
 
 import java.time.Instant;
@@ -92,6 +95,21 @@ public final class ClinicalRepositoryPorts {
 		 */
 		List<AntecedenteClinico> buscarParaTimeline(
 				Long organizationId, Long historiaClinicaId, Instant hasta, int limite);
+
+		/**
+		 * Marca revisado un antecedente DECLARADO sin revisar (DP-47) y avanza su version.
+		 * Devuelve 0 si no es declarado o ya estaba revisado: la revision es idempotente.
+		 */
+		int marcarRevisado(long organizationId, long id, long revisadoPor, Instant revisadoEn);
+
+		/** Los antecedentes DECLARADO vigentes de una historia, mas recientes primero. */
+		List<AntecedenteClinico> buscarDeclaradosVigentes(long organizationId, long historiaClinicaId);
+
+		long contarDeclaradosSinRevisar(long organizationId, long historiaClinicaId);
+
+		/** La enfermedad de la ficha vigente con ese codigo en la historia, si existe. */
+		Optional<AntecedenteClinico> buscarVigentePorCodigo(
+				Long organizationId, Long historiaClinicaId, EnfermedadDeIngreso codigo);
 	}
 
 	public interface EntradaClinicaRepositoryPort {
@@ -244,5 +262,35 @@ public final class ClinicalRepositoryPorts {
 				String categoria,
 				Long entradaId,
 				int activoFiltro);
+
+		/** Ver {@link AntecedenteClinicoRepositoryPort#marcarRevisado}. */
+		int marcarRevisado(long organizationId, long id, long revisadoPor, Instant revisadoEn);
+
+		/** Los adjuntos DECLARADO vigentes de una historia, mas recientes primero. */
+		List<AdjuntoClinico> buscarDeclaradosVigentes(long organizationId, long historiaClinicaId);
+
+		long contarDeclaradosSinRevisar(long organizationId, long historiaClinicaId);
+	}
+
+	public interface FichaDeIngresoRepositoryPort {
+
+		FichaDeIngreso save(FichaDeIngreso ficha);
+
+		/** saveAndFlush: el choque del unique de la primera alta aparece dentro del servicio. */
+		FichaDeIngreso saveAndFlush(FichaDeIngreso ficha);
+
+		Optional<FichaDeIngreso> buscarPorHistoria(long organizationId, long historiaClinicaId);
+	}
+
+	/** Catalogo de ocupaciones: toda lectura ve las globales (owner 0) y las del centro. */
+	public interface OcupacionRepositoryPort {
+
+		Ocupacion saveAndFlush(Ocupacion ocupacion);
+
+		List<Ocupacion> visibles(long organizationId);
+
+		Optional<Ocupacion> buscarVisible(long organizationId, long id);
+
+		Optional<Ocupacion> buscarVisiblePorNormalizado(long organizationId, String normalizado);
 	}
 }

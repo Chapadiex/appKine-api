@@ -94,6 +94,9 @@ public final class OfferingRepositoryPorts {
 
 		/** Un servicio por id solo si su duenio esta entre {@code owners}; si no, vacio (404). */
 		Optional<Servicio> findVisible(Long id, List<Long> owners);
+
+		/** La copia vigente con la que una organizacion personaliza un servicio global, si existe. */
+		Optional<Servicio> findPersonalizacionVigente(Long organizationId, Long servicioGlobalId);
 	}
 
 	/**
@@ -219,6 +222,12 @@ public final class OfferingRepositoryPorts {
 		List<OfertaServicioConsultorio>
 				findAllByOrganizationIdAndConsultorioIdAndServicioIdOrderByNombreComercialAsc(
 						Long organizationId, Long consultorioId, Long servicioId);
+
+		/**
+		 * Pasa las ofertas de TODAS las sedes de la organizacion de un servicio a otro, y les mueve
+		 * la version. Solo lo usa la personalizacion de un servicio global. Devuelve cuantas movio.
+		 */
+		int reapuntarServicio(Long organizationId, Long servicioAnteriorId, Long servicioNuevoId);
 	}
 
 	/**

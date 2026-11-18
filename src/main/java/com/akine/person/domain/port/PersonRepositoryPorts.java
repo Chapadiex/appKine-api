@@ -102,6 +102,8 @@ public final class PersonRepositoryPorts {
 		 *                      perfil, {@code -1} indistinto
 		 * @param actividadFiltro {@code 1} solo con una inscripcion o un pase vigente hoy,
 		 *                      {@code 0} solo sin ninguno, {@code -1} indistinto
+		 * @param historiaFiltro {@code 1} solo con historia clinica vigente, {@code 0} solo sin
+		 *                      ella, {@code -1} indistinto
 		 * @param hoy           el dia de la organizacion, contra el que se mide la vigencia de un
 		 *                      pase (es un {@code DATE} en el dia de la sede, no en UTC)
 		 */
@@ -112,6 +114,7 @@ public final class PersonRepositoryPorts {
 				int activoFiltro,
 				int perfilFiltro,
 				int actividadFiltro,
+				int historiaFiltro,
 				LocalDate hoy,
 				String orden,
 				int offset,
@@ -125,7 +128,14 @@ public final class PersonRepositoryPorts {
 				int activoFiltro,
 				int perfilFiltro,
 				int actividadFiltro,
+				int historiaFiltro,
 				LocalDate hoy);
+
+		/**
+		 * De las personas dadas, las que tienen historia clinica vigente en la organizacion. Una
+		 * sola consulta por pagina, como los perfiles. Con la lista vacia no se llama.
+		 */
+		List<Long> conHistoriaClinica(Long organizationId, List<Long> personaIds);
 
 		/**
 		 * La persona VIGENTE que ya tiene ese documento, si existe.

@@ -71,6 +71,32 @@ Contra la base `akine_asistente_main` (copia de `akine_qa`): "¿cuántos pacient
 "listame los pacientes mayores de 60" → 7 filas; "el padrón?" → 33 personas; casos abiertos, servicios y
 precios, deudas y ranking de profesionales con su `SELECT` correcto. Entre 2 y 4 s por respuesta.
 
+## 5b. Ampliación del 16/11: todo el negocio, clínico con `hc:read` y charla con memoria
+
+Decisión del usuario del 16/11: el asistente tiene que responder sobre todo el negocio, incluidos datos
+clínicos ("pacientes con tal afección") **con `hc:read`**.
+
+- **`V23`**: 20 vistas de negocio (sedes, espacios, jornadas de caja, presentaciones e ítems, pagos de
+  financiadores y de egresos, liquidaciones de honorarios, prácticas, convenios, aranceles, órdenes,
+  autorizaciones, lista de espera, recepciones, productos, pases, feriados, disponibilidad) y 8 vistas
+  `clinico_*` (casos con diagnóstico, sesiones con motivo/dolor/evolución, tratamientos y sus parámetros,
+  mediciones, antecedentes, planes, derivaciones). Mismas reglas que `V21`: organización, sede si el dato
+  es de una sede, sin documentos, correos, teléfonos, direcciones ni números de afiliado.
+- **Compuerta clínica**: las `clinico_*` sólo si el actor tiene `asistente:sql` **y** `hc:read` sin
+  recorte (ni `RESTRINGIDO` ni de actividad propia: las vistas no saben de relación asistencial). Sin eso,
+  el validador rechaza la vista, el prompt no la muestra, y una pregunta que nombra algo clínico
+  (`pideDatoClinico`) responde que falta el permiso en vez de improvisar con otra tabla. Hoy, por base,
+  ningún rol tiene las dos cosas: se otorga `hc:read` al administrador ("No por defecto" en la matriz).
+- **Auditoría (DP-03)**: cada consulta que lee una `clinico_*` escribe `ASISTENTE_LECTURA_CLINICA` con
+  las vistas, la cantidad de filas y la justificación "Consulta al asistente de datos". Sin la pregunta.
+- **La charla sigue a la persona**: la consulta libre recibe las tres preguntas anteriores; una respuesta
+  que encontró a una sola persona la anota en `interpretacion.persona` y el interpretador la hereda. Una
+  pregunta corta sin sujeto ("¿tiene turno?") sigue con esa persona; si no hay ninguna, o aparecen varias
+  con ese nombre, se repregunta.
+- **Ollama**: `num_ctx` 8192 (el esquema ampliado no entraba en 4096 y Ollama respondía 400) y
+  `num_predict` 300 (120 cortaba los `SELECT` con dos `JOIN`). La biblioteca sube a 8192 también, para no
+  recargar el modelo al alternar.
+
 ## 6. Problemas y decisiones
 
 - **JSqlParser no se puede usar.** Con la dependencia en el classpath, Spring Data JPA 4 la detecta y la

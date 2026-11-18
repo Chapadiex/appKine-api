@@ -1,15 +1,17 @@
 package com.akine.assistant.application;
 
 import com.akine.assistant.domain.exception.DictadoNoDisponibleException;
-import com.akine.assistant.domain.exception.ModeloNoDisponibleException;
-import com.akine.assistant.domain.port.MensajeChat;
-import com.akine.assistant.domain.port.ModeloDeLenguaje;
+import com.akine.platform.spi.modelo.ModeloNoDisponibleException;
+import com.akine.platform.spi.modelo.MensajeChat;
+import com.akine.platform.spi.modelo.ModeloDeLenguaje;
+import com.akine.platform.spi.modelo.OpcionesGeneracion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -40,6 +42,8 @@ public class RepartidorDeEvaluacion {
 
 	/** Copia frases enteras: un texto de 4000 caracteres son unos 1200 tokens. */
 	static final int MAX_TOKENS = 1500;
+	/** Temperatura 0: repartir no es crear. Misma ventana que el asistente, para que Ollama no recargue. */
+	private static final OpcionesGeneracion OPCIONES = new OpcionesGeneracion(BigDecimal.ZERO, MAX_TOKENS, true);
 	static final int MAX_ZONA = 120;
 	static final int MAX_TEXTO_CAMPO = 500;
 	/** Un tema mas largo no es un rotulo: se descarta y queda el texto solo. */
@@ -71,7 +75,7 @@ public class RepartidorDeEvaluacion {
 		try {
 			crudo = disponible.completarJson(List.of(
 					new MensajeChat(MensajeChat.Rol.SISTEMA, prompt),
-					new MensajeChat(MensajeChat.Rol.USUARIO, texto)), plazo, MAX_TOKENS);
+					new MensajeChat(MensajeChat.Rol.USUARIO, texto)), null, OPCIONES, plazo);
 		}
 		catch (ModeloNoDisponibleException e) {
 			throw new DictadoNoDisponibleException(e);

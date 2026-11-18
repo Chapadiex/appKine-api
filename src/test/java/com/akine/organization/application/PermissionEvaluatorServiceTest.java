@@ -593,6 +593,8 @@ class PermissionEvaluatorServiceTest {
 							"agenda:horario", "agenda:excepciones",
 							// `paciente:read` lo sumo AKINE-DU-6 (DP-22): todo el personal lee el padron.
 							"paciente:read",
+							// DP-47: carga lo que declara el paciente, sin leer la historia.
+							"hc:declarar",
 							// `convenio:manage` se sumo en AKINE-03.03, cuando nacio `contracting`,
 							// el modulo que lo evalua. La matriz §2 se lo da al ORG_ADMIN en la fila
 							// Administrar Convenios y la enmienda esta en la matriz §13.
@@ -698,7 +700,7 @@ class PermissionEvaluatorServiceTest {
 							"agenda:horario", "agenda:excepciones",
 							// U-25 (DP-43): enmendar es un permiso propio, con el reparto de Registrar Sesion.
 							"sesion:amend",
-							"hc:read", "hc:write",
+							"hc:read", "hc:write", "hc:declarar",
 							// AKINE-DU-6 (DP-22): por base, no por grant.
 							"paciente:read",
 							// U-07 y U-08: ve coberturas y aranceles, y elige practicas del catalogo.
@@ -715,7 +717,9 @@ class PermissionEvaluatorServiceTest {
 							// lo hace el reporte, no la lista que oculta botones.
 							"reporte:read",
 							// M30, RF-M30-012: consultar la biblioteca, por base.
-							"biblioteca:consultar", "asistente:use", "dictado:use");
+							"biblioteca:consultar", "asistente:use", "dictado:use",
+							// M31 fase 2: sugerencias de evolucion, solo el profesional.
+							"evolucion:sugerir");
 		}
 	}
 

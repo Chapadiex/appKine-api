@@ -98,7 +98,8 @@ public final class Fixture {
 			return 1;
 		}
 		if (tipo == short.class || tipo == Short.class) {
-			return (short) 1;
+			// Un año (ficha de ingreso) tiene que caer en un rango real.
+			return nombre.toLowerCase().contains("anio") ? (short) 2019 : (short) 1;
 		}
 		if (tipo == boolean.class || tipo == Boolean.class) {
 			return Boolean.TRUE;

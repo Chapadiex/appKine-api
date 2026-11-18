@@ -1,7 +1,7 @@
 package com.akine.knowledge.application;
 
-import com.akine.knowledge.domain.port.MensajeChat;
-import com.akine.knowledge.domain.port.OpcionesGeneracion;
+import com.akine.platform.spi.modelo.MensajeChat;
+import com.akine.platform.spi.modelo.OpcionesGeneracion;
 import com.akine.knowledge.spi.CaminoBusqueda;
 
 import java.util.List;

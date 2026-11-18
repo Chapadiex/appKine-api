@@ -136,14 +136,20 @@ public class PersonaService {
 				filtros.activoFiltro(),
 				filtros.perfilFiltro(),
 				filtros.actividadFiltro(),
+				filtros.historiaFiltro(),
 				hoy,
 				filtros.ordenClave(),
 				page * size,
 				size);
 
 		Map<Long, PerfilPaciente> porPersona = perfilesDe(organizationId, encontradas);
+		java.util.Set<Long> conHistoria = encontradas.isEmpty()
+				? java.util.Set.of()
+				: java.util.Set.copyOf(personas.conHistoriaClinica(
+						organizationId, encontradas.stream().map(Persona::getId).toList()));
 		List<PersonaView> contenido = encontradas.stream()
-				.map(persona -> PersonaView.de(persona, porPersona.get(persona.getId())))
+				.map(persona -> PersonaView.de(persona, porPersona.get(persona.getId()))
+						.conHistoriaClinica(conHistoria.contains(persona.getId())))
 				.toList();
 
 		long total = personas.contar(
@@ -153,6 +159,7 @@ public class PersonaService {
 				filtros.activoFiltro(),
 				filtros.perfilFiltro(),
 				filtros.actividadFiltro(),
+				filtros.historiaFiltro(),
 				hoy);
 
 		return new PersonaPagina(contenido, total);

@@ -214,7 +214,7 @@ public class ServicioService {
 	 * Los duenios visibles: el catalogo global siempre, y la organizacion del contexto si la hay. El
 	 * rol de plataforma no tiene contexto y ve solo el global.
 	 */
-	private static List<Long> owners(OperatingActor actor) {
+	static List<Long> owners(OperatingActor actor) {
 		if (actor.platformAdmin() || actor.contextOrganizationId() == null) {
 			return List.of(OWNER_PLATAFORMA);
 		}
@@ -266,7 +266,7 @@ public class ServicioService {
 		return organizationId;
 	}
 
-	private static void exigirOperable(Servicio servicio, String operacion) {
+	static void exigirOperable(Servicio servicio, String operacion) {
 		if (!servicio.isOperable()) {
 			log.info("Operacion sobre servicio inactivo rechazada: servicioId={} operacion={}",
 					servicio.getId(), operacion);
@@ -274,7 +274,7 @@ public class ServicioService {
 		}
 	}
 
-	private static void exigirVersion(Servicio servicio, long esperada) {
+	static void exigirVersion(Servicio servicio, long esperada) {
 		if (servicio.getVersion() != esperada) {
 			throw new OptimisticLockingFailureException(
 					"El servicio fue modificado por otra operacion");
@@ -298,13 +298,13 @@ public class ServicioService {
 	 * mensaje y Spring no lleva ningun campo estructurado con ella: se busca {@code _nombre_}
 	 * —por {@code uk_servicio_owner_nombre_vigente}— y, si no aparece, se responde como codigo.
 	 */
-	private static boolean esConflictoDeNombre(DataIntegrityViolationException choque) {
+	static boolean esConflictoDeNombre(DataIntegrityViolationException choque) {
 		Throwable causa = choque.getMostSpecificCause();
 		String mensaje = causa.getMessage();
 		return mensaje != null && mensaje.toLowerCase(Locale.ROOT).contains("_nombre_");
 	}
 
-	private static Map<String, String> cambios(
+	static Map<String, String> cambios(
 			Servicio servicio, String nombre, ServicioEdicionCommand command) {
 
 		Map<String, String> detalles = new LinkedHashMap<>();
@@ -364,7 +364,7 @@ public class ServicioService {
 				ahora));
 	}
 
-	private static String normalizar(String valor, String mensaje) {
+	static String normalizar(String valor, String mensaje) {
 		if (valor == null || valor.isBlank()) {
 			throw new IllegalArgumentException(mensaje);
 		}

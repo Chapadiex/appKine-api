@@ -266,6 +266,9 @@ public final class RolePermissions {
 				// `paciente:read` en AKINE-DU-6 (DP-22): las lecturas del padron dejan de
 				// autorizarse por pertenencia. Lo tiene todo el personal; PACIENTE no.
 				Map.entry(PermissionCode.PACIENTE_READ, PermissionScope.ORGANIZACION),
+				// DP-47 (decision del usuario del 15/11): el dueño del centro carga lo que declara el
+				// paciente, igual que el mostrador. Sigue sin hc:read ni hc:write: no lee la historia.
+				Map.entry(PermissionCode.HC_DECLARAR, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.ORGANIZACION),
 				Map.entry(PermissionCode.TURNO_SOBRETURNO, PermissionScope.ORGANIZACION),
@@ -349,6 +352,8 @@ public final class RolePermissions {
 		// `Map.ofEntries` y no `Map.of`: AKINE-07.03 sumo `caja:operate` y este mapa llego a once
 		// pares. `Map.of` acepta como mucho diez, y la undecima linea no compila.
 		tabla.put(RoleCode.CONSULTORIO_ADMIN, Map.ofEntries(
+				// DP-47: opera el mostrador igual que la secretaria.
+				Map.entry(PermissionCode.HC_DECLARAR, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.CONSULTORIO_MANAGE, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.ESPACIO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.COLABORADOR_MANAGE, PermissionScope.CONSULTORIO),
@@ -446,6 +451,7 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.HC_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.HC_WRITE, PermissionScope.CONSULTORIO),
+				Map.entry(PermissionCode.HC_DECLARAR, PermissionScope.CONSULTORIO),
 				// Agenda de profesionales (decision del usuario del 03/11/2026): el profesional VE la
 				// agenda de la sede entera (turno:read) y OPERA solo la suya. ACTIVIDAD_PROPIA cubre la
 				// sede como CONSULTORIO y le avisa a scheduling y resource que comparen el profesional
@@ -483,7 +489,10 @@ public final class RolePermissions {
 				// Asistente de datos (D-2). Solo la puerta; sin grant.
 				Map.entry(PermissionCode.ASISTENTE_USE, PermissionScope.ORGANIZACION),
 				// Dictado por voz. Solo transcribe; sin grant.
-				Map.entry(PermissionCode.DICTADO_USE, PermissionScope.ORGANIZACION)));
+				Map.entry(PermissionCode.DICTADO_USE, PermissionScope.ORGANIZACION),
+				// M31 fase 2: sugerencias de evolucion con respaldo de la biblioteca. Solo el
+				// profesional; ademas exige hc:read y relacion o justificacion. Sin grant.
+				Map.entry(PermissionCode.EVOLUCION_SUGERIR, PermissionScope.ORGANIZACION)));
 		// Map.ofEntries y no Map.of desde AKINE-08.02: el segundo tiene un tope de diez pares y
 		// esta fila lo alcanzo. Mismo cambio que hizo 08.01 con el CONSULTORIO_ADMIN, y por el
 		// mismo motivo: no es semantica, es el unico constructor que admite el par once.
@@ -496,6 +505,8 @@ public final class RolePermissions {
 				// U-07 y U-08: el mostrador mira coberturas, convenios y practicas.
 				Map.entry(PermissionCode.CONVENIO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.CATALOGO_READ, PermissionScope.CONSULTORIO),
+				// DP-47: declara lo que cuenta o trae el paciente; no lee la historia ni revisa.
+				Map.entry(PermissionCode.HC_DECLARAR, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_READ, PermissionScope.CONSULTORIO),
 				Map.entry(PermissionCode.TURNO_MANAGE, PermissionScope.CONSULTORIO),
 				// Agenda de profesionales: la secretaria carga bloqueos y licencias de cualquier

@@ -44,6 +44,20 @@ final class AuditEvents {
 	static final String ADJUNTO_CLINICO_RECLASSIFIED = "ADJUNTO_CLINICO_RECLASSIFIED";
 	static final String ADJUNTO_CLINICO_DEACTIVATED = "ADJUNTO_CLINICO_DEACTIVATED";
 
+	// DP-47: datos que declara el paciente.
+	static final String ANTECEDENTE_DECLARADO = "ANTECEDENTE_DECLARADO";
+
+	// Ficha de ingreso. Sin peso, altura ni ocupacion en los detalles: es contenido clinico.
+	static final String FICHA_DECLARADA = "FICHA_DE_INGRESO_DECLARADA";
+	static final String FICHA_REGISTRADA = "FICHA_DE_INGRESO_REGISTRADA";
+	static final String FICHA_REVISADA = "FICHA_DE_INGRESO_REVISADA";
+	static final String OCUPACION_AGREGADA = "OCUPACION_AGREGADA";
+	static final String ENTITY_FICHA_DE_INGRESO = "FichaDeIngreso";
+	static final String ENTITY_OCUPACION = "Ocupacion";
+	static final String ADJUNTO_DECLARADO = "ADJUNTO_DECLARADO";
+	static final String DATO_DECLARADO_DADO_DE_BAJA = "DATO_DECLARADO_DADO_DE_BAJA";
+	static final String DATO_DECLARADO_REVISADO = "DATO_DECLARADO_REVISADO";
+
 	/**
 	 * La lectura del timeline de una historia.
 	 *

@@ -2,6 +2,10 @@ package com.akine.clinical.api;
 
 import com.akine.clinical.domain.exception.AccesoClinicoNoJustificadoException;
 import com.akine.clinical.domain.exception.AdjuntoClinicoInactivoException;
+import com.akine.clinical.domain.exception.AdjuntoYaEnHistoriaException;
+import com.akine.clinical.domain.exception.DatoYaEnHistoriaException;
+import com.akine.clinical.domain.exception.DatoDeclaradoRevisadoException;
+import com.akine.clinical.domain.exception.DatoNoDeclaradoException;
 import com.akine.clinical.domain.exception.AdjuntoClinicoNoDisponibleException;
 import com.akine.clinical.domain.exception.AdjuntoClinicoNotAccessibleException;
 import com.akine.clinical.domain.exception.AntecedenteNotAccessibleException;
@@ -87,6 +91,10 @@ public class ClinicalProblemHandler {
 	private static final URI ENMIENDA_SIN_MOTIVO = ProblemType.ENMIENDA_SIN_MOTIVO.uri();
 	private static final URI ADJUNTO_NO_ACCESIBLE = ProblemType.ADJUNTO_CLINICO_NO_ACCESIBLE.uri();
 	private static final URI ADJUNTO_INACTIVO = ProblemType.ADJUNTO_CLINICO_INACTIVO.uri();
+	private static final URI DATO_DECLARADO_REVISADO = ProblemType.DATO_DECLARADO_REVISADO.uri();
+	private static final URI DATO_NO_DECLARADO = ProblemType.DATO_NO_DECLARADO.uri();
+	private static final URI ADJUNTO_YA_EN_HISTORIA = ProblemType.ADJUNTO_YA_EN_HISTORIA.uri();
+	private static final URI DATO_YA_EN_HISTORIA = ProblemType.DATO_YA_EN_HISTORIA.uri();
 	private static final URI ADJUNTO_NO_DISPONIBLE =
 			ProblemType.ADJUNTO_CLINICO_NO_DISPONIBLE.uri();
 	private static final URI CURSOR_INVALIDO = ProblemType.CURSOR_INVALIDO.uri();
@@ -216,6 +224,34 @@ public class ClinicalProblemHandler {
 	 * <b>409.</b> Se sigue descargando y se sigue listando; lo que no admite un adjunto de baja es
 	 * reclasificarse. Negar la descarga convertiria la baja logica en un borrado con otro nombre.
 	 */
+	/** DP-47: los tres conflictos de los datos declarados. */
+	@ExceptionHandler(DatoDeclaradoRevisadoException.class)
+	public ProblemDetail handleDatoDeclaradoRevisado(DatoDeclaradoRevisadoException ex) {
+		return conflicto(DATO_DECLARADO_REVISADO, "El dato declarado ya fue revisado", ex.getMessage());
+	}
+
+	@ExceptionHandler(DatoNoDeclaradoException.class)
+	public ProblemDetail handleDatoNoDeclarado(DatoNoDeclaradoException ex) {
+		return conflicto(DATO_NO_DECLARADO, "El dato no es declarado", ex.getMessage());
+	}
+
+	@ExceptionHandler(DatoYaEnHistoriaException.class)
+	public ProblemDetail handleDatoYaEnHistoria(DatoYaEnHistoriaException ex) {
+		return conflicto(DATO_YA_EN_HISTORIA, "El dato ya esta en la historia clinica", ex.getMessage());
+	}
+
+	@ExceptionHandler(AdjuntoYaEnHistoriaException.class)
+	public ProblemDetail handleAdjuntoYaEnHistoria(AdjuntoYaEnHistoriaException ex) {
+		return conflicto(ADJUNTO_YA_EN_HISTORIA, "El archivo ya esta en la historia clinica", ex.getMessage());
+	}
+
+	private static ProblemDetail conflicto(URI tipo, String titulo, String detalle) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, detalle);
+		problem.setType(tipo);
+		problem.setTitle(titulo);
+		return problem;
+	}
+
 	@ExceptionHandler(AdjuntoClinicoInactivoException.class)
 	public ProblemDetail handleAdjuntoInactivo(AdjuntoClinicoInactivoException ex) {
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
