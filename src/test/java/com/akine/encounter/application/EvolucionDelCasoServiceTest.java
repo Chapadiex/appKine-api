@@ -25,7 +25,7 @@ class EvolucionDelCasoServiceTest {
 		AuditTrail auditTrail = mock(AuditTrail.class);
 		EvolucionDelCasoService service = new EvolucionDelCasoService(
 				new ConfiguracionDeEvolucion(false, UmbralesDeEvolucion.porDefecto()),
-				acceso, mock(AnalizadorDelCaso.class), mock(SesionRepositoryPort.class), auditTrail,
+				acceso, mock(AnalizadorDelCaso.class), mock(SesionRepositoryPort.class), auditTrail, (org, f) -> true,
 				Clock.systemUTC());
 
 		assertThatThrownBy(() -> service.analizar(new OperatingActor(1L, false, 7L, 3L), 3L, 41L, null))

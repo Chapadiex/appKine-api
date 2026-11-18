@@ -14,6 +14,8 @@ import com.akine.assistant.spi.PedidoDeHerramienta;
 import com.akine.assistant.spi.ResultadoDeHerramienta;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
+import com.akine.organization.spi.FuncionIa;
+import com.akine.organization.spi.FuncionesIaDelCentro;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionDecision;
@@ -61,21 +63,23 @@ public class AsistenteService {
 	private final Map<Intencion, HerramientaDelAsistente> herramientas;
 	private final PermissionEvaluator permisos;
 	private final ConsultaLibre consultaLibre;
+	private final FuncionesIaDelCentro funcionesIa;
 	private final Clock clock;
 
 	/** El de Spring. El otro fija el reloj para los tests; con dos, Spring necesita que se le diga cual. */
 	@Autowired
 	public AsistenteService(AsistenteAjustes ajustes, PermissionGuard permissionGuard, ConsultorioDirectory sedes,
 			Interpretador interpretador, AuditoriaDelAsistente auditoria, List<HerramientaDelAsistente> herramientas,
-			PermissionEvaluator permisos, ConsultaLibre consultaLibre) {
+			PermissionEvaluator permisos, ConsultaLibre consultaLibre, FuncionesIaDelCentro funcionesIa) {
 		this(ajustes, permissionGuard, sedes, interpretador, auditoria, herramientas, permisos, consultaLibre,
-				Clock.systemUTC());
+				funcionesIa, Clock.systemUTC());
 	}
 
 	AsistenteService(AsistenteAjustes ajustes, PermissionGuard permissionGuard, ConsultorioDirectory sedes,
 			Interpretador interpretador, AuditoriaDelAsistente auditoria, List<HerramientaDelAsistente> herramientas,
-			PermissionEvaluator permisos, ConsultaLibre consultaLibre, Clock clock) {
+			PermissionEvaluator permisos, ConsultaLibre consultaLibre, FuncionesIaDelCentro funcionesIa, Clock clock) {
 		this.permisos = permisos;
+		this.funcionesIa = funcionesIa;
 		this.consultaLibre = consultaLibre;
 		this.ajustes = ajustes;
 		this.permissionGuard = permissionGuard;
@@ -107,6 +111,9 @@ public class AsistenteService {
 		Long organizationId = actor.organizationId();
 		if (organizationId == null) {
 			throw new AccessDeniedException("La operacion requiere una organizacion en contexto");
+		}
+		if (!funcionesIa.prendida(organizationId, FuncionIa.ASISTENTE)) {
+			throw new AsistenteDeshabilitadoException();
 		}
 		permissionGuard.requirePermission(new PermissionQuery(actor.accountId(), PermissionCodes.ASISTENTE_USE,
 				organizationId, consultorioId, null, Instant.now(clock)));

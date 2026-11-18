@@ -10,6 +10,8 @@ import com.akine.encounter.domain.evolucion.ConfiguracionDeEvolucion;
 import com.akine.encounter.domain.evolucion.Hallazgo;
 import com.akine.encounter.domain.exception.EvolucionDeshabilitadaException;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
+import com.akine.organization.spi.FuncionIa;
+import com.akine.organization.spi.FuncionesIaDelCentro;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
@@ -61,6 +63,7 @@ public class EvolucionDelCasoService {
 	private final AnalizadorDelCaso analizador;
 	private final SesionRepositoryPort sesiones;
 	private final AuditTrail auditTrail;
+	private final FuncionesIaDelCentro funcionesIa;
 	private final Clock clock;
 
 	@Autowired
@@ -69,8 +72,9 @@ public class EvolucionDelCasoService {
 			AccesoClinicoDirectory accesoClinico,
 			AnalizadorDelCaso analizador,
 			SesionRepositoryPort sesiones,
-			AuditTrail auditTrail) {
-		this(configuracion, accesoClinico, analizador, sesiones, auditTrail, Clock.systemUTC());
+			AuditTrail auditTrail,
+			FuncionesIaDelCentro funcionesIa) {
+		this(configuracion, accesoClinico, analizador, sesiones, auditTrail, funcionesIa, Clock.systemUTC());
 	}
 
 	EvolucionDelCasoService(
@@ -79,7 +83,9 @@ public class EvolucionDelCasoService {
 			AnalizadorDelCaso analizador,
 			SesionRepositoryPort sesiones,
 			AuditTrail auditTrail,
+			FuncionesIaDelCentro funcionesIa,
 			Clock clock) {
+		this.funcionesIa = funcionesIa;
 		this.configuracion = configuracion;
 		this.accesoClinico = accesoClinico;
 		this.analizador = analizador;
@@ -99,6 +105,9 @@ public class EvolucionDelCasoService {
 			throw new AccessDeniedException("La evolucion del caso requiere un contexto de trabajo activo");
 		}
 		long organizationId = actor.contextOrganizationId();
+		if (!funcionesIa.prendida(organizationId, FuncionIa.EVOLUCION)) {
+			throw new EvolucionDeshabilitadaException();
+		}
 
 		// Resolver el caso antes de exigir el acceso: uno de otra organizacion da 404, no 403.
 		CasoAnalizado calculo = analizador.analizar(organizationId, consultorioId, casoId);

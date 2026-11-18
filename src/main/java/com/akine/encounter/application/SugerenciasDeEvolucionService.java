@@ -34,6 +34,8 @@ import com.akine.encounter.domain.port.SesionRepositoryPort;
 import com.akine.encounter.domain.port.SugerenciaEvolucionRepositoryPort;
 import com.akine.encounter.spi.CitaGuardada;
 import com.akine.knowledge.spi.BibliotecaDirectory;
+import com.akine.organization.spi.FuncionIa;
+import com.akine.organization.spi.FuncionesIaDelCentro;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
@@ -124,6 +126,7 @@ public class SugerenciasDeEvolucionService {
 	private final TransactionTemplate transaccion;
 	private final DetectorDeInstrucciones detector = DetectorDeInstrucciones.porDefecto();
 	private final ValidadorDeSugerencias validador;
+	private final FuncionesIaDelCentro funcionesIa;
 	private final Clock clock;
 
 	@Autowired
@@ -142,7 +145,9 @@ public class SugerenciasDeEvolucionService {
 			@Qualifier(MODELO) ObjectProvider<ModeloDeLenguaje> modelo,
 			CandadoPorCuenta candado,
 			AuditTrail auditTrail,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			FuncionesIaDelCentro funcionesIa) {
+		this.funcionesIa = funcionesIa;
 		this.ajustes = ajustes;
 		this.analizador = analizador;
 		this.accesoClinico = accesoClinico;
@@ -174,6 +179,7 @@ public class SugerenciasDeEvolucionService {
 	public SugerenciasView generar(OperatingActor actor, long consultorioId, long casoId, String justificacion) {
 		exigirHabilitadas();
 		long organizationId = organizacionDe(actor);
+		exigirPrendidas(organizationId);
 		if (TransactionSynchronizationManager.isActualTransactionActive()) {
 			throw new IllegalStateException("Las sugerencias llaman al modelo: no pueden correr dentro de una"
 					+ " transaccion (diseno fase 2, §4.2)");
@@ -321,6 +327,7 @@ public class SugerenciasDeEvolucionService {
 			String justificacion, Pageable pagina) {
 		exigirHabilitadas();
 		long organizationId = organizacionDe(actor);
+		exigirPrendidas(organizationId);
 		return transaccion.execute(estado -> {
 			AccesoClinicoConcedido acceso = exigirAcceso(actor, organizationId, consultorioId, casoId,
 					justificacion);
@@ -342,6 +349,7 @@ public class SugerenciasDeEvolucionService {
 			String justificacion) {
 		exigirHabilitadas();
 		long organizationId = organizacionDe(actor);
+		exigirPrendidas(organizationId);
 		// La vista se arma despues del commit: antes del flush la entidad tiene la version vieja, y el
 		// cliente que la reenviara comeria un 409.
 		SugerenciaEvolucion respondida = transaccion.execute(estado -> {
@@ -367,6 +375,13 @@ public class SugerenciasDeEvolucionService {
 
 	// =============================================================================================
 	// Puerta y auditoria
+
+	/** El centro puede haber apagado las sugerencias, la evolucion o la biblioteca: mismo 404. */
+	private void exigirPrendidas(long organizationId) {
+		if (!funcionesIa.prendida(organizationId, FuncionIa.SUGERENCIAS)) {
+			throw new EvolucionDeshabilitadaException();
+		}
+	}
 
 	private void exigirHabilitadas() {
 		if (!ajustes.habilitadas()) {

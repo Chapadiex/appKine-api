@@ -4,6 +4,6 @@ package com.akine.assistant.domain.exception;
 public class AsistenteDeshabilitadoException extends RuntimeException {
 
 	public AsistenteDeshabilitadoException() {
-		super("El asistente de datos esta deshabilitado en este despliegue.");
+		super("El asistente de datos esta apagado: lo apago el centro (Organizacion, Inteligencia artificial) o no esta disponible en este servidor.");
 	}
 }
