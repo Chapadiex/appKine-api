@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.176.0
+  version: 0.177.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -53,6 +53,8 @@ tags:
 - description: "Apertura, resumen y antecedentes de la Historia Clinica de una persona\
     \ (M09)"
   name: Historia clinica
+- description: Dictado por voz en los campos de texto
+  name: Dictado
 - description: Deuda derivada de prestaciones. No es el cobro ni la caja (M18)
   name: Obligaciones
 - description: "Bloqueo, desbloqueo y baja logica de cuentas de la propia organizacion"
@@ -6837,6 +6839,169 @@ paths:
       summary: Editar un arancel
       tags:
       - Convenios y aranceles
+  /api/v1/consultorios/{consultorioId}/dictado/evaluaciones:
+    post:
+      description: |-
+        Propone dolor, zona, lateralidad, evolucion, objetivo, motivo y limitacion a partir de un texto dictado. Lo decide el modelo de lenguaje local del asistente (exige tambien `akine.asistente.enabled`), y el servidor descarta lo que no valida. **No escribe en la sesion**: la pantalla muestra la propuesta y aplica solo lo que el profesional confirma. Lo que no entro en ningun campo vuelve en `restante`.
+
+        Requiere `dictado:use` y el interruptor `akine.dictado.enabled`. No guarda nada: el texto se guarda cuando el profesional guarda la pantalla.
+      operationId: proponerEvaluacionDictada
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProponerEvaluacionDictada"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropuestaDeEvaluacionDictada"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/PropuestaDeEvaluacionDictada"
+          description: La propuesta
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`validation-error`: texto vacio o de mas de 4000 caracteres"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `dictado:use` o sin contexto de trabajo activo
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`not-found`: la sede no existe o es de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`dictado-deshabilitado`: el interruptor esta apagado"
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`dictado-no-disponible`: el modelo esta apagado, no responde\
+            \ o vencio el plazo"
+      summary: Repartir un texto dictado entre los campos de la evaluacion
+      tags:
+      - Dictado
+  /api/v1/consultorios/{consultorioId}/dictado/transcripciones:
+    post:
+      description: |-
+        Transcribe una grabacion corta con un servidor Whisper local: la voz no sale del servidor del centro. Acepta `audio/*` (y `video/webm` o `video/mp4`, como etiquetan algunos navegadores una grabacion de solo audio) hasta `akine.dictado.max-bytes`. El texto vuelve tal cual, sin resumir ni corregir.
+
+        Requiere `dictado:use` y el interruptor `akine.dictado.enabled`. No guarda nada: el texto se guarda cuando el profesional guarda la pantalla.
+      operationId: transcribirDictado
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: "La grabacion, como la produjo el navegador"
+              required:
+              - audio
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscripcionDeDictado"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/TranscripcionDeDictado"
+          description: El texto dictado
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`validation-error`: sin audio, demasiado grande o no es audio"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `dictado:use` o sin contexto de trabajo activo
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`not-found`: la sede no existe o es de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`dictado-deshabilitado`: el interruptor esta apagado"
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`dictado-no-disponible`: Whisper no responde o vencio el plazo"
+      summary: Pasar a texto un audio dictado
+      tags:
+      - Dictado
   /api/v1/consultorios/{consultorioId}/disponibilidad/busqueda:
     post:
       description: |-
@@ -43863,6 +44028,8 @@ components:
       - https://akine.app/problems/consulta-ocupada
       - https://akine.app/problems/asistente-no-disponible
       - https://akine.app/problems/asistente-deshabilitado
+      - https://akine.app/problems/dictado-deshabilitado
+      - https://akine.app/problems/dictado-no-disponible
       - https://akine.app/problems/generacion-en-curso
       - https://akine.app/problems/modelo-ocupado
       - https://akine.app/problems/modelo-no-disponible
@@ -44152,6 +44319,63 @@ components:
       - hasta
       - horaFin
       - horaInicio
+    ProponerEvaluacionDictada:
+      type: object
+      properties:
+        texto:
+          type: string
+          description: "El texto dictado, normalmente el que devolvio la transcripcion"
+          example: "Dolor 6 en rodilla derecha, mejor que la vez pasada. Objetivo:\
+            \ ganar flexion."
+          maxLength: 4000
+          minLength: 0
+      required:
+      - texto
+    PropuestaDeEvaluacionDictada:
+      type: object
+      properties:
+        dolorEva:
+          type: integer
+          format: int32
+          description: "Dolor EVA, de 0 a 10"
+          maximum: 10
+          minimum: 0
+        dolorLateralidad:
+          type: string
+          description: Lado del dolor
+          enum:
+          - IZQUIERDA
+          - DERECHA
+          - BILATERAL
+          - NO_APLICA
+        dolorZona:
+          type: string
+          description: Zona del dolor
+          maxLength: 120
+        evolucion:
+          type: string
+          description: Evolucion respecto de la sesion anterior
+          enum:
+          - MEJOR
+          - IGUAL
+          - PEOR
+          - SIN_REFERENCIA
+        limitacionFuncional:
+          type: string
+          description: Limitacion funcional
+          maxLength: 500
+        motivoClinico:
+          type: string
+          description: Motivo clinico
+          maxLength: 500
+        objetivoSesion:
+          type: string
+          description: Objetivo de la sesion
+          maxLength: 500
+        restante:
+          type: string
+          description: Lo dicho que no entro en ningun campo; la pantalla ofrece llevarlo
+            a las notas
     PruebaDelMotorResponse:
       type: object
       description: Resultado de una pregunta minima al modelo
@@ -47744,6 +47968,15 @@ components:
           type: number
         registrado:
           type: number
+    TranscripcionDeDictado:
+      type: object
+      properties:
+        texto:
+          type: string
+          description: "El texto dictado, tal cual. Vacio si no se entendio nada"
+          example: Refiere menos dolor al subir escaleras.
+      required:
+      - texto
     TransicionDePlan:
       type: object
       description: Transicion de estado de un plan que no exige motivo

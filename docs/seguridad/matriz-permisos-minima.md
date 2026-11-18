@@ -1052,3 +1052,15 @@ M31 fase 2: sugerencias de revisión del tratamiento sobre un Caso Clínico, res
 - **Se exige además de la puerta clínica:** `hc:read` y relación asistencial o justificación declarada, igual que la evolución de la fase 1. Pedir, listar y responder exigen las dos cosas, y las tres se auditan.
 - **Sólo el profesional**, con alcance `ORGANIZACION` (el caso es de la organización). No es otorgable por grant.
 - **Función apagada:** sin `akine.evolucion.sugerencias.enabled`, `akine.evolucion.enabled` y `akine.biblioteca.enabled` encendidos, las tres operaciones responden 404 antes de mirar permisos.
+
+## 25. Enmiendas — Dictado por voz (16/11/2026)
+
+Dictar en los campos de texto con un Whisper local (`docs/diseno/AKINE-dictado-por-voz.md`).
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `dictado:use` | — | Org | Org | Org | Org | — |
+
+- **No lee datos del centro**: sólo transcribe lo que dice quien lo usa, y propone cómo repartirlo en la evaluación sin escribir en la sesión. Lo dictado se guarda cuando el profesional guarda la pantalla, con el permiso y la auditoría de esa pantalla.
+- **No es otorgable por grant**, y `PACIENTE` y `PLATFORM_ADMIN` no lo tienen.
+- **Dictado apagado:** con `akine.dictado.enabled` en `false`, todo responde 409 `dictado-deshabilitado`.

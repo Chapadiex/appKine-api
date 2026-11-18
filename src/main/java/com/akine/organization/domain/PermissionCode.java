@@ -416,6 +416,13 @@ public enum PermissionCode {
 	ASISTENTE_USE("asistente:use"),
 
 	/**
+	 * Dictar por voz en los campos de texto (docs/diseno/AKINE-dictado-por-voz.md). Por base para
+	 * los mismos cuatro roles que {@link #ASISTENTE_USE}, con alcance de organizacion; no se otorga
+	 * por grant. No lee datos del centro: solo transcribe lo que dice quien lo usa.
+	 */
+	DICTADO_USE("dictado:use"),
+
+	/**
 	 * Pedir y responder sugerencias de revision sobre la evolucion de un Caso Clinico (M31 fase 2,
 	 * {@code docs/diseno/AKINE-analizador-de-evolucion-fase2.md} §8.2). Por base solo para el
 	 * {@code PROFESIONAL}, con alcance de organizacion; no se otorga por grant. Se exige ademas de

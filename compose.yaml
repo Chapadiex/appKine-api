@@ -111,8 +111,31 @@ services:
     volumes:
       - akine-ollama-data:/root/.ollama
 
+  # Transcripcion del dictado por voz (docs/diseno/AKINE-dictado-por-voz.md): speaches, servidor
+  # faster-whisper con la API de OpenAI. Opcional: sin el, solo el dictado responde 503. Bajar el
+  # modelo una vez: curl -X POST http://localhost:8000/v1/models/deepdml/faster-whisper-large-v3-turbo-ct2
+  # Con placa NVIDIA: docker compose -f compose.yaml -f compose.gpu.yaml up -d whisper (ver compose.gpu.yaml)
+  whisper:
+    # Fijada por digest (speaches 0.8.3, CPU, amd64), no por tag.
+    image: ghcr.io/speaches-ai/speaches@sha256:1d4f852ff5b148d675bcd751f414835c0bcef2541c1df8ffdeb43714968aafe6
+    container_name: akine-whisper
+    restart: unless-stopped
+    environment:
+      # Sin esto el modelo se descarga de memoria a los 5 minutos sin uso y el primer dictado
+      # despues de una pausa espera la recarga (de ~7 s a ~15 s, medido el 16/11/2026).
+      WHISPER__TTL: "-1"
+      # En CPU el valor por defecto calcula en float32; int8 es mas rapido y no se noto peor.
+      WHISPER__COMPUTE_TYPE: int8
+    ports:
+      # Solo en la maquina local: speaches no tiene autenticacion.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - akine-whisper-data:/home/ubuntu/.cache/huggingface/hub
+
 volumes:
   akine-postgres-data:
     name: akine-postgres-data
   akine-ollama-data:
     name: akine-ollama-data
+  akine-whisper-data:
+    name: akine-whisper-data

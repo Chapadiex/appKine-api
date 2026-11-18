@@ -1,9 +1,29 @@
-# GPU NVIDIA para el modelo de lenguaje local de la consulta (opcional). Se suma al compose principal:
-#   docker compose -f compose.yaml -f compose.gpu.yaml up -d ollama
-# Medido el 11/11/2026 con qwen2.5:3b: ~24 s por respuesta en CPU contra ~1,5 s en una RTX 4050.
+# GPU NVIDIA para los modelos locales (opcional). Se suma al compose principal:
+#   docker compose -f compose.yaml -f compose.gpu.yaml up -d ollama whisper
 # Sin GPU NVIDIA ni el soporte de GPU de Docker, no usar este archivo: el arranque falla.
+# Se comprueba con: docker run --rm --gpus all <imagen> nvidia-smi
 services:
+  # Modelo de lenguaje de la consulta y del asistente.
+  # Medido el 11/11/2026 con qwen2.5:3b: ~24 s por respuesta en CPU contra ~1,5 s en una RTX 4050.
   ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Transcripcion del dictado por voz. Medido el 18/11/2026 en una RTX 4050 Laptop (6 GB):
+  # large-v3-turbo transcribe 10 s de audio en ~1,1 s contra ~9 s en CPU
+  # (docs/diseno/AKINE-dictado-por-voz.md). El modelo vive en el mismo volumen que la version de CPU.
+  whisper:
+    # speaches 0.8.3 con CUDA 12.6.3, amd64. Fijada por digest, no por tag.
+    image: ghcr.io/speaches-ai/speaches@sha256:f48b50035b173ec4f78af1371a4f8a3f0e24c3c63aeaba6ef99a55d0eee7c1ff
+    environment:
+      WHISPER__INFERENCE_DEVICE: cuda
+      # En la GPU, float16 es lo nativo; int8 es para la CPU.
+      WHISPER__COMPUTE_TYPE: float16
     deploy:
       resources:
         reservations:

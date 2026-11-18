@@ -251,6 +251,8 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						"biblioteca:manage", "biblioteca:consultar",
 						// Asistente de datos (D-2): la puerta, por base.
 						"asistente:use", "asistente:sql",
+						// Dictado por voz: los cuatro roles de personal, por base.
+						"dictado:use",
 						// Agenda de profesionales: horario habitual y excepciones, separados de
 						// consultorio:manage (docs/diseno/AKINE-agenda-roles.md).
 						"agenda:horario", "agenda:excepciones",
@@ -297,6 +299,8 @@ class PermisosEsquemaIT extends BaseEscenarioDiferido {
 						"biblioteca:consultar",
 						// Asistente de datos (D-2): la puerta, por base.
 						"asistente:use",
+						// Dictado por voz, por base.
+						"dictado:use",
 						// M31 fase 2: sugerencias de evolucion, solo el profesional.
 						"evolucion:sugerir",
 						// DP-47: declarar datos del paciente en la HC.

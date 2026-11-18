@@ -1461,6 +1461,14 @@ public enum ProblemType {
 	/** El asistente de datos esta apagado por configuracion (409). */
 	ASISTENTE_DESHABILITADO("asistente-deshabilitado"),
 
+	// --- Dictado por voz (docs/diseno/AKINE-dictado-por-voz.md) -------------------------------
+
+	/** El dictado por voz esta apagado por configuracion (409). */
+	DICTADO_DESHABILITADO("dictado-deshabilitado"),
+
+	/** Whisper, o el modelo que reparte el texto en campos, no responde o vencio el plazo (503). */
+	DICTADO_NO_DISPONIBLE("dictado-no-disponible"),
+
 	// --- Sugerencias de evolucion (M31 fase 2) ------------------------------------------------
 
 	/** La misma cuenta ya tiene un pedido de sugerencias en curso en esta instancia (429). */

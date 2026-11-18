@@ -1,6 +1,9 @@
 package com.akine.assistant.api;
 
 import com.akine.assistant.domain.exception.AsistenteDeshabilitadoException;
+import com.akine.assistant.domain.exception.DictadoDeshabilitadoException;
+import com.akine.assistant.domain.exception.DictadoInvalidoException;
+import com.akine.assistant.domain.exception.DictadoNoDisponibleException;
 import com.akine.assistant.domain.exception.ModeloNoDisponibleException;
 import com.akine.assistant.domain.exception.SedeNoEncontradaException;
 import com.akine.platform.spi.problem.ProblemType;
@@ -26,6 +29,24 @@ public class AsistenteProblemHandler {
 	public ProblemDetail handleModeloNoDisponible(ModeloNoDisponibleException exception) {
 		return problema(HttpStatus.SERVICE_UNAVAILABLE, ProblemType.ASISTENTE_NO_DISPONIBLE,
 				"Asistente no disponible", exception.getMessage());
+	}
+
+	@ExceptionHandler(DictadoDeshabilitadoException.class)
+	public ProblemDetail handleDictadoDeshabilitado(DictadoDeshabilitadoException exception) {
+		return problema(HttpStatus.CONFLICT, ProblemType.DICTADO_DESHABILITADO,
+				"Dictado deshabilitado", exception.getMessage());
+	}
+
+	@ExceptionHandler(DictadoNoDisponibleException.class)
+	public ProblemDetail handleDictadoNoDisponible(DictadoNoDisponibleException exception) {
+		return problema(HttpStatus.SERVICE_UNAVAILABLE, ProblemType.DICTADO_NO_DISPONIBLE,
+				"Dictado no disponible", exception.getMessage());
+	}
+
+	@ExceptionHandler(DictadoInvalidoException.class)
+	public ProblemDetail handleDictadoInvalido(DictadoInvalidoException exception) {
+		return problema(HttpStatus.BAD_REQUEST, ProblemType.VALIDATION_ERROR,
+				"Dictado invalido", exception.getMessage());
 	}
 
 	/** Inexistente o de otra organizacion: 404, nunca 403. */

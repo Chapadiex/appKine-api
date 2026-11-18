@@ -343,6 +343,8 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.BIBLIOTECA_CONSULTAR, PermissionScope.ORGANIZACION),
 				// Asistente de datos (D-2). Solo la puerta; sin grant.
 				Map.entry(PermissionCode.ASISTENTE_USE, PermissionScope.ORGANIZACION),
+				// Dictado por voz. Solo transcribe; sin grant.
+				Map.entry(PermissionCode.DICTADO_USE, PermissionScope.ORGANIZACION),
 				// Consultas libres del asistente sobre asistente_sql; sin grant.
 				Map.entry(PermissionCode.ASISTENTE_SQL, PermissionScope.ORGANIZACION)));
 
@@ -401,6 +403,8 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.BIBLIOTECA_CONSULTAR, PermissionScope.ORGANIZACION),
 				// Asistente de datos (D-2). Solo la puerta; sin grant.
 				Map.entry(PermissionCode.ASISTENTE_USE, PermissionScope.ORGANIZACION),
+				// Dictado por voz. Solo transcribe; sin grant.
+				Map.entry(PermissionCode.DICTADO_USE, PermissionScope.ORGANIZACION),
 				// Consultas libres del asistente sobre asistente_sql; sin grant.
 				Map.entry(PermissionCode.ASISTENTE_SQL, PermissionScope.ORGANIZACION),
 				// U-24 (DP-43): reemplazar al profesional de una atencion abierta es decision de quien
@@ -484,6 +488,8 @@ public final class RolePermissions {
 				Map.entry(PermissionCode.BIBLIOTECA_CONSULTAR, PermissionScope.ORGANIZACION),
 				// Asistente de datos (D-2). Solo la puerta; sin grant.
 				Map.entry(PermissionCode.ASISTENTE_USE, PermissionScope.ORGANIZACION),
+				// Dictado por voz. Solo transcribe; sin grant.
+				Map.entry(PermissionCode.DICTADO_USE, PermissionScope.ORGANIZACION),
 				// M31 fase 2: sugerencias de evolucion con respaldo de la biblioteca. Solo el
 				// profesional; ademas exige hc:read y relacion o justificacion. Sin grant.
 				Map.entry(PermissionCode.EVOLUCION_SUGERIR, PermissionScope.ORGANIZACION)));
@@ -536,7 +542,9 @@ public final class RolePermissions {
 				// M30, RF-M30-012. Consultar la biblioteca; sin grant.
 				Map.entry(PermissionCode.BIBLIOTECA_CONSULTAR, PermissionScope.ORGANIZACION),
 				// Asistente de datos (D-2). Solo la puerta; sin grant.
-				Map.entry(PermissionCode.ASISTENTE_USE, PermissionScope.ORGANIZACION)));
+				Map.entry(PermissionCode.ASISTENTE_USE, PermissionScope.ORGANIZACION),
+				// Dictado por voz. Solo transcribe; sin grant.
+				Map.entry(PermissionCode.DICTADO_USE, PermissionScope.ORGANIZACION)));
 
 		// PACIENTE â ninguna fila de la matriz Â§6 le da nada en F1. Sus celdas ("Propio",
 		// "Propia autorizada") viven en acciones de F3 y F4.

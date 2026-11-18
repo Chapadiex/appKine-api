@@ -1,8 +1,9 @@
 package com.akine.assistant.api;
 
 import com.akine.TestcontainersConfiguration;
-import com.akine.platform.spi.modelo.ModeloDeLenguaje;
+import com.akine.assistant.infrastructure.TranscriptorDePrueba;
 import com.akine.platform.infrastructure.modelo.ModeloDeLenguajeDePrueba;
+import com.akine.platform.spi.modelo.ModeloDeLenguaje;
 import com.akine.organization.application.MembershipService;
 import com.akine.organization.spi.DirectMembershipCommand;
 import com.akine.person.application.OperatingActor;
@@ -47,7 +48,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 		properties = {
 				"akine.security.rate-limit.enabled=false",
 				"akine.asistente.enabled=true",
-				"akine.asistente.modelo.tipo=prueba"})
+				"akine.asistente.modelo.tipo=prueba",
+				"akine.dictado.enabled=true",
+				"akine.dictado.transcriptor.tipo=prueba"})
 @ActiveProfiles("local")
 @Import(TestcontainersConfiguration.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -188,6 +191,66 @@ class AsistenteIT {
 			s.append((char) ('a' + ThreadLocalRandom.current().nextInt(26)));
 		}
 		return s.toString();
+	}
+
+	// --- Dictado por voz (docs/diseno/AKINE-dictado-por-voz.md) -----------------------------
+
+	@Test
+	void el_dictado_transcribe_un_audio_por_multipart_y_rechaza_lo_que_no_es_audio() throws Exception {
+		HttpResponse<String> ok = subirAudio(centroA, centroA.consultorioId(), "audio/webm;codecs=opus", new byte[] {1, 2, 3});
+		assertThat(ok.statusCode()).as(ok.body()).isEqualTo(200);
+		assertThat(JSON.readTree(ok.body()).get("texto").asString()).isEqualTo(TranscriptorDePrueba.TEXTO);
+
+		HttpResponse<String> imagen = subirAudio(centroA, centroA.consultorioId(), "image/png", new byte[] {1});
+		assertThat(imagen.statusCode()).as(imagen.body()).isEqualTo(400);
+		assertThat(JSON.readTree(imagen.body()).get("type").asString()).endsWith("/validation-error");
+
+		HttpResponse<String> ajena = subirAudio(centroB, centroA.consultorioId(), "audio/webm", new byte[] {1});
+		assertThat(ajena.statusCode()).as(ajena.body()).isEqualTo(404);
+	}
+
+	@Test
+	void la_propuesta_de_evaluacion_descarta_lo_que_no_valida() throws Exception {
+		modelo.responderJson("{\"dolorEva\":14,\"dolorZona\":\"rodilla\",\"dolorLateralidad\":\"derecha\","
+				+ "\"evolucion\":\"MUCHO_MEJOR\",\"objetivoSesion\":\"ganar flexion\",\"restante\":\"Trajo estudios.\"}");
+
+		HttpResponse<String> r = post("/api/v1/consultorios/" + centroA.consultorioId() + "/dictado/evaluaciones",
+				centroA.token(),
+				"{\"texto\":\"Dolor catorce en rodilla derecha, mucho mejor. Objetivo ganar flexion. Trajo estudios.\"}");
+
+		assertThat(r.statusCode()).as(r.body()).isEqualTo(200);
+		JsonNode p = JSON.readTree(r.body());
+		assertThat(p.has("dolorEva")).isFalse();
+		assertThat(p.has("evolucion")).isFalse();
+		assertThat(p.get("dolorZona").asString()).isEqualTo("rodilla");
+		assertThat(p.get("dolorLateralidad").asString()).isEqualTo("DERECHA");
+		assertThat(p.get("objetivoSesion").asString()).isEqualTo("ganar flexion");
+		// La evolucion fuera de catalogo no se pierde: la frase vuelve a las notas.
+		assertThat(p.get("restante").asString()).isEqualTo("- Trajo estudios.\n- Dictado: mucho mejor");
+	}
+
+	@Test
+	void un_paciente_no_puede_dictar() throws Exception {
+		Sesion paciente = conRolEn(centroA, "dictado-paciente", "PACIENTE");
+
+		HttpResponse<String> r = subirAudio(paciente, centroA.consultorioId(), "audio/webm", new byte[] {1});
+
+		assertThat(r.statusCode()).as(r.body()).isEqualTo(403);
+	}
+
+	private HttpResponse<String> subirAudio(Sesion sesion, long consultorioId, String tipo, byte[] audio)
+			throws Exception {
+		String limite = "limite-" + UUID.randomUUID();
+		java.io.ByteArrayOutputStream cuerpo = new java.io.ByteArrayOutputStream();
+		cuerpo.writeBytes(("--" + limite + "\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"a.webm\"\r\n"
+				+ "Content-Type: " + tipo + "\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		cuerpo.writeBytes(audio);
+		cuerpo.writeBytes(("\r\n--" + limite + "--\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		return http.send(HttpRequest.newBuilder(uri("/api/v1/consultorios/" + consultorioId + "/dictado/transcripciones"))
+				.header("Authorization", "Bearer " + sesion.token())
+				.header("Content-Type", "multipart/form-data; boundary=" + limite)
+				.POST(HttpRequest.BodyPublishers.ofByteArray(cuerpo.toByteArray()))
+				.build(), HttpResponse.BodyHandlers.ofString());
 	}
 
 	private JsonNode preguntar(Sesion sesion, long consultorioId, String pregunta, int esperado) throws Exception {
