@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.178.0
+  version: 0.179.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -27935,6 +27935,51 @@ paths:
       summary: Conceder acceso de soporte sobre una organizacion
       tags:
       - Plataforma
+  /api/v1/platform/resumen:
+    get:
+      description: "Centros por estado de su suscripcion (activos, en prueba, por\
+        \ vencer en 7 dias, vencidos, suspendidos y cancelados), pedidos de prueba\
+        \ pendientes, las pruebas que terminan en los proximos 30 dias y los ultimos\
+        \ centros, pedidos y cambios de suscripcion. Todo leido de la base, sin cache.\
+        \ Reservado a la administracion de plataforma."
+      operationId: getPanelDePlataforma
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PanelDePlataformaResponse"
+          description: El panel
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Reservado a la administracion de plataforma
+      summary: Estado general de la plataforma
+      tags:
+      - Plataforma
+  /api/v1/platform/resumen/cuentas:
+    get:
+      description: "Cuentas vigentes activas, pendientes de activar y bloqueadas.\
+        \ Reservado a la administracion de plataforma."
+      operationId: getCuentasDePlataforma
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CuentasDePlataformaResponse"
+          description: Los conteos
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Reservado a la administracion de plataforma
+      summary: Cuentas por estado
+      tags:
+      - Plataforma
   /api/v1/platform/roles:
     get:
       description: |-
@@ -31543,6 +31588,28 @@ components:
           format: int64
           description: "En un traslado, el turno que nacio en la sede de destino"
           example: 4101
+    CambioDeSuscripcionResponse:
+      type: object
+      description: Un cambio de estado o de plan de una suscripcion
+      properties:
+        cuando:
+          type: string
+          format: date-time
+          description: "Cuando, instante UTC"
+        desde:
+          type: string
+          description: Estado anterior; vacio en el alta
+          example: PRUEBA
+        hacia:
+          type: string
+          example: ACTIVA
+        nombre:
+          type: string
+          example: Centro Movimiento
+        organizationId:
+          type: integer
+          format: int64
+          example: 7
     CancelInvitacionRequest:
       type: object
       description: Motivo con el que se retira una invitacion pendiente
@@ -32256,6 +32323,64 @@ components:
           format: int64
           description: Version a reenviar para resolver
           example: 0
+    CentroRecienteResponse:
+      type: object
+      description: Un centro dado de alta hace poco
+      properties:
+        creadoEn:
+          type: string
+          format: date-time
+          description: "Alta, instante UTC"
+        estado:
+          type: string
+          description: Estado de su suscripcion
+          example: PRUEBA
+        nombre:
+          type: string
+          example: Centro Movimiento
+        organizationId:
+          type: integer
+          format: int64
+          example: 7
+    CentrosDelPanelResponse:
+      type: object
+      description: Centros vigentes por estado de su suscripcion
+      properties:
+        activos:
+          type: integer
+          format: int64
+          description: Con suscripcion activa
+          example: 8
+        cancelados:
+          type: integer
+          format: int64
+          description: Cancelados
+          example: 0
+        enPrueba:
+          type: integer
+          format: int64
+          description: En prueba gratis y todavia dentro del plazo
+          example: 3
+        pruebaPorVencer:
+          type: integer
+          format: int64
+          description: En prueba y terminan en los proximos 7 dias (incluidos en enPrueba)
+          example: 1
+        pruebaVencida:
+          type: integer
+          format: int64
+          description: "En prueba con el plazo cumplido: solo lectura hasta contratar"
+          example: 1
+        suspendidos:
+          type: integer
+          format: int64
+          description: Suspendidos
+          example: 0
+        total:
+          type: integer
+          format: int64
+          description: Todos los centros vigentes
+          example: 12
     CerrarCaja:
       type: object
       description: "Cierra el turno de caja declarando lo que se conto. La diferencia\
@@ -35766,6 +35891,25 @@ components:
           type: number
           description: "Decimal exacto, nunca float"
           example: 1250000.0
+    CuentasDePlataformaResponse:
+      type: object
+      description: Cuentas vigentes por estado
+      properties:
+        activas:
+          type: integer
+          format: int64
+          description: Pueden iniciar sesion
+          example: 40
+        bloqueadas:
+          type: integer
+          format: int64
+          description: Bloqueadas por intentos fallidos o por la plataforma
+          example: 1
+        pendientesDeActivar:
+          type: integer
+          format: int64
+          description: Recibieron el enlace y todavia no lo usaron
+          example: 3
     Cupos:
       type: object
       description: "Disponibilidad de una clase. Sostiene CA-M12-010-06: la agenda\
@@ -42599,6 +42743,40 @@ components:
           type: string
           format: date-time
           example: 2026-09-18T14:02:00Z
+    PanelDePlataformaResponse:
+      type: object
+      description: "Estado general de la plataforma: lo que necesita atencion y lo\
+        \ ultimo que paso"
+      properties:
+        centros:
+          $ref: "#/components/schemas/CentrosDelPanelResponse"
+          description: Centros vigentes por estado de su suscripcion
+        pedidosPendientes:
+          type: integer
+          format: int64
+          description: Pedidos de prueba gratis sin resolver
+          example: 3
+        pruebasQueTerminan:
+          type: array
+          description: "Pruebas vencidas y las que terminan en los proximos 30 dias,\
+            \ la mas proxima primero"
+          items:
+            $ref: "#/components/schemas/PruebaQueTerminaResponse"
+        ultimosCambios:
+          type: array
+          description: Ultimos cambios de estado o de plan de una suscripcion
+          items:
+            $ref: "#/components/schemas/CambioDeSuscripcionResponse"
+        ultimosCentros:
+          type: array
+          description: Ultimos centros dados de alta
+          items:
+            $ref: "#/components/schemas/CentroRecienteResponse"
+        ultimosPedidos:
+          type: array
+          description: Ultimos pedidos de prueba recibidos
+          items:
+            $ref: "#/components/schemas/PedidoRecienteResponse"
     ParametroDeTratamiento:
       type: object
       description: Parametro tipado. El valor va en el campo que corresponde al tipo
@@ -42930,6 +43108,28 @@ components:
           minLength: 0
       required:
       - email
+    PedidoRecienteResponse:
+      type: object
+      description: Un pedido de prueba recibido hace poco
+      properties:
+        estado:
+          type: string
+          example: PENDIENTE
+        id:
+          type: integer
+          format: int64
+          example: 5
+        nombreCentro:
+          type: string
+          example: Estudio Pilates
+        persona:
+          type: string
+          description: Nombre y apellido de quien pide
+          example: Ana Gomez
+        recibidoEn:
+          type: string
+          format: date-time
+          description: "Cuando llego, instante UTC"
     PerfilDeInvitacion:
       type: object
       properties:
@@ -44947,6 +45147,21 @@ components:
       required:
       - milisegundos
       - ok
+    PruebaQueTerminaResponse:
+      type: object
+      description: Un centro cuya prueba termino o termina pronto
+      properties:
+        nombre:
+          type: string
+          example: Centro Movimiento
+        organizationId:
+          type: integer
+          format: int64
+          example: 7
+        pruebaHasta:
+          type: string
+          format: date-time
+          description: "Fin de la prueba, instante UTC"
     PuntoDeSerieDeReporte:
       type: object
       description: "Una barra: los dias `desde`..`hasta` inclusive y su valor. Cero\

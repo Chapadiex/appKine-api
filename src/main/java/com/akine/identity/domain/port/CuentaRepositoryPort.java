@@ -67,4 +67,7 @@ public interface CuentaRepositoryPort {
 	 * {@code 401}. La diferencia es un oraculo de enumeracion de cuentas (ADR-0018).
 	 */
 	int registrarLoginFallido(long cuentaId, Instant ahora);
+
+	/** Cuentas vigentes en un estado, para el panel de la plataforma. */
+	long contarVigentesPorEstado(com.akine.identity.domain.EstadoCuenta estado);
 }
