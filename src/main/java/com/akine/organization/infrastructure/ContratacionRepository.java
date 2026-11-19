@@ -107,4 +107,21 @@ class ContratacionRepository implements ContratacionRepositoryPort {
 				Boolean.class, organizationId);
 		return !marca.isEmpty() && Boolean.TRUE.equals(marca.get(0));
 	}
+
+	@Override
+	public Set<Long> conAdicional(java.util.Collection<Long> organizationIds, Adicional adicional) {
+		if (organizationIds.isEmpty()) {
+			return Set.of();
+		}
+		Set<Long> con = new HashSet<>();
+		jdbc.query("SELECT s.organization_id FROM subscription s"
+						+ " WHERE s.organization_id = ANY (?) AND s.deleted_at IS NULL"
+						+ " AND (s.contratacion_definida = false OR EXISTS (SELECT 1 FROM subscription_adicional a"
+						+ " WHERE a.organization_id = s.organization_id AND a.adicional = ?))",
+				rs -> {
+					con.add(rs.getLong(1));
+				},
+				organizationIds.toArray(Long[]::new), adicional.name());
+		return con;
+	}
 }

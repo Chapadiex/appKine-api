@@ -37,7 +37,12 @@ public record PlatformOrganizationResponse(
 		String planName,
 
 		@Schema(description = "Instante de alta de la organizacion", example = "2026-01-15T13:45:00Z")
-		Instant createdAt) {
+		Instant createdAt,
+		@Schema(description = "Fin de la prueba gratis, instante UTC. Solo en PRUEBA; vencido = solo lectura",
+				example = "2026-12-18T03:00:00Z")
+		Instant pruebaHasta,
+		@Schema(description = "Tiene el adicional de IA contratado", example = "false")
+		boolean ia) {
 
 	public static PlatformOrganizationResponse from(OrganizationListing listing) {
 		return new PlatformOrganizationResponse(
@@ -47,6 +52,8 @@ public record PlatformOrganizationResponse(
 				listing.status(),
 				listing.planCode(),
 				listing.planName(),
-				listing.createdAt());
+				listing.createdAt(),
+				listing.pruebaHasta(),
+				listing.ia());
 	}
 }

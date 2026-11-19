@@ -116,6 +116,6 @@ class PlatformOrganizationControllerTest {
 	private static OrganizationListing centro() {
 		return new OrganizationListing(
 				7L, "Centro Norte", "centro-norte", SubscriptionStatus.SUSPENDIDA,
-				"BASICO", "Basico", Instant.parse("2026-01-15T13:45:00Z"));
+				"BASICO", "Basico", Instant.parse("2026-01-15T13:45:00Z"), null);
 	}
 }

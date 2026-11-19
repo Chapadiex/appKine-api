@@ -82,6 +82,10 @@ class OrganizationServiceTest {
 	void listado_de_plataforma_escapa_los_comodines() {
 		org.springframework.data.domain.PageRequest pagina =
 				org.springframework.data.domain.PageRequest.of(0, 20);
+		org.mockito.BDDMockito.given(organizationRepository.listForPlatform(
+						org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+						org.mockito.ArgumentMatchers.any()))
+				.willReturn(org.springframework.data.domain.Page.empty());
 
 		organizationService.listForPlatform("  50%_a\\b ", SubscriptionStatus.ACTIVA, pagina);
 		organizationService.listForPlatform("   ", null, pagina);

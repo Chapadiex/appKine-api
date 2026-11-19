@@ -17,5 +17,17 @@ public record OrganizationListing(
 		SubscriptionStatus status,
 		String planCode,
 		String planName,
-		Instant createdAt) {
+		Instant createdAt,
+		Instant pruebaHasta,
+		boolean ia) {
+
+	/** La que arma la consulta; si tiene IA se completa despues, para toda la pagina junta. */
+	public OrganizationListing(long id, String name, String slug, SubscriptionStatus status, String planCode,
+			String planName, Instant createdAt, Instant pruebaHasta) {
+		this(id, name, slug, status, planCode, planName, createdAt, pruebaHasta, false);
+	}
+
+	public OrganizationListing conIa(boolean tieneIa) {
+		return new OrganizationListing(id, name, slug, status, planCode, planName, createdAt, pruebaHasta, tieneIa);
+	}
 }
