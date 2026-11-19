@@ -53,6 +53,10 @@ public class Subscription extends TimestampedEntity {
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 
+	/** Fin de la prueba gratis; solo en {@link SubscriptionStatus#PRUEBA} (V28, 18/11/2026). */
+	@Column(name = "prueba_hasta")
+	private Instant pruebaHasta;
+
 	/** Locking optimista: dos transiciones concurrentes no pueden ganar las dos. */
 	@Version
 	@Column(name = "version", nullable = false)
@@ -75,6 +79,21 @@ public class Subscription extends TimestampedEntity {
 	}
 
 	/**
+	 * Da de alta una suscripcion en prueba gratis hasta {@code pruebaHasta}. La prueba vencida
+	 * no cambia de estado sola: se LEE como suspendida (ver {@link #estadoEfectivo}).
+	 */
+	public static Subscription enPrueba(Long organizationId, Long planId, Instant startedAt,
+			Instant pruebaHasta) {
+		if (pruebaHasta == null || !pruebaHasta.isAfter(startedAt)) {
+			throw new IllegalArgumentException("La prueba tiene que terminar despues de empezar");
+		}
+		Subscription s = new Subscription(organizationId, planId, startedAt);
+		s.status = SubscriptionStatus.PRUEBA;
+		s.pruebaHasta = pruebaHasta;
+		return s;
+	}
+
+	/**
 	 * Aplica una transicion de estado, validandola contra la maquina de estados.
 	 *
 	 * <p>La validacion esta ACA y no en el servicio para que no exista ningun camino de
@@ -87,6 +106,10 @@ public class Subscription extends TimestampedEntity {
 	public void transitionTo(SubscriptionStatus nuevoEstado) {
 		SubscriptionStateMachine.assertTransitionAllowed(this.status, nuevoEstado);
 		this.status = nuevoEstado;
+		// Salir de la prueba borra su fin: el CHECK de V28 lo exige solo en PRUEBA.
+		if (nuevoEstado != SubscriptionStatus.PRUEBA) {
+			this.pruebaHasta = null;
+		}
 	}
 
 	/**
@@ -101,7 +124,7 @@ public class Subscription extends TimestampedEntity {
 	 *         esta SUSPENDIDA o porque esta CANCELADA; el mensaje nombra cual de las dos
 	 */
 	public void changePlan(Long nuevoPlanId) {
-		if (this.status != SubscriptionStatus.ACTIVA) {
+		if (this.status != SubscriptionStatus.ACTIVA && this.status != SubscriptionStatus.PRUEBA) {
 			throw new SubscriptionSuspendedException(this.organizationId, this.status);
 		}
 		this.planId = nuevoPlanId;
@@ -109,7 +132,27 @@ public class Subscription extends TimestampedEntity {
 
 	/** Indica si la suscripcion habilita mutaciones de negocio. */
 	public boolean allowsBusinessMutations() {
-		return active && status == SubscriptionStatus.ACTIVA;
+		return active && estadoEfectivo(Instant.now()) == SubscriptionStatus.ACTIVA;
+	}
+
+	/** {@link #estadoEfectivo(SubscriptionStatus, Instant, Instant)} de esta suscripcion. */
+	public SubscriptionStatus estadoEfectivo(Instant ahora) {
+		return estadoEfectivo(status, pruebaHasta, ahora);
+	}
+
+	/**
+	 * El estado con el que opera el centro: una prueba vigente opera como ACTIVA y una vencida
+	 * como SUSPENDIDA (lee, no escribe). Se calcula al leer para no depender de una tarea que
+	 * mueva el estado a tiempo.
+	 */
+	public static SubscriptionStatus estadoEfectivo(SubscriptionStatus status, Instant pruebaHasta,
+			Instant ahora) {
+		if (status != SubscriptionStatus.PRUEBA) {
+			return status;
+		}
+		return pruebaHasta != null && ahora.isBefore(pruebaHasta)
+				? SubscriptionStatus.ACTIVA
+				: SubscriptionStatus.SUSPENDIDA;
 	}
 
 	/**
@@ -119,7 +162,7 @@ public class Subscription extends TimestampedEntity {
 	 *                           de baja gana sobre cualquier estado de suscripcion
 	 */
 	public OperationalStatus operationalStatus(boolean organizationActive) {
-		return operationalStatus(status, organizationActive);
+		return operationalStatus(estadoEfectivo(Instant.now()), organizationActive);
 	}
 
 	/**
@@ -131,7 +174,8 @@ public class Subscription extends TimestampedEntity {
 			return OperationalStatus.BAJA;
 		}
 		return switch (status) {
-			case ACTIVA -> OperationalStatus.ACTIVA;
+			// Quien pasa un PRUEBA crudo no aplico estadoEfectivo: se la trata como vigente.
+			case ACTIVA, PRUEBA -> OperationalStatus.ACTIVA;
 			case SUSPENDIDA -> OperationalStatus.SUSPENDIDA;
 			case CANCELADA -> OperationalStatus.CANCELADA;
 		};
@@ -159,6 +203,10 @@ public class Subscription extends TimestampedEntity {
 
 	public boolean isActive() {
 		return active;
+	}
+
+	public Instant getPruebaHasta() {
+		return pruebaHasta;
 	}
 
 	public Instant getDeletedAt() {

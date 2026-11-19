@@ -32,6 +32,10 @@ class SubscriptionTest {
 	}
 
 	private Subscription suscripcionEn(SubscriptionStatus estado) {
+		if (estado == SubscriptionStatus.PRUEBA) {
+			// Prueba vigente: termina dentro de 30 dias desde hoy.
+			return Subscription.enPrueba(ORG, PLAN, INICIO, Instant.now().plus(java.time.Duration.ofDays(30)));
+		}
 		Subscription suscripcion = nuevaSuscripcion();
 		if (estado != SubscriptionStatus.ACTIVA) {
 			suscripcion.transitionTo(estado);
@@ -144,14 +148,38 @@ class SubscriptionTest {
 
 	@ParameterizedTest
 	@EnumSource(SubscriptionStatus.class)
-	@DisplayName("Solo la suscripcion ACTIVA habilita mutaciones de negocio")
+	@DisplayName("Solo la suscripcion ACTIVA, o en prueba vigente, habilita mutaciones de negocio")
 	void solo_activa_habilita_mutaciones(SubscriptionStatus estado) {
 		Subscription suscripcion = suscripcionEn(estado);
 
 		// Es el control que aplica el filtro de tenant: suspender bloquea la operacion
 		// (RN-M01-002) sin destruir nada, asi que las lecturas siguen andando.
 		assertThat(suscripcion.allowsBusinessMutations())
-				.isEqualTo(estado == SubscriptionStatus.ACTIVA);
+				.isEqualTo(estado == SubscriptionStatus.ACTIVA || estado == SubscriptionStatus.PRUEBA);
+	}
+
+	@org.junit.jupiter.api.Test
+	@DisplayName("La prueba vencida se lee como SUSPENDIDA: lee, no escribe")
+	void la_prueba_vencida_es_solo_lectura() {
+		Subscription vencida = Subscription.enPrueba(ORG, PLAN, INICIO, INICIO.plus(java.time.Duration.ofDays(30)));
+
+		assertThat(vencida.estadoEfectivo(INICIO.plus(java.time.Duration.ofDays(31))))
+				.isEqualTo(SubscriptionStatus.SUSPENDIDA);
+		assertThat(vencida.estadoEfectivo(INICIO.plus(java.time.Duration.ofDays(29))))
+				.isEqualTo(SubscriptionStatus.ACTIVA);
+		assertThat(vencida.allowsBusinessMutations()).isFalse();
+		assertThat(vencida.operationalStatus(true)).isEqualTo(OperationalStatus.SUSPENDIDA);
+	}
+
+	@org.junit.jupiter.api.Test
+	@DisplayName("Pasar de la prueba a ACTIVA borra su fin")
+	void contratar_borra_el_fin_de_la_prueba() {
+		Subscription prueba = suscripcionEn(SubscriptionStatus.PRUEBA);
+
+		prueba.transitionTo(SubscriptionStatus.ACTIVA);
+
+		assertThat(prueba.getPruebaHasta()).isNull();
+		assertThat(prueba.getStatus()).isEqualTo(SubscriptionStatus.ACTIVA);
 	}
 
 	@ParameterizedTest

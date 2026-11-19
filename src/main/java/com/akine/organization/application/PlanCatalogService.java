@@ -70,6 +70,15 @@ public class PlanCatalogService {
 	}
 
 	/** Plan por id, incluidos los retirados: una suscripcion vieja puede referenciar uno. */
+	/** Un plan que la plataforma puede asignar hoy: vigente y ofrecido. */
+	Plan requireOfrecido(String code) {
+		Plan plan = requireContractable(code);
+		if (!plan.isOfrecido()) {
+			throw new PlanNotFoundException(code);
+		}
+		return plan;
+	}
+
 	Plan requireById(long planId) {
 		return planRepository.findById(planId)
 				.orElseThrow(() -> new PlanNotFoundException(String.valueOf(planId)));
@@ -91,7 +100,8 @@ public class PlanCatalogService {
 				.findAllByPlanIdAndActiveTrue(plan.getId()).stream()
 				.map(PlanFeature::getFeatureCode)
 				.toList();
-		return new PlanView(plan.getId(), plan.getCode(), plan.getName(), limits, features);
+		return new PlanView(plan.getId(), plan.getCode(), plan.getName(), limits, features,
+				plan.isOfrecido());
 	}
 
 	private PlanLimitView toLimitView(PlanLimit limit) {

@@ -216,6 +216,11 @@ public class IdentityProblemHandler {
 	 * cuentas de organizaciones ajenas preguntando por ids consecutivos, que es la version
 	 * cross-tenant del mismo problema que resuelve la regla de 01.01.
 	 */
+	@ExceptionHandler(RegistroDeshabilitadoException.class)
+	public ProblemDetail handleRegistroDeshabilitado(RegistroDeshabilitadoException exception) {
+		return noEncontrado();
+	}
+
 	@ExceptionHandler(AccountNotFoundException.class)
 	public ProblemDetail handleAccountNotFound(AccountNotFoundException exception) {
 		log.debug("Cuenta no alcanzable para el actor");

@@ -33,13 +33,13 @@ class PasswordPolicyTest {
 	}
 
 	@Test
-	@DisplayName("el minimo es 10 caracteres")
-	void el_minimo_es_diez() {
-		assertThatThrownBy(() -> policy.validar("9caracter"))
+	@DisplayName("el minimo es 8 caracteres")
+	void el_minimo_es_ocho() {
+		assertThatThrownBy(() -> policy.validar("7carac!"))
 				.isInstanceOf(PasswordPolicyViolationException.class)
-				.hasMessageContaining("10");
+				.hasMessageContaining("8");
 
-		assertThatCode(() -> policy.validar("10caracter")).doesNotThrowAnyException();
+		assertThatCode(() -> policy.validar("8caract!")).doesNotThrowAnyException();
 	}
 
 	@Test
@@ -63,7 +63,7 @@ class PasswordPolicyTest {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"password123", "PASSWORD123", "Kinesiologia", "welcome123"})
+	@ValueSource(strings = {"password123", "PASSWORD123", "Kinesiologia", "welcome123", "12345678", "Password"})
 	@DisplayName("las de la denylist se rechazan sin importar como se escriban")
 	void las_de_la_denylist_se_rechazan(String password) {
 		assertThatThrownBy(() -> policy.validar(password))

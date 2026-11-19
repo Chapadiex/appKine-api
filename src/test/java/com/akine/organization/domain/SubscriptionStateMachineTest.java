@@ -41,6 +41,15 @@ class SubscriptionStateMachineTest {
 	private static Stream<Arguments> matrizCompleta() {
 		return Stream.of(
 				// ACTIVA: sale hacia los dos estados restantes, nunca hacia si misma.
+				// PRUEBA (18/11/2026): pasa a ACTIVA al contratar; se suspende o cancela como cualquiera,
+				// y a la prueba no se vuelve.
+				Arguments.of(SubscriptionStatus.PRUEBA, SubscriptionStatus.PRUEBA, false),
+				Arguments.of(SubscriptionStatus.PRUEBA, SubscriptionStatus.ACTIVA, true),
+				Arguments.of(SubscriptionStatus.PRUEBA, SubscriptionStatus.SUSPENDIDA, true),
+				Arguments.of(SubscriptionStatus.PRUEBA, SubscriptionStatus.CANCELADA, true),
+				Arguments.of(SubscriptionStatus.ACTIVA, SubscriptionStatus.PRUEBA, false),
+				Arguments.of(SubscriptionStatus.SUSPENDIDA, SubscriptionStatus.PRUEBA, false),
+				Arguments.of(SubscriptionStatus.CANCELADA, SubscriptionStatus.PRUEBA, false),
 				Arguments.of(SubscriptionStatus.ACTIVA, SubscriptionStatus.ACTIVA, false),
 				Arguments.of(SubscriptionStatus.ACTIVA, SubscriptionStatus.SUSPENDIDA, true),
 				Arguments.of(SubscriptionStatus.ACTIVA, SubscriptionStatus.CANCELADA, true),
@@ -167,7 +176,7 @@ class SubscriptionStateMachineTest {
 		assertThat(SubscriptionStateMachine.allowedTargets(SubscriptionStatus.CANCELADA))
 				.isEmpty();
 		assertThat(SubscriptionStateMachine.allowedTargets(null))
-				.containsExactly(SubscriptionStatus.ACTIVA);
+				.containsExactlyInAnyOrder(SubscriptionStatus.ACTIVA, SubscriptionStatus.PRUEBA);
 	}
 
 	@ParameterizedTest
@@ -285,11 +294,12 @@ class SubscriptionStateMachineTest {
 
 	@Test
 	@DisplayName("Los estados de suscripcion son exactamente los tres del diseno")
-	void los_estados_son_exactamente_tres() {
-		// Trial y morosidad se dejaron fuera a proposito (diseno 3.1): aparecen con
-		// facturacion y ADR propio, no por goteo.
+	void los_estados_son_exactamente_cuatro() {
+		// La prueba entro el 18/11/2026 (docs/diseno/AKINE-landing-y-ofertas.md). La morosidad
+		// sigue afuera: aparece con facturacion y ADR propio, no por goteo.
 		assertThat(SubscriptionStatus.values())
 				.containsExactly(
+						SubscriptionStatus.PRUEBA,
 						SubscriptionStatus.ACTIVA,
 						SubscriptionStatus.SUSPENDIDA,
 						SubscriptionStatus.CANCELADA);

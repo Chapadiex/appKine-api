@@ -12,6 +12,8 @@ package com.akine.organization.domain;
  * operacion aparte, permitida solo con la suscripcion {@link #ACTIVA}.
  */
 public enum SubscriptionStatus {
+	/** Prueba gratis con fin en {@code prueba_hasta}; vencida se lee como SUSPENDIDA. */
+	PRUEBA,
 
 	/** Operacion completa. Unica forma de nacer de una suscripcion. */
 	ACTIVA,

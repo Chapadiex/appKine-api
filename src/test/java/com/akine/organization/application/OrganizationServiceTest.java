@@ -52,6 +52,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class OrganizationServiceTest {
 
 	@Mock
+	private ContratacionService contratacionService;
+
+	@Mock
 	private OrganizationRepositoryPort organizationRepository;
 
 	@Mock

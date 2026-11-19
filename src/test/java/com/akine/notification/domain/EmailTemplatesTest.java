@@ -304,6 +304,24 @@ class EmailTemplatesTest {
 	}
 
 	@Test
+	@DisplayName("los avisos de la prueba gratis dicen el centro, el fin y que no se borra nada")
+	void avisos_de_prueba_gratis() {
+		SanitizedPayload datos = SanitizedPayload.of(Map.of(
+				"nombre", "Ana", "organizacionNombre", "Estudio Sintetico", "pruebaVencimiento", "18/12/2026",
+				"pedidoServicios", "Actividades", "pedidoSedes", "Hasta 3"));
+
+		EmailMessage porVencer = EmailTemplates.render(NotificationType.PRUEBA_POR_VENCER, DESTINATARIO, datos, null);
+		EmailMessage vencida = EmailTemplates.render(NotificationType.PRUEBA_VENCIDA, DESTINATARIO, datos, null);
+		EmailMessage pedido = EmailTemplates.render(NotificationType.PEDIDO_DE_PRUEBA_RECIBIDO, DESTINATARIO, datos, null);
+
+		assertThat(porVencer.asunto()).contains("18/12/2026");
+		assertThat(porVencer.cuerpo()).contains("Hola Ana", "Estudio Sintetico", "solo lectura", "no se borra nada");
+		assertThat(vencida.cuerpo()).contains("Estudio Sintetico", "solo lectura", "No se borro nada");
+		assertThat(pedido.asunto()).contains("Estudio Sintetico");
+		assertThat(pedido.cuerpo()).contains("Servicios: Actividades", "Sedes: Hasta 3", "Pedidos de prueba");
+	}
+
+	@Test
 	@DisplayName("los templates son puros: la clase no se instancia")
 	void la_clase_no_se_instancia() throws Exception {
 		assertThat(Modifier.isFinal(EmailTemplates.class.getModifiers())).isTrue();

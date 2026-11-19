@@ -31,7 +31,7 @@ import java.util.Set;
 public class PasswordPolicy {
 
 	/** Minimo NIST 800-63B para credenciales elegidas por la persona. */
-	public static final int LARGO_MINIMO = 10;
+	public static final int LARGO_MINIMO = 8;
 
 	/** Tope contra el abuso del hasheo, no contra la debilidad de la contrasena. */
 	public static final int LARGO_MAXIMO = 128;
@@ -54,7 +54,10 @@ public class PasswordPolicy {
 			"passw0rd12", "p@ssw0rd12", "abc12345678", "monkey12345", "dragon12345",
 			"master12345", "shadow12345", "killer12345", "hola12345", "holamundo",
 			"argentina1", "boca12345", "river12345", "kinesiologia", "fisioterapia",
-			"consultorio", "akine12345", "asdfghjkl1", "zxcvbnm123", "qazwsxedc1");
+			"consultorio", "akine12345", "asdfghjkl1", "zxcvbnm123", "qazwsxedc1",
+			"12345678", "87654321", "11111111", "00000000", "password", "qwerty12", "qwertyui",
+			"abcd1234", "asdf1234", "abc12345", "iloveyou", "sunshine", "princess", "football",
+			"baseball", "superman", "trustno1", "letmein1", "welcome1", "akine123", "argentina");
 
 	/**
 	 * Valida la contrasena propuesta.

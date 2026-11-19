@@ -104,6 +104,9 @@ class EsquemaMultiTenantIT {
 				"La fila nace ANTES que el tenant: el registro self-service existe mientras la "
 						+ "organizacion todavia no. NULL = registro sin organizacion creada aun, y la "
 						+ "referencia es logica, sin FK fisica (ADR-0001)"));
+		EXCEPCIONES.put("solicitud_de_prueba", new Excepcion(Forma.NULLABLE,
+				"Pedido de prueba gratis de la landing (V28): llega antes que el centro. NULL mientras "
+						+ "esta pendiente o se descarta; al aprobarse queda el centro que se creo"));
 
 		// --- ADR-0020 (superseded by 0023) — rol de plataforma --------------------------------
 		EXCEPCIONES.put("platform_role", new Excepcion(Forma.SIN_COLUMNA,

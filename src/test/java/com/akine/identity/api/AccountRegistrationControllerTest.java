@@ -36,7 +36,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * respuestas. Si alguien alguna vez agrega un {@code Location}, un id o un 409, ese test se
  * pone rojo, que es exactamente para lo que esta.
  */
-@WebMvcTest(AccountRegistrationController.class)
+@WebMvcTest(controllers = AccountRegistrationController.class,
+		// El autoregistro esta apagado por defecto desde el 18/11/2026; estos tests lo prueban prendido.
+		properties = "akine.registro.autoservicio.enabled=true")
 @Import(IdentityApiSliceSecurityConfig.class)
 class AccountRegistrationControllerTest {
 
@@ -163,7 +165,7 @@ class AccountRegistrationControllerTest {
 	@DisplayName("una contrasena que no cumple la politica es 400 con el motivo explicito")
 	void una_contrasena_debil_es_400_con_motivo() throws Exception {
 		willThrow(new PasswordPolicyViolationException(
-				"La contrasena debe tener al menos 10 caracteres"))
+				"La contrasena debe tener al menos 8 caracteres"))
 				.given(onboardingService).registrar(any());
 
 		mockMvc.perform(post("/api/v1/auth/register")
@@ -173,7 +175,7 @@ class AccountRegistrationControllerTest {
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.type").value("https://akine.app/problems/validation-error"))
 				.andExpect(jsonPath("$.detail")
-						.value("La contrasena debe tener al menos 10 caracteres"));
+						.value("La contrasena debe tener al menos 8 caracteres"));
 	}
 
 	// =================================================================================

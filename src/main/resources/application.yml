@@ -170,12 +170,17 @@ springdoc:
   writer-with-default-pretty-printer: true
 
 akine:
+  # Autoregistro de centros (18/11/2026): apagado, los da de alta la plataforma
+  # (POST /api/v1/platform/organizations). El perfil local lo prende para los tests.
+  registro:
+    autoservicio:
+      enabled: ${AKINE_REGISTRO_AUTOSERVICIO_ENABLED:false}
   application:
     version: ${AKINE_APP_VERSION:0.0.1-SNAPSHOT}
   # Version SemVer del contrato OpenAPI publicado. Debe coincidir con la propiedad
   # akine.contract.version del pom.xml.
   contract:
-    version: 0.177.0
+    version: 0.178.0
   security:
     cors:
       # Nunca comodin: allowCredentials(true) lo prohibe y el frontend necesita credentials

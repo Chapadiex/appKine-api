@@ -123,6 +123,9 @@ public class SecurityConfig {
 			// El logout es publico porque solo presenta la cookie de refresh: exigir un access
 			// vivo impediria cerrar sesion justo cuando mas hace falta, con el access vencido.
 			"/api/v1/auth/logout",
+			// Pedido de prueba gratis desde la landing (18/11/2026): quien lo manda todavia no
+			// tiene cuenta. Limitado por IP en RateLimitFilter.
+			"/api/v1/public/solicitudes-de-prueba",
 			// Registro y activacion.
 			"/api/v1/auth/register",
 			"/api/v1/auth/activate",

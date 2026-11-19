@@ -40,6 +40,10 @@ public class Plan extends TimestampedEntity {
 	@Column(name = "active", nullable = false)
 	private boolean active = true;
 
+	/** Si la plataforma lo ofrece en el alta y en los cambios de contratacion (V28). */
+	@Column(name = "ofrecido", nullable = false)
+	private boolean ofrecido = true;
+
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 
@@ -77,6 +81,10 @@ public class Plan extends TimestampedEntity {
 
 	public String getName() {
 		return name;
+	}
+
+	public boolean isOfrecido() {
+		return ofrecido;
 	}
 
 	public boolean isActive() {

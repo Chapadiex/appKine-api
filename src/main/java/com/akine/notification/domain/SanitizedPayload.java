@@ -38,6 +38,11 @@ public final class SanitizedPayload {
 	/** Unicas claves que el outbox acepta. Agregar una es una decision, no un descuido. */
 	public static final Set<String> CLAVES_PERMITIDAS = Set.of(
 			"nombre",
+			// Prueba gratis (18/11/2026): el dia en que vence, y del pedido de la landing los
+			// servicios y las sedes declarados. Ningun dato de contacto: esos quedan en la bandeja.
+			"pruebaVencimiento",
+			"pedidoServicios",
+			"pedidoSedes",
 			"organizacionNombre",
 			"invitadoPor",
 			// AKINE-08.02: lo minimo para que un aviso de clase diga de que clase habla. Ningun

@@ -45,7 +45,9 @@ class SanitizedPayloadTest {
 						// AKINE-08.08: los avisos de pases (RF-M26-008). Producto, vencimiento y saldo.
 						"productoNombre", "paseVencimiento", "creditosDisponibles", "renovacionAutomatica",
 						// DP-40 (U-43): al administrador, cuantos abonos y quien los habia autorizado.
-						"abonosAfectados", "renovacionAutorizadaPor");
+						"abonosAfectados", "renovacionAutorizadaPor",
+						// Prueba gratis (18/11/2026).
+						"pruebaVencimiento", "pedidoServicios", "pedidoSedes");
 	}
 
 	@ParameterizedTest(name = "clave fuera de la lista blanca: {0}")
