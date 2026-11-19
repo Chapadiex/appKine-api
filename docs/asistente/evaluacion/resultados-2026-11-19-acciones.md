@@ -35,3 +35,21 @@ acciones prendidas, una consulta escrita sin forma de pregunta ("turnos del vier
 por este interpretador, que la devuelve `NINGUNA` (NI1, NI9), y paga ~1,4 s más.
 
 Sin medir: CPU sola (el interpretador de consultas tarda 7–9 s sin GPU; éste escribe más campos).
+
+## Recorrido completo, contra el backend levantado (19/11, noche)
+
+`evaluar-acciones-en-vivo.mjs` pasa cada frase por `POST /asistente/consultas` de un backend con las
+acciones prendidas (perfiles `local,ia`, GPU): `EsPregunta`, el modelo, `ControlDeAccion` con las
+reglas agregadas tras el set adverso, y la resolucion de la persona. Mide si la frase termina donde
+debe (tarjeta del tipo correcto, o corte por persona o por datos; y sin tarjeta si no era una
+accion). No mide el contenido de la tarjeta: eso lo cubren `InterpretarAccionesTest` y
+`AsistenteAccionesIT`.
+
+| Set | Terminan donde deben | Latencia p50 / p95 |
+|---|---|---|
+| `acciones.json` (45) | **45/45** | 1.775 / 2.883 ms |
+| `acciones-adversas.json` (60) | **57/60** | 1.908 / 3.279 ms |
+
+Las tres del set adverso que no pasan (PA23, PA38, AT30) son frases con una deuda o un tratamiento
+suspendido mezclados con la accion: las reglas nuevas las mandan a `NINGUNA` y el asistente responde
+que no sabe. No se graba nada; la persona lo carga por pantalla o lo dice de otra forma.

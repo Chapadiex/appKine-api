@@ -416,3 +416,40 @@ Permiso de las dos: `paciente:manage`.
 - Nombres de clases, records y campos; el campo que le avisa al frontend que hay acciones.
 - Tests: los que la regla del repo pide (reglas de negocio, concurrencia de la confirmación, lo
   que reproduzca un defecto). Sin TDD.
+
+## 12. Lo que cambió al construirlo (19/11/2026)
+
+Lo que la ejecución y las revisiones corrigieron respecto de lo escrito arriba:
+
+- **El schema decide más que el prompt.** Con sólo `accion` obligatoria el modelo omitía montos y
+  nombres; con los doce campos obligatorios pasa de 12/35 a 33/35 frases completas (§8).
+- **`ControlDeAccion` hace más que comprobar que el valor esté en la frase.** Un valor dicho puede
+  estar en el papel equivocado. Reglas agregadas tras el set adverso: "nadie", "faltaron todos" o
+  "los demás faltaron" dejan la asistencia sin marcar; una cantidad ("faltaron tres") no es un
+  nombre; "ayer" o "mañana" no es asistencia de hoy; "lucas", "k" y "palos" multiplican; dos
+  importes o "cada una" dejan el monto vacío; "debe", "no pagó" o "necesito saber" no son un cobro;
+  un tratamiento negado, contraindicado, pasado o futuro no se carga; inscribir a una clase no es
+  un alta; una frase con instrucciones o llaves no es una acción.
+- **La fila confirmada guarda sólo `enlace` y `referencias`.** Guardaba también el texto, que nombra
+  a la persona. Confirmar por segunda vez responde "Esto ya estaba confirmado".
+- **`tomada_en`.** Una propuesta que quedó `EN_CURSO` por un pedido que murió se puede volver a tomar
+  a los dos minutos, sólo en pago, asistencia y llegada (repetidas no graban dos veces).
+- **La confirmación tiene topes**: nota de 2.000 caracteres, 30 tratamientos, 50 imputaciones, 200
+  inscriptos.
+- **Atención:** no se cierra con tratamientos sin reconocer; al confirmar sin turno se vuelve a
+  mirar que no haya un turno vivo; si la sesión se abrió y los tratamientos fallan queda
+  `CONFIRMADA` con aviso.
+- **Pago:** sólo deudas de la sede activa. **Llegada:** elige primero un turno sin llegada.
+  **Asistencia:** la clase tiene que ser de hoy también al confirmar.
+- **Dos métodos nuevos de `spi`**: `TurnoDirectory.deLaPersonaEnVentana` y
+  `OfertaDirectory.activasDeLaSede`.
+
+Sin hacer, respecto de lo diseñado:
+
+- **El buscador para elegir a mano un tratamiento no reconocido** (§6.3 y §7). La tarjeta lo muestra
+  como "no reconocido" y obliga a quitarlo o a dejar la atención abierta.
+- **Con "Cerrar" desmarcado la nota no se guarda** como borrador de la sesión.
+- **Tope de propuestas por cuenta** y purga de `asistente_accion`.
+- **La clave de idempotencia del cobro es adivinable** (`asistente-accion-<id>`): sospecha de la
+  revisión de seguridad, sin confirmar.
+- **Medición sin GPU**, y la bitácora de problemas en `docs/asistente/`.
