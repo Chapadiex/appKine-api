@@ -40,7 +40,9 @@ public record PlatformOrganizationResponse(
 		Instant createdAt,
 		@Schema(description = "Fin de la prueba gratis, instante UTC. Solo en PRUEBA; vencido = solo lectura",
 				example = "2026-12-18T03:00:00Z")
-		Instant pruebaHasta) {
+		Instant pruebaHasta,
+		@Schema(description = "Tiene el adicional de IA contratado", example = "false")
+		boolean ia) {
 
 	public static PlatformOrganizationResponse from(OrganizationListing listing) {
 		return new PlatformOrganizationResponse(
@@ -51,6 +53,7 @@ public record PlatformOrganizationResponse(
 				listing.planCode(),
 				listing.planName(),
 				listing.createdAt(),
-				listing.pruebaHasta());
+				listing.pruebaHasta(),
+				listing.ia());
 	}
 }

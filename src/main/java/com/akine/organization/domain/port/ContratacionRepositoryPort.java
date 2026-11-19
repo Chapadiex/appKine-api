@@ -24,4 +24,10 @@ public interface ContratacionRepositoryPort {
 
 	/** Reemplaza las filas: borra las que sobran e inserta las elegidas. */
 	void reemplazar(long organizationId, Set<Servicio> servicios, Set<Adicional> adicionales);
+
+	/**
+	 * De los centros dados, los que tienen el adicional: contratado, o sin contratacion definida
+	 * (centros anteriores al 18/11/2026, que tienen todo). Una sola consulta para una pagina entera.
+	 */
+	Set<Long> conAdicional(java.util.Collection<Long> organizationIds, Adicional adicional);
 }

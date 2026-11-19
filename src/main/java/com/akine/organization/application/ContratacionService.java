@@ -66,6 +66,12 @@ public class ContratacionService implements PruebasGratis {
 		return contratacionRepository.serviciosDe(organizationId).contains(servicio);
 	}
 
+	/** De los centros dados, los que tienen la IA (una consulta para la pagina del listado). */
+	@Transactional(readOnly = true)
+	public Set<Long> conIa(java.util.Collection<Long> organizationIds) {
+		return contratacionRepository.conAdicional(organizationIds, Adicional.IA);
+	}
+
 	@Transactional(readOnly = true)
 	public boolean tieneAdicional(long organizationId, Adicional adicional) {
 		return contratacionRepository.adicionalesDe(organizationId).contains(adicional);
