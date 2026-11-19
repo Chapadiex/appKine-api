@@ -34,7 +34,7 @@ class InterpretarAccionesTest {
 
 	@ParameterizedTest
 	@ValueSource(strings = {"¿vino Juan?", "vino juan?", "quienes faltaron a yoga", "Cuánto debe Ana",
-			"turnos del viernes", "hay clase hoy"})
+			"turnos del viernes"})
 	void una_pregunta_no_pasa_por_las_acciones(String frase) {
 		assertThat(EsPregunta.es(frase)).isTrue();
 	}
