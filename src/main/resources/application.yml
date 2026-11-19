@@ -277,6 +277,12 @@ akine:
       enabled: ${AKINE_ASISTENTE_SQL_ENABLED:false}
       limite-filas: ${AKINE_ASISTENTE_SQL_LIMITE_FILAS:200}
       tiempo-maximo-ms: ${AKINE_ASISTENTE_SQL_TIEMPO_MAXIMO_MS:5000}
+    # Acciones con confirmacion (docs/diseno/AKINE-asistente-acciones.md): el asistente propone
+    # asistencia, pago, atencion, llegada o datos de paciente y graba solo al confirmar. Ademas
+    # exige asistente:acciones.
+    acciones:
+      enabled: ${AKINE_ASISTENTE_ACCIONES_ENABLED:false}
+      vigencia-minutos: ${AKINE_ASISTENTE_ACCIONES_VIGENCIA_MINUTOS:15}
 
   # Dictado por voz (docs/diseno/AKINE-dictado-por-voz.md). Apagado por defecto: toda llamada
   # responde 409 dictado-deshabilitado. Transcribe con un Whisper local (servicio whisper del

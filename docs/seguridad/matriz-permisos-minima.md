@@ -1064,3 +1064,15 @@ Dictar en los campos de texto con un Whisper local (`docs/diseno/AKINE-dictado-p
 - **No lee datos del centro**: sólo transcribe lo que dice quien lo usa, y propone cómo repartirlo en la evaluación sin escribir en la sesión. Lo dictado se guarda cuando el profesional guarda la pantalla, con el permiso y la auditoría de esa pantalla.
 - **No es otorgable por grant**, y `PACIENTE` y `PLATFORM_ADMIN` no lo tienen.
 - **Dictado apagado:** con `akine.dictado.enabled` en `false`, todo responde 409 `dictado-deshabilitado`.
+
+## 26. Enmiendas — Acciones del asistente (19/11/2026)
+
+El asistente propone una accion y la graba solo al confirmar (`docs/diseno/AKINE-asistente-acciones.md`).
+
+| Permiso | `PLATFORM_ADMIN` | `ORG_ADMIN` | `CONSULTORIO_ADMIN` | `PROFESIONAL` | `ADMINISTRATIVO` | `PACIENTE` |
+|---|---|---|---|---|---|---|
+| `asistente:acciones` | — | Org | Org | Org | Org | — |
+
+- **Es sólo la puerta**: cada acción corre con el permiso del servicio que la ejecuta (`asistencia:manage`, `cobro:register`, `sesion:register`, `turno:manage`, `paciente:manage`). Lo que una pantalla no permite, el asistente tampoco.
+- **No es otorgable por grant**, y `PACIENTE` y `PLATFORM_ADMIN` no lo tienen.
+- **Apagado:** con `akine.asistente.acciones.enabled` en `false` el asistente sigue siendo sólo consulta.

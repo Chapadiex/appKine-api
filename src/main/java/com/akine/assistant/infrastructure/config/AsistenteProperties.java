@@ -14,7 +14,18 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 public record AsistenteProperties(
 		@DefaultValue("false") boolean enabled,
 		@DefaultValue Modelo modelo,
-		@DefaultValue Sql sql) {
+		@DefaultValue Sql sql,
+		@DefaultValue Acciones acciones) {
+
+	/**
+	 * Acciones con confirmacion (docs/diseno/AKINE-asistente-acciones.md). Apagadas por defecto, y
+	 * ademas exigen {@code asistente:acciones}. {@code vigenciaMinutos}: cuanto vive una propuesta
+	 * sin confirmar.
+	 */
+	public record Acciones(
+			@DefaultValue("false") boolean enabled,
+			@DefaultValue("15") int vigenciaMinutos) {
+	}
 
 	/**
 	 * Consultas libres sobre {@code asistente_sql} (docs/diseno/AKINE-asistente-sql.md). Apagadas por

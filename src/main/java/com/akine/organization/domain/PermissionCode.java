@@ -423,6 +423,14 @@ public enum PermissionCode {
 	DICTADO_USE("dictado:use"),
 
 	/**
+	 * Que el asistente proponga y ejecute acciones con confirmacion: asistencia de clase, pago,
+	 * atencion, llegada y datos de paciente (docs/diseno/AKINE-asistente-acciones.md). Por base para
+	 * los mismos cuatro roles que {@link #ASISTENTE_USE}; no se otorga por grant. Es solo la puerta:
+	 * cada accion corre con el permiso del servicio que la ejecuta.
+	 */
+	ASISTENTE_ACCIONES("asistente:acciones"),
+
+	/**
 	 * Pedir y responder sugerencias de revision sobre la evolucion de un Caso Clinico (M31 fase 2,
 	 * {@code docs/diseno/AKINE-analizador-de-evolucion-fase2.md} §8.2). Por base solo para el
 	 * {@code PROFESIONAL}, con alcance de organizacion; no se otorga por grant. Se exige ademas de

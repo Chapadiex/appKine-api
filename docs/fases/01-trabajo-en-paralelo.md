@@ -179,6 +179,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V17` (PostgreSQL) | Evolución del caso clínico, M31 (`akine-analizador-evolucion`) | **Reservada** el 15/11/2026, sobre el baseline PostgreSQL `V1`–`V14` de `main`: columna `medicion_definicion.mejora_cuando` (RF-M31-003). `V15` y `V16` las usa `akine-servicio-personalizado`, sin mergear: confirmar el número al rebasear. Contrato 0.170.0, también a confirmar |
 | `V22` (PostgreSQL) | Sugerencias de evolución con respaldo de la biblioteca, M31 fase 2 (`akine-evolucion-fase2`) | **Reservada** el 15/11/2026, sobre `V21` (renumerada desde `V18` al integrar `main` con `V21` del asistente SQL; contrato 0.174.0) de `main`: tabla `sugerencia_evolucion` (dueño `encounter`, con `organization_id`). `V15` y `V16` siguen libres y no se tocan. Contrato 0.171.0, a confirmar al rebasear: `akine-servicio-personalizado` llegó a 0.172.0 sin mergear |
 | `V27` (PostgreSQL) | Funciones de IA por centro (`akine-ia-activable`) | **Reservada** el 18/11/2026, sobre `V26` de `main`: tabla `organization_ia` (dueño `organization`, con `organization_id`). Contrato 0.176.0. `akine-dictado` también declaraba 0.175.0/0.176.0: confirmar la versión del contrato al rebasear |
+| `V29` (PostgreSQL) | Acciones del asistente (`akine-asistente-acciones`) | **Reservada** el 19/11/2026, sobre `V28` de `main`: tabla `asistente_accion` (dueño `assistant`, con `organization_id`). Contrato 0.179.0 o la siguiente libre: `akine-api-rediseno` ya declara 0.179.0, confirmar al rebasear |
 
 ## 7. Paquetes de trabajo
 

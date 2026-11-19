@@ -52,7 +52,8 @@ public class AsistenteConfig {
 	public AsistenteAjustes asistenteAjustes(AsistenteProperties properties) {
 		exigirTipoDeModelo(properties);
 		return new AsistenteAjustes(properties.enabled(),
-				Duration.ofSeconds(properties.modelo().timeoutSegundos()), properties.sql().enabled());
+				Duration.ofSeconds(properties.modelo().timeoutSegundos()), properties.sql().enabled(),
+				properties.acciones().enabled(), Duration.ofMinutes(properties.acciones().vigenciaMinutos()));
 	}
 
 	/** Prendido con un tipo desconocido no habria modelo y nadie se enteraria: no arranca. */
