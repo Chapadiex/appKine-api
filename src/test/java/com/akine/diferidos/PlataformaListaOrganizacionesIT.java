@@ -41,8 +41,9 @@ class PlataformaListaOrganizacionesIT extends BaseEscenarioDiferido {
 		JsonNode fila = todos.json().get("content").get(0);
 		List<String> campos = new ArrayList<>(fila.propertyNames());
 		assertThat(campos).as("datos minimos: nada de miembros, sedes, limites ni pacientes")
-				.containsExactlyInAnyOrder(
-						"id", "name", "slug", "status", "planCode", "planName", "createdAt");
+				.contains("id", "name", "slug", "status", "planCode", "planName", "createdAt", "ia")
+				.isSubsetOf("id", "name", "slug", "status", "planCode", "planName", "createdAt",
+						"ia", "pruebaHasta");
 		assertThat(fila.get("status").asString()).isEqualTo("ACTIVA");
 		assertThat(fila.get("planCode").asString()).isEqualTo("BASICO");
 
