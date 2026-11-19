@@ -84,7 +84,19 @@ public enum NotificationType {
 	 * mas abonos porque quien la autorizo ya no puede vender en la sede. Dice cuantos, en que sede y
 	 * quien la habia autorizado: ningun dato de las personas titulares ni un id.
 	 */
-	ABONO_RENOVACION_APAGADA(false);
+	ABONO_RENOVACION_APAGADA(false),
+
+	/**
+	 * A la plataforma (18/11/2026): llego un pedido de prueba gratis desde la landing. Dice el
+	 * centro, los servicios y las sedes; los datos de contacto se ven en la bandeja.
+	 */
+	PEDIDO_DE_PRUEBA_RECIBIDO(false),
+
+	/** Al duenio: a su prueba gratis le quedan pocos dias. */
+	PRUEBA_POR_VENCER(false),
+
+	/** Al duenio: termino la prueba y el centro quedo en solo lectura. */
+	PRUEBA_VENCIDA(false);
 
 	private final boolean requiereEnlaceSeguro;
 

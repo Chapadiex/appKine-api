@@ -7,6 +7,8 @@ import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.akine.organization.spi.SolicitudDePruebaRecibida;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
@@ -32,10 +34,13 @@ public class SolicitudDePruebaService {
 
 	private final SolicitudDePruebaRepositoryPort repository;
 	private final AuditTrail auditTrail;
+	private final ApplicationEventPublisher eventos;
 
-	public SolicitudDePruebaService(SolicitudDePruebaRepositoryPort repository, AuditTrail auditTrail) {
+	public SolicitudDePruebaService(SolicitudDePruebaRepositoryPort repository, AuditTrail auditTrail,
+			ApplicationEventPublisher eventos) {
 		this.repository = repository;
 		this.auditTrail = auditTrail;
+		this.eventos = eventos;
 	}
 
 	/** Datos del formulario de la landing. {@code trampa} es el campo oculto para bots. */
@@ -61,12 +66,15 @@ public class SolicitudDePruebaService {
 			return;
 		}
 		try {
-			repository.saveAndFlush(new SolicitudDePrueba(
+			SolicitudDePrueba guardada = repository.saveAndFlush(new SolicitudDePrueba(
 					limpio(pedido.nombre()), limpio(pedido.apellido()),
 					pedido.email().strip().toLowerCase(), limpio(pedido.telefono()),
 					limpio(pedido.nombreCentro()), limpio(pedido.ciudad()),
 					pedido.kinesiologia(), pedido.actividades(), pedido.sedes(),
 					pedido.interesaIa(), limpio(pedido.comentario()), idempotencyKey));
+			// La plataforma se entera por correo (lo encola identity, en esta transaccion).
+			eventos.publishEvent(new SolicitudDePruebaRecibida(guardada.getId(), guardada.getNombreCentro(),
+					servicios(guardada), sedes(guardada.getSedes())));
 		} catch (DataIntegrityViolationException carrera) {
 			// uk_solicitud_de_prueba_clave: el mismo pedido entro por otro hilo. Ya esta guardado.
 			log.info("Pedido de prueba repetido en carrera: se conserva el primero");
@@ -131,6 +139,21 @@ public class SolicitudDePruebaService {
 				AuditEvents.ENTITY_SOLICITUD_PRUEBA, solicitud.getId(),
 				SolicitudDePrueba.Estado.PENDIENTE.name(), solicitud.getEstado().name(),
 				detalles, null, AuditEvents.correlationId(), ahora));
+	}
+
+	private static String servicios(SolicitudDePrueba s) {
+		if (s.isKinesiologia() && s.isActividades()) {
+			return "Kinesiologia y Actividades";
+		}
+		return s.isKinesiologia() ? "Kinesiologia" : "Actividades";
+	}
+
+	private static String sedes(SolicitudDePrueba.Sedes sedes) {
+		return switch (sedes) {
+			case UNA -> "Una";
+			case HASTA_TRES -> "Hasta 3";
+			case MAS_DE_TRES -> "Mas de 3";
+		};
 	}
 
 	private static String limpio(String valor) {

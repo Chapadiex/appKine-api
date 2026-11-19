@@ -10,6 +10,7 @@ import com.akine.organization.domain.port.SubscriptionRepositoryPort;
 import com.akine.organization.domain.port.SubscriptionTransitionRepositoryPort;
 import com.akine.organization.spi.Adicional;
 import com.akine.organization.spi.LimitCode;
+import com.akine.organization.spi.PruebasGratis;
 import com.akine.organization.spi.Servicio;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
@@ -32,7 +33,7 @@ import java.util.stream.Collectors;
  * Este servicio guarda y responde.
  */
 @Service
-public class ContratacionService {
+public class ContratacionService implements PruebasGratis {
 
 	private final ContratacionRepositoryPort contratacionRepository;
 	private final SubscriptionRepositoryPort subscriptionRepository;
@@ -147,6 +148,18 @@ public class ContratacionService {
 				contratacionRepository.adicionalesDe(organizationId),
 				subscription.getStatus(), subscription.getPruebaHasta(), soloLectura,
 				contratacionRepository.definida(organizationId), subscription.getVersion());
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public java.util.List<PruebaEnCurso> queTerminanEntre(Instant desde, Instant hasta) {
+		return contratacionRepository.pruebasQueTerminanEntre(desde, hasta);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Set<Long> administradores(long organizationId) {
+		return contratacionRepository.administradores(organizationId);
 	}
 
 	private static void exigirServicios(Set<Servicio> servicios) {

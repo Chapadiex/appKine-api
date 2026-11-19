@@ -125,7 +125,32 @@ public final class EmailTemplates {
 							+ ".\n\nSi queres seguir despues, comunicate con el centro." + FIRMA);
 			// DP-40 (U-43). Al administrador: cuantos abonos, en que sede y quien habia autorizado la
 			// renovacion. Ningun dato de las personas titulares: para verlas, la aplicacion.
-			case ABONO_RENOVACION_APAGADA -> new EmailMessage(
+			case PEDIDO_DE_PRUEBA_RECIBIDO -> new EmailMessage(
+					destinatario,
+					"Nuevo pedido de prueba: " + payload.getOrDefault("organizacionNombre", "un centro"),
+					saludo + ",\n\n" + payload.getOrDefault("organizacionNombre", "Un centro")
+							+ " pidio la prueba gratis de 30 dias desde la pagina.\n\nServicios: "
+							+ payload.getOrDefault("pedidoServicios", "sin indicar")
+							+ "\nSedes: " + payload.getOrDefault("pedidoSedes", "sin indicar")
+							+ "\n\nLos datos de contacto estan en la consola de plataforma, en Pedidos de "
+							+ "prueba. Desde ahi lo das de alta o lo descartas." + FIRMA);
+			case PRUEBA_POR_VENCER -> new EmailMessage(
+					destinatario,
+					"Tu prueba de AKINE termina el " + payload.getOrDefault("pruebaVencimiento", "pronto"),
+					saludo + ",\n\nLa prueba gratis de " + payload.getOrDefault("organizacionNombre", "tu centro")
+							+ " termina el " + payload.getOrDefault("pruebaVencimiento", "dia de su vencimiento")
+							+ ".\n\nPara seguir usando AKINE sin cortes, elegi tu plan respondiendo este correo. "
+							+ "Si no, el centro queda en solo lectura: vas a poder ver y exportar todo, "
+							+ "y no se borra nada." + FIRMA);
+			case PRUEBA_VENCIDA -> new EmailMessage(
+					destinatario,
+					"Termino tu prueba de AKINE",
+					saludo + ",\n\nTermino la prueba gratis de "
+							+ payload.getOrDefault("organizacionNombre", "tu centro")
+							+ ". El centro quedo en solo lectura: podes ver y exportar todo, pero no cargar "
+							+ "nada nuevo. No se borro nada.\n\nPara seguir, elegi tu plan respondiendo "
+							+ "este correo." + FIRMA);
+case ABONO_RENOVACION_APAGADA -> new EmailMessage(
 					destinatario,
 					"Se apago la renovacion automatica de abonos"
 							+ (payload.getOrDefault("consultorioNombre", null) == null ? ""

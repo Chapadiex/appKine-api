@@ -6,7 +6,12 @@ import com.akine.organization.spi.Servicio;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import com.akine.organization.spi.PruebasGratis;
+
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -70,6 +75,29 @@ class ContratacionRepository implements ContratacionRepositoryPort {
 		}
 		jdbc.update("UPDATE subscription SET contratacion_definida = true WHERE organization_id = ?",
 				organizationId);
+	}
+
+	@Override
+	public List<PruebasGratis.PruebaEnCurso> pruebasQueTerminanEntre(Instant desde, Instant hasta) {
+		return jdbc.query("""
+				SELECT o.id, o.name, s.prueba_hasta
+				  FROM subscription s
+				  JOIN organization o ON o.id = s.organization_id AND o.active
+				 WHERE s.status = 'PRUEBA' AND s.active
+				   AND s.prueba_hasta >= ? AND s.prueba_hasta < ?
+				 ORDER BY s.prueba_hasta, o.id""",
+				(rs, n) -> new PruebasGratis.PruebaEnCurso(rs.getLong(1), rs.getString(2),
+						rs.getTimestamp(3).toInstant()),
+				Timestamp.from(desde), Timestamp.from(hasta));
+	}
+
+	@Override
+	public Set<Long> administradores(long organizationId) {
+		return new HashSet<>(jdbc.queryForList("""
+				SELECT DISTINCT account_id FROM membership
+				 WHERE organization_id = ? AND role_code = 'ORG_ADMIN' AND estado = 'ACTIVA'
+				   AND active AND deleted_at IS NULL AND valid_from <= now()
+				   AND (valid_until IS NULL OR valid_until > now())""", Long.class, organizationId));
 	}
 
 	@Override

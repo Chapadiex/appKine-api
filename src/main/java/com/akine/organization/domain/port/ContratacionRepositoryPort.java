@@ -15,6 +15,13 @@ public interface ContratacionRepositoryPort {
 	/** Si la plataforma eligio la contratacion (alta o cambio); si no, el centro tiene todo. */
 	boolean definida(long organizationId);
 
+	/** Centros vigentes en PRUEBA cuyo fin cae en [desde, hasta). */
+	java.util.List<com.akine.organization.spi.PruebasGratis.PruebaEnCurso> pruebasQueTerminanEntre(
+			java.time.Instant desde, java.time.Instant hasta);
+
+	/** Cuentas con ORG_ADMIN vigente en la organizacion. */
+	Set<Long> administradores(long organizationId);
+
 	/** Reemplaza las filas: borra las que sobran e inserta las elegidas. */
 	void reemplazar(long organizationId, Set<Servicio> servicios, Set<Adicional> adicionales);
 }

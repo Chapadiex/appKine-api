@@ -46,6 +46,7 @@ class ContratacionYPruebaIT {
 	@Autowired private ContratacionService contratacion;
 	@Autowired private FuncionesIaService funcionesIa;
 	@Autowired private JdbcTemplate jdbc;
+	@Autowired private com.akine.identity.application.AvisosDePruebaGratis avisos;
 
 	@Test
 	@DisplayName("el pedido de la landing se aprueba con el alta: centro en prueba, solo lo contratado y el duenio invitado")
@@ -143,6 +144,50 @@ class ContratacionYPruebaIT {
 		assertThat(contratacion.tieneServicio(org, Servicio.KINESIOLOGIA)).isTrue();
 		assertThat(contratacion.tieneServicio(org, Servicio.ACTIVIDADES)).isTrue();
 		assertThat(funcionesIa.iaContratada(org)).isTrue();
+	}
+
+	@Test
+	@DisplayName("un pedido de la landing le avisa por correo a la plataforma")
+	void el_pedido_avisa_a_la_plataforma() {
+		String clave = UUID.randomUUID().toString();
+		solicitudes.recibir(pedido("aviso-" + UUID.randomUUID().toString().substring(0, 8) + "@centro.test", null),
+				clave);
+		long solicitudId = jdbc.queryForObject(
+				"SELECT id FROM solicitud_de_prueba WHERE idempotency_key = ?", Long.class, clave);
+
+		assertThat(jdbc.queryForObject(
+				"SELECT COUNT(*) FROM notification_outbox WHERE tipo = 'PEDIDO_DE_PRUEBA_RECIBIDO' AND clave_idempotente LIKE ?",
+				Integer.class, "pedido-prueba-" + solicitudId + "-%"))
+				.as("uno por administrador de plataforma, y hay al menos el sembrado").isPositive();
+	}
+
+	@Test
+	@DisplayName("al duenio se le avisa antes del fin y cuando termina, una sola vez cada aviso")
+	void avisos_al_duenio() {
+		long porVencer = altaEnPrueba();
+		long vencida = altaEnPrueba();
+		duenio(porVencer, PLATAFORMA);
+		duenio(vencida, PLATAFORMA);
+		jdbc.update("UPDATE subscription SET prueba_hasta = now() + interval '3 days' WHERE organization_id = ?", porVencer);
+		jdbc.update("UPDATE subscription SET prueba_hasta = now() - interval '1 day' WHERE organization_id = ?", vencida);
+
+		avisos.avisarVencimientos(java.time.Instant.now());
+		avisos.avisarVencimientos(java.time.Instant.now());
+
+		assertThat(avisosDe(porVencer, "PRUEBA_POR_VENCER")).isEqualTo(1);
+		assertThat(avisosDe(vencida, "PRUEBA_VENCIDA")).isEqualTo(1);
+		assertThat(avisosDe(porVencer, "PRUEBA_VENCIDA")).isZero();
+	}
+
+	private int avisosDe(long org, String tipo) {
+		return jdbc.queryForObject("SELECT COUNT(*) FROM notification_outbox WHERE organization_id = ? AND tipo = ?",
+				Integer.class, org, tipo);
+	}
+
+	private void duenio(long org, long cuenta) {
+		jdbc.update("""
+				INSERT INTO membership (organization_id, account_id, role_code, valid_from, created_at, updated_at)
+				VALUES (?, ?, 'ORG_ADMIN', now() - interval '1 day', now(), now())""", org, cuenta);
 	}
 
 	private long altaEnPrueba() {

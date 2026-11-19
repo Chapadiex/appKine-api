@@ -260,9 +260,15 @@ Decisiones que se tomaron al implementar y se apartan de §7:
   `organization` crea el centro por `spi.AltaDeCentro` y `identity` invita al dueño con la
   invitación de colaboradores, sin el chequeo de `colaborador:manage`.
 
-**Pendiente:** los correos (aviso a la plataforma cuando entra un pedido y avisos al dueño antes
-del vencimiento). Hoy el vencimiento se ve en la franja de la app y la plataforma ve la cantidad
-de pendientes en su bandeja.
+**Correos** (`identity.AvisosDePruebaGratis`, porque `notification` ya depende de
+`organization` y al revés cerraría un ciclo):
+
+- `PEDIDO_DE_PRUEBA_RECIBIDO` a cada administrador de plataforma, en la transacción del pedido:
+  `organization` publica `SolicitudDePruebaRecibida` e `identity` la escucha. Lleva el centro, los
+  servicios y las sedes; el contacto queda en la bandeja.
+- `PRUEBA_POR_VENCER` (7 días antes) y `PRUEBA_VENCIDA` (hasta 7 días después) a los ORG_ADMIN,
+  por `AvisosDePruebaGratisWorker` cada hora. La clave del outbox los hace idempotentes.
+- Interruptor `akine.prueba-gratis.avisos.enabled` (prendido por defecto).
 
 ## 10. Lo que no entra
 
