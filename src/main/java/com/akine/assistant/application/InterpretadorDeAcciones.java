@@ -49,7 +49,7 @@ public class InterpretadorDeAcciones {
 			"telefono":{"type":["string","null"]},\
 			"email":{"type":["string","null"]},\
 			"documento":{"type":["string","null"]}},\
-			"required":["accion"]}""";
+			"required":["accion","persona","clase","modo","nombres","monto","practicas","nombre","apellido","telefono","email","documento"]}""";
 
 	private final Supplier<ModeloDeLenguaje> modelo;
 	private final String prompt;

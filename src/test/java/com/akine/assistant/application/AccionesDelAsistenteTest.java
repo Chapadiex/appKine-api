@@ -204,11 +204,22 @@ class AccionesDelAsistenteTest {
 	void mientras_otro_pedido_la_confirma_responde_que_no_esta_vigente() {
 		AccionesDelAsistente servicio = servicio(true);
 		long id = proponer(servicio);
-		propuestas.tomar(id, Instant.now(reloj));
+		propuestas.tomar(id, Instant.now(reloj), null);
 
 		assertThatThrownBy(() -> servicio.confirmar(ACTOR, SEDE, id, pago(5L)))
 				.isInstanceOf(AccionNoVigenteException.class);
 		assertThat(ejecutadas).isEmpty();
+	}
+
+	@Test
+	void un_pago_que_quedo_tomado_por_un_pedido_muerto_se_puede_reconfirmar() {
+		AccionesDelAsistente servicio = servicio(true);
+		long id = proponer(servicio);
+		propuestas.tomar(id, Instant.now(reloj), null);
+		reloj.ahora = reloj.ahora.plus(Duration.ofMinutes(3));
+
+		assertThat(servicio.confirmar(ACTOR, SEDE, id, pago(5L)).fueConfirmada()).isTrue();
+		assertThat(ejecutadas).hasSize(1);
 	}
 
 	@Test
@@ -311,6 +322,7 @@ class AccionesDelAsistenteTest {
 	/** La tabla, con las mismas condiciones que los UPDATE de {@code JdbcAccionesPropuestas}. */
 	private static final class EnMemoria implements AccionesPropuestas {
 		private final Map<Long, AccionPropuesta> filas = new HashMap<>();
+		private final Map<Long, Instant> tomadas = new HashMap<>();
 		private long proximo = 1;
 
 		@Override
@@ -327,11 +339,14 @@ class AccionesDelAsistenteTest {
 		}
 
 		@Override
-		public boolean tomar(long id, Instant ahora) {
+		public boolean tomar(long id, Instant ahora, Instant abandonadaAntesDe) {
 			AccionPropuesta f = filas.get(id);
-			if (f.estado() != AccionPropuesta.Estado.PROPUESTA || f.vencida(ahora)) {
+			boolean abandonada = f.estado() == AccionPropuesta.Estado.EN_CURSO && abandonadaAntesDe != null
+					&& tomadas.get(id).isBefore(abandonadaAntesDe);
+			if ((f.estado() != AccionPropuesta.Estado.PROPUESTA && !abandonada) || f.vencida(ahora)) {
 				return false;
 			}
+			tomadas.put(id, ahora);
 			filas.put(id, con(f, id, AccionPropuesta.Estado.EN_CURSO, null));
 			return true;
 		}

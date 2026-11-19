@@ -77,6 +77,10 @@ class AltaDePacientePorElAsistente implements AccionDelAsistente {
 	public PropuestaDeAccion preparar(ActorDelAsistente actor, PedidoDeAccion pedido) {
 		OperatingActor operador = operador(actor);
 		DatosDePersona datos = pedido.datos();
+		// Una lectura del padron por el servicio antes que nada: exige paciente:read. Sin ella, quien
+		// no puede leer el padron sabria si existe alguien con ese nombre segun reciba una tarjeta o un
+		// "sin permiso" (la busqueda de parecidos va por el puerto y no autoriza).
+		personas.buscar(operador, new PersonaBusqueda(null, PersonaEstadoFiltro.ACTIVO, null), 0, 1);
 		List<String> avisos = new ArrayList<>();
 		List<String> bloqueos = new ArrayList<>();
 		List<OpcionDeTarjeta> duplicados = List.of();

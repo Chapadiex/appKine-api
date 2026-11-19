@@ -29,7 +29,12 @@ final class ControlDeAccion {
 	private static final Pattern NUMERO = Pattern.compile("\\d+");
 	private static final Pattern FECHA = Pattern.compile("\\b(\\d{1,2})[/-](\\d{1,2})[/-](\\d{4})\\b");
 	private static final Pattern NO_DIGITOS = Pattern.compile("\\D+");
-	private static final Pattern NO_PALABRA = Pattern.compile("[^\\p{L}\\p{N}@._+-]+");
+	/**
+	 * Todo lo que no es letra ni numero corta palabra, la puntuacion tambien: el dictado termina casi
+	 * siempre en punto, y con el punto pegado "María." no era "María" (la frase "todos menos María."
+	 * perdia el nombre y la marcaba presente). El mail no pasa por aca: se controla por contenido.
+	 */
+	private static final Pattern NO_PALABRA = Pattern.compile("[^\\p{L}\\p{N}]+");
 
 	private ControlDeAccion() {
 	}

@@ -59,10 +59,18 @@ class JdbcAccionesPropuestas implements AccionesPropuestas {
 	}
 
 	@Override
-	public boolean tomar(long id, Instant ahora) {
+	public boolean tomar(long id, Instant ahora, Instant abandonadaAntesDe) {
+		Timestamp t = Timestamp.from(ahora);
+		if (abandonadaAntesDe == null) {
+			return jdbc.update("""
+					UPDATE asistente_accion SET estado = 'EN_CURSO', tomada_en = ?
+					WHERE id = ? AND estado = 'PROPUESTA' AND vence_en > ?""", t, id, t) == 1;
+		}
 		return jdbc.update("""
-				UPDATE asistente_accion SET estado = 'EN_CURSO'
-				WHERE id = ? AND estado = 'PROPUESTA' AND vence_en > ?""", id, Timestamp.from(ahora)) == 1;
+				UPDATE asistente_accion SET estado = 'EN_CURSO', tomada_en = ?
+				WHERE id = ? AND vence_en > ?
+				  AND (estado = 'PROPUESTA' OR (estado = 'EN_CURSO' AND tomada_en < ?))""",
+				t, id, t, Timestamp.from(abandonadaAntesDe)) == 1;
 	}
 
 	@Override

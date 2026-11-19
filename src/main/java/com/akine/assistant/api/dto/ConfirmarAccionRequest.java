@@ -26,9 +26,35 @@ public record ConfirmarAccionRequest(
 	public Tarjeta aTarjeta() {
 		Tarjeta[] bloques = Stream.of(asistencia, pago, atencion, llegada, paciente)
 				.filter(Objects::nonNull).toArray(Tarjeta[]::new);
-		if (bloques.length != 1) {
+		if (bloques.length != 1 || fueraDeLimite()) {
 			throw new AccionInvalidaException();
 		}
 		return bloques[0];
 	}
+
+	/**
+	 * La tarjeta no pasa por los DTO de cada pantalla, asi que sus topes van aca: los de la nota de
+	 * cierre y lo que una pantalla puede cargar de una vez. Sin esto, una nota mas larga que la columna
+	 * fallaria recien al cerrar, con los tratamientos ya cargados.
+	 */
+	private boolean fueraDeLimite() {
+		if (atencion != null) {
+			return (atencion.nota() != null && atencion.nota().length() > MAX_NOTA)
+					|| atencion.tratamientos().size() > MAX_TRATAMIENTOS;
+		}
+		if (pago != null) {
+			return pago.imputaciones().size() > MAX_IMPUTACIONES;
+		}
+		if (asistencia != null) {
+			return asistencia.clases().size() > MAX_CLASES
+					|| asistencia.clases().stream().anyMatch(c -> c.items().size() > MAX_ITEMS);
+		}
+		return false;
+	}
+
+	static final int MAX_NOTA = 2000;
+	static final int MAX_TRATAMIENTOS = 30;
+	static final int MAX_IMPUTACIONES = 50;
+	static final int MAX_CLASES = 5;
+	static final int MAX_ITEMS = 200;
 }

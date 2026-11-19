@@ -20,10 +20,13 @@ public interface AccionesPropuestas {
 	/**
 	 * {@code PROPUESTA -> EN_CURSO}, solo si no vencio.
 	 *
+	 * @param abandonadaAntesDe si no es {@code null}, tambien se toma una que quedo {@code EN_CURSO}
+	 *                          desde antes de ese instante: el pedido que la tenia murio sin soltarla.
+	 *                          Solo para acciones que repetidas no graban dos veces
 	 * @return {@code true} si esta llamada la tomo; {@code false} si otra se adelanto, vencio o ya
 	 *         esta resuelta
 	 */
-	boolean tomar(long id, Instant ahora);
+	boolean tomar(long id, Instant ahora, Instant abandonadaAntesDe);
 
 	/** {@code EN_CURSO -> PROPUESTA}: la ejecucion no grabo nada y se puede corregir y reintentar. */
 	void soltar(long id);

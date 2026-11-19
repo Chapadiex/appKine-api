@@ -17,7 +17,7 @@ final class EsPregunta {
 	/** Arranques de consulta, plegados. "vino" no esta: "vino Juan e hizo ultrasonido" cuenta algo. */
 	private static final Set<String> ARRANQUES = Set.of(
 			"quien", "quienes", "cuanto", "cuanta", "cuantos", "cuantas", "cual", "cuales", "que", "como",
-			"cuando", "donde", "hay", "tiene", "tienen", "dame", "decime", "mostrame", "listame", "lista",
+			"cuando", "donde", "tiene", "tienen", "decime", "mostrame", "listame", "lista",
 			"listado", "turnos", "agenda", "reporte");
 
 	private EsPregunta() {

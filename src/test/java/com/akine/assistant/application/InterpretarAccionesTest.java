@@ -129,6 +129,23 @@ class InterpretarAccionesTest {
 	}
 
 	@Test
+	void la_puntuacion_pegada_al_nombre_no_lo_descarta() {
+		AccionInterpretada asistencia = new AccionInterpretada(AccionInterpretada.ASISTENCIA_CLASE, null, null,
+				"TODOS_MENOS", List.of("María", "Juan Pérez"), null, null, List.of(), DatosDePersona.VACIO);
+
+		assertThat(ControlDeAccion.controlar(asistencia, "Vinieron todos menos María, y Juan Pérez.").nombres())
+				.containsExactly("María", "Juan Pérez");
+		assertThat(ControlDeAccion.controlar(pago("Juan Pérez", "15000"), "Cobrale 15000 a Juan Pérez.").persona())
+				.isEqualTo("Juan Pérez");
+	}
+
+	@Test
+	void pedir_un_alta_o_un_cobro_no_es_una_pregunta() {
+		assertThat(EsPregunta.es("Dame de alta a Laura Díaz, teléfono 3515551234")).isFalse();
+		assertThat(EsPregunta.es("Hay que cobrarle 15000 a Juan")).isFalse();
+	}
+
+	@Test
 	void el_importe_entiende_miles_y_decimales() {
 		assertThat(ControlDeAccion.importe("15.000,50")).isEqualByComparingTo(new BigDecimal("15000.50"));
 		assertThat(ControlDeAccion.importe("$ 8500")).isEqualByComparingTo("8500");

@@ -62,6 +62,18 @@ public class AccionesDelAsistente {
 	private static final Logger log = LoggerFactory.getLogger(AccionesDelAsistente.class);
 
 	static final String SESION_REGISTER = "sesion:register";
+
+	/**
+	 * Las que confirmadas dos veces no graban dos veces: el cobro lleva la clave de la accion, la
+	 * asistencia es idempotente por el hecho (clase, persona) y la llegada tambien. Solo estas se
+	 * vuelven a tomar si un pedido murio con la propuesta {@code EN_CURSO}; en las demas (una atencion
+	 * a medio cargar, un alta) repetir duplicaria.
+	 */
+	static final java.util.Set<TipoDeAccion> REPETIBLES = java.util.EnumSet.of(TipoDeAccion.PAGO,
+			TipoDeAccion.ASISTENCIA_CLASE, TipoDeAccion.LLEGADA);
+
+	/** Cuanto se espera antes de dar por muerto al pedido que tomo una propuesta. */
+	static final java.time.Duration ABANDONO = java.time.Duration.ofMinutes(2);
 	static final String TEXTO_PROPUESTA = "Entendí esto. Revisalo y confirmá.";
 	static final String SIN_PERMISO = "No tenés permiso para hacer eso.";
 	static final String YA_CONFIRMADA = "Esto ya estaba confirmado: no lo grabé de nuevo.";
@@ -186,7 +198,8 @@ public class AccionesDelAsistente {
 		if (accion == null) {
 			throw new AccionNoVigenteException();
 		}
-		if (!propuestas.tomar(accionId, Instant.now(clock))) {
+		Instant ahora = Instant.now(clock);
+		if (!propuestas.tomar(accionId, ahora, REPETIBLES.contains(fila.tipo()) ? ahora.minus(ABANDONO) : null)) {
 			AccionPropuesta actual = buscar(enLaSede, accionId);
 			if (actual.estado() == AccionPropuesta.Estado.CONFIRMADA && actual.resultado() != null) {
 				// La fila guarda solo ids (§5.4): el texto de la primera vez no esta, y no hace falta.
@@ -211,8 +224,16 @@ public class AccionesDelAsistente {
 		}
 		if (resultado.fueConfirmada()) {
 			// Sin el texto ni los detalles: nombran a la persona, y la fila no guarda textos (§5.4).
-			propuestas.confirmar(accionId, json.writeValueAsString(ResultadoDeAccion.confirmada(null,
-					resultado.enlace(), resultado.referencias())), Instant.now(clock));
+			try {
+				propuestas.confirmar(accionId, json.writeValueAsString(ResultadoDeAccion.confirmada(null,
+						resultado.enlace(), resultado.referencias())), Instant.now(clock));
+			}
+			catch (RuntimeException e) {
+				// Ya se grabo: el usuario recibe su resultado igual. La fila queda EN_CURSO; si la accion es
+				// repetible se puede volver a tomar y la clave de idempotencia evita la segunda escritura.
+				log.warn("La accion {} se grabo pero no se pudo marcar confirmada: {}", fila.tipo(),
+						e.getClass().getSimpleName());
+			}
 			auditar("ASISTENTE_ACCION_CONFIRMADA", enLaSede, accionId, fila.tipo(), resultado.referencias());
 		}
 		else {

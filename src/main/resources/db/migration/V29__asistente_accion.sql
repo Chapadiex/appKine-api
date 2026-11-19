@@ -8,6 +8,10 @@
 -- propuesto (referencias) y los ids de lo creado (resultado). El contenido de la tarjeta vive
 -- en el cliente y vuelve en la confirmacion.
 --
+-- tomada_en: cuando paso a EN_CURSO. Si el proceso cae despues de grabar y antes de marcarla
+-- CONFIRMADA, la fila quedaria tomada para siempre; pasado un rato se puede volver a tomar, solo en
+-- las acciones que repetidas no graban dos veces (el cobro por su clave, la asistencia, la llegada).
+--
 -- Sin borrado fisico. "Vencida" no es un estado: es vence_en en el pasado.
 -- =====================================================================================
 
@@ -23,6 +27,7 @@ CREATE TABLE asistente_accion
     resultado jsonb,
     creada_en timestamptz(6) NOT NULL,
     vence_en timestamptz(6) NOT NULL,
+    tomada_en timestamptz(6),
     resuelta_en timestamptz(6),
     CONSTRAINT pk_asistente_accion PRIMARY KEY (id),
     CONSTRAINT fk_asistente_accion_org FOREIGN KEY (organization_id) REFERENCES organization (id),
