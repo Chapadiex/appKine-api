@@ -1,5 +1,9 @@
 package com.akine.assistant.api;
 
+import com.akine.assistant.domain.exception.AccionInvalidaException;
+import com.akine.assistant.domain.exception.AccionNoEncontradaException;
+import com.akine.assistant.domain.exception.AccionNoVigenteException;
+import com.akine.assistant.domain.exception.AccionesDeshabilitadasException;
 import com.akine.assistant.domain.exception.AsistenteDeshabilitadoException;
 import com.akine.assistant.domain.exception.DictadoDeshabilitadoException;
 import com.akine.assistant.domain.exception.DictadoInvalidoException;
@@ -47,6 +51,30 @@ public class AsistenteProblemHandler {
 	public ProblemDetail handleDictadoInvalido(DictadoInvalidoException exception) {
 		return problema(HttpStatus.BAD_REQUEST, ProblemType.VALIDATION_ERROR,
 				"Dictado invalido", exception.getMessage());
+	}
+
+	@ExceptionHandler(AccionesDeshabilitadasException.class)
+	public ProblemDetail handleAccionesDeshabilitadas(AccionesDeshabilitadasException exception) {
+		return problema(HttpStatus.CONFLICT, ProblemType.ACCIONES_DESHABILITADAS,
+				"Acciones deshabilitadas", exception.getMessage());
+	}
+
+	@ExceptionHandler(AccionNoVigenteException.class)
+	public ProblemDetail handleAccionNoVigente(AccionNoVigenteException exception) {
+		return problema(HttpStatus.CONFLICT, ProblemType.ACCION_NO_VIGENTE,
+				"Accion no vigente", exception.getMessage());
+	}
+
+	@ExceptionHandler(AccionInvalidaException.class)
+	public ProblemDetail handleAccionInvalida(AccionInvalidaException exception) {
+		return problema(HttpStatus.BAD_REQUEST, ProblemType.VALIDATION_ERROR,
+				"Confirmacion invalida", exception.getMessage());
+	}
+
+	/** Inexistente, o de otra cuenta, sede u organizacion: 404, nunca 403. */
+	@ExceptionHandler(AccionNoEncontradaException.class)
+	public ProblemDetail handleAccionNoEncontrada(AccionNoEncontradaException exception) {
+		return problema(HttpStatus.NOT_FOUND, ProblemType.NOT_FOUND, "Accion no encontrada", exception.getMessage());
 	}
 
 	/** Inexistente o de otra organizacion: 404, nunca 403. */

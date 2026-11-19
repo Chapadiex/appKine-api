@@ -56,10 +56,15 @@ public class AsistenteController {
 					Si no esta claro de que persona se habla, `resultado` es ACLARACION y `opciones` trae \
 					hasta cinco: el cliente reenvia la misma pregunta con el `personaId` elegido. El \
 					servidor no guarda la conversacion: `historial` lleva las preguntas anteriores con la \
-					`interpretacion` que devolvio cada una.""")
+					`interpretacion` que devolvio cada una.
+
+					Con `akine.asistente.acciones.enabled` y `asistente:acciones`, una frase que cuenta o \
+					pide algo ("vinieron todos menos Maria", "Juan pago 15.000 en efectivo") no se responde: \
+					`resultado` es PROPUESTA y `accion` trae una tarjeta para revisar. **Nada se graba** \
+					hasta `confirmarAccionDelAsistente`.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "La respuesta"),
-			@ApiResponse(responseCode = "400", description = "`validation-error`: pregunta vacia o mas larga que 300 "
+			@ApiResponse(responseCode = "400", description = "`validation-error`: pregunta vacia o mas larga que 600 "
 					+ "caracteres, o historial mal formado",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "403", description = "Sin `asistente:use` o sin contexto de trabajo activo",

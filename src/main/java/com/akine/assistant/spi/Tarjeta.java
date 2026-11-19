@@ -21,7 +21,7 @@ public sealed interface Tarjeta {
 	}
 
 	/** Una opcion entre las que elegir (un turno, una oferta, un caso, un posible duplicado). */
-	record Opcion(long id, String etiqueta) {
+	record OpcionDeTarjeta(long id, String etiqueta) {
 	}
 
 	/**
@@ -89,8 +89,8 @@ public sealed interface Tarjeta {
 	 * @param cerrar              si la sesion se cierra al confirmar
 	 * @param tratamientosPrevios los que ya tenia la sesion abierta de ese turno
 	 */
-	record TarjetaDeAtencion(long personaId, String nombre, Long turnoId, List<Opcion> turnos, Long ofertaId,
-			List<Opcion> ofertas, Long casoId, List<Opcion> casos, List<TratamientoEnTarjeta> tratamientos,
+	record TarjetaDeAtencion(long personaId, String nombre, Long turnoId, List<OpcionDeTarjeta> turnos, Long ofertaId,
+			List<OpcionDeTarjeta> ofertas, Long casoId, List<OpcionDeTarjeta> casos, List<TratamientoEnTarjeta> tratamientos,
 			String nota, boolean cerrar, int tratamientosPrevios) implements Tarjeta {
 		public TarjetaDeAtencion {
 			turnos = turnos == null ? List.of() : List.copyOf(turnos);
@@ -135,7 +135,7 @@ public sealed interface Tarjeta {
 	 * @param confirmaPosibleDuplicado la persona vio los duplicados y sigue adelante
 	 */
 	record TarjetaDePaciente(Long personaId, Long version, DatosDePersona datos, String tipoDocumento,
-			DatosDePersona anterior, List<Opcion> posiblesDuplicados, boolean confirmaPosibleDuplicado)
+			DatosDePersona anterior, List<OpcionDeTarjeta> posiblesDuplicados, boolean confirmaPosibleDuplicado)
 			implements Tarjeta {
 		public TarjetaDePaciente {
 			posiblesDuplicados = posiblesDuplicados == null ? List.of() : List.copyOf(posiblesDuplicados);

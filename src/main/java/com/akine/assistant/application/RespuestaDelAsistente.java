@@ -24,7 +24,14 @@ public record RespuestaDelAsistente(
 		String enlace,
 		List<String> advertencias,
 		Resultado resultado,
-		String consulta) {
+		String consulta,
+		AccionParaConfirmar accion) {
+
+	public RespuestaDelAsistente(String texto, Interpretacion interpretacion, List<Map<String, Object>> filas,
+			List<OpcionDePersona> opciones, String enlace, List<String> advertencias, Resultado resultado,
+			String consulta) {
+		this(texto, interpretacion, filas, opciones, enlace, advertencias, resultado, consulta, null);
+	}
 
 	public RespuestaDelAsistente(String texto, Interpretacion interpretacion, List<Map<String, Object>> filas,
 			List<OpcionDePersona> opciones, String enlace, List<String> advertencias, Resultado resultado) {
@@ -39,7 +46,22 @@ public record RespuestaDelAsistente(
 
 	/** Como termino la consulta. Viaja a la auditoria y a la respuesta. */
 	public enum Resultado {
-		RESPONDIDA, ACLARACION, FALTA_PERSONA, PERSONA_NO_ENCONTRADA, SIN_PERMISO, FUERA_DE_ALCANCE
+		RESPONDIDA, ACLARACION, FALTA_PERSONA, PERSONA_NO_ENCONTRADA, SIN_PERMISO, FUERA_DE_ALCANCE,
+		/** La frase pedia cargar algo: {@code accion} trae la tarjeta para confirmar. */
+		PROPUESTA
+	}
+
+	/**
+	 * Una accion propuesta, a la espera de la confirmacion (docs/diseno/AKINE-asistente-acciones.md).
+	 *
+	 * @param id       con lo que se confirma o se descarta
+	 * @param venceEn  hasta cuando se puede confirmar
+	 * @param avisos   lo que hay que saber; se puede confirmar igual
+	 * @param bloqueos por que no se puede confirmar
+	 */
+	public record AccionParaConfirmar(long id, com.akine.assistant.spi.TipoDeAccion tipo, String titulo,
+			java.time.Instant venceEn, com.akine.assistant.spi.Tarjeta tarjeta, List<String> avisos,
+			List<String> bloqueos) {
 	}
 
 	/** Una persona entre las que elegir: el cliente reenvia la pregunta con su {@code personaId}. */

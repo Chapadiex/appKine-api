@@ -15,10 +15,10 @@ import java.util.List;
 @Schema(description = "Una pregunta al asistente de datos. El servidor no guarda la conversacion: el historial "
 		+ "lo manda el cliente en cada pregunta.")
 public record ConsultaAsistenteRequest(
-		@Schema(requiredMode = Schema.RequiredMode.REQUIRED, minLength = 1, maxLength = 300,
+		@Schema(requiredMode = Schema.RequiredMode.REQUIRED, minLength = 1, maxLength = 600,
 				example = "¿Juan vino esta semana?")
 		@NotBlank(message = "La pregunta es obligatoria")
-		@Size(max = 300, message = "La pregunta admite hasta 300 caracteres") String pregunta,
+		@Size(max = 600, message = "La pregunta admite hasta 600 caracteres") String pregunta,
 		@ArraySchema(maxItems = 10, schema = @Schema(implementation = TurnoPrevioRequest.class),
 				arraySchema = @Schema(description = "Turnos previos, del mas viejo al mas nuevo; el servidor usa "
 						+ "los ultimos tres"))

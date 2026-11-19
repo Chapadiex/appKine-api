@@ -71,7 +71,7 @@ class AsistenteServiceTest {
 		};
 		return new AsistenteService(new AsistenteAjustes(prendido, Duration.ofSeconds(5)), guard, sedes,
 				new Interpretador(() -> modelo, "PROMPT", Duration.ofSeconds(5)), auditoria, List.of(herramientas), null, null, (org, f) -> true,
-				RELOJ);
+				null, RELOJ);
 	}
 
 	private HerramientaDelAsistente herramienta(Intencion intencion,

@@ -64,20 +64,24 @@ public class AsistenteService {
 	private final PermissionEvaluator permisos;
 	private final ConsultaLibre consultaLibre;
 	private final FuncionesIaDelCentro funcionesIa;
+	private final AccionesDelAsistente acciones;
 	private final Clock clock;
 
 	/** El de Spring. El otro fija el reloj para los tests; con dos, Spring necesita que se le diga cual. */
 	@Autowired
 	public AsistenteService(AsistenteAjustes ajustes, PermissionGuard permissionGuard, ConsultorioDirectory sedes,
 			Interpretador interpretador, AuditoriaDelAsistente auditoria, List<HerramientaDelAsistente> herramientas,
-			PermissionEvaluator permisos, ConsultaLibre consultaLibre, FuncionesIaDelCentro funcionesIa) {
+			PermissionEvaluator permisos, ConsultaLibre consultaLibre, FuncionesIaDelCentro funcionesIa,
+			AccionesDelAsistente acciones) {
 		this(ajustes, permissionGuard, sedes, interpretador, auditoria, herramientas, permisos, consultaLibre,
-				funcionesIa, Clock.systemUTC());
+				funcionesIa, acciones, Clock.systemUTC());
 	}
 
 	AsistenteService(AsistenteAjustes ajustes, PermissionGuard permissionGuard, ConsultorioDirectory sedes,
 			Interpretador interpretador, AuditoriaDelAsistente auditoria, List<HerramientaDelAsistente> herramientas,
-			PermissionEvaluator permisos, ConsultaLibre consultaLibre, FuncionesIaDelCentro funcionesIa, Clock clock) {
+			PermissionEvaluator permisos, ConsultaLibre consultaLibre, FuncionesIaDelCentro funcionesIa,
+			AccionesDelAsistente acciones, Clock clock) {
+		this.acciones = acciones;
 		this.permisos = permisos;
 		this.funcionesIa = funcionesIa;
 		this.consultaLibre = consultaLibre;
@@ -122,6 +126,15 @@ public class AsistenteService {
 		ZoneId zona = ZonaDeSede.de(sede);
 		ActorDelAsistente enLaSede = new ActorDelAsistente(actor.accountId(), actor.platformAdmin(),
 				organizationId, consultorioId, actor.roleCode());
+
+		// Una frase que cuenta o pide algo ("Juan pagó 15.000") no es una consulta: si las acciones estan
+		// prendidas se propone una tarjeta para confirmar. Audita por su cuenta, con el tipo y los ids.
+		if (acciones != null) {
+			java.util.Optional<RespuestaDelAsistente> propuesta = acciones.proponer(enLaSede, zona, pregunta, personaId);
+			if (propuesta.isPresent()) {
+				return propuesta.get();
+			}
+		}
 
 		Interpretacion interpretacion = interpretador.interpretar(pregunta, historial);
 		RespuestaDelAsistente respuesta;

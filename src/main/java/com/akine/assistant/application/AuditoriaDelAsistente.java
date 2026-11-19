@@ -50,6 +50,17 @@ public class AuditoriaDelAsistente {
 
 	static final String EVENTO_CLINICO = "ASISTENTE_LECTURA_CLINICA";
 
+	/**
+	 * Una accion propuesta, confirmada, rechazada o descartada. Con el tipo y los ids; sin la frase ni
+	 * el contenido de la tarjeta. Lo que la accion graba lo audita ademas su propio servicio.
+	 */
+	@Transactional
+	public void registrarAccion(String evento, long organizationId, long consultorioId, long accountId,
+			Map<String, String> detalles) {
+		auditTrail.record(new AuditEntry(organizationId, consultorioId, accountId, evento, ENTIDAD, null,
+				null, null, detalles, null, MDC.get("traceId"), Instant.now()));
+	}
+
 	@Transactional
 	public void registrar(long organizationId, long consultorioId, long accountId, Map<String, String> detalles) {
 		auditTrail.record(new AuditEntry(organizationId, consultorioId, accountId, EVENTO, ENTIDAD, null,
