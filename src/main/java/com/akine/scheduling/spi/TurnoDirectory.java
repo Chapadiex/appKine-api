@@ -1,5 +1,7 @@
 package com.akine.scheduling.spi;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -17,6 +19,15 @@ import java.util.Optional;
 public interface TurnoDirectory {
 
 	Optional<TurnoSnapshot> find(long organizationId, long consultorioId, long turnoId);
+
+	/**
+	 * Los turnos de una persona en la sede que EMPIEZAN en {@code [desde, hasta)}, del mas temprano
+	 * al mas tardio, <b>en cualquier estado y aunque esten cancelados</b>: quien llama mira
+	 * {@link TurnoSnapshot#estado()}. Lo usa {@code encounter} para saber con que turno de hoy se
+	 * corresponde una atencion dictada al asistente (AKINE-asistente-acciones §6.3).
+	 */
+	List<TurnoSnapshot> deLaPersonaEnVentana(
+			long organizationId, long consultorioId, long personaId, Instant desde, Instant hasta);
 
 	/**
 	 * {@code true} si el profesional tiene, en esa sede, un turno vivo con esa persona: RESERVADO,

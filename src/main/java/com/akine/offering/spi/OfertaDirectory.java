@@ -99,4 +99,12 @@ public interface OfertaDirectory {
 	 * credito de un pase (RN-M29-005).
 	 */
 	Optional<EsquemaDeCobro> esquemaDeCobro(long organizationId, long consultorioId, long ofertaId);
+
+	/**
+	 * Las ofertas activas de la sede, por nombre comercial. <b>No mira la vigencia por fechas</b>:
+	 * quien llama pregunta {@link OfertaSnapshot#vigenteEl} con el dia que le importa. Lo usa
+	 * {@code encounter} para proponer la oferta de una atencion sin turno dictada al asistente
+	 * (AKINE-asistente-acciones §6.3).
+	 */
+	List<OfertaSnapshot> activasDeLaSede(long organizationId, long consultorioId);
 }
