@@ -219,15 +219,17 @@ no se recortan; el resto, pocos tests, como dice `CLAUDE.md`.
 
 ## 9. Decisiones abiertas del usuario
 
-1. **Precios** de cada plan, de cada servicio y del adicional de IA. Mientras no estén, la landing
-   no muestra precios.
+1. **Precios** — **decidido el 19/11/2026: sin precios en la landing.** El armador dice qué plan
+   corresponde y la prueba gratis invita a probar; el precio se habla al contratar.
 2. **Qué trae la prueba:** todo prendido (propuesta) o sólo lo que pidió en el formulario.
 3. **Al vencer sin elegir:** sólo lectura (propuesta), suspensión o cancelación.
 4. **Miembros por plan:** se mantiene un tope (hoy 5 en `BASICO`) o se saca.
 5. **Plan Red:** tope fijo de sedes o "a convenir".
 6. **Cobro de la suscripción:** fuera de este plan. Por ahora la plataforma pasa el centro de prueba
    a plan a mano; el cobro online es otra etapa.
-7. **Términos y privacidad:** la landing los enlaza, y el texto legal es del usuario.
+7. **Términos y privacidad** — **decidido el 19/11/2026: borrador para revisión legal.** Dos páginas
+   públicas (`/terminos` y `/privacidad`) con un aviso visible de borrador; la razón social, el CUIT y
+   el domicilio quedan como marcadores a completar. El texto definitivo lo revisa un abogado.
 
 ## 11. Cómo quedó (18/11/2026)
 
