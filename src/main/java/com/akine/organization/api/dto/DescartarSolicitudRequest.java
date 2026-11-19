@@ -8,7 +8,8 @@ import jakarta.validation.constraints.Size;
 @Schema(description = "Descarte de un pedido de prueba")
 public record DescartarSolicitudRequest(
 		@Schema(description = "Por que se descarta", example = "Pedido duplicado")
-		@NotBlank @Size(max = 500) String motivo,
+		@NotBlank(message = "Indicá el motivo del descarte")
+		@Size(max = 500, message = "El motivo admite hasta 500 caracteres") String motivo,
 		@Schema(description = "Version leida", example = "0")
-		@NotNull Long version) {
+		@NotNull(message = "La versión del pedido es obligatoria") Long version) {
 }

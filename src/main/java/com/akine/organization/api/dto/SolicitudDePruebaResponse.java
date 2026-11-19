@@ -1,5 +1,6 @@
 package com.akine.organization.api.dto;
 
+import com.akine.organization.application.SolicitudDePruebaView;
 import com.akine.organization.domain.SolicitudDePrueba;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -26,12 +27,12 @@ public record SolicitudDePruebaResponse(
 		@Schema(description = "Cuando se resolvio") Instant resueltaEn,
 		long version) {
 
-	public static SolicitudDePruebaResponse from(SolicitudDePrueba s) {
+	public static SolicitudDePruebaResponse from(SolicitudDePruebaView s) {
 		return new SolicitudDePruebaResponse(
-				s.getId(), s.getNombre(), s.getApellido(), s.getEmail(), s.getTelefono(),
-				s.getNombreCentro(), s.getCiudad(), s.isKinesiologia(), s.isActividades(),
-				s.getSedes(), s.isInteresaIa(), s.getComentario(), s.getEstado(),
-				s.getMotivoDescarte(), s.getOrganizationId(), s.getCreatedAt(), s.getResueltaEn(),
-				s.getVersion());
+				s.id(), s.nombre(), s.apellido(), s.email(), s.telefono(),
+				s.nombreCentro(), s.ciudad(), s.kinesiologia(), s.actividades(),
+				s.sedes(), s.interesaIa(), s.comentario(), s.estado(),
+				s.motivoDescarte(), s.organizationId(), s.recibidaEn(), s.resueltaEn(),
+				s.version());
 	}
 }

@@ -6,6 +6,7 @@ import com.akine.organization.api.dto.SolicitudDePruebaRequest;
 import com.akine.organization.api.dto.SolicitudDePruebaResponse;
 import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.application.SolicitudDePruebaService;
+import com.akine.organization.application.SolicitudDePruebaView;
 import com.akine.organization.domain.SolicitudDePrueba;
 import com.akine.platform.spi.tenant.TenantContextHolder;
 import io.swagger.v3.oas.annotations.Operation;
@@ -108,7 +109,7 @@ public class SolicitudDePruebaController {
 			@RequestParam(defaultValue = ApiPaging.TAMANO_POR_DEFECTO) int size) {
 		ApiActor actor = ApiActor.current(tenantContextHolder);
 		authorizationGuard.requirePlatformAdmin(actor.platformAdmin());
-		Page<SolicitudDePrueba> pagina = service.listar(estado, q,
+		Page<SolicitudDePruebaView> pagina = service.listar(estado, q,
 				PageRequest.of(Math.max(page, 0), Math.clamp(size, 1, ApiPaging.TAMANO_MAXIMO)));
 		return ResponseEntity.ok(new SolicitudDePruebaPageResponse(
 				pagina.getContent().stream().map(SolicitudDePruebaResponse::from).toList(),

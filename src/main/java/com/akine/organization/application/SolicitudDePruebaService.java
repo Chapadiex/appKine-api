@@ -82,8 +82,8 @@ public class SolicitudDePruebaService {
 	}
 
 	@Transactional(readOnly = true)
-	public Page<SolicitudDePrueba> listar(SolicitudDePrueba.Estado estado, String q, Pageable pageable) {
-		return repository.buscar(estado, q, pageable);
+	public Page<SolicitudDePruebaView> listar(SolicitudDePrueba.Estado estado, String q, Pageable pageable) {
+		return repository.buscar(estado, q, pageable).map(SolicitudDePruebaView::de);
 	}
 
 	@Transactional(readOnly = true)
@@ -92,12 +92,16 @@ public class SolicitudDePruebaService {
 	}
 
 	@Transactional(readOnly = true)
-	public SolicitudDePrueba ver(long id) {
+	public SolicitudDePruebaView ver(long id) {
+		return SolicitudDePruebaView.de(cargar(id));
+	}
+
+	private SolicitudDePrueba cargar(long id) {
 		return repository.findById(id).orElseThrow(() -> new SolicitudDePruebaNotFoundException(id));
 	}
 
 	@Transactional
-	public SolicitudDePrueba descartar(long id, String motivo, long versionEsperada, long actorAccountId) {
+	public SolicitudDePruebaView descartar(long id, String motivo, long versionEsperada, long actorAccountId) {
 		SolicitudDePrueba solicitud = exigirPendiente(id);
 		if (solicitud.getVersion() != versionEsperada) {
 			throw new OptimisticLockingFailureException("La solicitud cambio mientras la mirabas");
@@ -106,7 +110,7 @@ public class SolicitudDePruebaService {
 		solicitud.descartar(motivo, actorAccountId, ahora);
 		SolicitudDePrueba guardada = repository.saveAndFlush(solicitud);
 		auditar(guardada, actorAccountId, ahora);
-		return guardada;
+		return SolicitudDePruebaView.de(guardada);
 	}
 
 	/** La aprueba el alta del centro, en su misma transaccion. */
@@ -121,7 +125,7 @@ public class SolicitudDePruebaService {
 	/** 404 si no existe; 409 si ya la resolvio otro. */
 	@Transactional(readOnly = true)
 	SolicitudDePrueba exigirPendiente(long id) {
-		SolicitudDePrueba solicitud = ver(id);
+		SolicitudDePrueba solicitud = cargar(id);
 		if (solicitud.getEstado() != SolicitudDePrueba.Estado.PENDIENTE) {
 			throw new OptimisticLockingFailureException("La solicitud ya fue resuelta");
 		}
