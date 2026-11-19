@@ -17,5 +17,6 @@ public record OrganizationListing(
 		SubscriptionStatus status,
 		String planCode,
 		String planName,
-		Instant createdAt) {
+		Instant createdAt,
+		Instant pruebaHasta) {
 }
