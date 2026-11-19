@@ -117,6 +117,32 @@ class ContratacionYPruebaIT {
 	}
 
 	@Test
+	@DisplayName("descartar un pedido deja el motivo, saca de pendientes y no admite version vieja ni un segundo descarte")
+	void descartar_pedido() {
+		String email = "descarta-" + UUID.randomUUID().toString().substring(0, 8) + "@centro.test";
+		solicitudes.recibir(pedido(email, null), UUID.randomUUID().toString());
+		long id = jdbc.queryForObject("SELECT id FROM solicitud_de_prueba WHERE email = ?", Long.class, email);
+		long pendientesAntes = solicitudes.pendientes();
+		long version = solicitudes.ver(id).version();
+
+		assertThatThrownBy(() -> solicitudes.descartar(id, "Duplicado", version + 1, PLATAFORMA))
+				.as("version vieja")
+				.isInstanceOf(OptimisticLockingFailureException.class);
+
+		var descartada = solicitudes.descartar(id, "  Duplicado  ", version, PLATAFORMA);
+
+		assertThat(descartada.estado()).isEqualTo(SolicitudDePrueba.Estado.DESCARTADA);
+		assertThat(descartada.motivoDescarte()).isEqualTo("Duplicado");
+		assertThat(descartada.resueltaEn()).isNotNull();
+		assertThat(solicitudes.pendientes()).isEqualTo(pendientesAntes - 1);
+		assertThatThrownBy(() -> solicitudes.descartar(id, "Otra vez", descartada.version(), PLATAFORMA))
+				.as("ya resuelta")
+				.isInstanceOf(OptimisticLockingFailureException.class);
+		assertThatThrownBy(() -> solicitudes.ver(Long.MAX_VALUE))
+				.isInstanceOf(com.akine.organization.domain.exception.SolicitudDePruebaNotFoundException.class);
+	}
+
+	@Test
 	@DisplayName("el pedido publico no se duplica al reintentar, y el del campo trampa no se guarda")
 	void pedido_publico() {
 		String clave = UUID.randomUUID().toString();
@@ -130,6 +156,22 @@ class ContratacionYPruebaIT {
 				.isEqualTo(1);
 		assertThat(solicitudes.listar(SolicitudDePrueba.Estado.PENDIENTE, email,
 				org.springframework.data.domain.PageRequest.of(0, 10)).getTotalElements()).isEqualTo(1);
+
+
+		String otro = "red-" + UUID.randomUUID().toString().substring(0, 8) + "@centro.test";
+		solicitudes.recibir(new SolicitudDePruebaService.Pedido("Ana", "Sintetica", otro, null, "Red Sintetica",
+				null, true, true, SolicitudDePrueba.Sedes.MAS_DE_TRES, true, null, null), UUID.randomUUID().toString());
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM solicitud_de_prueba WHERE email = ?", Integer.class, otro))
+				.isEqualTo(1);
+
+		assertThatThrownBy(() -> solicitudes.recibir(pedido(email, null), " "))
+				.as("sin clave de idempotencia")
+				.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> solicitudes.recibir(new SolicitudDePruebaService.Pedido("Ana", "Sintetica",
+				"nada-" + UUID.randomUUID().toString().substring(0, 8) + "@centro.test", null, "Sin servicio", null,
+				false, false, SolicitudDePrueba.Sedes.UNA, false, null, null), UUID.randomUUID().toString()))
+				.as("sin ningun servicio")
+				.isInstanceOf(IllegalArgumentException.class);
 	}
 
 	@Test

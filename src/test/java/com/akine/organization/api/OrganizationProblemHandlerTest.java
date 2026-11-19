@@ -158,4 +158,20 @@ class OrganizationProblemHandlerTest {
 						.doesNotContain("java.lang")
 						.doesNotContain("Exception"));
 	}
+
+	@Test
+	@DisplayName("Un servicio o adicional no contratado es 409 feature-not-available y nombra cual")
+	void servicio_no_contratado() {
+		ProblemDetail servicio = handler.handleServicioNoContratado(
+				new com.akine.organization.domain.exception.ServicioNoContratadoException(
+						com.akine.organization.spi.Servicio.ACTIVIDADES));
+		ProblemDetail adicional = handler.handleServicioNoContratado(
+				new com.akine.organization.domain.exception.ServicioNoContratadoException(
+						com.akine.organization.spi.Adicional.IA));
+
+		assertThat(servicio.getStatus()).isEqualTo(HttpStatus.CONFLICT.value());
+		assertThat(servicio.getType().toString()).endsWith("feature-not-available");
+		assertThat(servicio.getProperties()).containsEntry("servicio", "ACTIVIDADES");
+		assertThat(adicional.getProperties()).containsEntry("servicio", "IA");
+	}
 }
