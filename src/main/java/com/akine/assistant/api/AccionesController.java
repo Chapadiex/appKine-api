@@ -50,7 +50,8 @@ public class AccionesController {
 					o `paciente:manage`): sin ese permiso responde 200 con `estado` RECHAZADA.
 
 					Solo la confirma la cuenta que la pidio, en la misma sede, antes de que venza. \
-					**Confirmar dos veces devuelve el mismo resultado sin grabar de nuevo.** Un rechazo \
+					**Confirmar dos veces no graba de nuevo:** la segunda responde CONFIRMADA con el mismo \
+					`enlace` y un `texto` que lo dice. Un rechazo \
 					del negocio (la caja esta cerrada, la ficha cambio) vuelve con `estado` RECHAZADA y la \
 					propuesta sigue abierta para corregirla y reintentar.""")
 	@ApiResponses({

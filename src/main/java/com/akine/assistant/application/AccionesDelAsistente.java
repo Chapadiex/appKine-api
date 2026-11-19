@@ -64,6 +64,7 @@ public class AccionesDelAsistente {
 	static final String SESION_REGISTER = "sesion:register";
 	static final String TEXTO_PROPUESTA = "Entendí esto. Revisalo y confirmá.";
 	static final String SIN_PERMISO = "No tenés permiso para hacer eso.";
+	static final String YA_CONFIRMADA = "Esto ya estaba confirmado: no lo grabé de nuevo.";
 
 	private final AsistenteAjustes ajustes;
 	private final PermissionEvaluator permisos;
@@ -165,8 +166,8 @@ public class AccionesDelAsistente {
 	}
 
 	/**
-	 * Graba lo que la persona confirmo. Confirmar dos veces devuelve el mismo resultado sin grabar de
-	 * nuevo.
+	 * Graba lo que la persona confirmo. Confirmar dos veces no graba de nuevo: la segunda devuelve
+	 * {@code CONFIRMADA} con el mismo enlace y los mismos ids, y un texto que lo dice.
 	 *
 	 * @throws AccionesDeshabilitadasException con el interruptor apagado (409)
 	 * @throws AccessDeniedException sin contexto o sin {@code asistente:acciones} (403)
@@ -188,7 +189,9 @@ public class AccionesDelAsistente {
 		if (!propuestas.tomar(accionId, Instant.now(clock))) {
 			AccionPropuesta actual = buscar(enLaSede, accionId);
 			if (actual.estado() == AccionPropuesta.Estado.CONFIRMADA && actual.resultado() != null) {
-				return json.readValue(actual.resultado(), ResultadoDeAccion.class);
+				// La fila guarda solo ids (§5.4): el texto de la primera vez no esta, y no hace falta.
+				ResultadoDeAccion guardado = json.readValue(actual.resultado(), ResultadoDeAccion.class);
+				return ResultadoDeAccion.confirmada(YA_CONFIRMADA, guardado.enlace(), guardado.referencias());
 			}
 			throw new AccionNoVigenteException();
 		}
@@ -207,7 +210,9 @@ public class AccionesDelAsistente {
 			throw e;
 		}
 		if (resultado.fueConfirmada()) {
-			propuestas.confirmar(accionId, json.writeValueAsString(resultado), Instant.now(clock));
+			// Sin el texto ni los detalles: nombran a la persona, y la fila no guarda textos (§5.4).
+			propuestas.confirmar(accionId, json.writeValueAsString(ResultadoDeAccion.confirmada(null,
+					resultado.enlace(), resultado.referencias())), Instant.now(clock));
 			auditar("ASISTENTE_ACCION_CONFIRMADA", enLaSede, accionId, fila.tipo(), resultado.referencias());
 		}
 		else {

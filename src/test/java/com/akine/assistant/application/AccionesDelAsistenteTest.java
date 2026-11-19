@@ -191,7 +191,12 @@ class AccionesDelAsistenteTest {
 		ResultadoDeAccion segunda = servicio.confirmar(ACTOR, SEDE, id, pago(5L));
 
 		assertThat(ejecutadas).hasSize(1);
-		assertThat(segunda).isEqualTo(primera);
+		assertThat(segunda.fueConfirmada()).isTrue();
+		assertThat(segunda.enlace()).isEqualTo(primera.enlace());
+		assertThat(segunda.referencias()).isEqualTo(primera.referencias());
+		assertThat(segunda.texto()).isEqualTo(AccionesDelAsistente.YA_CONFIRMADA);
+		// La fila guarda solo ids: el texto de la accion nombra a la persona (§5.4).
+		assertThat(propuestas.filas.get(id).resultado()).doesNotContain("Listo");
 		assertThat(propuestas.filas.get(id).estado()).isEqualTo(AccionPropuesta.Estado.CONFIRMADA);
 	}
 
