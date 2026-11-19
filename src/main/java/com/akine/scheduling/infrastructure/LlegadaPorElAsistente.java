@@ -84,13 +84,16 @@ class LlegadaPorElAsistente implements AccionDelAsistente {
 			return PropuestaDeAccion.sinTarjeta(nombre + " no tiene turno hoy en esta sede.");
 		}
 
+		// Con recepcion vigente la llegada ya consta, tambien si la persona se retiro despues (U-21).
+		// Se elige entre los que todavia no la tienen: con dos turnos hoy, el de la mañana ya recibido
+		// no tapa al de la tarde.
 		Instant ahora = Instant.now();
 		TurnoDelDiaView turno = deHoy.stream()
+				.filter(t -> t.recepcion() == null && t.llegadaEn() == null)
 				.min(Comparator.comparing((TurnoDelDiaView t) -> Duration.between(t.inicio(), ahora).abs())
 						.thenComparing(TurnoDelDiaView::inicio))
-				.orElseThrow();
-		// Con recepcion vigente la llegada ya consta, tambien si la persona se retiro despues (U-21).
-		if (turno.recepcion() != null || turno.llegadaEn() != null) {
+				.orElse(null);
+		if (turno == null) {
 			return PropuestaDeAccion.sinTarjeta(nombre + " ya tiene la llegada registrada.");
 		}
 

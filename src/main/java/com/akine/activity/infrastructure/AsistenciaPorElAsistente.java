@@ -26,12 +26,16 @@ import com.akine.assistant.spi.Tarjeta.ClaseEnTarjeta;
 import com.akine.assistant.spi.Tarjeta.ItemDeAsistencia;
 import com.akine.assistant.spi.Tarjeta.TarjetaDeAsistencia;
 import com.akine.assistant.spi.TipoDeAccion;
+import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionQuery;
+import com.akine.organization.spi.ZonaDeSede;
 import com.akine.platform.spi.problem.ProblemType;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -66,11 +70,14 @@ class AsistenciaPorElAsistente implements AccionDelAsistente {
 	private final ClaseService clases;
 	private final AsistenciaService asistencias;
 	private final PermissionEvaluator permisos;
+	private final ConsultorioDirectory consultorios;
 
-	AsistenciaPorElAsistente(ClaseService clases, AsistenciaService asistencias, PermissionEvaluator permisos) {
+	AsistenciaPorElAsistente(ClaseService clases, AsistenciaService asistencias, PermissionEvaluator permisos,
+			ConsultorioDirectory consultorios) {
 		this.clases = clases;
 		this.asistencias = asistencias;
 		this.permisos = permisos;
+		this.consultorios = consultorios;
 	}
 
 	/** Un inscripto con lugar, sin las vistas del modulo: lo que {@link #marcar} necesita. */
@@ -294,6 +301,11 @@ class AsistenciaPorElAsistente implements AccionDelAsistente {
 			ClaseView clase = clases.ver(operador, consultorioId, claseId);
 			if (EstadoClase.CANCELADA.name().equals(clase.estado())) {
 				return ResultadoDeAccion.rechazada("La clase está cancelada: no se le puede tomar asistencia.");
+			}
+			// La misma ventana que `preparar`: el id de la tarjeta puede ser el de una clase de otro dia.
+			ZoneId zona = ZonaDeSede.de(consultorios, actor.organizationId(), consultorioId);
+			if (!LocalDate.ofInstant(clase.inicio(), zona).equals(LocalDate.now(zona))) {
+				return ResultadoDeAccion.rechazada("Esa clase no es de hoy.");
 			}
 			if (EstadoClase.PROGRAMADA.name().equals(clase.estado())) {
 				asistencias.iniciar(operador, consultorioId, claseId);

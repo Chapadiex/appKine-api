@@ -85,9 +85,9 @@ import java.util.stream.Collectors;
  * avanza la version con un UPDATE que deja vieja la entidad cargada, e {@code iniciarSinTurno}
  * resuelve su carrera en una transaccion aparte.
  *
- * <p>Por eso <b>un fallo despues de haber cargado algo no es un rechazo</b>: la sesion queda
- * abierta con sus tratamientos y el resultado es {@code CONFIRMADA} con el motivo y el enlace a la
- * pantalla de atencion. Reintentar la propuesta duplicaria los tratamientos.
+ * <p>Por eso <b>un fallo despues de haber grabado algo no es un rechazo</b>, y abrir la sesion ya es
+ * grabar: queda abierta con lo que se haya cargado y el resultado es {@code CONFIRMADA} con el
+ * motivo y el enlace a la pantalla de atencion. Reintentar la propuesta duplicaria los tratamientos.
  *
  * <p>Las reglas (permiso, propiedad, habilitacion, caso exigido, minimos del cierre, precio) las
  * aplican los servicios; {@code preparar} solo las anticipa para armar la tarjeta.
@@ -102,6 +102,7 @@ class AtencionPorElAsistente implements AccionDelAsistente {
 	static final String ENLACE_ATENCION = "/atencion/sesiones/";
 
 	private static final String CANCELADO = "CANCELADO";
+	private static final String SIN_PERFIL_DE_PACIENTE = "PacienteSinPerfilVigenteException";
 	private static final DateTimeFormatter HORA = DateTimeFormatter.ofPattern("HH:mm");
 
 	private final SesionService sesionService;
@@ -179,16 +180,8 @@ class AtencionPorElAsistente implements AccionDelAsistente {
 		Borrador borrador = new Borrador();
 		Long ofertaParaPracticas = null;
 
-		List<TurnoSnapshot> deHoy = turnos.deLaPersonaEnVentana(organizationId, consultorioId, personaId,
-						hoy.atStartOfDay(zona).toInstant(), hoy.plusDays(1).atStartOfDay(zona).toInstant())
-				.stream()
-				.filter(turno -> turno.vivo() && !CANCELADO.equals(turno.estado()))
-				.toList();
-		Map<Long, Sesion> sesionPorTurno = deHoy.isEmpty() ? Map.of()
-				: sesiones.findVivasPorTurnos(organizationId, deHoy.stream().map(TurnoSnapshot::id).toList())
-						.stream()
-						.filter(sesion -> sesion.getTurnoId() != null)
-						.collect(Collectors.toMap(Sesion::getTurnoId, sesion -> sesion, (a, b) -> a));
+		List<TurnoSnapshot> deHoy = turnosVivosDeHoy(organizationId, consultorioId, personaId, zona, hoy);
+		Map<Long, Sesion> sesionPorTurno = sesionesDe(organizationId, deHoy);
 
 		// De quien es cada turno: de quien lleva su sesion si ya empezo (pudo haber un reemplazo), y
 		// si no, del profesional de la reserva. Un turno sin profesional lo atiende quien inicia.
@@ -228,8 +221,7 @@ class AtencionPorElAsistente implements AccionDelAsistente {
 		} else if (!deHoy.isEmpty()) {
 			// No se abre una atencion sin turno al lado de un turno vivo: dejaria dos sesiones y dos
 			// deudas. El camino es el reemplazo de profesional.
-			borrador.bloqueos.add("Tiene turno hoy con "
-					+ nombreDeProfesional(organizationId, titular(deHoy.get(0), sesionPorTurno)) + ".");
+			borrador.bloqueos.add(tieneTurnoHoy(organizationId, deHoy.get(0), sesionPorTurno));
 		} else {
 			ofertaParaPracticas = resolverOfertaSinTurno(
 					organizationId, consultorioId, personaId, nombre, propio, hoy, ahora, borrador);
@@ -247,6 +239,29 @@ class AtencionPorElAsistente implements AccionDelAsistente {
 				borrador.avisos,
 				borrador.bloqueos,
 				null);
+	}
+
+	/** Los turnos de hoy de la persona en la sede que siguen en pie: ni dados de baja ni cancelados. */
+	private List<TurnoSnapshot> turnosVivosDeHoy(long organizationId, long consultorioId, long personaId,
+			ZoneId zona, LocalDate hoy) {
+
+		return turnos.deLaPersonaEnVentana(organizationId, consultorioId, personaId,
+						hoy.atStartOfDay(zona).toInstant(), hoy.plusDays(1).atStartOfDay(zona).toInstant())
+				.stream()
+				.filter(turno -> turno.vivo() && !CANCELADO.equals(turno.estado()))
+				.toList();
+	}
+
+	private Map<Long, Sesion> sesionesDe(long organizationId, List<TurnoSnapshot> deHoy) {
+		return deHoy.isEmpty() ? Map.of()
+				: sesiones.findVivasPorTurnos(organizationId, deHoy.stream().map(TurnoSnapshot::id).toList())
+						.stream()
+						.filter(sesion -> sesion.getTurnoId() != null)
+						.collect(Collectors.toMap(Sesion::getTurnoId, sesion -> sesion, (a, b) -> a));
+	}
+
+	private String tieneTurnoHoy(long organizationId, TurnoSnapshot turno, Map<Long, Sesion> sesionPorTurno) {
+		return "Tiene turno hoy con " + nombreDeProfesional(organizationId, titular(turno, sesionPorTurno)) + ".";
 	}
 
 	/** Lo que {@code preparar} va juntando para la tarjeta. */
@@ -402,16 +417,35 @@ class AtencionPorElAsistente implements AccionDelAsistente {
 		if (tarjeta.cerrar() && (tarjeta.nota() == null || tarjeta.nota().isBlank())) {
 			return ResultadoDeAccion.rechazada("Falta la nota de cierre.");
 		}
+		// Una sesion cerrada no admite agregar practicas: lo que quedo sin reconocer se perderia.
+		if (tarjeta.cerrar()
+				&& tarjeta.tratamientos().stream().anyMatch(tratamiento -> tratamiento.practicaId() == null)) {
+			return ResultadoDeAccion.rechazada("Hay tratamientos sin reconocer: quitalos o dejá la atención "
+					+ "abierta para cargarlos desde la pantalla de atención.");
+		}
 		if (tarjeta.turnoId() == null && tarjeta.ofertaId() == null) {
 			return ResultadoDeAccion.rechazada("Elegí la oferta.");
 		}
 		long organizationId = exigirContexto(actor);
 		long consultorioId = actor.consultorioId();
+		if (tarjeta.turnoId() == null) {
+			// Lo mismo que bloquea `preparar`, releido: el turno pudo reservarse despues de la propuesta,
+			// y una atencion sin turno a su lado dejaria dos sesiones y dos deudas.
+			ZoneId zona = ZonaDeSede.de(consultorios, organizationId, consultorioId);
+			List<TurnoSnapshot> deHoy = turnosVivosDeHoy(
+					organizationId, consultorioId, tarjeta.personaId(), zona, LocalDate.now(zona));
+			if (!deHoy.isEmpty()) {
+				return ResultadoDeAccion.rechazada(
+						tieneTurnoHoy(organizationId, deHoy.get(0), sesionesDe(organizationId, deHoy)));
+			}
+		}
 		OperatingActor operador = new OperatingActor(
 				actor.accountId(), actor.platformAdmin(), actor.organizationId(), actor.consultorioId());
 
 		// PASO 1: la sesion. Si falla, no se grabo nada.
+		String clave = PREFIJO_DE_CLAVE + accionId;
 		SesionView sesion;
+		boolean iniciadaAca;
 		try {
 			if (tarjeta.turnoId() != null) {
 				Optional<TurnoSnapshot> turno = turnos.find(organizationId, consultorioId, tarjeta.turnoId());
@@ -425,19 +459,28 @@ class AtencionPorElAsistente implements AccionDelAsistente {
 				if (!LocalDate.ofInstant(turno.get().inicio(), zona).equals(LocalDate.now(zona))) {
 					return ResultadoDeAccion.rechazada("Ese turno no es de hoy.");
 				}
+				iniciadaAca = sesiones.findVivaPorTurno(organizationId, tarjeta.turnoId()).isEmpty();
 				sesion = sesionService.iniciar(operador, consultorioId, tarjeta.turnoId(),
 						casoSiLaOfertaLoExige(organizationId, consultorioId, turno.get().ofertaId(), tarjeta.casoId()));
 			} else {
+				iniciadaAca = sesiones.findPorIdempotencyKey(organizationId, clave).isEmpty();
 				sesion = sesionService.iniciarSinTurno(operador, consultorioId,
 						new InicioSinTurno(tarjeta.personaId(), tarjeta.ofertaId(),
 								casoSiLaOfertaLoExige(organizationId, consultorioId, tarjeta.ofertaId(), tarjeta.casoId()),
 								MOTIVO_SIN_TURNO),
-						PREFIJO_DE_CLAVE + accionId);
+						clave);
 			}
-		} catch (AccessDeniedException sinPermiso) {
-			throw sinPermiso;
-		} catch (RuntimeException fallo) {
-			return ResultadoDeAccion.rechazada(oracion(motivo(fallo)));
+		} catch (TurnoNoAtendibleException | OfertaNoAtendibleException | CasoClinicoRequeridoException
+				| CasoNoAsignableException | ConsultorioNoAccesibleException
+				| IdempotencyKeyConflictException rechazo) {
+			return ResultadoDeAccion.rechazada(oracion(motivo(rechazo)));
+		} catch (RuntimeException otro) {
+			// La excepcion es de clinical.domain, que este modulo no puede nombrar: se reconoce por su
+			// nombre. Cualquier otra cosa no es un rechazo de negocio y sigue su camino.
+			if (SIN_PERFIL_DE_PACIENTE.equals(otro.getClass().getSimpleName())) {
+				return ResultadoDeAccion.rechazada(tarjeta.nombre() + " no tiene perfil de paciente activo.");
+			}
+			throw otro;
 		}
 		if (sesion.cerradaEn() != null) {
 			return ResultadoDeAccion.rechazada("La atención de hoy ya está cerrada.");
@@ -478,7 +521,16 @@ class AtencionPorElAsistente implements AccionDelAsistente {
 		} catch (RuntimeException fallo) {
 			String motivo = motivo(fallo);
 			if (registrados == 0 && !cerrando) {
-				return ResultadoDeAccion.rechazada(oracion(motivo));
+				if (!iniciadaAca) {
+					return ResultadoDeAccion.rechazada(oracion(motivo));
+				}
+				// La sesion se abrio en esta llamada y existe: decir "rechazada" la esconderia.
+				log.warn("Atencion del asistente abierta sin tratamientos: sesionId={} causa={}",
+						sesionId, fallo.getClass().getSimpleName());
+				return new ResultadoDeAccion(ResultadoDeAccion.Estado.CONFIRMADA,
+						"Abrí la atención pero no pude cargar los tratamientos: " + motivo
+								+ ". Quedó abierta para terminarla.",
+						enlace, salteados, Map.of("sesionId", sesionId));
 			}
 			log.warn("Atencion del asistente a medio cargar: sesionId={} tratamientos={} cerrando={} causa={}",
 					sesionId, registrados, cerrando, fallo.getClass().getSimpleName());

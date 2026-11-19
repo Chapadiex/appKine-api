@@ -105,16 +105,22 @@ class PagoPorElAsistente implements AccionDelAsistente {
 
 		// Exige cobro:register: sin el, AccessDeniedException sigue de largo hasta el asistente.
 		// findDeLaPersona ya excluye la parte del financiador; el filtro se repite porque es la regla.
-		List<ObligacionView> abiertas = obligaciones.deLaPersona(operador, sedeId, personaId).stream()
+		List<ObligacionView> deLaOrganizacion = obligaciones.deLaPersona(operador, sedeId, personaId).stream()
 				.filter(o -> Responsable.PACIENTE.name().equals(o.responsable()))
 				.filter(o -> EstadoObligacion.PENDIENTE.name().equals(o.estado())
 						|| EstadoObligacion.PARCIAL.name().equals(o.estado()))
 				.filter(o -> o.saldo() != null && o.saldo().signum() > 0)
 				.sorted(Comparator.comparing(ObligacionView::devengadaEn).thenComparing(ObligacionView::id))
 				.toList();
+		// La cuenta corriente es de la organizacion, pero el cobro es de una sede: CobroService rechaza
+		// imputar a una deuda de otra, y con una sola fila ajena en la tarjeta se caia el cobro entero.
+		List<ObligacionView> abiertas = deLaSede(deLaOrganizacion, sedeId);
 
 		List<String> avisos = new ArrayList<>();
 		List<String> bloqueos = new ArrayList<>();
+		if (abiertas.size() < deLaOrganizacion.size()) {
+			avisos.add("Tiene deudas en otra sede que no entran en este cobro.");
+		}
 
 		String moneda = abiertas.isEmpty() ? MONEDA_POR_DEFECTO : abiertas.get(0).moneda();
 		List<String> otrasMonedas = abiertas.stream()
@@ -158,6 +164,11 @@ class PagoPorElAsistente implements AccionDelAsistente {
 				cajaAbierta);
 		return new PropuestaDeAccion("Pago de " + pedido.personaNombre(), tarjeta,
 				Map.of(PropuestaDeAccion.PERSONA, personaId), avisos, bloqueos, null);
+	}
+
+	/** Solo las deudas que nacieron en la sede donde se cobra. */
+	static List<ObligacionView> deLaSede(List<ObligacionView> deudas, long sedeId) {
+		return deudas.stream().filter(o -> o.consultorioId() == sedeId).toList();
 	}
 
 	/**

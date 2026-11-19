@@ -512,6 +512,95 @@ class AsistenteAccionesIT {
 				.doesNotContain(apellido.toLowerCase(Locale.ROOT)).doesNotContain("hizo");
 	}
 
+	// ============================================================================ correcciones de la revision
+
+	@Test
+	void un_pago_que_quedo_en_curso_se_vuelve_a_confirmar_sin_cobrar_dos_veces() throws Exception {
+		String apellido = "Colgado" + sufijo();
+		long personaId = paciente(admin, apellido, "Raul", null, null);
+		deuda(personaId);
+		JsonNode accion = decir(admin, apellido + " pagó 8500 en efectivo",
+				Map.of("accion", "PAGO", "persona", apellido, "monto", "8500")).get("accion");
+		long accionId = accion.get("id").asLong();
+		assertThat(confirmar(admin, admin.consultorioId(), accionId, "pago", accion.get("pago"), 200)
+				.get("estado").asString()).isEqualTo("CONFIRMADA");
+		assertThat(cobrosDe(personaId)).isEqualTo(1);
+
+		// El proceso murio despues de cobrar y antes de marcar la fila: quedo EN_CURSO, tomada hace rato.
+		assertThat(jdbc.update("UPDATE asistente_accion SET estado = 'EN_CURSO', resultado = NULL, "
+				+ "resuelta_en = NULL, tomada_en = CURRENT_TIMESTAMP - INTERVAL '3 minutes' WHERE id = ?", accionId))
+				.isEqualTo(1);
+
+		JsonNode otraVez = confirmar(admin, admin.consultorioId(), accionId, "pago", accion.get("pago"), 200);
+
+		assertThat(otraVez.get("estado").asString()).as(otraVez.toString()).isEqualTo("CONFIRMADA");
+		assertThat(cobrosDe(personaId)).as("la clave de idempotencia devuelve el mismo cobro").isEqualTo(1);
+		assertThat(estadoDeLaAccion(accionId)).isEqualTo("CONFIRMADA");
+	}
+
+	@Test
+	void un_pago_recien_tomado_por_otro_pedido_no_se_vuelve_a_tomar() throws Exception {
+		String apellido = "Tomado" + sufijo();
+		long personaId = paciente(admin, apellido, "Elsa", null, null);
+		JsonNode accion = decir(admin, apellido + " pagó 4000 en efectivo",
+				Map.of("accion", "PAGO", "persona", apellido, "monto", "4000")).get("accion");
+		long accionId = accion.get("id").asLong();
+		jdbc.update("UPDATE asistente_accion SET estado = 'EN_CURSO', tomada_en = CURRENT_TIMESTAMP WHERE id = ?",
+				accionId);
+
+		HttpResponse<String> r = post("/api/v1/consultorios/" + admin.consultorioId() + "/asistente/acciones/"
+				+ accionId + "/confirmacion", admin.token(), JSON.writeValueAsString(Map.of("pago", accion.get("pago"))));
+
+		assertThat(r.statusCode()).as(r.body()).isNotEqualTo(200);
+		assertThat(cobrosDe(personaId)).isZero();
+	}
+
+	@Test
+	void la_deuda_de_otra_sede_no_entra_en_el_cobro_y_se_avisa() throws Exception {
+		String apellido = "Dosedes" + sufijo();
+		long personaId = paciente(admin, apellido, "Nora", null, null);
+		long deOtraSede = deuda(personaId);
+		// La deuda pasa a ser de otra sede: basta el consultorio_id, que es lo que mira la regla.
+		jdbc.update("UPDATE obligacion SET consultorio_id = ? WHERE id = ?", otroCentro.consultorioId(), deOtraSede);
+
+		JsonNode accion = decir(admin, apellido + " pagó 17000 en efectivo",
+				Map.of("accion", "PAGO", "persona", apellido, "monto", "17000")).get("accion");
+
+		JsonNode pago = accion.get("pago");
+		assertThat(pago.get("imputaciones")).as(accion.toString()).isEmpty();
+		assertThat(pago.get("anticipo").decimalValue()).isEqualByComparingTo("17000");
+		assertThat(accion.get("avisos").toString()).contains("otra sede");
+	}
+
+	@Test
+	void cerrar_con_un_tratamiento_sin_reconocer_se_rechaza_sin_abrir_la_sesion() throws Exception {
+		String apellido = "Sinpractica" + sufijo();
+		long personaId = paciente(admin, apellido, "Ines", null, null);
+		long turnoId = turnoDeHoy(personaId, 90);
+		String desconocida = "tratamiento" + sufijo();
+
+		Map<String, Object> entendido = new LinkedHashMap<>();
+		entendido.put("accion", "ATENCION");
+		entendido.put("persona", apellido);
+		entendido.put("practicas", List.of(practica, desconocida));
+		JsonNode accion = decir(profesional, "hoy vino " + apellido + " e hizo " + practica + " y " + desconocida,
+				entendido).get("accion");
+
+		JsonNode atencion = accion.get("atencion");
+		assertThat(atencion.get("cerrar").asBoolean()).isTrue();
+		assertThat(atencion.get("tratamientos")).as(accion.toString()).hasSize(2);
+		JsonNode sinPractica = atencion.get("tratamientos").get(1).get("practicaId");
+		assertThat(sinPractica == null || sinPractica.isNull()).isTrue();
+
+		JsonNode resultado = confirmar(profesional, admin.consultorioId(), accion.get("id").asLong(), "atencion",
+				atencion, 200);
+
+		assertThat(resultado.get("estado").asString()).as(resultado.toString()).isEqualTo("RECHAZADA");
+		assertThat(resultado.get("texto").asString()).contains("sin reconocer");
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sesion WHERE turno_id = ?", Integer.class, turnoId))
+				.as("no se abrio nada").isZero();
+	}
+
 	// ============================================================================ h. aislamiento
 
 	@Test
