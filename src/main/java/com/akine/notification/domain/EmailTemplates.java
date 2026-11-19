@@ -139,6 +139,7 @@ public final class EmailTemplates {
 					"Tu prueba de AKINE termina el " + payload.getOrDefault("pruebaVencimiento", "pronto"),
 					saludo + ",\n\nLa prueba gratis de " + payload.getOrDefault("organizacionNombre", "tu centro")
 							+ " termina el " + payload.getOrDefault("pruebaVencimiento", "dia de su vencimiento")
+							+ dias(payload)
 							+ ".\n\nPara seguir usando AKINE sin cortes, elegi tu plan respondiendo este correo. "
 							+ "Si no, el centro queda en solo lectura: vas a poder ver y exportar todo, "
 							+ "y no se borra nada." + FIRMA);
@@ -150,6 +151,38 @@ public final class EmailTemplates {
 							+ ". El centro quedo en solo lectura: podes ver y exportar todo, pero no cargar "
 							+ "nada nuevo. No se borro nada.\n\nPara seguir, elegi tu plan respondiendo "
 							+ "este correo." + FIRMA);
+			case SUSCRIPCION_POR_VENCER -> new EmailMessage(
+					destinatario,
+					"Tu suscripcion de AKINE vence el " + payload.getOrDefault("suscripcionVencimiento", "pronto"),
+					saludo + ",\n\nLa suscripcion de " + payload.getOrDefault("organizacionNombre", "tu centro")
+							+ " vence el " + payload.getOrDefault("suscripcionVencimiento", "dia de su vencimiento")
+							+ dias(payload)
+							+ ".\n\nPara seguir usando AKINE sin cortes, renova el pago antes de esa fecha. "
+							+ "Si ya pagaste, ignora este correo." + FIRMA);
+			case SUSCRIPCION_VENCIDA -> new EmailMessage(
+					destinatario,
+					"Vencio tu suscripcion de AKINE",
+					saludo + ",\n\nVencio la suscripcion de "
+							+ payload.getOrDefault("organizacionNombre", "tu centro")
+							+ ". Tenes 3 dias de gracia: el centro sigue funcionando normalmente hasta el "
+							+ payload.getOrDefault("suscripcionSoloLectura", "fin de la gracia")
+							+ ". Despues queda en solo lectura: vas a poder ver todo, pero no cargar nada nuevo."
+							+ "\n\nPara evitarlo, renova el pago. Si ya pagaste, ignora este correo." + FIRMA);
+			case SUSCRIPCION_SUSPENDIDA -> new EmailMessage(
+					destinatario,
+					"Tu centro quedo en solo lectura",
+					saludo + ",\n\nTermino la gracia de la suscripcion de "
+							+ payload.getOrDefault("organizacionNombre", "tu centro")
+							+ " y el centro quedo en solo lectura: podes ver todo, pero no cargar nada nuevo."
+							+ "\n\nSi no se renueva el pago, el " + payload.getOrDefault("suscripcionCierre", "dia del cierre")
+							+ " se cierra el acceso al centro. No se borra nada." + FIRMA);
+			case SUSCRIPCION_CERRADA -> new EmailMessage(
+					destinatario,
+					"Se cerro el acceso a tu centro en AKINE",
+					saludo + ",\n\nSe cerro el acceso a " + payload.getOrDefault("organizacionNombre", "tu centro")
+							+ " por falta de pago. No se borro nada: los datos se conservan."
+							+ "\n\nPara volver a entrar, renova el pago respondiendo este correo y el acceso "
+							+ "se habilita en el momento." + FIRMA);
 case ABONO_RENOVACION_APAGADA -> new EmailMessage(
 					destinatario,
 					"Se apago la renovacion automatica de abonos"
@@ -244,6 +277,15 @@ case ABONO_RENOVACION_APAGADA -> new EmailMessage(
 	private static String servicio(SanitizedPayload payload) {
 		String servicio = payload.getOrDefault("servicioNombre", null);
 		return servicio == null ? "" : " de " + servicio;
+	}
+
+	/** " (falta 1 dia)" o " (faltan N dias)"; nada sin el dato (filas viejas del outbox). */
+	private static String dias(SanitizedPayload payload) {
+		String dias = payload.getOrDefault("diasRestantes", null);
+		if (dias == null) {
+			return "";
+		}
+		return "1".equals(dias) ? " (falta 1 dia)" : " (faltan " + dias + " dias)";
 	}
 
 	private static String sede(SanitizedPayload payload) {

@@ -22,7 +22,14 @@ public record LecturaDeContexto(
 		Long consultorioId,
 		Long organizacionId,
 		SubscriptionStatus estadoSuscripcion,
-		java.time.Instant pruebaHasta) {
+		java.time.Instant pruebaHasta,
+		java.time.Instant pagadoHasta) {
+
+	/** Sin control de cobro. */
+	public LecturaDeContexto(Membership membership, Long consultorioId, Long organizacionId,
+			SubscriptionStatus estadoSuscripcion, java.time.Instant pruebaHasta) {
+		this(membership, consultorioId, organizacionId, estadoSuscripcion, pruebaHasta, null);
+	}
 
 	/** Sin prueba: el estado leido es el efectivo. */
 	public LecturaDeContexto(Membership membership, Long consultorioId, Long organizacionId,

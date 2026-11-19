@@ -48,7 +48,7 @@ public interface MembershipRepository extends JpaRepository<Membership, Long>, M
 	 */
 	@Override
 	@Query("""
-			select new com.akine.organization.domain.LecturaDeContexto(m, c.id, o.id, s.status, s.pruebaHasta)
+			select new com.akine.organization.domain.LecturaDeContexto(m, c.id, o.id, s.status, s.pruebaHasta, s.pagadoHasta)
 			  from Membership m
 			  left join Consultorio c
 			         on c.id = :consultorioId and c.organizationId = :organizationId and c.active = true

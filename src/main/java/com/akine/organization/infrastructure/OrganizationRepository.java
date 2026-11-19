@@ -57,7 +57,7 @@ public interface OrganizationRepository extends JpaRepository<Organization, Long
 	@Override
 	@Query(value = """
 			select new com.akine.organization.domain.OrganizationListing(
-			         o.id, o.name, o.slug, s.status, p.code, p.name, o.createdAt, s.pruebaHasta)
+			         o.id, o.name, o.slug, s.status, p.code, p.name, o.createdAt, s.pruebaHasta, s.pagadoHasta)
 			  from Organization o
 			  join Subscription s on s.organizationId = o.id
 			  join Plan p on p.id = s.planId

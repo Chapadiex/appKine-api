@@ -1,6 +1,7 @@
 package com.akine.organization.application;
 
 import com.akine.organization.domain.Plan;
+import com.akine.organization.domain.SituacionDeCobro;
 import com.akine.organization.domain.Subscription;
 import com.akine.organization.domain.SubscriptionStatus;
 import com.akine.organization.domain.SubscriptionTransition;
@@ -147,13 +148,22 @@ public class ContratacionService implements PruebasGratis {
 				.findFirst()
 				.map(PlanLimitView::value)
 				.orElse(null);
-		boolean soloLectura = subscription.estadoEfectivo(Instant.now()) != SubscriptionStatus.ACTIVA;
+		Instant ahora = Instant.now();
+		boolean soloLectura = subscription.estadoEfectivo(ahora) != SubscriptionStatus.ACTIVA;
+		Instant pagadoHasta = subscription.getPagadoHasta();
 		return new ContratacionView(
 				organizationId, plan.getCode(), plan.getName(), maxSedes,
 				contratacionRepository.serviciosDe(organizationId),
 				contratacionRepository.adicionalesDe(organizationId),
 				subscription.getStatus(), subscription.getPruebaHasta(), soloLectura,
-				contratacionRepository.definida(organizationId), subscription.getVersion());
+				contratacionRepository.definida(organizationId), subscription.getVersion(),
+				pagadoHasta, SituacionDeCobro.de(pagadoHasta, ahora), SituacionDeCobro.cierreEl(pagadoHasta));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public java.util.List<PagoQueVence> pagosQueVencenEntre(Instant desde, Instant hasta) {
+		return contratacionRepository.pagosQueVencenEntre(desde, hasta);
 	}
 
 	@Override

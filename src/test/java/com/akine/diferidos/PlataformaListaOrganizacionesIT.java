@@ -43,7 +43,7 @@ class PlataformaListaOrganizacionesIT extends BaseEscenarioDiferido {
 		assertThat(campos).as("datos minimos: nada de miembros, sedes, limites ni pacientes")
 				.contains("id", "name", "slug", "status", "planCode", "planName", "createdAt", "ia")
 				.isSubsetOf("id", "name", "slug", "status", "planCode", "planName", "createdAt",
-						"ia", "pruebaHasta");
+						"ia", "pruebaHasta", "pagadoHasta", "situacionDeCobro", "cierreEl");
 		assertThat(fila.get("status").asString()).isEqualTo("ACTIVA");
 		assertThat(fila.get("planCode").asString()).isEqualTo("BASICO");
 

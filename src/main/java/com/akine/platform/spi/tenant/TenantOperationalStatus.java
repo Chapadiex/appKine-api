@@ -26,7 +26,10 @@ public enum TenantOperationalStatus {
 	CANCELADA,
 
 	/** La organizacion fue dada de baja logica. Distinto de cancelar la suscripcion. */
-	BAJA;
+	BAJA,
+
+	/** Cerrada por falta de pago (19/11/2026). El contexto de esa organizacion no puede usarse. */
+	SIN_ACCESO;
 
 	/** Indica si el tenant admite que se seleccione y use su contexto de trabajo. */
 	public boolean allowsContextUsage() {

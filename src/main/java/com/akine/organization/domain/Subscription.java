@@ -1,5 +1,6 @@
 package com.akine.organization.domain;
 
+import com.akine.organization.domain.exception.CobroNoAdmitidoException;
 import com.akine.organization.domain.exception.SubscriptionSuspendedException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -56,6 +57,13 @@ public class Subscription extends TimestampedEntity {
 	/** Fin de la prueba gratis; solo en {@link SubscriptionStatus#PRUEBA} (V28, 18/11/2026). */
 	@Column(name = "prueba_hasta")
 	private Instant pruebaHasta;
+
+	/**
+	 * Hasta cuando esta pagada la suscripcion (V30, 19/11/2026). {@code null} = sin control de
+	 * cobro: el centro opera como siempre. Ver {@link SituacionDeCobro}.
+	 */
+	@Column(name = "pagado_hasta")
+	private Instant pagadoHasta;
 
 	/** Locking optimista: dos transiciones concurrentes no pueden ganar las dos. */
 	@Version
@@ -130,14 +138,63 @@ public class Subscription extends TimestampedEntity {
 		this.planId = nuevoPlanId;
 	}
 
+	/**
+	 * Registra un cobro que extiende el periodo pagado hasta {@code hasta} (19/11/2026). Una
+	 * prueba pasa a ACTIVA por la maquina de estados; SUSPENDIDA o CANCELADA guardadas no admiten
+	 * cobro: primero se reactivan por la via de siempre.
+	 *
+	 * @throws CobroNoAdmitidoException si la suscripcion no esta en PRUEBA ni ACTIVA
+	 */
+	public void registrarCobro(Instant hasta) {
+		if (status != SubscriptionStatus.ACTIVA && status != SubscriptionStatus.PRUEBA) {
+			throw new CobroNoAdmitidoException(organizationId, status);
+		}
+		if (hasta == null || (pagadoHasta != null && !hasta.isAfter(pagadoHasta))) {
+			throw new IllegalArgumentException("El cobro tiene que extender el periodo pagado");
+		}
+		if (status == SubscriptionStatus.PRUEBA) {
+			transitionTo(SubscriptionStatus.ACTIVA);
+		}
+		this.pagadoHasta = hasta;
+	}
+
 	/** Indica si la suscripcion habilita mutaciones de negocio. */
 	public boolean allowsBusinessMutations() {
 		return active && estadoEfectivo(Instant.now()) == SubscriptionStatus.ACTIVA;
 	}
 
-	/** {@link #estadoEfectivo(SubscriptionStatus, Instant, Instant)} de esta suscripcion. */
+	/** {@link #estadoEfectivo(SubscriptionStatus, Instant, Instant, Instant)} de esta suscripcion. */
 	public SubscriptionStatus estadoEfectivo(Instant ahora) {
+		return estadoEfectivo(status, pruebaHasta, pagadoHasta, ahora);
+	}
+
+	/**
+	 * El estado efectivo teniendo en cuenta tambien el cobro (19/11/2026): una ACTIVA pagada
+	 * opera como ACTIVA hasta el fin de la gracia y como SUSPENDIDA (solo lectura) despues. Una
+	 * SUSPENDIDA o CANCELADA guardada manda sobre el cobro, y sin {@code pagadoHasta} no hay
+	 * control. El cierre del acceso no es un estado de suscripcion: lo agrega
+	 * {@link #estadoOperativo}.
+	 */
+	public static SubscriptionStatus estadoEfectivo(SubscriptionStatus status, Instant pruebaHasta,
+			Instant pagadoHasta, Instant ahora) {
+		if (status == SubscriptionStatus.ACTIVA && SituacionDeCobro.de(pagadoHasta, ahora).soloLectura()) {
+			return SubscriptionStatus.SUSPENDIDA;
+		}
 		return estadoEfectivo(status, pruebaHasta, ahora);
+	}
+
+	/**
+	 * Estado operativo completo, con la prueba y el cobro: el de
+	 * {@link #operationalStatus(SubscriptionStatus, boolean)} sobre el estado efectivo, salvo una
+	 * ACTIVA cuyo cobro paso el cierre, que es {@link OperationalStatus#SIN_ACCESO}.
+	 */
+	public static OperationalStatus estadoOperativo(SubscriptionStatus status, Instant pruebaHasta,
+			Instant pagadoHasta, Instant ahora, boolean organizationActive) {
+		if (organizationActive && status == SubscriptionStatus.ACTIVA
+				&& SituacionDeCobro.de(pagadoHasta, ahora) == SituacionDeCobro.SIN_ACCESO) {
+			return OperationalStatus.SIN_ACCESO;
+		}
+		return operationalStatus(estadoEfectivo(status, pruebaHasta, pagadoHasta, ahora), organizationActive);
 	}
 
 	/**
@@ -162,7 +219,7 @@ public class Subscription extends TimestampedEntity {
 	 *                           de baja gana sobre cualquier estado de suscripcion
 	 */
 	public OperationalStatus operationalStatus(boolean organizationActive) {
-		return operationalStatus(estadoEfectivo(Instant.now()), organizationActive);
+		return estadoOperativo(status, pruebaHasta, pagadoHasta, Instant.now(), organizationActive);
 	}
 
 	/**
@@ -207,6 +264,10 @@ public class Subscription extends TimestampedEntity {
 
 	public Instant getPruebaHasta() {
 		return pruebaHasta;
+	}
+
+	public Instant getPagadoHasta() {
+		return pagadoHasta;
 	}
 
 	public Instant getDeletedAt() {
