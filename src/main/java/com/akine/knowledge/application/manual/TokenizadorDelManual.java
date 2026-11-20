@@ -35,7 +35,14 @@ final class TokenizadorDelManual {
 			Map.entry("borrar", "baja"), Map.entry("borro", "baja"), Map.entry("quitar", "baja"),
 			Map.entry("sacar", "baja"), Map.entry("desactivar", "baja"),
 			Map.entry("modificar", "editar"), Map.entry("modifico", "editar"), Map.entry("cambiar", "editar"),
-			Map.entry("cambio", "editar"), Map.entry("corregir", "editar"), Map.entry("edito", "editar"));
+			Map.entry("cambio", "editar"), Map.entry("corregir", "editar"), Map.entry("edito", "editar"),
+			Map.entry("reprogramar", "editar"), Map.entry("mover", "editar"), Map.entry("muevo", "editar"),
+			Map.entry("cierro", "cerrar"), Map.entry("cierra", "cerrar"), Map.entry("cerrar", "cerrar"),
+			// Conceptos que la gente nombra distinto que la pantalla: la persona del padron es el paciente,
+			// y una prepaga o una obra social son financiadores.
+			Map.entry("paciente", "persona"), Map.entry("pacientes", "persona"), Map.entry("personas", "persona"),
+			Map.entry("prepaga", "financiador"), Map.entry("prepagas", "financiador"),
+			Map.entry("financiadores", "financiador"));
 
 	private TokenizadorDelManual() {
 	}

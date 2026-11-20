@@ -51,6 +51,10 @@ final class Plantillas {
 			+ "permiso para verlos (hc:read). Pedíselo a quien administra el centro.";
 	static final String FALTA_PERSONA = "¿De qué persona? Escribí el nombre.";
 
+	/** El modelo no respondio al buscar en el manual: no es que el manual no lo tenga. */
+	static final String MANUAL_SIN_MODELO =
+			"Ahora no puedo buscar en el manual. Abrí la Ayuda (F1) y buscalo ahí.";
+
 	/**
 	 * El manual no tiene un pasaje para la pregunta. Las sugerencias llegan como "titulo|enlace" desde la
 	 * herramienta del manual; se muestran como enlaces en Markdown, sin redactar nada.

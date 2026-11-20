@@ -3,9 +3,7 @@ package com.akine.knowledge.api;
 import com.akine.knowledge.api.dto.FichaDelManualResponse;
 import com.akine.knowledge.api.dto.IndiceDelManualResponse;
 import com.akine.knowledge.api.dto.PasajeDelManualResponse;
-import com.akine.knowledge.application.OperatingActor;
 import com.akine.knowledge.application.manual.ManualService;
-import com.akine.knowledge.domain.manual.FichaDelManual;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -14,9 +12,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -72,8 +67,7 @@ public class ManualController {
 			@ApiResponse(responseCode = "404", description = "`not-found`: no existe o no es visible",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public FichaDelManualResponse ficha(@PathVariable String id) {
-		OperatingActor actor = apiActor.current();
-		return respuesta(actor, manual.ficha(actor, id));
+		return FichaDelManualResponse.de(manual.ficha(apiActor.current(), id));
 	}
 
 	@GetMapping("/contexto")
@@ -91,9 +85,8 @@ public class ManualController {
 			@Parameter(description = "Ruta del frontend, por ejemplo /caja o /pacientes/12/resumen")
 			@RequestParam String ruta) {
 		exigirRuta(ruta, true);
-		OperatingActor actor = apiActor.current();
-		return manual.deLaRuta(actor, ruta)
-				.map(ficha -> ResponseEntity.ok(respuesta(actor, ficha)))
+		return manual.deLaRuta(apiActor.current(), ruta)
+				.map(ficha -> ResponseEntity.ok(FichaDelManualResponse.de(ficha)))
 				.orElseGet(() -> ResponseEntity.noContent().build());
 	}
 
@@ -134,9 +127,4 @@ public class ManualController {
 		}
 	}
 
-	private FichaDelManualResponse respuesta(OperatingActor actor, FichaDelManual ficha) {
-		Map<String, FichaDelManual> visibles = manual.indice(actor).stream()
-				.collect(Collectors.toMap(FichaDelManual::id, Function.identity()));
-		return FichaDelManualResponse.de(ficha, visibles);
-	}
 }

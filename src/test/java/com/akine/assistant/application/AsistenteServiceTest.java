@@ -334,4 +334,15 @@ class AsistenteServiceTest {
 		assertThat(r.texto()).startsWith("No encontré eso en el manual.")
 				.contains("[Egresos → Registrar un egreso](/egresos)");
 	}
+
+	@Test
+	void como_se_hace_con_el_modelo_caido_dice_que_no_puede_buscar() {
+		respuestaDelModelo = "{\"intencion\":\"COMO_SE_HACE\"}";
+		AsistenteService servicio = servicio(true, herramienta(Intencion.COMO_SE_HACE, p -> new ResultadoDeHerramienta(
+				List.of(), List.of(ClavesDeFila.MANUAL_SIN_MODELO), null, false)));
+
+		RespuestaDelAsistente r = servicio.consultar(ACTOR, SEDE, "¿cómo abro la caja?", List.of(), null);
+
+		assertThat(r.texto()).isEqualTo(Plantillas.MANUAL_SIN_MODELO);
+	}
 }

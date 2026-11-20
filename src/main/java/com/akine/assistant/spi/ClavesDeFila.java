@@ -15,6 +15,8 @@ public final class ClavesDeFila {
 	public static final String MANUAL_TITULO = "manualTitulo";
 	public static final String MANUAL_TEXTO = "manualTexto";
 	public static final String MANUAL_ENLACE = "manualEnlace";
+	/** Advertencia de la herramienta del manual: el modelo no respondio al elegir el pasaje. */
+	public static final String MANUAL_SIN_MODELO = "manual-sin-modelo";
 
 	// --- BUSCAR_PERSONA ---
 	public static final String PERSONA_ID = "personaId";

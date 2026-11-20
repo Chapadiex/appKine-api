@@ -11,6 +11,7 @@ import com.akine.knowledge.application.manual.PasajeEncontrado;
 import com.akine.knowledge.application.manual.VisibilidadDelManual;
 import com.akine.knowledge.domain.manual.FichaDelManual;
 import com.akine.platform.spi.modelo.ModeloDeLenguaje;
+import com.akine.platform.spi.modelo.ModeloNoDisponibleException;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -67,7 +68,13 @@ class ComoSeHaceHerramienta implements HerramientaDelAsistente {
 		Predicate<FichaDelManual> visible = visibilidad.para(actor.accountId(), actor.organizationId(),
 				actor.consultorioId());
 		List<PasajeEncontrado> candidatos = indice.buscar(pedido.pregunta(), visible, pedido.rutaActual(), CANDIDATOS);
-		Optional<PasajeEncontrado> elegido = elector.elegir(pedido.pregunta(), candidatos);
+		Optional<PasajeEncontrado> elegido;
+		try {
+			elegido = elector.elegir(pedido.pregunta(), candidatos);
+		}
+		catch (ModeloNoDisponibleException e) {
+			return new ResultadoDeHerramienta(List.of(), List.of(ClavesDeFila.MANUAL_SIN_MODELO), null, false);
+		}
 		if (elegido.isEmpty()) {
 			List<String> sugerencias = candidatos.stream().limit(SUGERENCIAS)
 					.map(c -> c.ficha().titulo() + " → " + c.pasaje().titulo() + "|"

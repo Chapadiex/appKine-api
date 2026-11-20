@@ -31,12 +31,27 @@ public class ManualService {
 		return indice.fichas(filtro(actor));
 	}
 
-	public FichaDelManual ficha(OperatingActor actor, String id) {
-		return indice.ficha(id, filtro(actor)).orElseThrow(() -> new FichaNoEncontradaException(id));
+	/** Una ficha y, con el mismo filtro, las relacionadas que la persona puede ver. */
+	public record FichaVisible(FichaDelManual ficha, List<FichaDelManual> relacionadas) {
 	}
 
-	public Optional<FichaDelManual> deLaRuta(OperatingActor actor, String ruta) {
-		return indice.porRuta(ruta, filtro(actor));
+	public FichaVisible ficha(OperatingActor actor, String id) {
+		Predicate<FichaDelManual> visible = filtro(actor);
+		return indice.ficha(id, visible).map(f -> conRelacionadas(f, visible))
+				.orElseThrow(() -> new FichaNoEncontradaException(id));
+	}
+
+	public Optional<FichaVisible> deLaRuta(OperatingActor actor, String ruta) {
+		Predicate<FichaDelManual> visible = filtro(actor);
+		return indice.porRuta(ruta, visible).map(f -> conRelacionadas(f, visible));
+	}
+
+	private FichaVisible conRelacionadas(FichaDelManual ficha, Predicate<FichaDelManual> visible) {
+		List<FichaDelManual> relacionadas = ficha.relacionadas().stream()
+				.map(id -> indice.ficha(id, visible))
+				.flatMap(Optional::stream)
+				.toList();
+		return new FichaVisible(ficha, relacionadas);
 	}
 
 	public List<PasajeEncontrado> buscar(OperatingActor actor, String consulta, String rutaActual) {

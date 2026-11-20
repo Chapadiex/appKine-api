@@ -1,6 +1,7 @@
 package com.akine.knowledge.infrastructure.manual;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -12,6 +13,7 @@ import com.akine.knowledge.domain.manual.FichaDelManual;
 import com.akine.knowledge.domain.manual.PasajeDelManual;
 import com.akine.knowledge.domain.manual.TipoDePasaje;
 import com.akine.platform.spi.modelo.ModeloDeLenguaje;
+import com.akine.platform.spi.modelo.ModeloNoDisponibleException;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -50,6 +52,15 @@ class ElectorDePasajeTest {
 		responde("{\"id\":\"NINGUNO\"}");
 
 		assertThat(elector.elegir("¿cómo trato una lumbalgia?", candidatos)).isEmpty();
+	}
+
+	@Test
+	void modeloCaidoSePropagaYNoEsNinguno() {
+		when(modelo.completarJson(anyList(), anyString(), any(Duration.class)))
+				.thenThrow(new ModeloNoDisponibleException());
+
+		assertThatThrownBy(() -> elector.elegir("¿cómo cierro?", candidatos))
+				.isInstanceOf(ModeloNoDisponibleException.class);
 	}
 
 	private void responde(String json) {

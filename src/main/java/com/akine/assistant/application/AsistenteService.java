@@ -166,6 +166,9 @@ public class AsistenteService {
 		if (resultado.sinPermiso()) {
 			return simple(Plantillas.SIN_PERMISO, interpretacion, Resultado.SIN_PERMISO);
 		}
+		if (resultado.advertencias().contains(ClavesDeFila.MANUAL_SIN_MODELO)) {
+			return simple(Plantillas.MANUAL_SIN_MODELO, interpretacion, Resultado.FUERA_DE_ALCANCE);
+		}
 		if (resultado.filas().isEmpty()) {
 			return new RespuestaDelAsistente(Plantillas.sinPasajeDelManual(resultado.advertencias()), interpretacion,
 					List.of(), List.of(), null, List.of(), Resultado.FUERA_DE_ALCANCE);
