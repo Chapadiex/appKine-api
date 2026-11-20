@@ -10,6 +10,14 @@ package com.akine.assistant.spi;
  */
 public final class ClavesDeFila {
 
+	// --- COMO_SE_HACE: un pasaje del manual, citado textual ---
+	public static final String MANUAL_FICHA = "manualFicha";
+	public static final String MANUAL_TITULO = "manualTitulo";
+	public static final String MANUAL_TEXTO = "manualTexto";
+	public static final String MANUAL_ENLACE = "manualEnlace";
+	/** Advertencia de la herramienta del manual: el modelo no respondio al elegir el pasaje. */
+	public static final String MANUAL_SIN_MODELO = "manual-sin-modelo";
+
 	// --- BUSCAR_PERSONA ---
 	public static final String PERSONA_ID = "personaId";
 	public static final String NOMBRE = "nombre";
