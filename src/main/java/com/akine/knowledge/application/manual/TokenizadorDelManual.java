@@ -4,6 +4,7 @@ import java.text.Normalizer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -18,7 +19,23 @@ final class TokenizadorDelManual {
 	private static final Set<String> VACIAS = Set.of("a", "al", "ante", "como", "con", "cual", "de", "del",
 			"donde", "el", "en", "es", "esta", "este", "hay", "la", "las", "lo", "los", "me", "mi", "no", "o",
 			"para", "por", "puedo", "que", "se", "si", "sin", "su", "un", "una", "y", "hago", "hacer", "tengo",
-			"quiero", "cuando");
+			"quiero", "cuando", "dar", "doy", "das", "dan", "debo", "necesito", "puede", "pueden");
+
+	/**
+	 * Verbos de acción que la gente dice de muchas formas: "dar de alta", "cargar", "crear" o "firmar"
+	 * un convenio son lo mismo. Se reducen a una forma canónica tanto en la ficha como en la pregunta, y
+	 * así no hace falta repetir los sinónimos en cada `palabras`.
+	 */
+	private static final Map<String, String> SINONIMOS = Map.ofEntries(
+			Map.entry("crear", "alta"), Map.entry("creo", "alta"), Map.entry("nuevo", "alta"), Map.entry("nueva", "alta"),
+			Map.entry("cargar", "alta"), Map.entry("cargo", "alta"), Map.entry("agregar", "alta"),
+			Map.entry("agrego", "alta"), Map.entry("firmar", "alta"), Map.entry("registrar", "alta"),
+			Map.entry("registro", "alta"), Map.entry("sumar", "alta"), Map.entry("invitar", "alta"),
+			Map.entry("baja", "baja"), Map.entry("eliminar", "baja"), Map.entry("elimino", "baja"),
+			Map.entry("borrar", "baja"), Map.entry("borro", "baja"), Map.entry("quitar", "baja"),
+			Map.entry("sacar", "baja"), Map.entry("desactivar", "baja"),
+			Map.entry("modificar", "editar"), Map.entry("modifico", "editar"), Map.entry("cambiar", "editar"),
+			Map.entry("cambio", "editar"), Map.entry("corregir", "editar"), Map.entry("edito", "editar"));
 
 	private TokenizadorDelManual() {
 	}
@@ -30,6 +47,7 @@ final class TokenizadorDelManual {
 		String sinTildes = Normalizer.normalize(texto, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
 		return Arrays.stream(sinTildes.toLowerCase(Locale.ROOT).split("[^a-z0-9]+"))
 				.filter(t -> t.length() > 1 && !VACIAS.contains(t))
+				.map(t -> SINONIMOS.getOrDefault(t, t))
 				.toList();
 	}
 
