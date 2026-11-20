@@ -122,7 +122,7 @@ public class IndiceDelManual {
 		if (ruta == null || ruta.isBlank()) {
 			return Optional.empty();
 		}
-		String[] pedida = segmentos(ruta.replaceFirst("[?#].*$", ""));
+		String[] pedida = segmentos(sinQuery(ruta));
 		FichaDelManual mejor = null;
 		int menosParametros = Integer.MAX_VALUE;
 		for (FichaDelManual ficha : fichas) {
@@ -251,8 +251,32 @@ public class IndiceDelManual {
 		return c.ficha().titulo() + " — " + c.pasaje().titulo() + "\n" + textoPlano(c.pasaje().markdown());
 	}
 
-	private static String[] segmentos(String ruta) {
-		return ruta.replaceAll("^/+|/+$", "").split("/+");
+	/**
+	 * La ruta sin query ni fragmento. Sin regex: la ruta la manda el usuario, y un patron como
+	 * {@code [?#].*$} es polinomico sobre una entrada con muchos '#' (CodeQL, ReDoS).
+	 */
+	static String sinQuery(String ruta) {
+		int corte = ruta.length();
+		int pregunta = ruta.indexOf('?');
+		int numeral = ruta.indexOf('#');
+		if (pregunta >= 0) {
+			corte = pregunta;
+		}
+		if (numeral >= 0 && numeral < corte) {
+			corte = numeral;
+		}
+		return ruta.substring(0, corte);
+	}
+
+	/** Los segmentos no vacios de la ruta, sin regex por el mismo motivo que {@link #sinQuery}. */
+	static String[] segmentos(String ruta) {
+		List<String> partes = new ArrayList<>();
+		for (String parte : ruta.split("/", -1)) {
+			if (!parte.isEmpty()) {
+				partes.add(parte);
+			}
+		}
+		return partes.toArray(String[]::new);
 	}
 
 	/** Cantidad de parametros si el patron coincide, o -1. */

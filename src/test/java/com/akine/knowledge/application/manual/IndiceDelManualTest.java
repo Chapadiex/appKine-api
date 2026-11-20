@@ -1,12 +1,14 @@
 package com.akine.knowledge.application.manual;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.akine.knowledge.domain.manual.FichaDelManual;
+import java.time.Duration;
 import java.util.List;
 import java.util.function.Predicate;
 import com.akine.knowledge.domain.port.ModeloEmbeddings;
@@ -78,5 +80,14 @@ class IndiceDelManualTest {
 
 		assertThat(encontrados).isNotEmpty();
 		assertThat(encontrados.getFirst().ficha().id()).isEqualTo("ficha");
+	}
+
+	@Test
+	void unaRutaArmadaParaColgarLaBusquedaSeResuelveAlInstante() {
+		String ruta = "/" + "#".repeat(50_000) + "/".repeat(50_000);
+
+		assertTimeoutPreemptively(Duration.ofSeconds(1), () -> indice.porRuta(ruta, TODAS));
+		assertThat(IndiceDelManual.sinQuery("/pacientes/1?tab=x#y")).isEqualTo("/pacientes/1");
+		assertThat(IndiceDelManual.segmentos("//pacientes//1/")).containsExactly("pacientes", "1");
 	}
 }
