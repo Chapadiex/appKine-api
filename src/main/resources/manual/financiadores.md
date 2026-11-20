@@ -33,7 +33,7 @@ que es el que define los precios.
 Se crea una **copia propia** con sus planes activos. Desde ahí es del centro y se edita como
 cualquier otro; los cambios posteriores del catálogo no la modifican.
 
-### Dar de alta un financiador a mano
+### Dar de alta una obra social o prepaga a mano
 
 ![El panel Nuevo financiador, con el código, el nombre, el tipo y el botón Dar de alta marcados](captura:financiadores/nuevo-financiador)
 

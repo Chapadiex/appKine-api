@@ -24,7 +24,7 @@ class BusquedaEnLasFichasRealesTest {
 
 	@ParameterizedTest
 	@CsvSource(delimiter = '|', value = {
-			"¿dónde cargo una prepaga nueva?|financiadores#dar-de-alta-un-financiador-a-mano",
+			"¿dónde cargo una prepaga nueva?|financiadores#dar-de-alta-una-obra-social-o-prepaga-a-mano",
 			"¿cómo cierro la atención de la sesión?|atencion#cerrar-la-atencion",
 			"¿cómo cambio un turno de día?|agenda#reprogramar-un-turno",
 			"¿cómo agrego un paciente nuevo?|padron#dar-de-alta-una-persona"})
@@ -37,7 +37,7 @@ class BusquedaEnLasFichasRealesTest {
 
 	@ParameterizedTest
 	@CsvSource(delimiter = '|', value = {
-			"¿dónde cargo una prepaga nueva?|financiadores#dar-de-alta-un-financiador-a-mano",
+			"¿dónde cargo una prepaga nueva?|financiadores#dar-de-alta-una-obra-social-o-prepaga-a-mano",
 			"¿cómo cierro la atención de la sesión?|atencion#cerrar-la-atencion"})
 	@SuppressWarnings("unchecked")
 	void unVectorEnContraNoTapaLoQueEncuentranLasPalabras(String pregunta, String esperado) {
@@ -59,7 +59,7 @@ class BusquedaEnLasFichasRealesTest {
 	}
 
 	private static boolean esCorrecta(String textoDelPasaje) {
-		return textoDelPasaje.startsWith("Financiadores — Dar de alta un financiador a mano")
+		return textoDelPasaje.startsWith("Financiadores — Dar de alta una obra social o prepaga a mano")
 				|| textoDelPasaje.startsWith("Atención clínica — Cerrar la atención");
 	}
 }

@@ -1,5 +1,6 @@
 package com.akine.knowledge.infrastructure.manual;
 
+import com.akine.knowledge.application.manual.IndiceDelManual;
 import com.akine.knowledge.application.manual.PasajeEncontrado;
 import com.akine.platform.spi.modelo.MensajeChat;
 import com.akine.platform.spi.modelo.ModeloDeLenguaje;
@@ -29,8 +30,13 @@ public class ElectorDePasaje {
 			eso DENTRO de AKINE. Elegí NINGUNO si la pregunta es sobre otro programa o servicio (correo, banco, \
 			WhatsApp, otro sistema), sobre cómo tratar a un paciente, o si ninguna sección la responde de \
 			verdad: es mejor no contestar que contestar otra cosa. En AKINE, la "sesión" o "atención" de un \
-			paciente es la consulta clínica, no la sesión del usuario en el sistema. \
+			paciente es la consulta clínica, no la sesión del usuario en el sistema. Fijate en el verbo: dar de \
+			alta no es dar de baja, y cargar un plan no es dar de alta una obra social. Las secciones vienen \
+			ordenadas de la más a la menos parecida según la búsqueda, con el comienzo de su texto. \
 			Devolvé solo {"id": "..."} con el id exacto de la lista o NINGUNO.""";
+
+	/** Caracteres del comienzo de cada pasaje que ve el modelo: 8 candidatos entran holgados en 4096. */
+	static final int COMIENZO = 140;
 
 	private final Supplier<ModeloDeLenguaje> modelo;
 	private final Duration plazo;
@@ -47,7 +53,8 @@ public class ElectorDePasaje {
 			return Optional.empty();
 		}
 		String lista = candidatos.stream()
-				.map(c -> c.pasaje().id() + ": " + c.ficha().titulo() + " → " + c.pasaje().titulo())
+				.map(c -> c.pasaje().id() + ": " + c.ficha().titulo() + " → " + c.pasaje().titulo() + " | "
+						+ comienzo(c))
 				.collect(Collectors.joining("\n"));
 		String crudo = modelo.get().completarJson(List.of(
 					new MensajeChat(MensajeChat.Rol.SISTEMA, INSTRUCCIONES),
@@ -58,6 +65,12 @@ public class ElectorDePasaje {
 			return Optional.empty();
 		}
 		return candidatos.stream().filter(c -> c.pasaje().id().equals(id)).findFirst();
+	}
+
+	/** El comienzo del texto del pasaje: con el titulo solo, el modelo confundia tareas parecidas. */
+	private static String comienzo(PasajeEncontrado c) {
+		String texto = IndiceDelManual.textoPlano(c.pasaje().markdown());
+		return texto.length() <= COMIENZO ? texto : texto.substring(0, COMIENZO) + "…";
 	}
 
 	private String leerId(String crudo) {

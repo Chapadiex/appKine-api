@@ -12,13 +12,17 @@ import com.akine.knowledge.application.manual.VisibilidadDelManual;
 import com.akine.knowledge.domain.manual.FichaDelManual;
 import com.akine.platform.spi.modelo.ModeloDeLenguaje;
 import com.akine.platform.spi.modelo.ModeloNoDisponibleException;
+import com.akine.knowledge.domain.manual.TipoDePasaje;
+import java.text.Normalizer;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -37,6 +41,8 @@ class ComoSeHaceHerramienta implements HerramientaDelAsistente {
 	static final int CANDIDATOS = 8;
 	/** Sugerencias cuando no hay pasaje. */
 	static final int SUGERENCIAS = 3;
+	private static final Pattern PIDE_DEFINICION =
+			Pattern.compile("\\bque (es|son|significa|significan|quiere decir)\\b|\\bdiferencia entre\\b");
 
 	private final IndiceDelManual indice;
 	private final VisibilidadDelManual visibilidad;
@@ -67,7 +73,7 @@ class ComoSeHaceHerramienta implements HerramientaDelAsistente {
 		}
 		Predicate<FichaDelManual> visible = visibilidad.para(actor.accountId(), actor.organizationId(),
 				actor.consultorioId());
-		List<PasajeEncontrado> candidatos = indice.buscar(pedido.pregunta(), visible, pedido.rutaActual(), CANDIDATOS);
+		List<PasajeEncontrado> candidatos = candidatos(pedido.pregunta(), visible, pedido.rutaActual());
 		Optional<PasajeEncontrado> elegido;
 		try {
 			elegido = elector.elegir(pedido.pregunta(), candidatos);
@@ -89,6 +95,24 @@ class ComoSeHaceHerramienta implements HerramientaDelAsistente {
 		fila.put(ClavesDeFila.MANUAL_TEXTO, pasaje.pasaje().markdown());
 		fila.put(ClavesDeFila.MANUAL_ENLACE, enlace(pasaje.ficha()));
 		return new ResultadoDeHerramienta(List.of(fila), List.of(), enlace(pasaje.ficha()), false);
+	}
+
+	/**
+	 * Los pasajes que ve el elector. Las definiciones del glosario compiten solo si la pregunta pide una
+	 * definicion ("¿qué es...?", "¿qué significa...?"): ante "¿cómo cierro la atención?" el glosario de
+	 * "sesión o atención" le ganaba a la tarea.
+	 */
+	List<PasajeEncontrado> candidatos(String pregunta, Predicate<FichaDelManual> visible, String rutaActual) {
+		boolean pideDefinicion = PIDE_DEFINICION.matcher(normalizar(pregunta)).find();
+		return indice.buscar(pregunta, visible, rutaActual, CANDIDATOS * 2).stream()
+				.filter(p -> pideDefinicion || p.pasaje().tipo() != TipoDePasaje.TERMINO)
+				.limit(CANDIDATOS)
+				.toList();
+	}
+
+	private static String normalizar(String texto) {
+		return Normalizer.normalize(texto == null ? "" : texto, Normalizer.Form.NFD).replaceAll("\\p{M}", "")
+				.toLowerCase(Locale.ROOT);
 	}
 
 	/** La primera ruta sin parametros de la ficha, o {@code null}. */

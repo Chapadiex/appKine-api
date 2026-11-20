@@ -9,7 +9,7 @@
   { "pregunta": "se fue sin que lo atiendan, ¿cómo lo anoto?", "esperado": "recepcion-del-dia#Registrar que se fue sin ser atendido" },
   { "pregunta": "¿cómo doy de alta un convenio con una obra social?", "esperado": "convenios#Firmar un convenio" },
   { "pregunta": "¿cómo importo los aranceles desde un excel?", "esperado": "convenios#Importar aranceles desde una planilla" },
-  { "pregunta": "¿dónde cargo una prepaga nueva?", "esperado": "financiadores#Dar de alta un financiador a mano" },
+  { "pregunta": "¿dónde cargo una prepaga nueva?", "esperado": "financiadores#Dar de alta una obra social o prepaga a mano" },
   { "pregunta": "¿cómo cargo un gasto del centro?", "esperado": "egresos#Cargar un egreso" },
   { "pregunta": "¿cómo armo la presentación para la obra social?", "esperado": "presentaciones#Armar y presentar el lote" },
   { "pregunta": "¿cómo registro un débito de la obra social?", "esperado": "presentaciones#Registrar un débito" },
