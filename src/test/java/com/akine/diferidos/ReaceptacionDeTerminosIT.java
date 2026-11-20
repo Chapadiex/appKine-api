@@ -80,6 +80,16 @@ class ReaceptacionDeTerminosIT extends BaseEscenarioDiferido {
 	}
 
 	@Test
+	@DisplayName("La version del contrato es publica: una cuenta pendiente la lee aunque mande su token")
+	void la_version_no_se_bloquea() {
+		String token = login(cuentaConVersionVieja());
+
+		Respuesta version = get("/api/v1/version", token);
+
+		assertThat(version.status()).as(version.body()).isEqualTo(200);
+	}
+
+	@Test
 	@DisplayName("Una cuenta que acepto la vigente al nacer opera sin pasar por la pantalla")
 	void quien_ya_acepto_opera() {
 		String email = cuentaNueva();

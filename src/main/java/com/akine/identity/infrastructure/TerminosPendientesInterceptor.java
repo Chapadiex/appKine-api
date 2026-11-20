@@ -29,8 +29,11 @@ public class TerminosPendientesInterceptor implements HandlerInterceptor {
 	/** La misma ruta que MisTerminosController: la cuenta pendiente la necesita para salir. */
 	static final String RUTA_MIS_TERMINOS = "/api/v1/me/terminos";
 
+	// /api/v1/version es publica (SecurityConfig): el chequeo de contrato del frontend no depende
+	// de haber aceptado los terminos aunque el pedido viaje con token.
 	private static final List<String> RUTAS_LIBRES = List.of(
-			"/api/v1/auth/", "/api/v1/terms", RUTA_MIS_TERMINOS, "/api/v1/public/");
+			"/api/v1/auth/", "/api/v1/terms", RUTA_MIS_TERMINOS, "/api/v1/public/",
+			"/api/v1/version");
 
 	// ObjectProvider: los slices @WebMvcTest cargan los interceptores sin los servicios.
 	private final ObjectProvider<TerminosService> terminosService;
