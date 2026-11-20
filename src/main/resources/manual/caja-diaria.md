@@ -33,9 +33,9 @@ La fecha de la jornada la pone el sistema, con el horario de la sede.
 
 ![El formulario Registrar un movimiento manual, con el tipo, el importe y el botón marcados](captura:caja-diaria/registrar-movimiento)
 
-1. Con la caja abierta, buscá **Registrar un movimiento manual**.
-2. Elegí si **entró** o **salió** efectivo.
-3. Completá el **importe** y el **concepto** (por ejemplo, «cambio para el día» o «compra de
+1. Con la caja abierta, tocá :icono[agregar]: **Registrar movimiento**.
+2. En **Tipo**, elegí si **entró** o **salió** efectivo.
+3. Completá el **Importe** y el **Concepto** (por ejemplo, «cambio para el día» o «compra de
    insumos»).
 4. Tocá **Registrar el movimiento**.
 
