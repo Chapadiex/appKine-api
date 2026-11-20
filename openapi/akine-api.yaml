@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.188.0
+  version: 0.189.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -34128,7 +34128,7 @@ components:
         planNombre:
           type: string
           description: Nombre del plan
-          example: Crecimiento
+          example: Plan Intermedio
         pruebaHasta:
           type: string
           format: date-time
@@ -35803,7 +35803,7 @@ components:
         planCode:
           type: string
           description: "Codigo del plan a contratar, del catalogo de GET /api/v1/plans"
-          example: BASICO
+          example: BASE
           maxLength: 32
           minLength: 0
         slug:
@@ -43768,7 +43768,7 @@ components:
         planCode:
           type: string
           description: "Codigo del plan a contratar, del catalogo de GET /api/v1/plans"
-          example: PROFESIONAL
+          example: RED
           maxLength: 32
           minLength: 0
       required:
@@ -44026,7 +44026,7 @@ components:
         code:
           type: string
           description: "Codigo estable del plan, usado para contratarlo"
-          example: BASICO
+          example: BASE
         features:
           type: array
           description: Funcionalidades habilitadas por el plan
@@ -44043,12 +44043,13 @@ components:
         name:
           type: string
           description: Nombre comercial del plan
-          example: Basico
+          example: Plan Básico
         ofrecido:
           type: boolean
-          description: Si la plataforma lo ofrece hoy al dar de alta o cambiar la
-            contratacion de un centro. Los planes anteriores al 18/11/2026 siguen
-            vigentes para quien los tiene y no se ofrecen
+          description: "Si la plataforma lo ofrece hoy al dar de alta o cambiar la\
+            \ contratacion de un centro. Hoy los tres planes del catalogo (BASE, CRECIMIENTO\
+            \ y RED) se ofrecen; un plan que se retire queda en false y sigue vigente\
+            \ para quien lo tiene"
     PlanTratamiento:
       type: object
       description: "Plan de Tratamiento de un Caso Clinico, con su version vigente"
@@ -44238,11 +44239,11 @@ components:
         planCode:
           type: string
           description: Codigo del plan contratado
-          example: BASICO
+          example: BASE
         planName:
           type: string
           description: Nombre comercial del plan contratado
-          example: Basico
+          example: Plan Básico
         pruebaHasta:
           type: string
           format: date-time
@@ -44333,11 +44334,11 @@ components:
         planCode:
           type: string
           description: Codigo del plan contratado
-          example: BASICO
+          example: BASE
         planName:
           type: string
           description: Nombre comercial del plan contratado
-          example: Basico
+          example: Plan Básico
         startedAt:
           type: string
           format: date-time
@@ -45898,7 +45899,7 @@ components:
           type: string
           description: "Plan a contratar, del catalogo de GET /api/v1/plans. Si se\
             \ omite se usa el plan por defecto"
-          example: BASICO
+          example: BASE
           maxLength: 32
           minLength: 0
         versionTerminos:
@@ -48791,11 +48792,11 @@ components:
         planCode:
           type: string
           description: Codigo del plan contratado
-          example: BASICO
+          example: BASE
         planName:
           type: string
           description: Nombre comercial del plan contratado
-          example: Basico
+          example: Plan Básico
         startedAt:
           type: string
           format: date-time
@@ -48894,7 +48895,7 @@ components:
         fromPlanCode:
           type: string
           description: Codigo del plan previo. Ausente en la fila de alta
-          example: BASICO
+          example: BASE
         fromStatus:
           type: string
           description: Estado previo. Ausente en la fila de alta de la suscripcion
@@ -48921,7 +48922,7 @@ components:
         toPlanCode:
           type: string
           description: Codigo del plan resultante
-          example: PROFESIONAL
+          example: RED
         toStatus:
           type: string
           description: Estado resultante

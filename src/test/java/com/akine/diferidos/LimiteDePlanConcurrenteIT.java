@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <h2>Que prueba</h2>
  *
- * <p>El plan BASICO permite cinco miembros activos. Con cuatro ya dados de alta, dos hilos
+ * <p>El plan BASE permite cinco miembros activos. Con cuatro ya dados de alta, dos hilos
  * intentan a la vez el quinto: uno tiene que entrar y el otro tiene que recibir
  * {@code PlanLimitExceededException}. <b>Nunca los dos.</b>
  *
@@ -48,8 +48,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class LimiteDePlanConcurrenteIT extends BaseEscenarioDiferido {
 
-	/** Tope de {@code MAX_MIEMBROS_ACTIVOS} del plan BASICO, sembrado por la migracion V4. */
-	private static final int TOPE_BASICO = 5;
+	/** Tope de {@code MAX_MIEMBROS_ACTIVOS} del plan BASE, sembrado por la migracion V28. */
+	private static final int TOPE_BASE = 5;
 
 	private static final AtomicLong SECUENCIA = new AtomicLong();
 
@@ -76,13 +76,13 @@ class LimiteDePlanConcurrenteIT extends BaseEscenarioDiferido {
 
 		assertThat(planDe(organizationId))
 				.as("el alta self-service contrata el plan por defecto, que es el que tiene tope")
-				.isEqualTo("BASICO");
+				.isEqualTo("BASE");
 
 		// El fundador ya cuenta como miembro. Se completa hasta dejar el cupo en uno.
-		while (miembrosActivos(organizationId) < TOPE_BASICO - 1) {
+		while (miembrosActivos(organizationId) < TOPE_BASE - 1) {
 			insertarMembership(organizationId, cuentaSintetica());
 		}
-		assertThat(miembrosActivos(organizationId)).isEqualTo(TOPE_BASICO - 1);
+		assertThat(miembrosActivos(organizationId)).isEqualTo(TOPE_BASE - 1);
 
 		List<Concurrencia.Resultado<Long>> resultados = Concurrencia.enParalelo(List.of(
 				altaConGate(organizationId, cuentaSintetica()),
@@ -105,8 +105,8 @@ class LimiteDePlanConcurrenteIT extends BaseEscenarioDiferido {
 		// La afirmacion que no depende del orden en que corrieron los hilos, y que es la razon
 		// de ser del test.
 		assertThat(miembrosActivos(organizationId))
-				.as("NUNCA dos: el tope del plan es %s", TOPE_BASICO)
-				.isEqualTo(TOPE_BASICO);
+				.as("NUNCA dos: el tope del plan es %s", TOPE_BASE)
+				.isEqualTo(TOPE_BASE);
 	}
 
 	/**

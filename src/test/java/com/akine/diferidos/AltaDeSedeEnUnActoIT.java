@@ -134,7 +134,7 @@ class AltaDeSedeEnUnActoIT extends BaseEscenarioDiferido {
 	}
 
 	/**
-	 * El plan BASICO del alta self-service permite una sola sede: se pasa a PROFESIONAL por el
+	 * El plan BASE del alta self-service permite una sola sede: se pasa a RED por el
 	 * endpoint real, con una cuenta de plataforma aparte. Mismo atajo y mismo motivo que
 	 * {@code ConsultoriosIT}.
 	 */
@@ -145,7 +145,7 @@ class AltaDeSedeEnUnActoIT extends BaseEscenarioDiferido {
 		Respuesta cambio = post(
 				"/api/v1/organizations/" + sesion.organizationId() + "/subscription/plan-changes",
 				plataforma.token(),
-				"{\"planCode\":\"PROFESIONAL\",\"expectedVersion\":0}");
+				"{\"planCode\":\"RED\",\"expectedVersion\":0}");
 		assertThat(cambio.status())
 				.as("el tenant necesita un plan sin tope de sedes: %s", cambio.body())
 				.isEqualTo(200);

@@ -31,7 +31,7 @@ class PreQaOrganizacionIT extends BaseEscenarioDiferido {
 
 		Respuesta lectura = get(ruta, plataforma.token());
 		assertThat(lectura.status()).as(lectura.body()).isEqualTo(200);
-		assertThat(lectura.texto("planCode")).isEqualTo("BASICO");
+		assertThat(lectura.texto("planCode")).isEqualTo("BASE");
 		assertThat(lectura.json().has("limits"))
 				.as("el consumo de limites es dato del centro y no viaja").isFalse();
 		long version = lectura.json().get("version").asLong();
@@ -43,9 +43,9 @@ class PreQaOrganizacionIT extends BaseEscenarioDiferido {
 		Respuesta cambio = post(
 				"/api/v1/organizations/" + centro.organizationId() + "/subscription/plan-changes",
 				plataforma.token(),
-				"{\"planCode\":\"PROFESIONAL\",\"expectedVersion\":" + version + "}");
+				"{\"planCode\":\"RED\",\"expectedVersion\":" + version + "}");
 		assertThat(cambio.status()).as(cambio.body()).isEqualTo(200);
-		assertThat(get(ruta, plataforma.token()).texto("planCode")).isEqualTo("PROFESIONAL");
+		assertThat(get(ruta, plataforma.token()).texto("planCode")).isEqualTo("RED");
 
 		assertThat(get("/api/v1/organizations/" + centro.organizationId() + "/subscription",
 				plataforma.token()).status())
