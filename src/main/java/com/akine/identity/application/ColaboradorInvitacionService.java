@@ -451,7 +451,8 @@ public class ColaboradorInvitacionService {
 				invitacion.getEmailNormalizado(),
 				invitacion.getExpiraEn(),
 				requiereRegistro,
-				Optional.ofNullable(datosManualesDe(invitacion)).map(DatosAltaManual::perfil).orElse(null));
+				Optional.ofNullable(datosManualesDe(invitacion)).map(DatosAltaManual::perfil).orElse(null),
+				serviciosDelCentro.serviciosDe(invitacion.getOrganizationId()).stream().sorted().toList());
 	}
 
 	/**
