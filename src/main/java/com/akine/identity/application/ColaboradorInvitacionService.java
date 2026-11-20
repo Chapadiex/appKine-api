@@ -676,6 +676,9 @@ public class ColaboradorInvitacionService {
 		Map<String, String> datos = new LinkedHashMap<>();
 		datos.put("organizacionNombre", nombreDeLaOrganizacion(invitacion.getOrganizationId()));
 		datos.put("invitadoPor", nombreDelInvitante(invitadaPorAccountId));
+		if (esAltaDelCentro(invitacion)) {
+			datos.put("altaDeCentro", "si");
+		}
 		notificationOutbox.validarDatosPlantilla(datos);
 
 		notificationOutbox.encolar(new NotificationOutboxPort.Notificacion(
@@ -685,6 +688,19 @@ public class ColaboradorInvitacionService {
 				datos,
 				linkBuilder.enlaceDe(TipoTokenVerificacion.INVITACION, tokenPlano),
 				"invitacion:" + invitacion.getId() + ":" + invitacion.getExpiraEn().toEpochMilli()));
+	}
+
+	/**
+	 * La invitacion del duenio de un centro recien dado de alta (19/11/2026): la emitio la
+	 * plataforma, cuyo administrador no es miembro del centro. A esa persona el correo le da la
+	 * bienvenida a su centro en vez de decirle que alguien la invito "a trabajar". Se mira el
+	 * autor original y no quien reenvia, asi el reenvio dice lo mismo.
+	 */
+	private boolean esAltaDelCentro(ColaboradorInvitacion invitacion) {
+		Long autor = invitacion.getInvitadaPorAccountId();
+		return "ORG_ADMIN".equals(invitacion.getRoleCode())
+				&& autor != null
+				&& !contextDirectory.hasActiveMembership(autor, invitacion.getOrganizationId());
 	}
 
 	private String nombreDeLaOrganizacion(long organizationId) {
