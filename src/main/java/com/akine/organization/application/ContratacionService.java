@@ -153,7 +153,8 @@ public class ContratacionService implements PruebasGratis {
 				contratacionRepository.serviciosDe(organizationId),
 				contratacionRepository.adicionalesDe(organizationId),
 				subscription.getStatus(), subscription.getPruebaHasta(), soloLectura,
-				contratacionRepository.definida(organizationId), subscription.getVersion());
+				contratacionRepository.definida(organizationId),
+				contratacionRepository.nacioEnPrueba(organizationId), subscription.getVersion());
 	}
 
 	@Override

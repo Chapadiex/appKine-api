@@ -33862,6 +33862,11 @@ components:
             type: string
             enum:
             - IA
+        altaPorPlataforma:
+          type: boolean
+          description: "El centro nacio del alta de la plataforma (en prueba gratis),\
+            \ no del autoregistro. Es el que recibe la guia de primeros pasos aunque\
+            \ despues contrate"
         definidaPorPlataforma:
           type: boolean
           description: "El centro lo dio de alta o lo ajusto la plataforma. Sin esto\

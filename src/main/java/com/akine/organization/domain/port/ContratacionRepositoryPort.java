@@ -15,6 +15,12 @@ public interface ContratacionRepositoryPort {
 	/** Si la plataforma eligio la contratacion (alta o cambio); si no, el centro tiene todo. */
 	boolean definida(long organizationId);
 
+	/**
+	 * Si el centro nacio en prueba gratis, que es como lo crea el alta de la plataforma: el
+	 * autoregistro lo crea ACTIVA. Se lee de la primera transicion de la suscripcion.
+	 */
+	boolean nacioEnPrueba(long organizationId);
+
 	/** Centros vigentes en PRUEBA cuyo fin cae en [desde, hasta). */
 	java.util.List<com.akine.organization.spi.PruebasGratis.PruebaEnCurso> pruebasQueTerminanEntre(
 			java.time.Instant desde, java.time.Instant hasta);
