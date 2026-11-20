@@ -12,6 +12,7 @@ import com.akine.organization.spi.Adicional;
 import com.akine.organization.spi.LimitCode;
 import com.akine.organization.spi.PruebasGratis;
 import com.akine.organization.spi.Servicio;
+import com.akine.organization.spi.ServiciosDelCentro;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -33,7 +34,7 @@ import java.util.stream.Collectors;
  * Este servicio guarda y responde.
  */
 @Service
-public class ContratacionService implements PruebasGratis {
+public class ContratacionService implements PruebasGratis, ServiciosDelCentro {
 
 	private final ContratacionRepositoryPort contratacionRepository;
 	private final SubscriptionRepositoryPort subscriptionRepository;
@@ -64,6 +65,12 @@ public class ContratacionService implements PruebasGratis {
 	@Transactional(readOnly = true)
 	public boolean tieneServicio(long organizationId, Servicio servicio) {
 		return contratacionRepository.serviciosDe(organizationId).contains(servicio);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public boolean tiene(long organizationId, Servicio servicio) {
+		return tieneServicio(organizationId, servicio);
 	}
 
 	/** De los centros dados, los que tienen la IA (una consulta para la pagina del listado). */

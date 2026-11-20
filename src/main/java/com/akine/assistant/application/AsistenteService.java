@@ -95,16 +95,23 @@ public class AsistenteService {
 		}
 	}
 
+	/** Sin pantalla actual: igual que {@link #consultar(ActorDelAsistente, long, String, List, Long, String)}. */
+	public RespuestaDelAsistente consultar(ActorDelAsistente actor, long consultorioId, String pregunta,
+			List<TurnoPrevio> historial, Long personaId) {
+		return consultar(actor, consultorioId, pregunta, historial, personaId, null);
+	}
+
 	/**
-	 * @param personaId la persona que el usuario eligio entre las opciones de una aclaracion, o
-	 *                  {@code null}
+	 * @param personaId  la persona que el usuario eligio entre las opciones de una aclaracion, o
+	 *                   {@code null}
+	 * @param rutaActual la pantalla desde la que se pregunta; el manual prefiere su ficha, o {@code null}
 	 * @throws AsistenteDeshabilitadoException si el interruptor esta apagado (409)
 	 * @throws AccessDeniedException sin contexto de organizacion o sin {@code asistente:use} (403)
 	 * @throws SedeNoEncontradaException si la sede no es de la organizacion (404)
 	 * @throws com.akine.assistant.domain.exception.ModeloNoDisponibleException si el modelo no responde (503)
 	 */
 	public RespuestaDelAsistente consultar(ActorDelAsistente actor, long consultorioId, String pregunta,
-			List<TurnoPrevio> historial, Long personaId) {
+			List<TurnoPrevio> historial, Long personaId, String rutaActual) {
 		if (!ajustes.enabled()) {
 			throw new AsistenteDeshabilitadoException();
 		}
@@ -128,8 +135,12 @@ public class AsistenteService {
 		RangoDeDias rango;
 		try {
 			rango = rango(interpretacion, pregunta, LocalDate.now(clock.withZone(zona)));
-			respuesta = responder(enLaSede, interpretacion, pregunta, historial == null ? List.of() : historial,
-					rango, zona, sede.name(), personaId);
+			// El manual va antes que cualquier desvio a la consulta libre: "¿cómo cobro?" no es un SELECT.
+			respuesta = interpretacion.intencion() == Intencion.COMO_SE_HACE
+					&& herramientas.containsKey(Intencion.COMO_SE_HACE)
+							? delManual(enLaSede, interpretacion, pregunta, rango, zona, rutaActual)
+							: responder(enLaSede, interpretacion, pregunta, historial == null ? List.of() : historial,
+									rango, zona, sede.name(), personaId);
 		}
 		catch (RuntimeException e) {
 			// La consulta pudo haber leido datos antes de fallar (la busqueda de persona): se audita igual.
@@ -141,6 +152,31 @@ public class AsistenteService {
 		}
 		auditar(organizationId, consultorioId, actor.accountId(), respuesta, rango);
 		return respuesta;
+	}
+
+	/**
+	 * Como se usa AKINE: la herramienta del manual elige un pasaje (o ninguno) y la respuesta lo cita
+	 * textual. Sin pasaje, se dice que no esta en el manual y se ofrecen los mas parecidos: nunca se
+	 * redacta una explicacion.
+	 */
+	private RespuestaDelAsistente delManual(ActorDelAsistente actor, Interpretacion interpretacion, String pregunta,
+			RangoDeDias rango, ZoneId zona, String rutaActual) {
+		ResultadoDeHerramienta resultado = ejecutar(Intencion.COMO_SE_HACE, actor, new PedidoDeHerramienta(null, null,
+				pregunta, rango.desde(), rango.hasta(), zona, null, rutaActual));
+		if (resultado.sinPermiso()) {
+			return simple(Plantillas.SIN_PERMISO, interpretacion, Resultado.SIN_PERMISO);
+		}
+		if (resultado.advertencias().contains(ClavesDeFila.MANUAL_SIN_MODELO)) {
+			return simple(Plantillas.MANUAL_SIN_MODELO, interpretacion, Resultado.FUERA_DE_ALCANCE);
+		}
+		if (resultado.filas().isEmpty()) {
+			return new RespuestaDelAsistente(Plantillas.sinPasajeDelManual(resultado.advertencias()), interpretacion,
+					List.of(), List.of(), null, List.of(), Resultado.FUERA_DE_ALCANCE);
+		}
+		String cuerpo = Plantillas.texto(Intencion.COMO_SE_HACE, null, null, null, rango, zona, null,
+				resultado.filas(), Instant.now(clock));
+		return new RespuestaDelAsistente(cuerpo, interpretacion, resultado.filas(), List.of(), resultado.enlace(),
+				List.of(), Resultado.RESPONDIDA);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -462,6 +498,11 @@ public class AsistenteService {
 		if (respuesta.consulta() != null) {
 			// Solo que fue libre: el SELECT puede llevar el nombre de una persona.
 			detalles.put("consulta", "LIBRE");
+		}
+		if (!respuesta.filas().isEmpty() && respuesta.filas().getFirst().get(ClavesDeFila.MANUAL_FICHA) != null) {
+			// El pasaje citado, para medir el manual: la pregunta no se guarda nunca.
+			detalles.put("manual", respuesta.filas().getFirst().get(ClavesDeFila.MANUAL_FICHA) + "#"
+					+ respuesta.filas().getFirst().get(ClavesDeFila.MANUAL_TITULO));
 		}
 		if (respuesta.interpretacion().reporte() != null) {
 			detalles.put("reporte", respuesta.interpretacion().reporte());

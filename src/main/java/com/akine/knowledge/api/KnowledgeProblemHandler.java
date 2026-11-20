@@ -5,6 +5,7 @@ import com.akine.knowledge.domain.exception.BibliotecaDeshabilitadaException;
 import com.akine.knowledge.domain.exception.ConsultaOcupadaException;
 import com.akine.knowledge.domain.exception.LibroArchivoNoAceptadoException;
 import com.akine.knowledge.domain.exception.LibroDuplicadoException;
+import com.akine.knowledge.domain.manual.FichaNoEncontradaException;
 import com.akine.knowledge.domain.exception.LibroEnProcesoException;
 import com.akine.knowledge.domain.exception.LibroNoEncontradoException;
 import com.akine.platform.spi.problem.ProblemType;
@@ -36,6 +37,11 @@ public class KnowledgeProblemHandler {
 	public ProblemDetail handleNoEncontrado(LibroNoEncontradoException exception) {
 		return problema(HttpStatus.NOT_FOUND, ProblemType.LIBRO_NO_ENCONTRADO,
 				"Libro no encontrado", exception.getMessage());
+	}
+
+	@ExceptionHandler(FichaNoEncontradaException.class)
+	public ProblemDetail handleFichaNoEncontrada(FichaNoEncontradaException exception) {
+		return problema(HttpStatus.NOT_FOUND, ProblemType.NOT_FOUND, "Ficha no encontrada", exception.getMessage());
 	}
 
 	@ExceptionHandler(LibroDuplicadoException.class)
