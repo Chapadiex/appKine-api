@@ -22,7 +22,7 @@ paga el paciente).
 
 ## Tareas
 
-### Firmar un convenio
+### Dar de alta un convenio (Firmar un convenio)
 
 ![El panel Nuevo convenio de esta sede, con el financiador, el plan, el código, la modalidad, la vigencia y el botón Firmar convenio marcados](captura:convenios/firmar-convenio)
 

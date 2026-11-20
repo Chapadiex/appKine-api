@@ -4,8 +4,12 @@
  * Cada pregunta de manual-preguntas.json tiene su pasaje esperado ("ficha#Título de la tarea") o
  * NINGUNO. Cuenta aciertos, abstenciones correctas y latencia. No guarda las respuestas.
  *
+ * Cada pregunta corre con la cuenta que usa esa pantalla: por defecto la administradora; las marcadas
+ * "cuenta": "profesional" (atencion clinica, que pide sesion:register) con la profesional.
+ *
  * Uso:
- *   AKINE_API=http://localhost:8096 AKINE_EMAIL=... AKINE_PASSWORD=... node manual-evaluar.mjs
+ *   AKINE_API=http://localhost:8096 AKINE_EMAIL=... AKINE_PASSWORD=... \
+ *   AKINE_EMAIL_PROFESIONAL=... AKINE_PASSWORD_PROFESIONAL=... AKINE_ORG_PROFESIONAL=<id> node manual-evaluar.mjs
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -26,27 +30,46 @@ async function json(ruta, opciones = {}) {
   return texto ? JSON.parse(texto) : null;
 }
 
-const login = await json('/api/v1/auth/login', {
-  method: 'POST',
-  body: JSON.stringify({ email: process.env.AKINE_EMAIL, password: process.env.AKINE_PASSWORD }),
-});
-const [contexto] = await json('/api/v1/me/contexts', {
-  headers: { Authorization: `Bearer ${login.accessToken}` },
-});
-const sesion = await json('/api/v1/auth/context', {
-  method: 'POST',
-  headers: { Authorization: `Bearer ${login.accessToken}` },
-  body: JSON.stringify({ organizationId: contexto.organizationId, consultorioId: contexto.consultorioId }),
-});
+async function sesion(email, password, organizationId) {
+  const login = await json('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+  const contextos = await json('/api/v1/me/contexts', {
+    headers: { Authorization: `Bearer ${login.accessToken}` },
+  });
+  // Una cuenta puede trabajar en varios centros: se elige el indicado, o el primero.
+  const contexto =
+    contextos.find((c) => String(c.organizationId) === String(organizationId)) ?? contextos[0];
+  const elegido = await json('/api/v1/auth/context', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${login.accessToken}` },
+    body: JSON.stringify({ organizationId: contexto.organizationId, consultorioId: contexto.consultorioId }),
+  });
+  return { token: elegido.accessToken, consultorioId: contexto.consultorioId };
+}
+
+const cuentas = {
+  administradora: await sesion(process.env.AKINE_EMAIL, process.env.AKINE_PASSWORD),
+  profesional: process.env.AKINE_EMAIL_PROFESIONAL
+    ? await sesion(
+        process.env.AKINE_EMAIL_PROFESIONAL,
+        process.env.AKINE_PASSWORD_PROFESIONAL,
+        process.env.AKINE_ORG_PROFESIONAL,
+      )
+    : null,
+};
 
 let aciertos = 0;
 let total = 0;
 const tiempos = [];
-for (const { pregunta, esperado } of preguntas) {
+for (const { pregunta, esperado, cuenta } of preguntas) {
+  const quien = cuentas[cuenta ?? 'administradora'];
+  if (!quien) {
+    console.log(`SALTEADA (falta la cuenta ${cuenta}) ${pregunta}`);
+    continue;
+  }
   const inicio = performance.now();
-  const r = await json(`/api/v1/consultorios/${contexto.consultorioId}/asistente/consultas`, {
+  const r = await json(`/api/v1/consultorios/${quien.consultorioId}/asistente/consultas`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${sesion.accessToken}` },
+    headers: { Authorization: `Bearer ${quien.token}` },
     body: JSON.stringify({ pregunta }),
   });
   tiempos.push(performance.now() - inicio);

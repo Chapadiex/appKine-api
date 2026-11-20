@@ -35,7 +35,7 @@ En la vista **Día** podés elegir columnas por profesional (:icono[pacientes]:)
 (:icono[edificio]:). En **Mes** cada día muestra cuántos turnos tiene; tocalo para abrir ese día.
 Para encontrar a alguien, escribí su nombre o DNI en **Buscar paciente o DNI**.
 
-### Dar un turno
+### Dar un turno a un paciente
 
 ![El panel Nuevo turno, con el paciente, la prestación, los horarios disponibles y el botón Confirmar turno marcados](captura:agenda/nuevo-turno)
 
