@@ -1,10 +1,12 @@
 package com.akine.organization.api.dto;
 
 import com.akine.organization.domain.OrganizationListing;
+import com.akine.organization.spi.Servicio;
 import com.akine.organization.domain.SubscriptionStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Un centro en el listado de la administracion de plataforma.
@@ -42,7 +44,9 @@ public record PlatformOrganizationResponse(
 				example = "2026-12-18T03:00:00Z")
 		Instant pruebaHasta,
 		@Schema(description = "Tiene el adicional de IA contratado", example = "false")
-		boolean ia) {
+		boolean ia,
+		@Schema(description = "Servicios contratados, en orden fijo", example = "[\"KINESIOLOGIA\", \"ACTIVIDADES\"]")
+		List<Servicio> servicios) {
 
 	public static PlatformOrganizationResponse from(OrganizationListing listing) {
 		return new PlatformOrganizationResponse(
@@ -54,6 +58,7 @@ public record PlatformOrganizationResponse(
 				listing.planName(),
 				listing.createdAt(),
 				listing.pruebaHasta(),
-				listing.ia());
+				listing.ia(),
+				listing.servicios().stream().sorted().toList());
 	}
 }
