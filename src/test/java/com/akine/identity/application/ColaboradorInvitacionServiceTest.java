@@ -141,7 +141,7 @@ class ColaboradorInvitacionServiceTest {
 				linkBuilder, notificationOutbox, passwordHasher, new PasswordPolicy(), auditTrail,
 				clock, new TerminosService(
 						com.akine.identity.domain.TerminosSettings.sinTerminos(), aceptacion -> aceptacion),
-				ofertaDirectory);
+				ofertaDirectory, orgId -> java.util.EnumSet.allOf(com.akine.organization.spi.Servicio.class));
 	}
 
 	@Test

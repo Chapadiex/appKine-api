@@ -25,6 +25,7 @@ import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.InvitationMembershipCommand;
 import com.akine.organization.spi.MembershipProvisioning;
 import com.akine.organization.spi.OrganizationDirectory;
+import com.akine.organization.spi.ServiciosDelCentro;
 import com.akine.organization.spi.OrganizationSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
@@ -124,6 +125,7 @@ public class ColaboradorInvitacionService {
 	private final IdentityClock clock;
 	private final TerminosService terminosService;
 	private final OfertaDirectory ofertaDirectory;
+	private final ServiciosDelCentro serviciosDelCentro;
 
 	@SuppressWarnings("java:S107")
 	public ColaboradorInvitacionService(
@@ -142,7 +144,8 @@ public class ColaboradorInvitacionService {
 			AuditTrail auditTrail,
 			IdentityClock clock,
 			TerminosService terminosService,
-			OfertaDirectory ofertaDirectory) {
+			OfertaDirectory ofertaDirectory,
+			ServiciosDelCentro serviciosDelCentro) {
 
 		this.invitacionRepository = invitacionRepository;
 		this.cuentaRepository = cuentaRepository;
@@ -160,6 +163,7 @@ public class ColaboradorInvitacionService {
 		this.clock = clock;
 		this.terminosService = terminosService;
 		this.ofertaDirectory = ofertaDirectory;
+		this.serviciosDelCentro = serviciosDelCentro;
 	}
 
 	// =================================================================================

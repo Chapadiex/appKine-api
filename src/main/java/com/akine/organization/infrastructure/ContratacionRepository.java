@@ -3,6 +3,7 @@ package com.akine.organization.infrastructure;
 import com.akine.organization.domain.port.ContratacionRepositoryPort;
 import com.akine.organization.spi.Adicional;
 import com.akine.organization.spi.Servicio;
+import com.akine.organization.spi.ServiciosDelCentro;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -27,7 +28,7 @@ import java.util.Set;
  * auditoria y en {@code subscription_transition}.
  */
 @Repository
-class ContratacionRepository implements ContratacionRepositoryPort {
+class ContratacionRepository implements ContratacionRepositoryPort, ServiciosDelCentro {
 
 	private final JdbcTemplate jdbc;
 
