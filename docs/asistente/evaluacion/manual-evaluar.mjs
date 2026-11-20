@@ -17,7 +17,11 @@ import { fileURLToPath } from 'node:url';
 
 const API = process.env.AKINE_API ?? 'http://localhost:8080';
 const preguntas = JSON.parse(
-  readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'manual-preguntas.json'), 'utf8'),
+  // AKINE_PREGUNTAS=manual-preguntas-control.json mide el set de control, que no se usó para afinar.
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), process.env.AKINE_PREGUNTAS ?? 'manual-preguntas.json'),
+    'utf8',
+  ),
 );
 
 async function json(ruta, opciones = {}) {

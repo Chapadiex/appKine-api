@@ -19,3 +19,25 @@ Criterio de aceptación del plan: 24/30 (80 %) y ningún pasaje de una ficha inv
 **Probado y descartado:** ponderar las palabras por IDF empeoró dos preguntas (arqueo, llegada):
 las secciones fijas de cada ficha llevan los sinónimos de toda la ficha y el IDF las favorecía. Se
 revirtió.
+
+## Set de control (no usado para afinar)
+
+`manual-preguntas-control.json`: 14 preguntas nuevas escritas después de cerrar los ajustes, medidas
+una sola vez y sin tocar nada a partir del resultado (`AKINE_PREGUNTAS=manual-preguntas-control.json`).
+Sirve para saber cuánto del 34/34 es sobreajuste al set de arriba.
+
+| Fecha | Correctas (tarea exacta) | Ficha correcta | Abstenciones bien | Mediana |
+|---|---|---|---|---|
+| 20/11/2026 | 11/14 (79 %) | 12/14 (86 %) | 3/3 | 2,0 s |
+
+Fallas, sin corregir a propósito para que el set siga midiendo:
+
+- «¿dónde veo quién viene hoy al consultorio?» → «Para qué sirve» de la Recepción del día: la ficha
+  es la correcta y la respuesta sirve, pero no es la tarea esperada.
+- «¿cómo saco un box de servicio porque se rompió la camilla?» → el interpretador la clasifica
+  FUERA_DE_ALCANCE y no llega al manual.
+- «¿cómo corrijo una sesión que ya cerré?» → «Cerrar la atención» en vez de la enmienda.
+
+Lectura: el set afinado sobreestima; lo esperable en uso real es ~80 % de tarea exacta y ~86 % de
+ficha correcta, sin citar nunca algo inventado ni algo que la persona no puede ver. Mejorarlo es
+sumar preguntas reales al set de arriba y volver a medir este de control.
