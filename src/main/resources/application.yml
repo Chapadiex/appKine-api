@@ -339,11 +339,12 @@ akine:
       # login con recordarme=true). Misma regla: la rotacion no la extiende. >= refresh-ttl.
       refresh-ttl-recordada: ${AKINE_REFRESH_TTL_RECORDADA:30d}
     terminos:
-      # Version de los terminos y condiciones que el alta self-service y la aceptacion de
-      # invitacion con cuenta nueva exigen aceptar (DP-45). Vacia: no se exige nada. El texto
-      # legal no vive aca: url apunta a donde se publique.
-      version-vigente: ${AKINE_TERMINOS_VERSION:}
-      url: ${AKINE_TERMINOS_URL:}
+      # Version de los terminos y condiciones (DP-45, 19/11/2026). Se exige SIEMPRE: al crear
+      # una cuenta, al pedir la prueba de 30 dias y, cuando cambia, a toda cuenta que todavia no
+      # acepto la nueva (403 terminos-pendientes hasta aceptarla). El texto vive en /terminos de
+      # la web: cambiarlo y subir esta version van en el mismo despliegue. Vacia solo en tests.
+      version-vigente: ${AKINE_TERMINOS_VERSION:2026-11-19}
+      url: ${AKINE_TERMINOS_URL:/terminos}
 
   clinical:
     adjuntos:
