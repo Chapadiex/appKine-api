@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.179.0
+  version: 0.181.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -57,6 +57,8 @@ tags:
   name: Historia clinica
 - description: Dictado por voz en los campos de texto
   name: Dictado
+- description: Manual de usuario por pantalla
+  name: Manual
 - description: Deuda derivada de prestaciones. No es el cobro ni la caja (M18)
   name: Obligaciones
 - description: "Bloqueo, desbloqueo y baja logica de cuentas de la propia organizacion"
@@ -19203,6 +19205,184 @@ paths:
       summary: Ver el timeline de una Historia Clinica
       tags:
       - Timeline clinico
+  /api/v1/manual:
+    get:
+      description: "Las fichas que la persona puede ver en la sede activa, por grupo\
+        \ del menu, con los titulos de sus tareas."
+      operationId: verIndiceDelManual
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IndiceDelManualResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/IndiceDelManualResponse"
+          description: "Indice, posiblemente vacio"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin organizacion y sede en contexto
+      summary: Indice del manual
+      tags:
+      - Manual
+  /api/v1/manual/busqueda:
+    get:
+      description: "Hasta 10 pasajes de las fichas visibles, del mas al menos parecido.\
+        \ Con `ruta` se prefieren los de la pantalla actual."
+      operationId: buscarEnElManual
+      parameters:
+      - in: query
+        name: q
+        required: true
+        schema:
+          type: string
+          maxLength: 200
+          minLength: 2
+      - in: query
+        name: ruta
+        required: false
+        schema:
+          type: string
+          maxLength: 300
+          minLength: 0
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PasajeDelManualResponse"
+            application/problem+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PasajeDelManualResponse"
+          description: "Pasajes, posiblemente ninguno"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Consulta de menos de 2 o mas de 200 caracteres
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin organizacion y sede en contexto
+      summary: Buscar en el manual
+      tags:
+      - Manual
+  /api/v1/manual/contexto:
+    get:
+      description: La ficha de la ruta del frontend que la persona esta mirando; los
+        segmentos con parametros y la query se resuelven. 204 si la pantalla no tiene
+        ficha visible.
+      operationId: verFichaDeLaRuta
+      parameters:
+      - description: "Ruta del frontend, por ejemplo /caja o /pacientes/12/resumen"
+        in: query
+        name: ruta
+        required: true
+        schema:
+          type: string
+          maxLength: 300
+          minLength: 0
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FichaDelManualResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/FichaDelManualResponse"
+          description: La ficha de la pantalla
+        "204":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FichaDelManualResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/FichaDelManualResponse"
+          description: La pantalla no tiene ficha
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ruta en blanco o de mas de 300 caracteres
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin organizacion y sede en contexto
+      summary: Ficha de una pantalla
+      tags:
+      - Manual
+  /api/v1/manual/fichas/{id}:
+    get:
+      description: Una ficha completa. 404 si no existe o la persona no la puede ver.
+      operationId: verFichaDelManual
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FichaDelManualResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/FichaDelManualResponse"
+          description: La ficha
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin organizacion y sede en contexto
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`not-found`: no existe o no es visible"
+      summary: Ficha del manual
+      tags:
+      - Manual
   /api/v1/me:
     get:
       description: |-
@@ -33482,6 +33662,13 @@ components:
           example: ¿Juan vino esta semana?
           maxLength: 300
           minLength: 0
+        rutaActual:
+          type: string
+          description: Ruta del frontend desde la que se pregunta. Las preguntas sobre
+            como usar AKINE prefieren la ficha del manual de esa pantalla
+          example: /caja
+          maxLength: 300
+          minLength: 0
       required:
       - pregunta
     ConsultaEventoAclaracion:
@@ -37519,6 +37706,22 @@ components:
         version:
           type: integer
           format: int64
+    EntradaDelManualResponse:
+      type: object
+      description: "Una ficha del indice, con los titulos de sus tareas"
+      properties:
+        id:
+          type: string
+        tareas:
+          type: array
+          items:
+            type: string
+        titulo:
+          type: string
+      required:
+      - id
+      - tareas
+      - titulo
     EquipoDelCasoRequest:
       type: object
       description: Reemplazo completo del equipo tratante de un caso
@@ -38832,6 +39035,41 @@ components:
       required:
       - origen
       - version
+    FichaDelManualResponse:
+      type: object
+      description: Ficha del manual de una pantalla
+      properties:
+        grupo:
+          type: string
+        id:
+          type: string
+        markdown:
+          type: string
+          description: "Cuerpo en Markdown: titulos, listas, negrita, avisos `> [!importante]`,\
+            \ iconos `:icono[x]:` y capturas `![alt](captura:ficha/nombre)`"
+        relacionadas:
+          type: array
+          items:
+            $ref: "#/components/schemas/FichaRelacionadaResponse"
+        titulo:
+          type: string
+      required:
+      - grupo
+      - id
+      - markdown
+      - relacionadas
+      - titulo
+    FichaRelacionadaResponse:
+      type: object
+      description: Ficha relacionada
+      properties:
+        id:
+          type: string
+        titulo:
+          type: string
+      required:
+      - id
+      - titulo
     FijarPoliticaDeEnmienda:
       type: object
       description: Dias desde el cierre en que una sesion se puede enmendar.
@@ -39269,6 +39507,19 @@ components:
           minLength: 0
       required:
       - reason
+    GrupoDelManualResponse:
+      type: object
+      description: Un grupo del menu con sus fichas
+      properties:
+        fichas:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntradaDelManualResponse"
+        nombre:
+          type: string
+      required:
+      - fichas
+      - nombre
     GuardarBorrador:
       type: object
       description: "Guardado parcial de la atencion. La version es obligatoria: sin\
@@ -39952,6 +40203,16 @@ components:
           type: string
           description: "Moneda ISO 4217, presente solo cuando hay importe"
           example: ARS
+    IndiceDelManualResponse:
+      type: object
+      description: "Indice del manual, por grupo"
+      properties:
+        grupos:
+          type: array
+          items:
+            $ref: "#/components/schemas/GrupoDelManualResponse"
+      required:
+      - grupos
     IngresoSinInscripcion:
       type: object
       description: "Inscribe y marca en un solo acto. Es la unica operacion de esta\
@@ -40217,6 +40478,7 @@ components:
           - ASISTENTES_CLASE
           - REPORTE
           - BUSCAR_PERSONA
+          - COMO_SE_HACE
           - FUERA_DE_ALCANCE
         periodo:
           type: string
@@ -42923,6 +43185,31 @@ components:
           type: string
         tipoDocumento:
           type: string
+    PasajeDelManualResponse:
+      type: object
+      description: Pasaje del manual encontrado por la busqueda
+      properties:
+        enlace:
+          type: string
+          description: "Ruta de la pantalla, o null si todas sus rutas llevan parametros"
+        fichaId:
+          type: string
+        fichaTitulo:
+          type: string
+        fragmento:
+          type: string
+          description: "El comienzo del pasaje, sin Markdown"
+          maxLength: 240
+        pasajeId:
+          type: string
+        titulo:
+          type: string
+      required:
+      - fichaId
+      - fichaTitulo
+      - fragmento
+      - pasajeId
+      - titulo
     Pase:
       type: object
       description: "Pase comprado por una Persona (RF-M29-002). Nombre, precio, moneda,\

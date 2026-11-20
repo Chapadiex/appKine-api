@@ -10,6 +10,12 @@ package com.akine.assistant.spi;
  */
 public final class ClavesDeFila {
 
+	// --- COMO_SE_HACE: un pasaje del manual, citado textual ---
+	public static final String MANUAL_FICHA = "manualFicha";
+	public static final String MANUAL_TITULO = "manualTitulo";
+	public static final String MANUAL_TEXTO = "manualTexto";
+	public static final String MANUAL_ENLACE = "manualEnlace";
+
 	// --- BUSCAR_PERSONA ---
 	public static final String PERSONA_ID = "personaId";
 	public static final String NOMBRE = "nombre";
