@@ -91,3 +91,19 @@ pedido queda en el pedido.
 8. El caso que rompe: la versión cambia con 300 sesiones abiertas. Cada una recibe 403 en su
    siguiente pedido, la web la manda a aceptar y sigue con la misma sesión; nada se pierde salvo
    un formulario a medio guardar, que el 403 informa como cualquier error.
+
+## Cómo quedó (backend)
+
+- Contrato **0.183.0**: `getMisTerminos`, `aceptarMisTerminos`, `aceptaTerminos` y
+  `versionTerminos` en `SolicitudDePruebaRequest`, y el problem type `terminos-pendientes`.
+  Migración **V32**.
+- `TerminosVigentes` quedó como interfaz en `platform.spi.terminos`; `IdentityConfig` la arma
+  desde `TerminosSettings`.
+- El interceptor y su configuración viven en `identity.infrastructure` (la regla de ArchUnit
+  pide `@Configuration` ahí).
+- `/api/v1/me/terminos` se sumó a las rutas exentas de `TenantContextFilter`: con un token
+  `pre_context` (recién iniciada la sesión, sin sede elegida) respondía `missing-tenant-context`
+  y la cuenta pendiente no tenía cómo aceptar.
+- ITs: `SolicitudDePruebaTerminosIT` y `ReaceptacionDeTerminosIT` (en `com.akine.diferidos`, para
+  reusar `BaseEscenarioDiferido`). Refresh y logout no se ejercen: los cubre el prefijo
+  `/api/v1/auth/`.
