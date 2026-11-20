@@ -121,7 +121,10 @@ public class TenantContextFilter extends OncePerRequestFilter {
 			"/api/v1/me",
 			// DP-45: los terminos vigentes son publicos y no son de ningun tenant. Sin esto, la
 			// pantalla que los lea con un token pre_context recibiria 403 missing-tenant-context.
-			"/api/v1/terms");
+			"/api/v1/terms",
+			// 19/11/2026: los terminos de la propia cuenta. Se aceptan apenas se inicia sesion,
+			// antes de elegir sede: la aceptacion es de la persona, no de un tenant.
+			"/api/v1/me/terminos");
 
 	/**
 	 * Prefijos exceptuados. Actuator y la documentacion del contrato son infraestructura, no

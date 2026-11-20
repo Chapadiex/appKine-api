@@ -23,10 +23,12 @@ import java.time.Instant;
 @Table(name = "aceptacion_terminos")
 public class AceptacionTerminos {
 
-	/** Por que camino nacio la cuenta que acepto. */
+	/** Por que camino se acepto: al nacer la cuenta, o despues de iniciar sesion. */
 	public enum Origen {
 		REGISTRO,
-		INVITACION
+		INVITACION,
+		/** La cuenta ya existia y acepto una version nueva (19/11/2026). */
+		REACEPTACION
 	}
 
 	@Id

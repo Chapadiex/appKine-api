@@ -140,7 +140,8 @@ class ColaboradorInvitacionServiceTest {
 				organizationDirectory, consultorioDirectory, permissionGuard, tokenGenerator,
 				linkBuilder, notificationOutbox, passwordHasher, new PasswordPolicy(), auditTrail,
 				clock, new TerminosService(
-						com.akine.identity.domain.TerminosSettings.sinTerminos(), aceptacion -> aceptacion),
+						com.akine.identity.domain.TerminosSettings.sinTerminos(),
+						org.mockito.Mockito.mock(com.akine.identity.domain.port.AceptacionTerminosRepositoryPort.class)),
 				ofertaDirectory);
 	}
 
