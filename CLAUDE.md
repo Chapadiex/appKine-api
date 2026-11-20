@@ -147,6 +147,10 @@ Nunca asumir commit atómico entre repos. Ver `../CLAUDE.md`.
 - **ArchUnit se corre en cada cambio que toque estructura de módulos.**
 - **Baja lógica siempre.** Nunca `DELETE` sobre información histórica relevante.
 - **Datos sintéticos únicamente.** Jamás datos reales de pacientes en tests, seeds o fixtures.
+- **Manual de usuario (20/11/2026):** las fichas de `src/main/resources/manual/` son la ayuda de
+  cada pantalla y la base de `COMO_SE_HACE` del asistente, que las cita textual. Un cambio de
+  comportamiento visible actualiza su ficha en el mismo PR. Formato y reglas de redacción:
+  `docs/diseno/AKINE-manual-de-usuario.md` §5.1 y §5.7; `CargadorDelManualTest` valida todas.
 - **Sin secretos versionados.**
 - `main` siempre desplegable. Trabajo incompleto detrás de feature flag.
 - Commits y PRs se escriben en prosa normal, no en caveman.
