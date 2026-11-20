@@ -1,7 +1,8 @@
 # AKINE — Manual de usuario contextual y base de conocimiento del asistente
 
 > Diseño del 19/11/2026. Enfoque elegido por el usuario: **A — fichas por pantalla que también lee
-> la IA**. Estado: borrador para aprobación.
+> la IA**. Estado: **aprobado por el usuario el 19/11**, con el agregado de capturas marcadas e
+> íconos (§5.7).
 
 ## 1. Intención
 
@@ -30,8 +31,9 @@ Si el manual está mal, está mal en los dos lados y se corrige en un solo lugar
 
 **No-objetivos (v1)**
 
-- Recorridos guiados que resaltan botones (enfoque C): etapa posterior, si se pide.
-- Capturas de pantalla dentro de las fichas: envejecen con cada cambio visual.
+- Recorridos guiados que resaltan botones **en vivo** (enfoque C): etapa posterior, si se pide.
+  Las capturas marcadas (§5.7) cubren la necesidad sin depender del DOM en tiempo real.
+- Capturas en modo oscuro y en móvil: v1 captura en claro y en escritorio.
 - Editar el manual desde la aplicación (enfoque B, descartado).
 - Manual de la consola de plataforma: es de un solo usuario y queda para después.
 - Traducciones.
@@ -224,7 +226,67 @@ y el id elegido, sin datos del centro.
 - Accesibilidad: el panel es un `dialog` no modal con foco gestionado, Escape lo cierra y cumple
   WCAG AA con los tokens de la norma de diseño.
 
-### 5.6 Contrato y versiones
+### 5.7 Capturas marcadas e íconos
+
+Pedido del usuario (19/11), al aprobar: **capturas de pantalla, íconos que ayuden a entender y
+marcas sobre la imagen que señalen de qué se habla.**
+
+**Las capturas se generan, no se sacan a mano.** Una captura hecha a mano envejece sin que nadie
+lo note. Una generada por script se rehace con un comando y, cuando un elemento marcado deja de
+existir, **el script falla**: avisa justo el caso que rompe el diseño (§9.8).
+
+- **Definición**, en la web, porque los selectores son conocimiento de la web:
+  `appKine-web/e2e/manual/capturas/<ficha>.capturas.ts`. Cada captura declara:
+  - `ficha` y `nombre`, por ejemplo `caja-diaria` / `abrir-caja`;
+  - `ruta` y una función `preparar(page)` para llegar al estado: abrir un diálogo, elegir una fila;
+  - `recorte`: el selector de la zona a capturar. **No va la pantalla entera**, porque en un panel
+    de ~420 px una captura de 1280 px queda ilegible;
+  - `marcas`: lista de `{ selector, numero }` u otras formas (§ abajo).
+- **Las marcas se queman en la imagen.** Antes de capturar, el script inyecta una capa: un recuadro
+  de resalte alrededor del elemento y un **círculo numerado** al lado. **Los números coinciden con
+  los pasos de la tarea**: el paso 2 dice «Tocá **Abrir caja**» y en la imagen hay un ② sobre ese
+  botón. Formas posibles: `recuadro` (por defecto), `flecha` y `zona` (para un área, sin número).
+  Colores con los tokens de la norma de diseño, contraste AA contra la captura.
+- **Datos**: la pila aislada de E2E con datos **sintéticos** (centro y pacientes de ejemplo,
+  nunca reales), siempre la misma siembra, para que las capturas no cambien entre corridas.
+  Tema claro, 1280×800 y escala 2× para que se lea nítido. Formato WebP.
+- **Dónde quedan**: `appKine-web/public/manual/<ficha>/<nombre>.webp`, como archivos estáticos.
+  **No entran al bundle**: se descargan cuando se abre la ficha. Estimado: ~60 fichas × ~3 capturas
+  × ~40 KB ≈ 7 MB en el repo.
+- **Comandos**: `npm run manual:capturas` (o `-- caja-diaria` para una sola) las regenera, y
+  `npm run manual:verificar` comprueba sin escribir que todo selector marcado sigue existiendo y
+  que **cada referencia de las fichas tiene definición y viceversa**. Lee las fichas de
+  `../appKine-api/src/main/resources/manual/`. Se corren a mano, como hoy los E2E.
+
+**En la ficha**, una captura se referencia por nombre, y la web la resuelve a la URL del archivo:
+
+```markdown
+### Abrir la caja
+![La caja cerrada, con el botón Abrir caja marcado](captura:caja-diaria/abrir-caja)
+1. Entrá a :icono[caja]: **Caja diaria**.
+2. Tocá **Abrir caja** ②.
+```
+
+- El texto alternativo es obligatorio (accesibilidad) y describe qué se ve y qué está marcado.
+- **Tocar la imagen la amplía** a pantalla completa, con Escape para cerrar.
+- El asistente, al citar una tarea, devuelve el pasaje **con su captura**: la plantilla incluye la
+  referencia y la web la muestra igual que en el panel.
+
+**Íconos**, con el mismo `app-icono` de la aplicación:
+
+- **Íconos de la interfaz dentro del texto**, `:icono[nombre]:`: el texto muestra **el mismo
+  dibujo** que la persona ve en el botón. «Tocá :icono[filtro]: para filtrar» se entiende sin
+  buscar la palabra.
+- **Ícono por sección de la ficha**, siempre el mismo: «Para qué sirve», «Tareas», «Estados»,
+  «Problemas comunes» y «Relacionadas». Se aprende una vez y sirve para escanear la ficha.
+- **Ícono por ficha** en el índice, el mismo de su grupo del menú.
+- **Avisos dentro de la ficha**: `> [!importante]` y `> [!consejo]`, con ícono y color propio,
+  para lo que no hay que pasar por alto («cerrar la caja no se puede deshacer»).
+- Los íconos que falten se dibujan como trazos nuevos **en un mapa propio del manual**, que se
+  carga diferido con el panel: `TRAZOS` de `app-icono` está en el bundle inicial y no tiene margen.
+- Un `:icono[x]:` que no existe hace fallar `manual:verificar`.
+
+### 5.8 Contrato y versiones
 
 Cambio **aditivo**: cuatro operaciones `GET` de manual, `COMO_SE_HACE` en el enum de intención, y
 `rutaActual` opcional en el pedido de consulta. Minor nuevo del contrato, que se confirma al
@@ -235,7 +297,8 @@ rebasear por la rama de acciones. Sin migración.
 | # | PR | Repo | Contenido |
 |---|---|---|---|
 | 1 | Manual: carga, índice y API | api | `CargadorDelManual`, `IndiceDelManual`, `ManualController`, contrato y **las fichas** |
-| 2 | Panel de ayuda | web | Cliente regenerado, entrada «Ayuda», panel, render de Markdown, F1 |
+| 2 | Panel de ayuda | web | Cliente regenerado, entrada «Ayuda», panel, render de Markdown con íconos, avisos y capturas ampliables, F1 |
+| 2b | Capturas | web | Script de capturas marcadas, `manual:verificar` y las imágenes, por tandas como las fichas |
 | 3 | `COMO_SE_HACE` | api + web | `ManualDirectory`, intención, elección con abstención, plantilla, `rutaActual` desde la web |
 
 Las fichas pueden entrar en tandas dentro del PR 1, por grupo de menú; el panel funciona con las
@@ -282,13 +345,16 @@ que haya. **El contenido es la parte más larga del trabajo.**
 8. **El caso que rompe el diseño**: **una pantalla cambia y su ficha no**. El asistente cita, con
    aplomo, un botón que ya no existe. Mitigaciones: el test de arranque coteja rutas; cada PR web
    que cambie una pantalla con ficha la menciona en su checklist (regla nueva en el `CLAUDE.md` de
-   `appKine-web` §4); y cada pasaje citado lleva el enlace a la ficha para reportar el error. No se
-   elimina del todo: es el precio de no tener un manual generado desde la interfaz.
+   `appKine-web` §4); **`manual:verificar` falla si desaparece un elemento marcado en una captura**
+   (§5.7); y cada pasaje citado lleva el enlace a la ficha para reportar el error. No se elimina del
+   todo: un texto puede quedar desactualizado sin que cambie ningún selector.
 
 ## 10. Decisiones del diseñador, a confirmar por el usuario
 
 1. Fichas en `appKine-api`, no en `appKine-web` (§4).
-2. Sin capturas de pantalla en v1.
+2. ~~Sin capturas de pantalla en v1.~~ **Cambiado por el usuario el 19/11: con capturas marcadas
+   e íconos** (§5.7). Mías dentro de eso: generadas por script, recortadas a la zona, marcas
+   quemadas con números que coinciden con los pasos, sólo tema claro y escritorio.
 3. El manual de la consola de plataforma, fuera de v1.
 4. Una persona sin permiso no ve las fichas de lo que no puede hacer, ni siquiera como lectura.
 5. Índice en memoria y sin migración (§5.3).
