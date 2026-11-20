@@ -85,6 +85,12 @@ public class ContratacionService implements PruebasGratis, ServiciosDelCentro {
 		return contratacionRepository.conAdicional(organizationIds, Adicional.IA);
 	}
 
+	/** Los servicios de cada centro dado (una consulta para la pagina del listado). */
+	@Transactional(readOnly = true)
+	public java.util.Map<Long, Set<Servicio>> serviciosDe(java.util.Collection<Long> organizationIds) {
+		return contratacionRepository.serviciosDeVarios(organizationIds);
+	}
+
 	@Transactional(readOnly = true)
 	public boolean tieneAdicional(long organizationId, Adicional adicional) {
 		return contratacionRepository.adicionalesDe(organizationId).contains(adicional);

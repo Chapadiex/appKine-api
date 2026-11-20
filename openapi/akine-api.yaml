@@ -44250,6 +44250,17 @@ components:
           description: "Fin de la prueba gratis, instante UTC. Solo en PRUEBA; vencido\
             \ = solo lectura"
           example: 2026-12-18T03:00:00Z
+        servicios:
+          type: array
+          description: "Servicios contratados, en orden fijo"
+          example:
+          - KINESIOLOGIA
+          - ACTIVIDADES
+          items:
+            type: string
+            enum:
+            - KINESIOLOGIA
+            - ACTIVIDADES
         slug:
           type: string
           description: Identificador legible y unico del centro

@@ -36,4 +36,10 @@ public interface ContratacionRepositoryPort {
 	 * (centros anteriores al 18/11/2026, que tienen todo). Una sola consulta para una pagina entera.
 	 */
 	Set<Long> conAdicional(java.util.Collection<Long> organizationIds, Adicional adicional);
+
+	/**
+	 * Los servicios de cada centro dado, con la misma regla que {@link #serviciosDe}: sin contratacion
+	 * definida, todos. Una sola consulta para una pagina entera; un centro sin suscripcion no viene.
+	 */
+	java.util.Map<Long, Set<Servicio>> serviciosDeVarios(java.util.Collection<Long> organizationIds);
 }
