@@ -30,10 +30,10 @@ public record PlatformOrganizationResponse(
 		@Schema(description = "Estado de la suscripcion", example = "ACTIVA")
 		SubscriptionStatus status,
 
-		@Schema(description = "Codigo del plan contratado", example = "BASICO")
+		@Schema(description = "Codigo del plan contratado", example = "BASE")
 		String planCode,
 
-		@Schema(description = "Nombre comercial del plan contratado", example = "Basico")
+		@Schema(description = "Nombre comercial del plan contratado", example = "Plan Básico")
 		String planName,
 
 		@Schema(description = "Instante de alta de la organizacion", example = "2026-01-15T13:45:00Z")

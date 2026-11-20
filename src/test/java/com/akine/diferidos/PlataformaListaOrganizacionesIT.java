@@ -45,7 +45,7 @@ class PlataformaListaOrganizacionesIT extends BaseEscenarioDiferido {
 				.isSubsetOf("id", "name", "slug", "status", "planCode", "planName", "createdAt",
 						"ia", "pruebaHasta");
 		assertThat(fila.get("status").asString()).isEqualTo("ACTIVA");
-		assertThat(fila.get("planCode").asString()).isEqualTo("BASICO");
+		assertThat(fila.get("planCode").asString()).isEqualTo("BASE");
 
 		Respuesta suspension = post(
 				"/api/v1/organizations/" + centroB.organizationId() + "/subscription/transitions",

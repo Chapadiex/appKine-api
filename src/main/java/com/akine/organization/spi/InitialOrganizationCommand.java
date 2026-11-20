@@ -38,7 +38,7 @@ public record InitialOrganizationCommand(
 		String planCode) {
 
 	/** Plan con el que nace una organizacion cuando el llamador no elige ninguno. */
-	public static final String PLAN_POR_DEFECTO = "BASICO";
+	public static final String PLAN_POR_DEFECTO = "BASE";
 
 	public InitialOrganizationCommand {
 		if (idempotencyKey == null || idempotencyKey.isBlank()) {

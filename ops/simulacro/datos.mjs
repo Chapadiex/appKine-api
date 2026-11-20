@@ -82,8 +82,8 @@ if (accion === 'sembrar') {
 	const email = `simulacro-${sufijo}@ejemplo.test`;
 	const password = `Simulacro-${randomBytes(12).toString('hex')}`;
 
-	// BASICO: el plan por defecto del alta self-service (el catalogo de planes pide sesion).
-	const planCode = process.env.SIM_PLAN_CODE ?? 'BASICO';
+	// BASE: el plan por defecto del alta self-service (el catalogo de planes pide sesion).
+	const planCode = process.env.SIM_PLAN_CODE ?? 'BASE';
 	await http('POST', '/api/v1/auth/register', {
 		headers: { 'Idempotency-Key': randomUUID() },
 		esperado: [202],

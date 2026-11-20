@@ -25,7 +25,7 @@ import java.util.Optional;
 import java.util.function.LongSupplier;
 
 import static com.akine.organization.application.Fixtures.ORG_ID;
-import static com.akine.organization.application.Fixtures.PLAN_BASICO_ID;
+import static com.akine.organization.application.Fixtures.PLAN_BASE_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -86,12 +86,12 @@ class PlanGateServiceTest {
 	@Test
 	@DisplayName("El conteo del recurso ocurre DESPUES de bloquear la suscripcion (B-3)")
 	void el_conteo_ocurre_despues_del_bloqueo_de_la_suscripcion() {
-		organizacionVigenteConPlan(PLAN_BASICO_ID);
+		organizacionVigenteConPlan(PLAN_BASE_ID);
 		given(contador.getAsLong()).willReturn(2L);
 		given(planLimitRepository.findByPlanIdAndLimitCodeAndActiveTrue(
-				PLAN_BASICO_ID, LimitCode.MAX_CONSULTORIOS))
+				PLAN_BASE_ID, LimitCode.MAX_CONSULTORIOS))
 				.willReturn(Optional.of(Fixtures.limite(
-						PLAN_BASICO_ID, LimitCode.MAX_CONSULTORIOS, 5)));
+						PLAN_BASE_ID, LimitCode.MAX_CONSULTORIOS, 5)));
 
 		gate.evaluateCreationAndLock(ORG_ID, LimitCode.MAX_CONSULTORIOS, contador);
 
@@ -105,12 +105,12 @@ class PlanGateServiceTest {
 	@Test
 	@DisplayName("Con el limite alcanzado se rechaza el alta y queda auditado el rechazo")
 	void limite_alcanzado_rechaza() {
-		organizacionVigenteConPlan(PLAN_BASICO_ID);
+		organizacionVigenteConPlan(PLAN_BASE_ID);
 		given(contador.getAsLong()).willReturn(5L);
 		given(planLimitRepository.findByPlanIdAndLimitCodeAndActiveTrue(
-				PLAN_BASICO_ID, LimitCode.MAX_CONSULTORIOS))
+				PLAN_BASE_ID, LimitCode.MAX_CONSULTORIOS))
 				.willReturn(Optional.of(Fixtures.limite(
-						PLAN_BASICO_ID, LimitCode.MAX_CONSULTORIOS, 5)));
+						PLAN_BASE_ID, LimitCode.MAX_CONSULTORIOS, 5)));
 
 		assertThatThrownBy(() ->
 				gate.evaluateCreationAndLock(ORG_ID, LimitCode.MAX_CONSULTORIOS, contador))
@@ -124,12 +124,12 @@ class PlanGateServiceTest {
 	@Test
 	@DisplayName("Justo debajo del tope el alta entra: el limite es el tope, no el tope menos uno")
 	void un_lugar_libre_permite() {
-		organizacionVigenteConPlan(PLAN_BASICO_ID);
+		organizacionVigenteConPlan(PLAN_BASE_ID);
 		given(contador.getAsLong()).willReturn(4L);
 		given(planLimitRepository.findByPlanIdAndLimitCodeAndActiveTrue(
-				PLAN_BASICO_ID, LimitCode.MAX_CONSULTORIOS))
+				PLAN_BASE_ID, LimitCode.MAX_CONSULTORIOS))
 				.willReturn(Optional.of(Fixtures.limite(
-						PLAN_BASICO_ID, LimitCode.MAX_CONSULTORIOS, 5)));
+						PLAN_BASE_ID, LimitCode.MAX_CONSULTORIOS, 5)));
 
 		PlanDecision decision =
 				gate.evaluateCreationAndLock(ORG_ID, LimitCode.MAX_CONSULTORIOS, contador);
@@ -142,12 +142,12 @@ class PlanGateServiceTest {
 	@Test
 	@DisplayName("limit_value NULL es ilimitado explicito: permite con cualquier uso")
 	void limite_nulo_es_ilimitado() {
-		organizacionVigenteConPlan(PLAN_BASICO_ID);
+		organizacionVigenteConPlan(PLAN_BASE_ID);
 		given(contador.getAsLong()).willReturn(9_999L);
 		given(planLimitRepository.findByPlanIdAndLimitCodeAndActiveTrue(
-				PLAN_BASICO_ID, LimitCode.MAX_CONSULTORIOS))
+				PLAN_BASE_ID, LimitCode.MAX_CONSULTORIOS))
 				.willReturn(Optional.of(Fixtures.limite(
-						PLAN_BASICO_ID, LimitCode.MAX_CONSULTORIOS, null)));
+						PLAN_BASE_ID, LimitCode.MAX_CONSULTORIOS, null)));
 
 		PlanDecision decision =
 				gate.evaluateCreationAndLock(ORG_ID, LimitCode.MAX_CONSULTORIOS, contador);
@@ -159,10 +159,10 @@ class PlanGateServiceTest {
 	@Test
 	@DisplayName("Sin fila de limite el limite no aplica al plan, que no es lo mismo que ilimitado")
 	void limite_ausente_permite() {
-		organizacionVigenteConPlan(PLAN_BASICO_ID);
+		organizacionVigenteConPlan(PLAN_BASE_ID);
 		given(contador.getAsLong()).willReturn(120L);
 		given(planLimitRepository.findByPlanIdAndLimitCodeAndActiveTrue(
-				PLAN_BASICO_ID, LimitCode.MAX_MIEMBROS_ACTIVOS))
+				PLAN_BASE_ID, LimitCode.MAX_MIEMBROS_ACTIVOS))
 				.willReturn(Optional.empty());
 
 		PlanDecision decision =
@@ -177,7 +177,7 @@ class PlanGateServiceTest {
 	void suscripcion_suspendida_rechaza_sin_contar() {
 		given(organizationRepository.findByIdAndActiveTrue(ORG_ID))
 				.willReturn(Optional.of(Fixtures.organizacion()));
-		Subscription suspendida = Fixtures.suscripcionActiva(PLAN_BASICO_ID);
+		Subscription suspendida = Fixtures.suscripcionActiva(PLAN_BASE_ID);
 		suspendida.transitionTo(SubscriptionStatus.SUSPENDIDA);
 		given(subscriptionRepository.findByOrganizationIdForUpdate(ORG_ID))
 				.willReturn(Optional.of(suspendida));
@@ -205,9 +205,9 @@ class PlanGateServiceTest {
 	@DisplayName("Una feature ausente del plan se rechaza como regla de negocio, no como permiso")
 	void feature_ausente_rechaza() {
 		given(subscriptionRepository.findByOrganizationId(ORG_ID))
-				.willReturn(Optional.of(Fixtures.suscripcionActiva(PLAN_BASICO_ID)));
+				.willReturn(Optional.of(Fixtures.suscripcionActiva(PLAN_BASE_ID)));
 		given(planFeatureRepository.existsByPlanIdAndFeatureCodeAndActiveTrue(
-				PLAN_BASICO_ID, FeatureCode.REPORTES_AVANZADOS))
+				PLAN_BASE_ID, FeatureCode.REPORTES_AVANZADOS))
 				.willReturn(false);
 
 		assertThatThrownBy(() ->
@@ -221,9 +221,9 @@ class PlanGateServiceTest {
 	@DisplayName("Una feature incluida en el plan pasa sin tomar ningun bloqueo")
 	void feature_incluida_pasa() {
 		given(subscriptionRepository.findByOrganizationId(ORG_ID))
-				.willReturn(Optional.of(Fixtures.suscripcionActiva(PLAN_BASICO_ID)));
+				.willReturn(Optional.of(Fixtures.suscripcionActiva(PLAN_BASE_ID)));
 		given(planFeatureRepository.existsByPlanIdAndFeatureCodeAndActiveTrue(
-				PLAN_BASICO_ID, FeatureCode.NOTIFICACIONES_PACIENTE))
+				PLAN_BASE_ID, FeatureCode.NOTIFICACIONES_PACIENTE))
 				.willReturn(true);
 
 		gate.requireFeature(ORG_ID, FeatureCode.NOTIFICACIONES_PACIENTE);

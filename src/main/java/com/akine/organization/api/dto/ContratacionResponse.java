@@ -13,7 +13,7 @@ import java.util.List;
 public record ContratacionResponse(
 		@Schema(description = "Codigo del plan", example = "CRECIMIENTO")
 		String planCode,
-		@Schema(description = "Nombre del plan", example = "Crecimiento")
+		@Schema(description = "Nombre del plan", example = "Plan Intermedio")
 		String planNombre,
 		@Schema(description = "Tope de sedes del plan; ausente = sin tope", example = "3")
 		Integer maxSedes,

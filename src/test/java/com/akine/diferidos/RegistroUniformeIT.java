@@ -63,8 +63,8 @@ class RegistroUniformeIT extends BaseEscenarioDiferido {
 		String emailTomado = registrarUnEmailQueYaExiste("plan-valido");
 		String emailLibre = "plan-valido-libre-" + UUID.randomUUID() + "@ejemplo.test";
 
-		Respuesta conEmailTomado = registrarCon(emailTomado, "BASICO", null);
-		Respuesta conEmailLibre = registrarCon(emailLibre, "BASICO", null);
+		Respuesta conEmailTomado = registrarCon(emailTomado, "BASE", null);
+		Respuesta conEmailLibre = registrarCon(emailLibre, "BASE", null);
 
 		// La otra mitad de la uniformidad: si solo se validara el plan cuando hace falta, la
 		// rama valida y la invalida verian caminos distintos.

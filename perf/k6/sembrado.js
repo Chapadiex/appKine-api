@@ -30,7 +30,7 @@ import {
 } from './lib.js';
 
 /** Cuentas que operan durante la carga, ademas de la administradora (CONSULTORIO_ADMIN). */
-// El plan BASICO del alta self-service admite 5 miembros activos: administradora + profesional + 3.
+// El plan BASE del alta self-service admite 5 miembros activos: administradora + profesional + 3.
 const OPERADORES = parseInt(__ENV.AKINE_CARGA_OPERADORES || '3', 10);
 /** Cuentas que SOLO ingresan, para medir el login sin chocar con las que operan. */
 const CUENTAS_DE_LOGIN = parseInt(__ENV.AKINE_CARGA_CUENTAS_LOGIN || '3', 10);
