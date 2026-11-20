@@ -39,7 +39,9 @@ public final class CargadorDelManual {
 
 	private static final Pattern PERMISO = Pattern.compile("[a-z][a-z-]*:[a-z][a-z-]*");
 	private static final Pattern SIN_LETRAS = Pattern.compile("[^a-z0-9]+");
-	private static final String SECCION_TAREAS = "tareas";
+	private static final Map<String, TipoDePasaje> SECCIONES_CON_SUBTITULOS = Map.of(
+			"tareas", TipoDePasaje.TAREA,
+			"terminos", TipoDePasaje.TERMINO);
 	private static final Map<String, TipoDePasaje> SECCIONES_FIJAS = Map.of(
 			"para que sirve", TipoDePasaje.PARA_QUE_SIRVE,
 			"que significa cada estado", TipoDePasaje.ESTADOS,
@@ -108,10 +110,8 @@ public final class CargadorDelManual {
 		}
 		String titulo = texto(meta, "titulo", nombreArchivo, true);
 		String grupo = texto(meta, "grupo", nombreArchivo, true);
+		// Sin rutas es valido: primeros pasos y glosario no son una pantalla, se llega por el indice.
 		List<String> rutas = lista(meta, "rutas", nombreArchivo);
-		if (rutas.isEmpty()) {
-			throw new ManualInvalidoException(nombreArchivo + ": falta rutas");
-		}
 		Set<String> permisos = new LinkedHashSet<>(lista(meta, "permisos", nombreArchivo));
 		for (String permiso : permisos) {
 			if (!PERMISO.matcher(permiso).matches()) {
@@ -147,9 +147,9 @@ public final class CargadorDelManual {
 				titulo = tipo == null ? null : linea.substring(3).strip();
 				buffer.setLength(0);
 			}
-			else if (linea.startsWith("### ") && SECCION_TAREAS.equals(seccion)) {
+			else if (linea.startsWith("### ") && SECCIONES_CON_SUBTITULOS.containsKey(seccion)) {
 				cerrar(pasajes, usados, fichaId, tipo, titulo, buffer);
-				tipo = TipoDePasaje.TAREA;
+				tipo = SECCIONES_CON_SUBTITULOS.get(seccion);
 				titulo = linea.substring(4).strip();
 				buffer.setLength(0);
 			}

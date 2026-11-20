@@ -16,6 +16,7 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.io.support.ResourcePatternResolver;
@@ -45,6 +46,7 @@ public class IndiceDelManual {
 	private final ObjectProvider<ModeloEmbeddings> modelo;
 	private volatile Map<String, float[]> vectores = Map.of();
 
+	@Autowired
 	public IndiceDelManual(ResourcePatternResolver resolver, ObjectProvider<ModeloEmbeddings> modelo) {
 		this(CargadorDelManual.cargar(resolver), modelo);
 	}
