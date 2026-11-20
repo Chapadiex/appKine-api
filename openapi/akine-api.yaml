@@ -19243,15 +19243,11 @@ paths:
         required: true
         schema:
           type: string
-          maxLength: 200
-          minLength: 2
       - in: query
         name: ruta
         required: false
         schema:
           type: string
-          maxLength: 300
-          minLength: 0
       responses:
         "200":
           content:
@@ -19300,8 +19296,6 @@ paths:
         required: true
         schema:
           type: string
-          maxLength: 300
-          minLength: 0
       responses:
         "200":
           content:

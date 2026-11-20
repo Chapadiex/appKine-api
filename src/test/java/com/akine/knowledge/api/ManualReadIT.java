@@ -94,6 +94,13 @@ class ManualReadIT {
 	}
 
 	@Test
+	void parametrosFueraDeRangoDan400YNo500() throws Exception {
+		assertThat(get("/api/v1/manual/busqueda?q=a", administrador.token()).statusCode()).isEqualTo(400);
+		assertThat(get("/api/v1/manual/contexto?ruta=/" + "x".repeat(301), administrador.token()).statusCode())
+				.isEqualTo(400);
+	}
+
+	@Test
 	void sinSedeEnContextoDa403() throws Exception {
 		String preContexto = login(administrador.email());
 

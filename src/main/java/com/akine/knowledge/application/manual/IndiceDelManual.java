@@ -36,6 +36,8 @@ public class IndiceDelManual {
 	/** Constante de RRF, la misma que usa la biblioteca por defecto. */
 	private static final int RRF_K = 60;
 	/** Plus a la ficha de la pantalla actual: medio puesto de RRF, desempata sin dar vuelta un ranking. */
+	/** Cuantos pasajes aporta el ranking por vector a la fusion. */
+	private static final int TOPE_POR_VECTOR = 20;
 	private static final double PLUS_RUTA_ACTUAL = 0.5d / (RRF_K + 1);
 	private static final Pattern MARKDOWN = Pattern.compile("!\\[[^\\]]*\\]\\([^)]*\\)|:icono\\[[^\\]]*\\]:|[*#>_`]|\\[!\\w+\\]");
 
@@ -77,21 +79,24 @@ public class IndiceDelManual {
 			log.info("Manual sin modelo de embeddings: busqueda solo por palabras");
 			return;
 		}
-		Thread.ofVirtual().name("manual-vectores").start(() -> {
-			try {
-				List<PasajeEncontrado> todos = pasajes(f -> true);
-				List<float[]> calculados = embeddings.pasajes(todos.stream().map(IndiceDelManual::textoParaVector).toList());
-				Map<String, float[]> nuevos = new HashMap<>();
-				for (int i = 0; i < todos.size(); i++) {
-					nuevos.put(todos.get(i).pasaje().id(), calculados.get(i));
-				}
-				vectores = Map.copyOf(nuevos);
-				log.info("Manual: {} vectores calculados", nuevos.size());
+		Thread.ofVirtual().name("manual-vectores").start(() -> calcularVectores(embeddings));
+	}
+
+	/** Calcula y publica los vectores de todos los pasajes. Si el modelo falla, sigue solo por palabras. */
+	void calcularVectores(ModeloEmbeddings embeddings) {
+		try {
+			List<PasajeEncontrado> todos = pasajes(f -> true);
+			List<float[]> calculados = embeddings.pasajes(todos.stream().map(IndiceDelManual::textoParaVector).toList());
+			Map<String, float[]> nuevos = new HashMap<>();
+			for (int i = 0; i < todos.size(); i++) {
+				nuevos.put(todos.get(i).pasaje().id(), calculados.get(i));
 			}
-			catch (RuntimeException e) {
-				log.warn("Manual: no se pudieron calcular los vectores, sigue solo por palabras", e);
-			}
-		});
+			vectores = Map.copyOf(nuevos);
+			log.info("Manual: {} vectores calculados", nuevos.size());
+		}
+		catch (RuntimeException e) {
+			log.warn("Manual: no se pudieron calcular los vectores, sigue solo por palabras", e);
+		}
 	}
 
 	/** Las fichas visibles, por grupo y titulo. */
@@ -144,7 +149,16 @@ public class IndiceDelManual {
 		Map<String, float[]> vectoresActuales = vectores;
 		ModeloEmbeddings embeddings = vectoresActuales.isEmpty() || modelo == null ? null : modelo.getIfAvailable();
 		if (embeddings != null) {
-			sumarRrf(rrf, rankingPorVector(candidatos, embeddings.consulta(consulta), vectoresActuales));
+			try {
+				List<String> porVector = rankingPorVector(candidatos, embeddings.consulta(consulta), vectoresActuales);
+				// Solo los mas parecidos: con todos, cualquier consulta "encuentra" el manual entero.
+				sumarRrf(rrf, porVector.subList(0, Math.min(TOPE_POR_VECTOR, porVector.size())));
+			}
+			catch (RuntimeException e) {
+				// Igual que la biblioteca: si el modelo falla, la busqueda sigue por palabras.
+				log.warn("Manual: el modelo de embeddings fallo, busqueda solo por palabras ({})",
+						e.getClass().getSimpleName());
+			}
 		}
 		String fichaActual = porRuta(rutaActual, visible).map(FichaDelManual::id).orElse(null);
 		return candidatos.stream()

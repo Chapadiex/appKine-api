@@ -29,9 +29,10 @@ public enum Intencion {
 	/** Busqueda de personas para resolver un nombre. Interna: el modelo no la elige. */
 	BUSCAR_PERSONA,
 
-	/** Todo lo demas. No tiene herramienta. */
 	/** Como se usa AKINE: lo responde el manual de usuario (knowledge), citandolo textual. */
 	COMO_SE_HACE,
+
+	/** Todo lo demas. No tiene herramienta. */
 	FUERA_DE_ALCANCE;
 
 	/**

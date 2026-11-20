@@ -13,8 +13,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -22,7 +20,6 @@ import java.util.stream.Collectors;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -34,7 +31,6 @@ import org.springframework.web.bind.annotation.RestController;
  * sesion con organizacion y sede en contexto; cada persona ve las fichas de lo que puede usar.
  */
 @RestController
-@Validated
 @RequestMapping(
 		path = "/api/v1/manual",
 		produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.APPLICATION_PROBLEM_JSON_VALUE})
@@ -42,6 +38,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class ManualController {
 
 	static final String P403 = "Sin organizacion y sede en contexto";
+	static final int CONSULTA_MINIMA = 2;
+	static final int CONSULTA_MAXIMA = 200;
+	static final int RUTA_MAXIMA = 300;
 
 	private final ManualService manual;
 	private final KnowledgeApiActor apiActor;
@@ -90,8 +89,8 @@ public class ManualController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<FichaDelManualResponse> deLaRuta(
 			@Parameter(description = "Ruta del frontend, por ejemplo /caja o /pacientes/12/resumen")
-			@RequestParam @NotBlank(message = "La ruta es obligatoria")
-			@Size(max = 300, message = "La ruta admite hasta 300 caracteres") String ruta) {
+			@RequestParam String ruta) {
+		exigirRuta(ruta, true);
 		OperatingActor actor = apiActor.current();
 		return manual.deLaRuta(actor, ruta)
 				.map(ficha -> ResponseEntity.ok(respuesta(actor, ficha)))
@@ -109,11 +108,30 @@ public class ManualController {
 			@ApiResponse(responseCode = "403", description = P403,
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public List<PasajeDelManualResponse> buscar(
-			@RequestParam @NotBlank(message = "La consulta es obligatoria")
-			@Size(min = 2, max = 200, message = "La consulta admite de 2 a 200 caracteres") String q,
-			@RequestParam(required = false) @Size(max = 300, message = "La ruta admite hasta 300 caracteres")
-			String ruta) {
-		return manual.buscar(apiActor.current(), q.strip(), ruta).stream().map(PasajeDelManualResponse::de).toList();
+			@RequestParam String q,
+			@RequestParam(required = false) String ruta) {
+		String consulta = q == null ? "" : q.strip();
+		if (consulta.length() < CONSULTA_MINIMA || consulta.length() > CONSULTA_MAXIMA) {
+			throw new IllegalArgumentException("La consulta admite de 2 a 200 caracteres");
+		}
+		exigirRuta(ruta, false);
+		return manual.buscar(apiActor.current(), consulta, ruta).stream().map(PasajeDelManualResponse::de).toList();
+	}
+
+	/**
+	 * A mano y no con @Size sobre el @RequestParam: eso exige @Validated en la clase, que cambia como se
+	 * reportan los errores (mismo criterio que DireccionesController). 400 validation-error.
+	 */
+	private static void exigirRuta(String ruta, boolean obligatoria) {
+		if (ruta == null || ruta.isBlank()) {
+			if (obligatoria) {
+				throw new IllegalArgumentException("La ruta es obligatoria");
+			}
+			return;
+		}
+		if (ruta.length() > RUTA_MAXIMA) {
+			throw new IllegalArgumentException("La ruta admite hasta 300 caracteres");
+		}
 	}
 
 	private FichaDelManualResponse respuesta(OperatingActor actor, FichaDelManual ficha) {

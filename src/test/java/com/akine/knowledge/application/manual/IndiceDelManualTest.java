@@ -1,11 +1,17 @@
 package com.akine.knowledge.application.manual;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.akine.knowledge.domain.manual.FichaDelManual;
 import java.util.List;
 import java.util.function.Predicate;
+import com.akine.knowledge.domain.port.ModeloEmbeddings;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
 class IndiceDelManualTest {
@@ -52,5 +58,25 @@ class IndiceDelManualTest {
 		assertThat(desdeCaja.stream().filter(p -> p.ficha().id().equals("ficha")).findFirst().orElseThrow().puntaje())
 				.isGreaterThan(desdePadron.stream().filter(p -> p.ficha().id().equals("ficha")).findFirst()
 						.orElseThrow().puntaje());
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void buscarSigueConPalabrasSiElModeloFalla() {
+		List<FichaDelManual> fichas = CargadorDelManual.cargar(new PathMatchingResourcePatternResolver(),
+				"classpath:manual-prueba/*.md");
+		ModeloEmbeddings modelo = mock(ModeloEmbeddings.class);
+		when(modelo.pasajes(anyList())).thenAnswer(inv -> ((List<String>) inv.getArgument(0)).stream()
+				.map(texto -> new float[] {1f, 0f}).toList());
+		when(modelo.consulta(anyString())).thenThrow(new IllegalStateException("onnx caido"));
+		ObjectProvider<ModeloEmbeddings> proveedor = mock(ObjectProvider.class);
+		when(proveedor.getIfAvailable()).thenReturn(modelo);
+		IndiceDelManual conModelo = new IndiceDelManual(fichas, proveedor);
+		conModelo.calcularVectores(modelo);
+
+		List<PasajeEncontrado> encontrados = conModelo.buscar("arqueo", TODAS, null, 5);
+
+		assertThat(encontrados).isNotEmpty();
+		assertThat(encontrados.getFirst().ficha().id()).isEqualTo("ficha");
 	}
 }
