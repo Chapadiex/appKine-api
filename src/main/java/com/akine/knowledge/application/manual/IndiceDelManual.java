@@ -37,7 +37,13 @@ public class IndiceDelManual {
 	private static final int RRF_K = 60;
 	/** Plus a la ficha de la pantalla actual: medio puesto de RRF, desempata sin dar vuelta un ranking. */
 	/** Cuantos pasajes aporta el ranking por vector a la fusion. */
-	private static final int TOPE_POR_VECTOR = 20;
+	private static final int TOPE_POR_VECTOR = 10;
+	/**
+	 * Peso del ranking por vector frente al de palabras. Con el mismo peso, el coseno de e5 sobre titulos
+	 * cortos desplazaba la tarea que las palabras encontraban bien (medido el 20/11: 4 de 33 preguntas).
+	 * Asi el vector desempata y suma lo que las palabras no ven, sin pasar por encima de ellas.
+	 */
+	private static final double PESO_VECTOR = 0.3d;
 	private static final double PLUS_RUTA_ACTUAL = 0.5d / (RRF_K + 1);
 	private static final Pattern MARKDOWN = Pattern.compile("!\\[[^\\]]*\\]\\([^)]*\\)|:icono\\[[^\\]]*\\]:|[*#>_`]|\\[!\\w+\\]");
 
@@ -145,14 +151,14 @@ public class IndiceDelManual {
 		}
 		List<PasajeEncontrado> candidatos = pasajes(visible);
 		Map<String, Double> rrf = new HashMap<>();
-		sumarRrf(rrf, rankingPorPalabras(candidatos, pedidos));
+		sumarRrf(rrf, rankingPorPalabras(candidatos, pedidos), 1d);
 		Map<String, float[]> vectoresActuales = vectores;
 		ModeloEmbeddings embeddings = vectoresActuales.isEmpty() || modelo == null ? null : modelo.getIfAvailable();
 		if (embeddings != null) {
 			try {
 				List<String> porVector = rankingPorVector(candidatos, embeddings.consulta(consulta), vectoresActuales);
 				// Solo los mas parecidos: con todos, cualquier consulta "encuentra" el manual entero.
-				sumarRrf(rrf, porVector.subList(0, Math.min(TOPE_POR_VECTOR, porVector.size())));
+				sumarRrf(rrf, porVector.subList(0, Math.min(TOPE_POR_VECTOR, porVector.size())), PESO_VECTOR);
 			}
 			catch (RuntimeException e) {
 				// Igual que la biblioteca: si el modelo falla, la busqueda sigue por palabras.
@@ -227,9 +233,9 @@ public class IndiceDelManual {
 				.toList();
 	}
 
-	private static void sumarRrf(Map<String, Double> rrf, List<String> ranking) {
+	private static void sumarRrf(Map<String, Double> rrf, List<String> ranking, double peso) {
 		for (int i = 0; i < ranking.size(); i++) {
-			rrf.merge(ranking.get(i), 1d / (RRF_K + i + 1), Double::sum);
+			rrf.merge(ranking.get(i), peso / (RRF_K + i + 1), Double::sum);
 		}
 	}
 
