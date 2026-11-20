@@ -26,9 +26,12 @@ public class ElectorDePasaje {
 	static final String ESQUEMA = "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},"
 			+ "\"required\":[\"id\"]}";
 	static final String INSTRUCCIONES = """
-			Sos el buscador del manual de AKINE. Te paso una pregunta de una persona que usa el sistema y una \
-			lista de secciones del manual, cada una con su id. Elegí la UNA sección que responde la pregunta. \
-			Si ninguna la responde de verdad, elegí NINGUNO: es mejor no contestar que contestar otra cosa. \
+			Sos el buscador del manual de AKINE, un sistema para centros de kinesiología. Te paso una pregunta \
+			y una lista de secciones del manual, cada una con su id. Elegí la UNA sección que explica cómo hacer \
+			eso DENTRO de AKINE. Elegí NINGUNO si la pregunta es sobre otro programa o servicio (correo, banco, \
+			WhatsApp, otro sistema), sobre cómo tratar a un paciente, o si ninguna sección la responde de \
+			verdad: es mejor no contestar que contestar otra cosa. En AKINE, la "sesión" o "atención" de un \
+			paciente es la consulta clínica, no la sesión del usuario en el sistema. \
 			Devolvé solo {"id": "..."} con el id exacto de la lista o NINGUNO.""";
 
 	private static final Logger log = LoggerFactory.getLogger(ElectorDePasaje.class);
