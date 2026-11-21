@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.183.0
+  version: 0.184.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -34097,6 +34097,11 @@ components:
             type: string
             enum:
             - IA
+        altaPorPlataforma:
+          type: boolean
+          description: "El centro nacio del alta de la plataforma (en prueba gratis),\
+            \ no del autoregistro. Es el que recibe la guia de primeros pasos aunque\
+            \ despues contrate"
         definidaPorPlataforma:
           type: boolean
           description: "El centro lo dio de alta o lo ajusto la plataforma. Sin esto\
@@ -40586,6 +40591,15 @@ components:
         roleCode:
           type: string
           example: PROFESIONAL
+        servicios:
+          type: array
+          description: "Servicios que contrato el centro (KINESIOLOGIA, ACTIVIDADES).\
+            \ La pantalla elige con esto su ilustracion"
+          items:
+            type: string
+            enum:
+            - KINESIOLOGIA
+            - ACTIVIDADES
     InvitacionResponse:
       type: object
       description: Invitacion emitida por la organizacion

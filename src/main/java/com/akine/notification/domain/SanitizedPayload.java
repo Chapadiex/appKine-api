@@ -45,6 +45,9 @@ public final class SanitizedPayload {
 			"pedidoSedes",
 			"organizacionNombre",
 			"invitadoPor",
+			// 19/11/2026: marca ("si") de que la invitacion es la del duenio de un centro recien
+			// dado de alta por la plataforma. No nombra a nadie.
+			"altaDeCentro",
 			// AKINE-08.02: lo minimo para que un aviso de clase diga de que clase habla. Ningun
 			// dato de otro participante, ningun dato clinico y ningun identificador interno.
 			// U-46 (d), 17/10/2026: "claseTitulo" salio de la lista (ver CLAVES_RETIRADAS).

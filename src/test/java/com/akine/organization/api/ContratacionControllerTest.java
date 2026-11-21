@@ -125,6 +125,6 @@ class ContratacionControllerTest {
 
 	private static ContratacionView vista(Set<Servicio> servicios) {
 		return new ContratacionView(7L, "CRECIMIENTO", "Crecimiento", 3, servicios, EnumSet.of(Adicional.IA),
-				SubscriptionStatus.PRUEBA, Instant.parse("2026-12-18T03:00:00Z"), false, true, 4L);
+				SubscriptionStatus.PRUEBA, Instant.parse("2026-12-18T03:00:00Z"), false, true, true, 4L);
 	}
 }
