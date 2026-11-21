@@ -2,9 +2,11 @@ package com.akine.organization.application;
 
 import com.akine.organization.domain.SolicitudDePrueba;
 import com.akine.organization.domain.exception.SolicitudDePruebaNotFoundException;
+import com.akine.organization.domain.exception.TerminosDelPedidoException;
 import com.akine.organization.domain.port.SolicitudDePruebaRepositoryPort;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.terminos.TerminosVigentes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.akine.organization.spi.SolicitudDePruebaRecibida;
@@ -35,18 +37,21 @@ public class SolicitudDePruebaService {
 	private final SolicitudDePruebaRepositoryPort repository;
 	private final AuditTrail auditTrail;
 	private final ApplicationEventPublisher eventos;
+	private final TerminosVigentes terminos;
 
 	public SolicitudDePruebaService(SolicitudDePruebaRepositoryPort repository, AuditTrail auditTrail,
-			ApplicationEventPublisher eventos) {
+			ApplicationEventPublisher eventos, TerminosVigentes terminos) {
 		this.repository = repository;
 		this.auditTrail = auditTrail;
 		this.eventos = eventos;
+		this.terminos = terminos;
 	}
 
 	/** Datos del formulario de la landing. {@code trampa} es el campo oculto para bots. */
 	public record Pedido(String nombre, String apellido, String email, String telefono,
 			String nombreCentro, String ciudad, boolean kinesiologia, boolean actividades,
-			SolicitudDePrueba.Sedes sedes, boolean interesaIa, String comentario, String trampa) {
+			SolicitudDePrueba.Sedes sedes, boolean interesaIa, String comentario, String trampa,
+			Boolean aceptaTerminos, String versionTerminos) {
 	}
 
 	/**
@@ -62,16 +67,21 @@ public class SolicitudDePruebaService {
 			log.info("Pedido de prueba descartado por el campo trampa");
 			return;
 		}
+		String versionAceptada = exigirTerminos(pedido);
 		if (repository.findByIdempotencyKey(idempotencyKey).isPresent()) {
 			return;
 		}
 		try {
-			SolicitudDePrueba guardada = repository.saveAndFlush(new SolicitudDePrueba(
+			SolicitudDePrueba nueva = new SolicitudDePrueba(
 					limpio(pedido.nombre()), limpio(pedido.apellido()),
 					pedido.email().strip().toLowerCase(), limpio(pedido.telefono()),
 					limpio(pedido.nombreCentro()), limpio(pedido.ciudad()),
 					pedido.kinesiologia(), pedido.actividades(), pedido.sedes(),
-					pedido.interesaIa(), limpio(pedido.comentario()), idempotencyKey));
+					pedido.interesaIa(), limpio(pedido.comentario()), idempotencyKey);
+			if (versionAceptada != null) {
+				nueva.aceptarTerminos(versionAceptada, Instant.now());
+			}
+			SolicitudDePrueba guardada = repository.saveAndFlush(nueva);
 			// La plataforma se entera por correo (lo encola identity, en esta transaccion).
 			eventos.publishEvent(new SolicitudDePruebaRecibida(guardada.getId(), guardada.getNombreCentro(),
 					servicios(guardada), sedes(guardada.getSedes())));
@@ -79,6 +89,26 @@ public class SolicitudDePruebaService {
 			// uk_solicitud_de_prueba_clave: el mismo pedido entro por otro hilo. Ya esta guardado.
 			log.info("Pedido de prueba repetido en carrera: se conserva el primero");
 		}
+	}
+
+	/**
+	 * La version aceptada, o {@code null} si el despliegue no exige terminos (solo tests). Se mira
+	 * despues del campo trampa, para que un bot siga recibiendo la misma respuesta.
+	 */
+	private String exigirTerminos(Pedido pedido) {
+		String vigente = terminos.version().orElse(null);
+		if (vigente == null) {
+			return null;
+		}
+		if (!Boolean.TRUE.equals(pedido.aceptaTerminos())) {
+			throw new TerminosDelPedidoException("aceptaTerminos",
+					"Aceptá los términos y condiciones para pedir la prueba");
+		}
+		if (pedido.versionTerminos() == null || !vigente.equals(pedido.versionTerminos().strip())) {
+			throw new TerminosDelPedidoException("versionTerminos",
+					"Los términos cambiaron (versión " + vigente + "). Volvé a leerlos y aceptá la versión actual");
+		}
+		return vigente;
 	}
 
 	@Transactional(readOnly = true)

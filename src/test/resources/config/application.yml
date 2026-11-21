@@ -1,0 +1,9 @@
+# Solo para los tests. Pisa a src/main/resources/application.yml (classpath:/config/ tiene
+# precedencia sobre classpath:/).
+akine:
+  identity:
+    terminos:
+      # Los terminos se exigen siempre en un despliegue, pero ~1.150 ITs crean cuentas por SQL
+      # sin aceptacion y quedarian bloqueados con 403 terminos-pendientes. Los ITs de terminos
+      # la prenden con @TestPropertySource.
+      version-vigente: ""

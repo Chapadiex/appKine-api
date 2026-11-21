@@ -63,7 +63,9 @@ public class SolicitudDePruebaController {
 					e invita a ese correo como duenio.""")
 	@ApiResponses({
 			@ApiResponse(responseCode = "202", description = "Pedido recibido"),
-			@ApiResponse(responseCode = "400", description = "Falta un dato, un dato invalido o ningun servicio elegido",
+			@ApiResponse(responseCode = "400", description = "Falta un dato, un dato invalido, ningun servicio "
+					+ "elegido, o no se aceptaron los terminos vigentes (errors.aceptaTerminos o "
+					+ "errors.versionTerminos)",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "429", description = "Demasiados pedidos desde esta direccion",
@@ -79,7 +81,8 @@ public class SolicitudDePruebaController {
 		service.recibir(new SolicitudDePruebaService.Pedido(
 				request.nombre(), request.apellido(), request.email(), request.telefono(),
 				request.nombreCentro(), request.ciudad(), request.kinesiologia(), request.actividades(),
-				request.sedes(), request.interesaIa(), request.comentario(), request.sitioWeb()),
+				request.sedes(), request.interesaIa(), request.comentario(), request.sitioWeb(),
+				request.aceptaTerminos(), request.versionTerminos()),
 				idempotencyKey);
 		return ResponseEntity.status(HttpStatus.ACCEPTED).build();
 	}

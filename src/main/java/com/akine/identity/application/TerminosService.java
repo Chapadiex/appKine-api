@@ -4,9 +4,12 @@ import com.akine.identity.domain.AceptacionTerminos;
 import com.akine.identity.domain.TerminosSettings;
 import com.akine.identity.domain.exception.TerminosNoAceptadosException;
 import com.akine.identity.domain.port.AceptacionTerminosRepositoryPort;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Exigencia y constancia de la aceptacion de terminos en el alta (DP-45).
@@ -24,6 +27,8 @@ public class TerminosService {
 
 	private final TerminosSettings settings;
 	private final AceptacionTerminosRepositoryPort repository;
+	/** Cuenta → version vigente que ya acepto. Ver {@link #pendiente(long)}. */
+	private final Map<Long, String> aceptadas = new ConcurrentHashMap<>();
 
 	public TerminosService(TerminosSettings settings, AceptacionTerminosRepositoryPort repository) {
 		this.settings = settings;
@@ -68,5 +73,76 @@ public class TerminosService {
 			return;
 		}
 		repository.save(new AceptacionTerminos(cuentaId, version, ahora, origen));
+	}
+
+	/** Lo que la cuenta ve de los terminos vigentes. Sin version configurada, nada pendiente. */
+	public record Estado(String versionVigente, String url, boolean pendiente, Instant aceptadaEn) {
+	}
+
+	public Estado estado(long cuentaId) {
+		String vigente = settings.versionVigente();
+		if (vigente == null) {
+			return new Estado(null, settings.url(), false, null);
+		}
+		Instant aceptadaEn = repository.findByCuentaIdAndVersion(cuentaId, vigente)
+				.map(AceptacionTerminos::getAceptadoEn)
+				.orElse(null);
+		return new Estado(vigente, settings.url(), aceptadaEn == null, aceptadaEn);
+	}
+
+	/**
+	 * {@code true} si la cuenta todavia no acepto la version vigente (19/11/2026).
+	 *
+	 * <p>Corre en cada pedido autenticado, asi que recuerda en memoria las cuentas que ya
+	 * aceptaron. Es seguro porque una aceptacion no se borra nunca, y se guarda junto con la
+	 * version: si la vigente cambia, la entrada vieja deja de coincidir y se vuelve a preguntar.
+	 */
+	public boolean pendiente(long cuentaId) {
+		String vigente = settings.versionVigente();
+		if (vigente == null || vigente.equals(aceptadas.get(cuentaId))) {
+			return false;
+		}
+		if (repository.existsByCuentaIdAndVersion(cuentaId, vigente)) {
+			aceptadas.put(cuentaId, vigente);
+			return false;
+		}
+		return true;
+	}
+
+	/** La version vigente, o {@code null} si el despliegue no exige terminos. */
+	public String versionVigente() {
+		return settings.versionVigente();
+	}
+
+	/**
+	 * Una cuenta que ya existia acepta la version vigente. Idempotente: si ya la habia aceptado
+	 * no hace nada.
+	 *
+	 * <p>Sin {@code @Transactional} a proposito: el {@code save} corre en su propia transaccion,
+	 * asi que si dos pedidos de la misma cuenta chocan contra
+	 * {@code uk_aceptacion_terminos_cuenta_version}, el perdedor ve la excepcion sin dejar una
+	 * transaccion marcada para rollback, y lo trata como lo que es: ya estaba aceptada.
+	 *
+	 * @throws TerminosNoAceptadosException si la version no es la vigente
+	 */
+	public void aceptar(long cuentaId, String versionTerminos, Instant ahora) {
+		String vigente = settings.versionVigente();
+		if (vigente == null) {
+			return;
+		}
+		if (versionTerminos == null || !vigente.equals(versionTerminos.strip())) {
+			throw new TerminosNoAceptadosException(CAMPO_VERSION,
+					"Los terminos aceptados no son los vigentes (version " + vigente
+							+ "). Vuelva a leerlos y acepte la version actual");
+		}
+		if (!repository.existsByCuentaIdAndVersion(cuentaId, vigente)) {
+			try {
+				repository.save(new AceptacionTerminos(
+						cuentaId, vigente, ahora, AceptacionTerminos.Origen.REACEPTACION));
+			} catch (DataIntegrityViolationException yaAceptada) {
+				// La misma cuenta acepto en otro pedido al mismo tiempo: queda la primera fila.
+			}
+		}
+		aceptadas.put(cuentaId, vigente);
 	}
 }

@@ -76,7 +76,7 @@ class PanelDePlataformaIT {
 
 		solicitudes.recibir(new SolicitudDePruebaService.Pedido("Ana", "Panel", "panel-"
 				+ UUID.randomUUID().toString().substring(0, 8) + "@centro.test", null, "Estudio Del Panel", null,
-				true, false, SolicitudDePrueba.Sedes.UNA, false, null, null), UUID.randomUUID().toString());
+				true, false, SolicitudDePrueba.Sedes.UNA, false, null, null, null, null), UUID.randomUUID().toString());
 
 		PanelDePlataforma despues = panel.leer();
 		assertThat(despues.pedidosPendientes()).isEqualTo(antes + 1);
