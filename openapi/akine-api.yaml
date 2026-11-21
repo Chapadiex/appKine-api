@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.183.0
+  version: 0.185.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -30303,8 +30303,11 @@ components:
           format: date
           description: "Ultimo dia de vigencia del CONVENIO, INCLUSIVE"
         coseguro:
-          type: number
-          description: La parte que paga el paciente
+          type:
+          - number
+          - "null"
+          description: "Lo que paga el paciente: precio de la oferta menos B, nunca\
+            \ negativo. Nulo si no se paso la oferta"
           example: 2400.0
         fecha:
           type: string
@@ -30313,11 +30316,14 @@ components:
           example: 2026-03-15
         importeFinanciador:
           type: number
-          description: La parte que paga el financiador
+          description: Lo que paga el financiador (B)
           example: 9600.0
         importeTotal:
-          type: number
-          description: Lo que vale la practica bajo ese convenio
+          type:
+          - number
+          - "null"
+          description: "Lo que paga en total la practica: financiador mas coseguro.\
+            \ Nulo si no se paso la oferta, porque sin su precio no se calcula"
           example: 12000.0
         limiteSesionesMensual:
           type: integer
@@ -30370,8 +30376,12 @@ components:
           description: Convenio al que pertenece. No cambia
           example: 140
         coseguro:
-          type: number
-          description: La parte que paga el paciente
+          type:
+          - number
+          - "null"
+          deprecated: true
+          description: "OBSOLETO desde 0.185.0: historico; nulo en los nuevos. El\
+            \ coseguro es precio de la oferta menos importeFinanciador"
           example: 2400.0
         deactivationReason:
           type: string
@@ -30394,11 +30404,15 @@ components:
           example: 901
         importeFinanciador:
           type: number
-          description: La parte que paga el financiador
+          description: Lo que paga el financiador por la practica (B)
           example: 9600.0
         importeTotal:
-          type: number
-          description: Lo que vale la practica bajo este convenio
+          type:
+          - number
+          - "null"
+          deprecated: true
+          description: "OBSOLETO desde 0.185.0: historico de aranceles anteriores;\
+            \ nulo en los nuevos"
           example: 12000.0
         moneda:
           type: string
@@ -33154,13 +33168,21 @@ components:
           description: Convenio del que salio
           example: 140
         coseguro:
-          type: number
+          type:
+          - number
+          - "null"
+          description: "Precio de la oferta menos B, nunca negativo. Nulo si la oferta\
+            \ no tiene precio"
           example: 2400.0
         importeFinanciador:
           type: number
+          description: Lo que paga el financiador (B)
           example: 9600.0
         importeTotal:
-          type: number
+          type:
+          - number
+          - "null"
+          description: Financiador mas coseguro. Nulo si la oferta no tiene precio
           example: 12000.0
         moneda:
           type: string
@@ -34643,23 +34665,21 @@ components:
       properties:
         coseguro:
           type: number
-          description: La parte que paga el paciente. Cero es valido y significa cobertura
-            total
+          deprecated: true
+          description: "OBSOLETO desde 0.185.0: se ignora. Ver importeTotal"
           example: 2400.0
-          minimum: 0.00
         importeFinanciador:
           type: number
-          description: "La parte que paga el financiador. Junto con el coseguro tiene\
-            \ que sumar EXACTAMENTE el importe total, o la peticion se rechaza con\
-            \ 400"
+          description: "Lo que paga el financiador por la practica (B). El paciente\
+            \ paga la diferencia con el precio de la oferta, nunca menos de cero"
           example: 9600.0
           minimum: 0.00
         importeTotal:
           type: number
-          description: Lo que vale la practica bajo este convenio. Cero es valido
-            y significa una practica sin cargo
+          deprecated: true
+          description: "OBSOLETO desde 0.185.0: se ignora. El coseguro se calcula\
+            \ al cerrar la sesion como precio de la oferta menos lo que paga el financiador"
           example: 12000.0
-          minimum: 0.00
         ofertaId:
           type: integer
           format: int64
@@ -34688,9 +34708,7 @@ components:
             \ fin previsto. Tiene que estar contenido en la vigencia del convenio"
           example: 2026-06-30
       required:
-      - coseguro
       - importeFinanciador
-      - importeTotal
       - practicaId
       - vigenciaDesde
     CreateAutorizacionRequest:
@@ -39153,16 +39171,17 @@ components:
           example: 25.01.01
         coseguro:
           type: number
-          description: La parte del paciente
+          deprecated: true
+          description: "OBSOLETO desde 0.185.0: se ignora"
           example: 2400.0
         importeFinanciador:
           type: number
-          description: La parte del financiador. Con el coseguro tiene que sumar EXACTAMENTE
-            el importe total
+          description: Lo que paga el financiador por la practica (B). Hasta 2 decimales
           example: 9600.0
         importeTotal:
           type: number
-          description: Lo que vale la practica bajo el convenio. Hasta 2 decimales
+          deprecated: true
+          description: "OBSOLETO desde 0.185.0: se ignora"
           example: 12000.0
         ofertaId:
           type: integer
@@ -50073,9 +50092,9 @@ components:
       properties:
         coseguro:
           type: number
-          description: La parte que paga el paciente
+          deprecated: true
+          description: "OBSOLETO desde 0.185.0: se ignora"
           example: 2600.0
-          minimum: 0.00
         expectedVersion:
           type: integer
           format: int64
@@ -50084,14 +50103,14 @@ components:
           minimum: 0
         importeFinanciador:
           type: number
-          description: La parte que paga el financiador
+          description: Lo que paga el financiador por la practica (B)
           example: 10400.0
           minimum: 0.00
         importeTotal:
           type: number
-          description: Lo que vale la practica bajo este convenio
+          deprecated: true
+          description: "OBSOLETO desde 0.185.0: se ignora"
           example: 13000.0
-          minimum: 0.00
         vigenciaDesde:
           type: string
           format: date

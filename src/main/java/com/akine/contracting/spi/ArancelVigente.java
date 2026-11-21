@@ -23,16 +23,12 @@ import java.time.LocalDate;
  * convenio salio? Por eso viajan el convenio, su codigo y las dos vigencias que intervinieron —la
  * del convenio y la del arancel—, que juntas son la derivacion completa.
  *
- * <h2>Los tres importes, y ningun porcentaje</h2>
+ * <h2>Importes (V33)</h2>
  *
- * <pre>
- *   importeTotal        lo que vale la practica bajo ese convenio
- *   importeFinanciador  la parte que paga el financiador
- *   coseguro            la parte que paga el paciente
- * </pre>
- *
- * <p>Las dos partes suman el total exactamente. No hay porcentaje que multiplicar ni nada que
- * redondear: ver {@code ConvenioArancel} y §37.
+ * <p>{@code importeFinanciador} (B) es lo que el arancel guarda. {@code importeTotal} y
+ * {@code coseguro} salen de la resolucion sin precio: son los historicos del arancel, o
+ * {@code null}. Quien conoce el precio de la oferta los calcula con {@link #conPrecio}, que aplica
+ * {@link Coseguro#de}.
  *
  * @param convenioVigenciaHasta ultimo dia del convenio, INCLUSIVE. {@code null} = sin fin previsto
  * @param arancelVigenciaHasta  ultimo dia de ESTE importe, INCLUSIVE. {@code null} = sin fin
@@ -86,5 +82,21 @@ public record ArancelVigente(
 				requiereOrden, requiereAutorizacion, requiereCredencial, limiteSesionesMensual,
 				convenioVigenciaDesde, convenioVigenciaHasta, arancelVigenciaDesde,
 				arancelVigenciaHasta, resueltoPara, null);
+	}
+
+	/**
+	 * El mismo arancel con el coseguro y el total calculados contra el precio de la oferta (A).
+	 * Sin precio, el total y el coseguro quedan en {@code null}: no se puede saber cuanto paga el
+	 * paciente.
+	 */
+	public ArancelVigente conPrecio(BigDecimal precioDeLaOferta) {
+		BigDecimal cos = precioDeLaOferta == null ? null
+				: Coseguro.de(precioDeLaOferta, importeFinanciador);
+		BigDecimal total = cos == null ? null : importeFinanciador.add(cos);
+		return new ArancelVigente(convenioId, convenioCodigo, convenioNombre, modalidad,
+				financiadorId, planId, practicaId, arancelId, total, importeFinanciador, cos, moneda,
+				requiereOrden, requiereAutorizacion, requiereCredencial, limiteSesionesMensual,
+				convenioVigenciaDesde, convenioVigenciaHasta, arancelVigenciaDesde,
+				arancelVigenciaHasta, resueltoPara, ofertaId);
 	}
 }

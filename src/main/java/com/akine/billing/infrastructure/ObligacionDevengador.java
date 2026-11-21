@@ -8,6 +8,7 @@ import com.akine.billing.domain.SnapshotDeConvenio;
 import com.akine.billing.domain.port.ObligacionRepositoryPort;
 import com.akine.contracting.spi.ArancelCongelado;
 import com.akine.contracting.spi.ArancelDirectory;
+import com.akine.contracting.spi.Coseguro;
 import com.akine.encounter.spi.CierreDeSesionObserver;
 import com.akine.encounter.spi.OfertaSinPrecioException;
 import com.akine.encounter.spi.PrecioParticularDelCierre;
@@ -50,7 +51,8 @@ import java.util.Set;
  *   4. practicas candidatas (DP-11)
  *   5. primera practica con cobertura aplicable (B-2) y arancel congelado
  *                                             -&gt; FINANCIADOR (importe_financiador)
- *                                                + COSEGURO  (coseguro), cada una si es &gt; 0
+ *                                                + COSEGURO  max(precio de la oferta - B, 0),
+ *                                                cada una si es &gt; 0 (V33)
  *   6. ninguna                                -&gt; PARTICULAR (precio de la oferta, como 07.01)
  * </pre>
  *
@@ -205,6 +207,14 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 
 	private void devengarPorConvenio(SesionCerrada cierre, Cubierta cubierta) {
 		ArancelCongelado arancel = cubierta.arancel();
+		// Obras sociales simples, paso 2: el coseguro es A - B, con A el precio de la oferta del
+		// dia del cierre. El total del snapshot es B + coseguro, asi las partes siguen sumando.
+		BigDecimal financiador = arancel.importeFinanciador();
+		BigDecimal coseguro = Coseguro.de(cierre.precioDeLaOferta(), financiador);
+		if (cierre.precioDeLaOferta() == null) {
+			log.warn("La oferta no tiene precio el dia del cierre: coseguro en cero. sesionId={} "
+					+ "ofertaId={}", cierre.sesionId(), cierre.ofertaId());
+		}
 		SnapshotDeConvenio snapshot = new SnapshotDeConvenio(
 				arancel.convenioId(),
 				arancel.convenioCodigo(),
@@ -213,9 +223,9 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 				arancel.arancelId(),
 				arancel.practicaId(),
 				cubierta.cobertura().coberturaId(),
-				arancel.importeTotal(),
-				arancel.importeFinanciador(),
-				arancel.coseguro(),
+				financiador.add(coseguro),
+				financiador,
+				coseguro,
 				arancel.requeriaOrden(),
 				arancel.requeriaAutorizacion(),
 				arancel.requeriaCredencial(),
@@ -224,9 +234,8 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 				arancel.capturadoEl());
 
 		if (snapshot.importeTotal().signum() == 0) {
-			// Total cero es una practica sin cargo bajo ese convenio (V43 lo admite): no hay deuda
-			// de nadie, y devengar una particular encima seria cobrarle al paciente lo que el
-			// convenio dice que no se cobra.
+			// A y B en cero: nadie debe nada, y devengar una particular encima seria cobrarle al
+			// paciente lo que el convenio dice que no se cobra.
 			log.info("Practica sin cargo bajo el convenio: no se devenga deuda. sesionId={} "
 					+ "convenioId={} arancelId={}", cierre.sesionId(), arancel.convenioId(),
 					arancel.arancelId());

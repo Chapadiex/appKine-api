@@ -303,9 +303,7 @@ public class ImportacionArancelesService {
 	 * el alta unitaria— y aca se suma lo que en el alta valida Bean Validation: los 2 decimales.
 	 */
 	private static ConvenioArancel construir(Contexto contexto, long practicaId, Fila fila) {
-		exigirDosDecimales(fila.importeTotal(), "El importe total");
-		exigirDosDecimales(fila.importeFinanciador(), "La parte del financiador");
-		exigirDosDecimales(fila.coseguro(), "El coseguro");
+		exigirDosDecimales(fila.importeFinanciador(), "Lo que paga el financiador");
 
 		ConvenioArancel candidato;
 		try {
@@ -315,9 +313,7 @@ public class ImportacionArancelesService {
 					contexto.convenio().getId(),
 					practicaId,
 					fila.ofertaId(),
-					fila.importeTotal(),
 					fila.importeFinanciador(),
-					fila.coseguro(),
 					contexto.convenio().getMoneda(),
 					fila.vigenciaDesde(),
 					fila.vigenciaHasta());

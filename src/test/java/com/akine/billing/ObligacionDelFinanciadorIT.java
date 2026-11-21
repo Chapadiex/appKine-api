@@ -74,7 +74,7 @@ class ObligacionDelFinanciadorIT {
 	// =================================================================================
 
 	@Test
-	@DisplayName("con cobertura y arancel: financiador 10500 + coseguro 1500 = arancel 12000, con snapshot")
+	@DisplayName("con cobertura y arancel: financiador 7000 + coseguro 1500 = arancel 8500, con snapshot")
 	void financiador_y_coseguro_con_snapshot() {
 		Fixture f = crearFixture(true);
 		long sesion = insertarSesion(f);
@@ -90,14 +90,14 @@ class ObligacionDelFinanciadorIT {
 		assertThat(financiador.get("concepto")).isEqualTo("FINANCIADOR");
 		assertThat(financiador.get("responsable")).isEqualTo("FINANCIADOR");
 		assertThat(((Number) financiador.get("financiador_id")).longValue()).isEqualTo(f.financiador());
-		assertThat((BigDecimal) financiador.get("importe_original")).isEqualByComparingTo("10500.00");
+		assertThat((BigDecimal) financiador.get("importe_original")).isEqualByComparingTo("7000.00");
 		assertThat(coseguro.get("concepto")).isEqualTo("COSEGURO");
 		assertThat(coseguro.get("responsable")).isEqualTo("PACIENTE");
 		assertThat(coseguro.get("financiador_id")).isNull();
 		assertThat((BigDecimal) coseguro.get("importe_original")).isEqualByComparingTo("1500.00");
 		assertThat(((BigDecimal) financiador.get("importe_original"))
 				.add((BigDecimal) coseguro.get("importe_original")))
-				.isEqualByComparingTo("12000.00");
+				.isEqualByComparingTo("8500.00");
 
 		for (Map<String, Object> fila : filas) {
 			assertThat(((Number) fila.get("snapshot_convenio_id")).longValue()).isEqualTo(f.convenio());
@@ -106,8 +106,8 @@ class ObligacionDelFinanciadorIT {
 			assertThat(((Number) fila.get("cobertura_id")).longValue()).isEqualTo(f.cobertura());
 			assertThat(((Number) fila.get("practica_id")).longValue()).isEqualTo(f.kine());
 			assertThat(fila.get("snapshot_convenio_codigo")).isEqualTo(f.convenioCodigo());
-			assertThat((BigDecimal) fila.get("snapshot_importe_total")).isEqualByComparingTo("12000.00");
-			assertThat((BigDecimal) fila.get("snapshot_importe_financiador")).isEqualByComparingTo("10500.00");
+			assertThat((BigDecimal) fila.get("snapshot_importe_total")).isEqualByComparingTo("8500.00");
+			assertThat((BigDecimal) fila.get("snapshot_importe_financiador")).isEqualByComparingTo("7000.00");
 			assertThat((BigDecimal) fila.get("snapshot_coseguro")).isEqualByComparingTo("1500.00");
 			// RF-M21-003: lo que el convenio exigia ese dia, y la credencial vencida (B-2).
 			assertThat(bool(fila.get("snapshot_requeria_orden"))).isTrue();
@@ -121,7 +121,7 @@ class ObligacionDelFinanciadorIT {
 		jdbc.update("UPDATE convenio_arancel SET importe_total = 99999.00, importe_financiador = "
 				+ "99999.00, coseguro = 0 WHERE id = ?", f.arancel());
 		assertThat((BigDecimal) obligacionesDe(sesion).get(0).get("importe_original"))
-				.isEqualByComparingTo("10500.00");
+				.isEqualByComparingTo("7000.00");
 	}
 
 	@Test
@@ -250,7 +250,7 @@ class ObligacionDelFinanciadorIT {
 		assertThat(elegibles).singleElement().satisfies(o -> {
 			assertThat(o.id()).isEqualTo(financiadorObligacion);
 			assertThat(o.concepto()).isEqualTo("FINANCIADOR");
-			assertThat(o.importeOriginal()).isEqualByComparingTo("10500.00");
+			assertThat(o.importeOriginal()).isEqualByComparingTo("7000.00");
 			assertThat(o.convenio().convenioCodigo()).isEqualTo(f.convenioCodigo());
 			assertThat(o.convenio().requeriaOrden()).isTrue();
 			assertThat(o.convenio().credencialVencida()).isTrue();
@@ -287,7 +287,7 @@ class ObligacionDelFinanciadorIT {
 		PresentacionView confirmada = presentacionService.confirmar(
 				f.administrativo(), f.consultorioId(), borrador.id());
 		assertThat(confirmada.estado()).isEqualTo(EstadoPresentacion.PRESENTADA);
-		assertThat(confirmada.totalPresentado()).isEqualByComparingTo("10500.00");
+		assertThat(confirmada.totalPresentado()).isEqualByComparingTo("7000.00");
 
 		// Ya presentada, deja la bandeja (RN-M21-003).
 		assertThat(presentacionService.elegibles(f.administrativo(), f.consultorioId(),
@@ -351,10 +351,10 @@ class ObligacionDelFinanciadorIT {
 		AporteDeReporte despues = reporte(f);
 		assertThat(indicador(despues, "prestado"))
 				.as("solo la parte del financiador; el coseguro es del paciente")
-				.isEqualByComparingTo("10500.00");
+				.isEqualByComparingTo("7000.00");
 		assertThat(despues.advertencias()).isEmpty();
 		assertThat(despues.filas()).singleElement().satisfies(fila ->
-				assertThat(fila.celdas()).startsWith(String.valueOf(f.financiador()), "10500.00"));
+				assertThat(fila.celdas()).startsWith(String.valueOf(f.financiador()), "7000.00"));
 	}
 
 	// =================================================================================
@@ -593,7 +593,7 @@ class ObligacionDelFinanciadorIT {
 				                              practica_id, importe_total, importe_financiador,
 				                              coseguro, moneda, vigencia_desde, active, version,
 				                              created_at, updated_at)
-				VALUES (?, ?, ?, ?, 12000.00, 10500.00, 1500.00, 'ARS', '2020-01-01', true, 0,
+				VALUES (?, ?, ?, ?, 8500.00, 7000.00, 1500.00, 'ARS', '2020-01-01', true, 0,
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, convenio, kine);
 

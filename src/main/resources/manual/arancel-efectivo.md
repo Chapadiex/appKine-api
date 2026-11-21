@@ -12,7 +12,8 @@ palabras: [cuánto sale, precio de una práctica, arancel, coseguro, consultar a
 ## Para qué sirve
 
 Responde **cuánto sale una práctica** para un financiador y un plan, en una fecha, en **esta
-sede**: el total, cuánto pone el financiador y cuánto paga el paciente (coseguro). Además dice
+sede**: cuánto pone el financiador y, si elegís la actividad, cuánto paga el paciente (coseguro:
+precio de la actividad menos lo que pone el financiador). Además dice
 **de dónde sale** el precio: qué convenio y qué arancel lo produjeron.
 
 > [!consejo]
@@ -33,8 +34,8 @@ sede**: el total, cuánto pone el financiador y cuánto paga el paciente (cosegu
 5. Poné la **Fecha de la prestación**: la del día atendido, no la de hoy.
 6. Tocá **Consultar**.
 
-El resultado muestra el total, **Pone el financiador** y **Paga el paciente**, y abajo **De donde
-sale este precio**: el convenio y la vigencia del arancel.
+El resultado muestra **Pone el financiador** y, si elegiste la actividad, el total y **Paga el
+paciente**. Abajo, **De donde sale este precio**: el convenio y la vigencia del arancel.
 
 ### Averiguar qué precio regía en una fecha pasada
 

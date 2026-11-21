@@ -18,6 +18,7 @@ import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioLockRep
 import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioRepositoryPort;
 import com.akine.contracting.spi.ResolucionDeArancel;
 import com.akine.offering.spi.OfertaDirectory;
+import com.akine.offering.spi.PrecioDeOferta;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
@@ -37,6 +38,7 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -228,7 +230,7 @@ public class ArancelService {
 
 		// Los aranceles se leen SOLO si hay convenio aplicable: pedirlos antes seria una consulta
 		// que en el caso mas frecuente —paciente particular, sin convenio— no se usa para nada.
-		return ResolutorDeArancel.convenioAplicable(candidatos, contra)
+		ResolucionDeArancel resolucion = ResolutorDeArancel.convenioAplicable(candidatos, contra)
 				.map(convenio -> ResolutorDeArancel.resolver(
 						List.of(convenio),
 						aranceles.findActivosPorPractica(
@@ -237,6 +239,14 @@ public class ArancelService {
 						ofertaId,
 						contra))
 				.orElseGet(() -> ResolutorDeArancel.resolver(List.of(), List.of(), practicaId, contra));
+		if (!resolucion.estaResuelta()) {
+			return resolucion;
+		}
+		// V33: con oferta se conoce A y se muestra el coseguro (A − B); sin oferta viaja nulo.
+		BigDecimal precioA = ofertaId == null ? null
+				: ofertas.precioVigenteEl(organizationId, consultorioId, ofertaId, contra)
+						.map(PrecioDeOferta::precioBase).orElse(null);
+		return ResolucionDeArancel.resuelta(resolucion.arancel().conPrecio(precioA));
 	}
 
 	// =================================================================================
@@ -286,9 +296,7 @@ public class ArancelService {
 				convenioId,
 				command.practicaId(),
 				command.ofertaId(),
-				command.importeTotal(),
 				command.importeFinanciador(),
-				command.coseguro(),
 				convenio.getMoneda(),
 				command.vigenciaDesde(),
 				command.vigenciaHasta());
@@ -308,9 +316,7 @@ public class ArancelService {
 			detalles.put("ofertaId", String.valueOf(command.ofertaId()));
 		}
 		detalles.put("vigencia", creado.vigencia().toString());
-		detalles.put("importeTotal", creado.getImporteTotal() + " " + creado.getMoneda());
-		detalles.put("importeFinanciador", creado.getImporteFinanciador().toString());
-		detalles.put("coseguro", creado.getCoseguro().toString());
+		detalles.put("importeFinanciador", creado.getImporteFinanciador() + " " + creado.getMoneda());
 		auditar(AuditEvents.ARANCEL_CREATED, creado, actor, null, "ACTIVO", null, detalles);
 
 		log.info("Arancel creado: arancelId={} convenioId={} practicaId={}",
@@ -359,9 +365,7 @@ public class ArancelService {
 		Map<String, String> detalles = cambios(arancel, command);
 
 		arancel.updateDatos(
-				command.importeTotal(),
 				command.importeFinanciador(),
-				command.coseguro(),
 				command.vigenciaDesde(),
 				command.vigenciaHasta());
 
@@ -534,18 +538,10 @@ public class ArancelService {
 			ConvenioArancel arancel, ArancelEdicionCommand command) {
 
 		Map<String, String> detalles = new LinkedHashMap<>();
-		if (command.importeTotal() != null
-				&& arancel.getImporteTotal().compareTo(command.importeTotal()) != 0) {
-			detalles.put("importeTotal", arancel.getImporteTotal() + " -> " + command.importeTotal());
-		}
 		if (command.importeFinanciador() != null
 				&& arancel.getImporteFinanciador().compareTo(command.importeFinanciador()) != 0) {
 			detalles.put("importeFinanciador",
 					arancel.getImporteFinanciador() + " -> " + command.importeFinanciador());
-		}
-		if (command.coseguro() != null
-				&& arancel.getCoseguro().compareTo(command.coseguro()) != 0) {
-			detalles.put("coseguro", arancel.getCoseguro() + " -> " + command.coseguro());
 		}
 		LocalDate desde =
 				command.vigenciaDesde() == null ? arancel.getVigenciaDesde() : command.vigenciaDesde();

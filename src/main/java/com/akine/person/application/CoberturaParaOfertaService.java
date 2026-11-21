@@ -22,6 +22,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -140,9 +141,12 @@ public class CoberturaParaOfertaService {
 				noAplicables.add(noAplicable(cobertura, Motivo.OFERTA_SIN_PRACTICAS, List.of()));
 				continue;
 			}
+			BigDecimal precioA = precio.filter(PrecioDeOferta::estaTarifada)
+					.map(PrecioDeOferta::precioBase).orElse(null);
 			List<Practica> detalle = practicas.stream()
 					.map(p -> practica(p, coberturas.resolver(
-							cobertura, organizationId, consultorioId, p.practicaId(), ofertaId, dia)))
+							cobertura, organizationId, consultorioId, p.practicaId(), ofertaId, dia),
+							precioA))
 					.toList();
 			Optional<Practica> primera = detalle.stream().filter(p -> p.arancel() != null).findFirst();
 			if (primera.isPresent()) {
@@ -176,9 +180,12 @@ public class CoberturaParaOfertaService {
 				.toList();
 	}
 
-	private static Practica practica(PracticaDeOferta p, ResolucionDeArancel resolucion) {
+	/** El coseguro de cada arancel se calcula contra el precio del dia (A − B, V33). */
+	private static Practica practica(
+			PracticaDeOferta p, ResolucionDeArancel resolucion, BigDecimal precioA) {
 		return resolucion.estaResuelta()
-				? new Practica(p.practicaId(), p.principal(), resolucion.arancel(), null)
+				? new Practica(p.practicaId(), p.principal(),
+						resolucion.arancel().conPrecio(precioA), null)
 				: new Practica(p.practicaId(), p.principal(), null,
 						Motivo.valueOf(resolucion.motivo().name()));
 	}

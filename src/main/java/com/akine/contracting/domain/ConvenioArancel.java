@@ -16,20 +16,16 @@ import java.util.Locale;
 /**
  * Lo que vale una practica bajo un convenio, durante un periodo (M16, RF-M16-004).
  *
- * <h2>Tres importes explicitos y ningun porcentaje (§37)</h2>
+ * <h2>Un solo importe: lo que paga el financiador (V33)</h2>
  *
- * <pre>
- *   importeTotal        lo que vale la practica bajo este convenio
- *   importeFinanciador  la parte que paga el financiador
- *   coseguro            la parte que paga el paciente
- * </pre>
+ * <p>El arancel guarda {@code importeFinanciador} (B). El coseguro <b>no se carga</b>: se calcula
+ * al cerrar la sesion como {@code max(A - B, 0)}, con A el precio de la oferta ese dia
+ * ({@code contracting.spi.Coseguro}). {@code importeTotal} y {@code coseguro} quedan como
+ * historicos de los aranceles cargados antes de V33: esta clase los pone en {@code null} en todo
+ * alta y en toda edicion del importe, y nadie los usa para calcular.
  *
- * <p>Las dos partes suman el total, y eso lo verifica esta clase <b>y</b>
- * {@code ck_arancel_partes_suman_total}. <b>No hay porcentaje de cobertura a proposito:</b> un
- * porcentaje obliga a multiplicar y redondear, §37 exige documentar todo redondeo, y el redondeo
- * de un arancel es exactamente el tipo de diferencia de un centavo que aparece seis meses despues
- * en una presentacion rechazada. Con tres importes no hay ninguna operacion que redondear — la
- * suma de dos {@code DECIMAL(12,2)} es exacta.
+ * <p><b>No hay porcentaje de cobertura a proposito:</b> un porcentaje obliga a multiplicar y
+ * redondear (§37). Una resta de dos {@code DECIMAL(12,2)} es exacta.
  *
  * <p>{@code BigDecimal} y jamas {@code double}: AGENT.md §5, y ArchUnit lo verifica
  * ({@code sin_punto_flotante_en_el_dominio}). La comparacion es {@code compareTo} y nunca
@@ -79,13 +75,16 @@ public class ConvenioArancel extends MarcaTemporal {
 	@Column(name = "oferta_id", updatable = false)
 	private Long ofertaId;
 
-	@Column(name = "importe_total", nullable = false, precision = 12, scale = 2)
+	/** Historico, anterior a V33. {@code null} en los aranceles nuevos. */
+	@Column(name = "importe_total", precision = 12, scale = 2)
 	private BigDecimal importeTotal;
 
+	/** B: lo que paga el financiador por la practica. */
 	@Column(name = "importe_financiador", nullable = false, precision = 12, scale = 2)
 	private BigDecimal importeFinanciador;
 
-	@Column(name = "coseguro", nullable = false, precision = 12, scale = 2)
+	/** Historico, anterior a V33. {@code null} en los aranceles nuevos. */
+	@Column(name = "coseguro", precision = 12, scale = 2)
 	private BigDecimal coseguro;
 
 	@Column(name = "moneda", nullable = false, length = 3)
@@ -121,15 +120,13 @@ public class ConvenioArancel extends MarcaTemporal {
 			long consultorioId,
 			long convenioId,
 			long practicaId,
-			BigDecimal importeTotal,
 			BigDecimal importeFinanciador,
-			BigDecimal coseguro,
 			String moneda,
 			LocalDate vigenciaDesde,
 			LocalDate vigenciaHasta) {
 
-		this(organizationId, consultorioId, convenioId, practicaId, null, importeTotal,
-				importeFinanciador, coseguro, moneda, vigenciaDesde, vigenciaHasta);
+		this(organizationId, consultorioId, convenioId, practicaId, null, importeFinanciador,
+				moneda, vigenciaDesde, vigenciaHasta);
 	}
 
 	/** Alta de un arancel especifico de una oferta (B-3, RF-M16-008); general si es {@code null}. */
@@ -140,9 +137,7 @@ public class ConvenioArancel extends MarcaTemporal {
 			long convenioId,
 			long practicaId,
 			Long ofertaId,
-			BigDecimal importeTotal,
 			BigDecimal importeFinanciador,
-			BigDecimal coseguro,
 			String moneda,
 			LocalDate vigenciaDesde,
 			LocalDate vigenciaHasta) {
@@ -152,33 +147,24 @@ public class ConvenioArancel extends MarcaTemporal {
 		this.convenioId = convenioId;
 		this.practicaId = practicaId;
 		this.ofertaId = ofertaId;
-		aplicarImportes(importeTotal, importeFinanciador, coseguro);
+		aplicarImporte(importeFinanciador);
 		this.moneda = exigirMoneda(moneda);
 		aplicarVigencia(vigenciaDesde, vigenciaHasta);
 	}
 
 	/**
-	 * Edicion parcial. Lo que llega en {@code null} NO se toca.
-	 *
-	 * <p>Los importes se validan siempre <b>como terna</b>, aunque llegue uno solo: subir el total
-	 * sin tocar las partes rompe la invariante, y validar solo el campo que llega la dejaria pasar.
-	 * La misma logica se aplica a la vigencia.
+	 * Edicion parcial. Lo que llega en {@code null} NO se toca. La vigencia se valida como par.
 	 *
 	 * <p>Ni la practica ni el convenio estan aca: cambiarlos no seria editar este arancel, seria
 	 * inventar otro.
 	 */
 	public void updateDatos(
-			BigDecimal importeTotal,
 			BigDecimal importeFinanciador,
-			BigDecimal coseguro,
 			LocalDate vigenciaDesde,
 			LocalDate vigenciaHasta) {
 
-		if (importeTotal != null || importeFinanciador != null || coseguro != null) {
-			aplicarImportes(
-					importeTotal == null ? this.importeTotal : importeTotal,
-					importeFinanciador == null ? this.importeFinanciador : importeFinanciador,
-					coseguro == null ? this.coseguro : coseguro);
+		if (importeFinanciador != null) {
+			aplicarImporte(importeFinanciador);
 		}
 		if (vigenciaDesde != null || vigenciaHasta != null) {
 			aplicarVigencia(
@@ -220,21 +206,15 @@ public class ConvenioArancel extends MarcaTemporal {
 	// Invariantes internas
 	// =================================================================================
 
-	private void aplicarImportes(BigDecimal total, BigDecimal financiador, BigDecimal coseguro) {
-		exigirNoNegativo(total, "El importe total");
-		exigirNoNegativo(financiador, "La parte del financiador");
-		exigirNoNegativo(coseguro, "El coseguro");
-
-		// compareTo y no equals: 100.0 y 100.00 son el mismo importe y distintos BigDecimal.
-		if (financiador.add(coseguro).compareTo(total) != 0) {
-			throw new IllegalArgumentException(
-					"La parte del financiador (" + financiador + ") y el coseguro (" + coseguro
-							+ ") tienen que sumar exactamente el importe total (" + total + ")");
-		}
-
-		this.importeTotal = total;
+	/**
+	 * Fija B y borra los historicos: un total o un coseguro anteriores a V33 que sobrevivieran a
+	 * un cambio de B describirian un arancel que ya no existe.
+	 */
+	private void aplicarImporte(BigDecimal financiador) {
+		exigirNoNegativo(financiador, "Lo que paga el financiador");
 		this.importeFinanciador = financiador;
-		this.coseguro = coseguro;
+		this.importeTotal = null;
+		this.coseguro = null;
 	}
 
 	private void aplicarVigencia(LocalDate desde, LocalDate hasta) {

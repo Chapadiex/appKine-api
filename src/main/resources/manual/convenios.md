@@ -13,8 +13,8 @@ palabras: [convenio, arancel, coseguro, obra social, prepaga, precio por prácti
 
 Un **convenio** es lo que **esta sede** acordó con un **plan** de un financiador: desde cuándo,
 hasta cuándo, cómo se liquida y qué requisitos pide. De cada convenio cuelgan los **aranceles**:
-el precio de cada práctica, repartido entre lo que pone el financiador y el **coseguro** (lo que
-paga el paciente).
+lo que **pone el financiador** por cada práctica. El **coseguro** (lo que paga el paciente) no se
+carga: es el precio de la actividad menos lo que pone el financiador, y nunca baja de cero.
 
 > [!importante]
 > Sin convenio, todo lo que se atiende en la sede se cobra como particular. Dos sedes de la misma
@@ -53,13 +53,14 @@ tope de sesiones por mes. Hoy se muestran pero no bloquean nada.
 
 ### Cargar un arancel
 
-![El panel Nuevo arancel, con la práctica, los tres importes, la fecha de inicio y el botón Cargar arancel marcados](captura:convenios/nuevo-arancel)
+![El panel Nuevo arancel, con la práctica, lo que pone el financiador, la fecha de inicio y el botón Cargar arancel marcados](captura:convenios/nuevo-arancel)
 
 1. En la fila del convenio, tocá **Aranceles** y después :icono[agregar]: **Cargar un arancel**.
 2. Elegí la **Práctica**. Si el precio vale sólo dentro de una actividad, elegila en **Actividad
    (opcional)**; si no, queda **General**.
-3. Completá **Importe total**, **Pone el financiador** y **Coseguro del paciente**. Tienen que
-   cuadrar exacto: financiador + coseguro = total. Coseguro en cero es cobertura total.
+3. Completá **Pone el financiador**. El coseguro se calcula solo al cerrar cada sesión: precio de
+   la actividad menos lo que pone el financiador. Si el financiador pone lo mismo o más, el
+   paciente no paga nada.
 4. Completá **Vigente desde**. La vigencia tiene que caer dentro de la del convenio.
 5. Tocá **Cargar arancel**.
 
@@ -111,6 +112,7 @@ Los aranceles usan los mismos estados.
   de cargar el nuevo.
 - **El plan no aparece al firmar**: el financiador no tiene planes activos. Cargale uno desde
   **Financiadores → Planes**.
-- **Los importes no se aceptan**: financiador más coseguro tiene que dar exactamente el total.
+- **El coseguro sale en cero**: la actividad no tiene precio ese día, o el financiador pone igual o
+  más que el precio. Cargale precio a la actividad en **Servicios → Actividades**.
 - **No veo Firmar un convenio**: hace falta permiso para administrar convenios. Pedíselo a quien
   administra el centro.

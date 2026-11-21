@@ -107,7 +107,7 @@ class CoberturaPorOfertaIT {
 		assertThat(r.aplicables()).singleElement().satisfies(a -> {
 			assertThat(a.coberturaId()).isEqualTo(f.cobertura());
 			assertThat(a.practicaId()).isEqualTo(f.fono());
-			assertThat(a.arancel().importeTotal()).isEqualByComparingTo("9000.00");
+			assertThat(a.arancel().importeTotal()).as("A 8500 = B 8000 + coseguro 500 (V33)").isEqualByComparingTo("8500.00");
 			assertThat(a.practicas()).extracting(CoberturaParaOferta.Practica::practicaId)
 					.containsExactly(f.kine(), f.fono());
 			assertThat(a.practicas().getFirst().motivo()).isEqualTo(Motivo.SIN_ARANCEL_VIGENTE);
@@ -148,8 +148,8 @@ class CoberturaPorOfertaIT {
 	void arancel_de_la_oferta_manda_y_se_devenga() {
 		Fixture f = crear(true);
 		ArancelView deLaOferta = arancelService.crear(f.admin2(), f.sede(), f.convenio(),
-				new ArancelAltaCommand(f.kine(), new BigDecimal("15000.00"),
-						new BigDecimal("13000.00"), new BigDecimal("2000.00"),
+				new ArancelAltaCommand(f.kine(), new BigDecimal("8500.00"),
+						new BigDecimal("6500.00"), new BigDecimal("2000.00"),
 						LocalDate.of(2020, 1, 1), null, f.oferta()));
 
 		ResolucionDeArancel conOferta = arancelService.resolver(f.admin2(), f.sede(),
@@ -171,7 +171,7 @@ class CoberturaPorOfertaIT {
 		assertThat(filas).hasSize(2).allSatisfy(fila ->
 				assertThat(((Number) fila.get("snapshot_arancel_id")).longValue())
 						.isEqualTo(deLaOferta.id()));
-		assertThat((BigDecimal) filas.get(0).get("importe_original")).isEqualByComparingTo("13000.00");
+		assertThat((BigDecimal) filas.get(0).get("importe_original")).isEqualByComparingTo("6500.00");
 		assertThat((BigDecimal) filas.get(1).get("importe_original")).isEqualByComparingTo("2000.00");
 	}
 

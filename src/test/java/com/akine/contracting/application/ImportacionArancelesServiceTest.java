@@ -140,8 +140,8 @@ class ImportacionArancelesServiceTest {
 				fila(null, "kin-02", null, "9000.00", "9000.00", "0", JULIO, DICIEMBRE),
 				// 3: se pisa con la fila 2 del mismo lote
 				fila(null, "KIN-02", null, "9500.00", "9500.00", "0", ENERO, DICIEMBRE),
-				// 4: importes que no cuadran
-				fila(PRACTICA_ID, null, null, "100.00", "90.00", "0", JULIO, DICIEMBRE),
+				// 4: lo que paga el financiador, negativo
+				fila(PRACTICA_ID, null, null, null, "-1.00", null, JULIO, DICIEMBRE),
 				// 5: codigo inexistente
 				fila(null, "NOPE", null, "1.00", "1.00", "0", JULIO, DICIEMBRE),
 				// 6: oferta que no admite obra social
@@ -255,8 +255,9 @@ class ImportacionArancelesServiceTest {
 	private static Fila fila(Long practicaId, String codigo, Long ofertaId, String total,
 			String financiador, String coseguro, LocalDate desde, LocalDate hasta) {
 
-		return new Fila(practicaId, codigo, ofertaId, new BigDecimal(total),
-				new BigDecimal(financiador), new BigDecimal(coseguro), desde, hasta);
+		return new Fila(practicaId, codigo, ofertaId, total == null ? null : new BigDecimal(total),
+				new BigDecimal(financiador), coseguro == null ? null : new BigDecimal(coseguro), desde,
+				hasta);
 	}
 
 	private static Convenio convenio() {
@@ -271,8 +272,7 @@ class ImportacionArancelesServiceTest {
 			long id, long practicaId, LocalDate desde, LocalDate hasta) {
 
 		ConvenioArancel arancel = new ConvenioArancel(ORG_ID, SEDE_ID, CONVENIO_ID, practicaId,
-				new BigDecimal("12000.00"), new BigDecimal("9600.00"), new BigDecimal("2400.00"),
-				"ARS", desde, hasta);
+				new BigDecimal("9600.00"), "ARS", desde, hasta);
 		ReflectionTestUtils.setField(arancel, "id", id);
 		return arancel;
 	}

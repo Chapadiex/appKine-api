@@ -69,7 +69,62 @@ terminaba en la liquidación de otra obra social.
 **Fuera de alcance.** `ConsumoDeAutorizacionEnCierre` sigue eligiendo la autorización por práctica y caso, no por
 cobertura. Revisarlo queda para el paso 2.
 
-## 5. Datos sin uso detectados (para la fase aparte)
+## 5. Paso 2: coseguro = A − B
+
+**Regla.** El arancel del convenio guarda **sólo B** (`importe_financiador`). El coseguro se calcula al
+**cerrar la sesión**:
+
+```
+A = precio de la oferta el día del cierre      (SesionCerrada.precioDeLaOferta, ya se lee hoy)
+B = importe_financiador del arancel congelado
+coseguro = max(A − B, 0)
+snapshot_importe_total = B + coseguro          (= max(A, B); mantiene ck_obligacion_snapshot_partes_suman)
+```
+
+- Si la oferta **no tiene precio** el día del cierre, el coseguro es 0 y queda un `warn`: el paciente
+  no paga nada. Con cobertura no se exige precio (igual que hoy), así que no se rompe ningún cierre.
+- Si A y B son cero, no se devenga nada: las partes en cero no generan fila. Desaparece la regla
+  especial de "total cero", porque el total ya no se carga.
+- El snapshot de la obligación sigue igual: total, financiador y coseguro **del día**, congelados.
+
+**Migración `V33`** (reservada: `V29` acciones, `V30` cobro, `V31` planes, `V32` términos):
+- se borra `ck_arancel_partes_suman_total`;
+- `importe_total` y `coseguro` de `convenio_arancel` pasan a admitir `NULL`, quedan como **históricos** y
+  nadie los lee para calcular;
+- los aranceles existentes conservan sus valores, pero el devengo ya no los usa.
+
+**Contrato `0.185.0`** (sobre el `0.184.0` de `akine-api-correo-duenio`; renumerar al rebasear):
+- en el alta, la edición y la importación de aranceles, `importeTotal` y `coseguro` pasan a ser
+  **opcionales y se ignoran** (`deprecated`). Un cliente viejo que los manda no se rompe;
+- en las respuestas (`Arancel`, `ArancelEfectivo`, cobertura aplicable), `importeTotal` y `coseguro`
+  pasan a calcularse con el precio de la oferta cuando se conoce la oferta. Si no se conoce, viajan
+  **nulos**. Es un cambio incompatible declarado para el cliente generado (campos que dejan de ser
+  obligatorios).
+
+### Design challenge
+
+1. **Ownership.** No hay tablas nuevas. `convenio_arancel` es de `contracting`; el cálculo vive en
+   `billing` (devengo) y en `contracting` (simulador), y la fórmula es una sola, en
+   `contracting.spi.Coseguro`.
+2. **Ciclos.** No hay aristas nuevas: `contracting` y `person` ya dependen de `offering.spi` para el
+   precio, y `billing` ya recibe A en `SesionCerrada`.
+3. **Tenant.** No hay tablas ni índices nuevos.
+4. **Reglas maestras.** Obligación, cobro y caja siguen separados. El coseguro sigue siendo una obligación
+   del paciente; cobrarlo es otro acto.
+5. **Baja lógica.** No se borran datos: los importes históricos de los aranceles quedan en la tabla.
+6. **Contrato.** El request es compatible: los campos pasan a opcionales. La respuesta tiene campos que
+   pasan a nulos, un cambio incompatible para el cliente TypeScript, declarado; el frontend tiene que
+   regenerar y adaptar el formulario del arancel en el mismo tramo.
+7. **Ruta crítica.** El precio por día de la oferta y el devengo por convenio ya existen.
+8. **El caso que rompe el diseño.** El centro sube A a mitad de mes. Las sesiones ya cerradas conservan
+   su coseguro (snapshot) y las nuevas toman el A nuevo: es lo acordado. Otro caso adverso: una obra
+   social con B mayor que A. El paciente paga 0 y la obra social paga B entero, que puede ser más de lo
+   que el centro cobra en particular: es correcto, la obra social paga lo pactado.
+
+**Fuera del paso 2:** aplicar el tope mensual o el cupo de la autorización para pasar la sesión a particular
+(paso 2b), y la vista `V23` del asistente, que va a mostrar `coseguro` nulo en los aranceles nuevos.
+
+## 6. Datos sin uso detectados (para la fase aparte)
 
 - `copago` en `plan_catalogo`, `plan_cobertura` y `cobertura_paciente`: ningún devengo lo lee.
 - `requiere_autorizacion` y `requiere_credencial` del plan: la elegibilidad usa los del convenio.

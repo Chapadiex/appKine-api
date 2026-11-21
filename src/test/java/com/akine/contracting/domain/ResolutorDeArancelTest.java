@@ -41,8 +41,8 @@ class ResolutorDeArancelTest {
 				ResolutorDeArancel.resolver(List.of(convenio), List.of(arancel), PRACTICA, MARZO);
 
 		assertThat(resolucion.estaResuelta()).isTrue();
-		assertThat(resolucion.arancel().importeTotal()).isEqualByComparingTo("12000.00");
-		assertThat(resolucion.arancel().coseguro()).isEqualByComparingTo("2400.00");
+		assertThat(resolucion.arancel().importeFinanciador()).isEqualByComparingTo("9600.00");
+		assertThat(resolucion.arancel().coseguro()).as("sin precio no hay coseguro (V33)").isNull();
 		assertThat(resolucion.arancel().moneda()).isEqualTo("ARS");
 
 		// La derivacion: sin esto, un numero inesperado no se puede explicar.
@@ -107,8 +107,8 @@ class ResolutorDeArancelTest {
 		ResolucionDeArancel enAgosto = ResolutorDeArancel.resolver(
 				List.of(convenio), List.of(nuevo, viejo), PRACTICA, LocalDate.of(2026, 8, 10));
 
-		assertThat(enMarzo.arancel().importeTotal()).isEqualByComparingTo("12000.00");
-		assertThat(enAgosto.arancel().importeTotal()).isEqualByComparingTo("18000.00");
+		assertThat(enMarzo.arancel().importeFinanciador()).isEqualByComparingTo("12000.00");
+		assertThat(enAgosto.arancel().importeFinanciador()).isEqualByComparingTo("18000.00");
 	}
 
 	@Test
@@ -149,7 +149,7 @@ class ResolutorDeArancelTest {
 		Instant capturadoEl = Instant.parse("2026-03-15T10:00:00Z");
 		ArancelCongelado copia = ResolutorDeArancel.congelar(resolucion.arancel(), capturadoEl);
 
-		assertThat(copia.importeTotal()).isEqualByComparingTo("12000.00");
+		assertThat(copia.importeFinanciador()).isEqualByComparingTo("9600.00");
 		assertThat(copia.convenioNombre()).isEqualTo("OSDE 210");
 		assertThat(copia.vigenteEl()).isEqualTo(MARZO);
 		assertThat(copia.capturadoEl()).isEqualTo(capturadoEl);
@@ -157,11 +157,10 @@ class ResolutorDeArancelTest {
 		// Se edita el convenio DESPUES de congelar: la copia no se entera, que es todo el punto.
 		convenio.updateDatos("OSDE 210 Premium", null, null, null, null, null, null, null, null,
 				null);
-		arancel.updateDatos(new BigDecimal("99999.00"), new BigDecimal("99999.00"),
-				BigDecimal.ZERO, null, null);
+		arancel.updateDatos(new BigDecimal("99999.00"), null, null);
 
 		assertThat(copia.convenioNombre()).isEqualTo("OSDE 210");
-		assertThat(copia.importeTotal()).isEqualByComparingTo("12000.00");
+		assertThat(copia.importeFinanciador()).isEqualByComparingTo("9600.00");
 	}
 
 	@Test
@@ -190,8 +189,7 @@ class ResolutorDeArancelTest {
 			LocalDate desde, LocalDate hasta) {
 
 		ConvenioArancel arancel = new ConvenioArancel(7L, 20L, 140L, PRACTICA,
-				new BigDecimal(total), new BigDecimal(financiador), new BigDecimal(coseguro),
-				"ARS", desde, hasta);
+				new BigDecimal(financiador), "ARS", desde, hasta);
 		ReflectionTestUtils.setField(arancel, "id", id);
 		return arancel;
 	}
