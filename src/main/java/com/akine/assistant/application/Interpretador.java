@@ -48,7 +48,7 @@ public class Interpretador {
 	/** Las que el modelo puede elegir. {@code BUSCAR_PERSONA} es interna. */
 	static final Set<Intencion> ELEGIBLES = EnumSet.of(Intencion.ASISTENCIA_PERSONA,
 			Intencion.SESION_DE_PERSONA, Intencion.AGENDA_DEL_DIA, Intencion.ASISTENTES_CLASE,
-			Intencion.REPORTE, Intencion.FUERA_DE_ALCANCE);
+			Intencion.REPORTE, Intencion.COMO_SE_HACE, Intencion.FUERA_DE_ALCANCE);
 
 	/** Mas atras que esto el modelo de 4B se confunde y el prompt crece sin aportar. */
 	static final int MAX_TURNOS_PREVIOS = 3;

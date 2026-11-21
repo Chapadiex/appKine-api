@@ -1,0 +1,16 @@
+[
+  { "pregunta": "¿dónde veo quién viene hoy al consultorio?", "esperado": "recepcion-del-dia#Encontrar un turno en la lista" },
+  { "pregunta": "un paciente quiere que lo avisen si se libera un horario, ¿qué hago?", "esperado": "lista-de-espera#Anotar a un paciente" },
+  { "pregunta": "¿cómo registro que pagué la luz del local?", "esperado": "egresos#Cargar un egreso" },
+  { "pregunta": "¿cómo anulo una deuda que se cargó mal?", "esperado": "cuenta-corriente#Anular una deuda" },
+  { "pregunta": "¿cómo saco un box de servicio porque se rompió la camilla?", "esperado": "espacios-y-boxes#Sacar un espacio de servicio por un tiempo" },
+  { "pregunta": "¿cómo le quito el acceso a una persona que dejó de trabajar acá?", "esperado": "colaboradores#Suspender o revocar el acceso" },
+  { "pregunta": "¿cómo hago que la sede no atienda los feriados?", "esperado": "calendario-de-la-sede#Decidir si la sede cierra los feriados" },
+  { "pregunta": "¿cómo cancelo una clase de yoga?", "esperado": "clases#Reprogramar o cancelar una clase" },
+  { "pregunta": "¿cómo veo la evolución de la facturación en un gráfico?", "esperado": "reportes#Ver la evolución en un gráfico" },
+  { "pregunta": "¿cómo prendo el asistente para el centro?", "esperado": "organizacion#Prender o apagar funciones de inteligencia artificial" },
+  { "pregunta": "¿cómo corrijo una sesión que ya cerré?", "esperado": "atencion#Corregir una atención cerrada (enmienda)", "cuenta": "profesional" },
+  { "pregunta": "¿qué dosis de ibuprofeno le doy a un paciente?", "esperado": "NINGUNO" },
+  { "pregunta": "¿cómo actualizo Windows?", "esperado": "NINGUNO" },
+  { "pregunta": "¿cuánto cobra una kinesióloga en Córdoba?", "esperado": "NINGUNO" }
+]

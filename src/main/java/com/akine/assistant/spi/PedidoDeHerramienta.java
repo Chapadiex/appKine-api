@@ -19,6 +19,8 @@ import java.time.ZoneId;
  * @param pregunta la pregunta original: la herramienta de clases la usa para elegir el titulo real
  *                 mas largo que aparece en ella ("yoga para embarazadas" y no "yoga")
  * @param reporte  el codigo del reporte de M23 para {@link Intencion#REPORTE}, o {@code null}
+ * @param rutaActual la pantalla del frontend desde la que se pregunto, para
+ *                 {@link Intencion#COMO_SE_HACE}; {@code null} si no aplica
  */
 public record PedidoDeHerramienta(
 		Long personaId,
@@ -27,7 +29,14 @@ public record PedidoDeHerramienta(
 		LocalDate desde,
 		LocalDate hasta,
 		ZoneId zona,
-		String reporte) {
+		String reporte,
+		String rutaActual) {
+
+	/** Sin pantalla actual: las intenciones de datos no la usan. */
+	public PedidoDeHerramienta(Long personaId, String texto, String pregunta, LocalDate desde, LocalDate hasta,
+			ZoneId zona, String reporte) {
+		this(personaId, texto, pregunta, desde, hasta, zona, reporte, null);
+	}
 
 	/** El dia siguiente a {@code hasta}: el fin del periodo como limite exclusivo. */
 	public LocalDate hastaExclusivo() {
