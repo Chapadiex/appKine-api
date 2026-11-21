@@ -81,6 +81,12 @@ public class SolicitudDePrueba extends TimestampedEntity {
 	@Column(name = "resuelta_en")
 	private Instant resueltaEn;
 
+	@Column(name = "version_terminos", length = 40, updatable = false)
+	private String versionTerminos;
+
+	@Column(name = "terminos_aceptados_en", updatable = false)
+	private Instant terminosAceptadosEn;
+
 	@Column(name = "idempotency_key", nullable = false, length = 80, updatable = false)
 	private String idempotencyKey;
 
@@ -111,6 +117,20 @@ public class SolicitudDePrueba extends TimestampedEntity {
 		this.comentario = comentario;
 		this.idempotencyKey = idempotencyKey;
 		this.estado = Estado.PENDIENTE;
+	}
+
+	/** Deja constancia de la version de los terminos que se acepto al pedir la prueba. */
+	public void aceptarTerminos(String version, Instant en) {
+		this.versionTerminos = version;
+		this.terminosAceptadosEn = en;
+	}
+
+	public String getVersionTerminos() {
+		return versionTerminos;
+	}
+
+	public Instant getTerminosAceptadosEn() {
+		return terminosAceptadosEn;
 	}
 
 	public void aprobar(long organizationId, long actorAccountId, Instant ahora) {

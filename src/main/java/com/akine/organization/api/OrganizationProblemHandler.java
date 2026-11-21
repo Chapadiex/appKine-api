@@ -32,6 +32,7 @@ import com.akine.organization.domain.exception.PlanLimitExceededException;
 import com.akine.organization.domain.exception.ServicioNoContratadoException;
 import com.akine.organization.domain.exception.SolicitudDePruebaNotFoundException;
 import com.akine.organization.domain.exception.SubscriptionSuspendedException;
+import com.akine.organization.domain.exception.TerminosDelPedidoException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
@@ -134,6 +135,17 @@ public class OrganizationProblemHandler {
 	@ExceptionHandler(SolicitudDePruebaNotFoundException.class)
 	public ProblemDetail handleSolicitudDePruebaNotFound(SolicitudDePruebaNotFoundException exception) {
 		return noEncontrado();
+	}
+
+	/** El pedido de prueba no acepto los terminos vigentes: 400 con el campo, como el alta. */
+	@ExceptionHandler(TerminosDelPedidoException.class)
+	public ProblemDetail handleTerminosDelPedido(TerminosDelPedidoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, "La solicitud contiene campos invalidos");
+		problem.setTitle("Error de validacion");
+		problem.setType(VALIDATION_ERROR);
+		problem.setProperty("errors", Map.of(exception.getCampo(), exception.getMessage()));
+		return problem;
 	}
 
 	@ExceptionHandler(OrganizationNotFoundException.class)

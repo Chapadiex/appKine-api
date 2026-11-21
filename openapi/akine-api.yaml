@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.182.0
+  version: 0.184.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -19488,6 +19488,45 @@ paths:
       summary: Si la cuenta administra la plataforma
       tags:
       - Mi cuenta
+  /api/v1/me/terminos:
+    get:
+      description: "Version vigente, enlace al texto y si la cuenta la tiene pendiente.\
+        \ Responde aunque haya terminos pendientes: es lo que la pantalla de aceptacion\
+        \ lee."
+      operationId: getMisTerminos
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MisTerminosResponse"
+          description: Estado de los terminos de la cuenta
+      summary: Terminos vigentes para la cuenta autenticada
+      tags:
+      - Mi cuenta
+    post:
+      description: "Deja constancia de que la cuenta acepto la version vigente y destraba\
+        \ la API. Idempotente: aceptar una version ya aceptada responde igual."
+      operationId: aceptarMisTerminos
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AceptarTerminosRequest"
+        required: true
+      responses:
+        "204":
+          description: Aceptada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La version no es la vigente (errors.versionTerminos): hay\
+            \ que recargar"
+      summary: Aceptar la version vigente de los terminos
+      tags:
+      - Mi cuenta
   /api/v1/mediciones/definiciones:
     get:
       description: |-
@@ -28556,7 +28595,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta un dato, un dato invalido o ningun servicio elegido"
+          description: "Falta un dato, un dato invalido, ningun servicio elegido,\
+            \ o no se aceptaron los terminos vigentes (errors.aceptaTerminos o errors.versionTerminos)"
         "429":
           content:
             application/problem+json:
@@ -29116,6 +29156,20 @@ components:
           minLength: 0
       required:
       - reason
+    AceptarTerminosRequest:
+      type: object
+      description: Aceptacion de la version vigente de los terminos por una cuenta
+        ya creada
+      properties:
+        versionTerminos:
+          type: string
+          description: La versionVigente de GET /api/v1/me/terminos. Tiene que coincidir
+            exacta
+          example: 2026-11-19
+          maxLength: 40
+          minLength: 0
+      required:
+      - versionTerminos
     ActivarPerfilPacienteRequest:
       type: object
       description: "Activacion del perfil clinico. No recibe datos personales: los\
@@ -41693,6 +41747,33 @@ components:
           type: string
           format: date-time
           description: "Momento hasta el que el vinculo es valido, o null si no vence"
+    MisTerminosResponse:
+      type: object
+      description: "Terminos vigentes para la cuenta autenticada, y si los tiene pendientes"
+      properties:
+        aceptadaEn:
+          type:
+          - string
+          - "null"
+          format: date-time
+          description: "Cuando acepto la version vigente, o null si no la acepto"
+        pendiente:
+          type: boolean
+          description: "true si la cuenta todavia no acepto la version vigente: hasta\
+            \ aceptarla, la API responde 403 terminos-pendientes"
+        url:
+          type:
+          - string
+          - "null"
+          description: Donde se publica el texto de los terminos
+          example: /terminos
+        versionVigente:
+          type:
+          - string
+          - "null"
+          description: "Version que hay que aceptar, o null si el despliegue no exige\
+            \ terminos"
+          example: 2026-11-19
     ModeloDelMotorResponse:
       type: object
       description: Un modelo configurado
@@ -44856,6 +44937,7 @@ components:
       - https://akine.app/problems/invalid-credentials
       - https://akine.app/problems/invalid-refresh
       - https://akine.app/problems/invalid-token
+      - https://akine.app/problems/terminos-pendientes
       - https://akine.app/problems/missing-tenant-context
       - https://akine.app/problems/csrf-rejected
       - https://akine.app/problems/organization-slug-taken
@@ -48526,6 +48608,10 @@ components:
       type: object
       description: "Pedido de prueba gratis de 30 dias, desde la landing publica"
       properties:
+        aceptaTerminos:
+          type: boolean
+          description: "Acepta los terminos y condiciones. Obligatorio en true: GET\
+            \ /api/v1/terms da la version vigente"
         actividades:
           type: boolean
           description: Le interesa el servicio de actividades
@@ -48588,6 +48674,13 @@ components:
           type: string
           description: "Telefono, opcional"
           example: +54 351 555 1234
+          maxLength: 40
+          minLength: 0
+        versionTerminos:
+          type: string
+          description: "Version de los terminos que se acepto, la versionVigente de\
+            \ GET /api/v1/terms. Tiene que coincidir exacta"
+          example: 2026-11-19
           maxLength: 40
           minLength: 0
       required:

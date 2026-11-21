@@ -16,6 +16,7 @@ import com.akine.identity.domain.exception.InvitacionPendienteDuplicadaException
 import com.akine.identity.domain.exception.InvitacionVencidaException;
 import com.akine.identity.domain.exception.PasswordPolicyViolationException;
 import com.akine.identity.domain.exception.TerminosNoAceptadosException;
+import com.akine.identity.domain.exception.TerminosPendientesException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
@@ -76,6 +77,7 @@ public class IdentityProblemHandler {
 	private static final URI INVALID_CREDENTIALS = ProblemType.INVALID_CREDENTIALS.uri();
 	private static final URI INVALID_REFRESH = ProblemType.INVALID_REFRESH.uri();
 	private static final URI INVALID_TOKEN = ProblemType.INVALID_TOKEN.uri();
+	private static final URI TERMINOS_PENDIENTES = ProblemType.TERMINOS_PENDIENTES.uri();
 	private static final URI VALIDATION_ERROR = ProblemType.VALIDATION_ERROR.uri();
 	private static final URI NOT_FOUND = ProblemType.NOT_FOUND.uri();
 	private static final URI CONFLICT = ProblemType.CONFLICT.uri();
@@ -206,6 +208,20 @@ public class IdentityProblemHandler {
 		problem.setType(VALIDATION_ERROR);
 		problem.setProperty("errors",
 				Map.of(exception.getCampo(), exception.getMessage()));
+		return problem;
+	}
+
+	/**
+	 * La cuenta no acepto la version vigente de los terminos (19/11/2026). 403 y no 401: la
+	 * sesion sigue valida y la pantalla manda a aceptarlos.
+	 */
+	@ExceptionHandler(TerminosPendientesException.class)
+	public ProblemDetail handleTerminosPendientes(TerminosPendientesException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.FORBIDDEN, exception.getMessage());
+		problem.setTitle("Terminos pendientes");
+		problem.setType(TERMINOS_PENDIENTES);
+		problem.setProperty("versionVigente", exception.getVersionVigente());
 		return problem;
 	}
 
