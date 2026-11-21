@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.185.0
+  version: 0.186.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -44683,6 +44683,13 @@ components:
       description: "Deuda de financiador dentro de un lote. Incluirla **no le mueve\
         \ el saldo**: la obligacion se salda al conciliar."
       properties:
+        autorizacionNumero:
+          type:
+          - string
+          - "null"
+          description: Numero de la autorizacion que consumio la sesion; varias separadas
+            por coma
+          example: AUT-2026-0042
         concepto:
           type: string
           description: "Que se presto, al momento de devengar"
@@ -44729,14 +44736,50 @@ components:
           type: string
           description: Obligatorio al debitar
           example: Falta autorizacion previa
+        numeroAfiliado:
+          type:
+          - string
+          - "null"
+          description: Numero de afiliado de la cobertura con la que se atendio
+          example: AF-123456
         obligacionId:
           type: integer
           format: int64
           example: 9001
+        pacienteDocumento:
+          type:
+          - string
+          - "null"
+          description: Tipo y numero de documento. Solo en el detalle del lote
+          example: DNI 30111222
+        pacienteNombre:
+          type:
+          - string
+          - "null"
+          description: Apellido y nombre del paciente. Solo en el detalle del lote
+          example: "Perez, Ana"
         personaId:
           type: integer
           format: int64
           example: 128
+        planNombre:
+          type:
+          - string
+          - "null"
+          description: "Plan de la cobertura, como estaba al cargarla"
+          example: Plan 310
+        practicaCodigo:
+          type:
+          - string
+          - "null"
+          description: Codigo de la practica en el catalogo
+          example: KIN_SESION
+        practicaNombre:
+          type:
+          - string
+          - "null"
+          description: Nombre de la practica
+          example: Sesion de kinesiologia
         sesionId:
           type: integer
           format: int64

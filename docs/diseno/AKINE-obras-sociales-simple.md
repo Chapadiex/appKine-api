@@ -124,7 +124,46 @@ snapshot_importe_total = B + coseguro          (= max(A, B); mantiene ck_obligac
 **Fuera del paso 2:** aplicar el tope mensual o el cupo de la autorización para pasar la sesión a particular
 (paso 2b), y la vista `V23` del asistente, que va a mostrar `coseguro` nulo en los aranceles nuevos.
 
-## 6. Datos sin uso detectados (para la fase aparte)
+## 6. Paso 3: liquidación legible
+
+**Qué falta hoy.** El renglón de la presentación (`presentacion_item`) congela persona, sesión,
+fecha, concepto e importe. El CSV exporta los **ids** de persona y sesión, y la pantalla también.
+La obra social pide nombre, documento, número de afiliado, plan, código de práctica y número de
+autorización.
+
+**Qué se agrega, sin migración:**
+- Cada renglón de `PresentacionItemView` suma `pacienteNombre`, `pacienteDocumento`,
+  `numeroAfiliado`, `planNombre`, `practicaCodigo`, `practicaNombre` y `autorizacionNumero`. Se
+  calculan al leer (`RenglonesLegibles`) y no se persisten, igual que el timeline y el 360:
+  - nombre y documento: `person.spi.PacienteDirectory.findAll`, que billing ya usa;
+  - afiliado y plan: la **copia congelada** de `cobertura_paciente` (nombre del plan al firmar), por
+    el `coberturaId` del snapshot de la obligación;
+  - práctica: `resource.spi.CatalogoDirectory.findPractica` sobre la práctica de la obligación;
+  - autorización: el consumo del ledger (`autorizacion_movimiento`, `CONSUMO` con origen `SESION`)
+    de esa sesión, sin revertir.
+- El CSV suma esas columnas y, al final, un **resumen por paciente**: nombre, documento,
+  afiliado, plan, cantidad de sesiones, fechas e importe presentado.
+- Contrato: campos **opcionales nuevos** en `PresentacionItem` (cambio aditivo, minor 0.186.0).
+
+**PHI.** El CSV de 07.04 salió con PHI mínima a propósito. Este paso la amplía porque la obra social
+la exige para liquidar. Sigue igual de restringida: `cobro:register` y la sede del lote. No se agrega
+ningún dato clínico (diagnóstico, evolución).
+
+### Design challenge
+1. **Ownership.** No hay tablas nuevas. La lectura nueva de afiliado y autorización vive en `person`
+   (`person.spi.DatosDeLiquidacionDirectory`), que es dueño de `cobertura_paciente` y del ledger.
+2. **Ciclos.** Se agrega una arista nueva, `billing → resource.spi`. `resource` no depende de
+   `billing`. `billing → person.spi` ya existía.
+3. **Tenant.** Las dos consultas nuevas filtran por `organization_id`.
+4. **Reglas maestras.** Liquidar no es cobrar: sólo se lee.
+5. **Baja lógica.** No aplica.
+6. **Contrato.** Es aditivo.
+7. **Ruta crítica.** El ledger y la cobertura congelada existen desde 04.05 y 03.04.
+8. **El caso que rompe el diseño.** Un lote de 500 renglones. Se resuelve con una consulta por
+   fuente, en lote (personas, coberturas, consumos), y una por práctica distinta (pocas). No es una
+   consulta por renglón.
+
+## 7. Datos sin uso detectados (para la fase aparte)
 
 - `copago` en `plan_catalogo`, `plan_cobertura` y `cobertura_paciente`: ningún devengo lo lee.
 - `requiere_autorizacion` y `requiere_credencial` del plan: la elegibilidad usa los del convenio.

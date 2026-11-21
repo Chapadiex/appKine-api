@@ -79,7 +79,8 @@ tocan el arqueo. Un pago mayor que el saldo se rechaza.
 
 > [!consejo]
 > **Exportar CSV**, en la cabecera del lote, descarga las prestaciones para mandarlas o revisarlas
-> fuera del sistema.
+> fuera del sistema. Cada renglón trae paciente, documento, número de afiliado, plan, fecha,
+> práctica con su código y autorización, y al final un resumen por paciente con sus sesiones.
 
 ## Qué significa cada estado
 

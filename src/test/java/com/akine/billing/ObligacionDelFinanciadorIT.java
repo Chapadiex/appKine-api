@@ -288,6 +288,13 @@ class ObligacionDelFinanciadorIT {
 				f.administrativo(), f.consultorioId(), borrador.id());
 		assertThat(confirmada.estado()).isEqualTo(EstadoPresentacion.PRESENTADA);
 		assertThat(confirmada.totalPresentado()).isEqualByComparingTo("7000.00");
+		// Obras sociales simples, paso 3: el renglon dice quien fue y con que afiliado y plan.
+		assertThat(confirmada.items()).singleElement().satisfies(renglon -> {
+			assertThat(renglon.pacienteNombre()).isNotBlank();
+			assertThat(renglon.numeroAfiliado()).startsWith("AF-");
+			assertThat(renglon.planNombre()).startsWith("Plan ");
+			assertThat(renglon.practicaCodigo()).isNotBlank();
+		});
 
 		// Ya presentada, deja la bandeja (RN-M21-003).
 		assertThat(presentacionService.elegibles(f.administrativo(), f.consultorioId(),

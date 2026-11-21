@@ -48,6 +48,16 @@ public interface ObligacionRepository
 	@Query("""
 			SELECT o FROM Obligacion o
 			 WHERE o.organizationId = :organizationId
+			   AND o.id IN :ids
+			""")
+	List<Obligacion> findAllDeLaOrganizacion(
+			@Param("organizationId") long organizationId,
+			@Param("ids") java.util.Collection<Long> ids);
+
+	@Override
+	@Query("""
+			SELECT o FROM Obligacion o
+			 WHERE o.organizationId = :organizationId
 			   AND o.paseId = :paseId
 			   AND o.deletedAt IS NULL
 			""")

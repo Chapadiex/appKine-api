@@ -14,6 +14,9 @@ public interface ObligacionRepositoryPort {
 
 	Optional<Obligacion> findByIdInScope(long organizationId, long consultorioId, long obligacionId);
 
+	/** Varias obligaciones de la organizacion por id, en una consulta. Lo usa la liquidacion legible. */
+	List<Obligacion> findAllDeLaOrganizacion(long organizationId, java.util.Collection<Long> ids);
+
 	/**
 	 * Las obligaciones vivas ya devengadas por esa prestacion, de cualquier responsable.
 	 *
