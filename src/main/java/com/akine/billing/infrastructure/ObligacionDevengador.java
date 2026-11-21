@@ -295,9 +295,9 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 
 		LocalDate dia = diaLocalDeLaSede(cierre);
 		for (long practicaId : candidatas) {
-			List<CoberturaAplicable> aplicables = coberturas.aplicables(
+			List<CoberturaAplicable> aplicables = elegidaPrimero(cierre, coberturas.aplicables(
 					cierre.organizationId(), cierre.consultorioId(), cierre.personaId(), practicaId,
-					cierre.ofertaId(), dia);
+					cierre.ofertaId(), dia));
 			for (CoberturaAplicable cobertura : aplicables) {
 				Optional<ArancelCongelado> arancel = aranceles.congelar(
 						cierre.organizationId(), cierre.consultorioId(),
@@ -306,11 +306,35 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 				if (arancel.isPresent()) {
 					boolean noHabilitada = !declaradas.isEmpty() && declaradas.stream()
 							.noneMatch(p -> p.practicaId() == practicaId);
+					if (cierre.coberturaElegidaId() != null
+							&& cobertura.coberturaId() != cierre.coberturaElegidaId()) {
+						log.warn("La cobertura elegida {} no aplica al cierre de la sesion {}: se "
+										+ "devenga por la cobertura {}",
+								cierre.coberturaElegidaId(), cierre.sesionId(),
+								cobertura.coberturaId());
+					}
 					return Optional.of(new Cubierta(cobertura, arancel.get(), noHabilitada));
 				}
 			}
 		}
 		return Optional.empty();
+	}
+
+	/**
+	 * La cobertura elegida en la recepcion o al reservar va primero; el resto conserva el orden de
+	 * {@code aplicables} (la principal primero). Si la elegida no aplica al cierre, la lista queda
+	 * igual y el devengo sigue como antes: nunca lanza (regla 3 de la cabecera).
+	 */
+	private static List<CoberturaAplicable> elegidaPrimero(
+			SesionCerrada cierre, List<CoberturaAplicable> aplicables) {
+		Long elegida = cierre.coberturaElegidaId();
+		if (elegida == null) {
+			return aplicables;
+		}
+		List<CoberturaAplicable> ordenadas = new ArrayList<>(aplicables.size());
+		aplicables.stream().filter(c -> c.coberturaId() == elegida).forEach(ordenadas::add);
+		aplicables.stream().filter(c -> c.coberturaId() != elegida).forEach(ordenadas::add);
+		return ordenadas;
 	}
 
 	/**

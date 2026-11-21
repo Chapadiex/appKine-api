@@ -240,6 +240,35 @@ class ObligacionDevengadorTest {
 	}
 
 	@Test
+	@DisplayName("la cobertura elegida en recepcion manda aunque no sea la principal")
+	void la_cobertura_elegida_manda_sobre_la_principal() {
+		long secundaria = 311L;
+		long otroFinanciador = 32L;
+		long otroPlan = 5L;
+		cubre(KINE, "12000.00", "10500.00", "1500.00");
+		CoberturaAplicable deLaSecundaria = new CoberturaAplicable(secundaria, false,
+				new ReferenciaCongelada(otroFinanciador, "Otra obra social", otroPlan, "Plan 2"),
+				aplicable().resolucion(), false, LocalDate.of(2026, 1, 1));
+		given(coberturas.aplicables(ORG, SEDE, PERSONA, KINE, OFERTA, DIA_LOCAL))
+				.willReturn(List.of(aplicable(), deLaSecundaria));
+		given(aranceles.congelar(ORG, SEDE, otroFinanciador, otroPlan, KINE, OFERTA, DIA_LOCAL))
+				.willReturn(Optional.of(new ArancelCongelado(13L, "CONV-2", "Convenio sintetico 2",
+						"POR_PRESTACION", otroFinanciador, otroPlan, KINE, 78L,
+						new BigDecimal("12000.00"), new BigDecimal("9000.00"),
+						new BigDecimal("3000.00"), "ARS", false, false, false, DIA_LOCAL, CERRADA)));
+
+		devengador.alCerrar(new SesionCerrada(SESION, ORG, SEDE, PERSONA, OFERTA, 8, true, CERRADA,
+				99L, new BigDecimal("12000.00"), "ARS", Set.of(KINE), null, true, 600L, false, null,
+				secundaria));
+
+		Obligacion financiador = guardadas(2).get(0);
+		assertThat(financiador.getFinanciadorId()).isEqualTo(otroFinanciador);
+		assertThat(financiador.getImporteOriginal()).isEqualByComparingTo("9000.00");
+		assertThat(financiador.getSnapshotDeConvenio().orElseThrow().coberturaId())
+				.isEqualTo(secundaria);
+	}
+
+	@Test
 	@DisplayName("aplicable pero congelar no devuelve (carrera): prueba la siguiente y si no, particular")
 	void congelar_vacio_cae_a_particular() {
 		given(coberturas.aplicables(anyLong(), anyLong(), anyLong(), anyLong(), any(), any()))

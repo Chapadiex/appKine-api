@@ -1219,7 +1219,11 @@ public class SesionService {
 				sesion.getTurnoId() != null && turnos.atendidoComoParticular(
 						organizationId, sesion.getConsultorioId(), sesion.getTurnoId()),
 				// AKINE-08.05: el origen grupal viaja para que el devengo no cobre dos veces la clase.
-				sesion.getClaseId());
+				sesion.getClaseId(),
+				// La cobertura elegida en la recepcion (o al reservar) manda en el devengo: sin
+				// ella la deuda salia con la primera cobertura que aplicara, la principal primero.
+				sesion.getTurnoId() == null ? null : turnos.coberturaElegida(
+						organizationId, sesion.getConsultorioId(), sesion.getTurnoId()).orElse(null));
 	}
 
 	/**

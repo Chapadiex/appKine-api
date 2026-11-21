@@ -48,6 +48,9 @@ import java.util.Set;
  *                           resuelve su esquema de cobro (pase, abono, clase), y devengar el particular en el
  *                           cierre de cada Sesion cobraria dos veces la misma clase. Ver
  *                           {@link #esDeOrigenGrupal()}
+ * @param coberturaElegidaId cobertura con la que se eligio atender (recepcion o reserva), o
+ *                           {@code null} si no se eligio. El devengo la prueba primero, para que la
+ *                           deuda del financiador no salga a nombre de otra obra social
  */
 public record SesionCerrada(
 		long sesionId,
@@ -66,7 +69,8 @@ public record SesionCerrada(
 		boolean ofertaAdmiteObraSocial,
 		Long turnoId,
 		boolean particularPorRecepcion,
-		Long claseId) {
+		Long claseId,
+		Long coberturaElegidaId) {
 
 	/**
 	 * <b>AKINE-06.04 agrega {@code practicasRealizadas}, y es lo que cierra el defecto que 04.05
@@ -100,7 +104,8 @@ public record SesionCerrada(
 	public SesionCerrada conNumeroSesion(int numero) {
 		return new SesionCerrada(sesionId, organizationId, consultorioId, personaId, ofertaId, numero,
 				asistio, cerradaEn, cerradaPorCuentaId, precioDeLaOferta, moneda, practicasRealizadas,
-				casoId, ofertaAdmiteObraSocial, turnoId, particularPorRecepcion, claseId);
+				casoId, ofertaAdmiteObraSocial, turnoId, particularPorRecepcion, claseId,
+				coberturaElegidaId);
 	}
 
 	/**
@@ -110,6 +115,31 @@ public record SesionCerrada(
 	 */
 	public boolean esDeOrigenGrupal() {
 		return claseId != null;
+	}
+
+	/** Sin la cobertura elegida: la forma anterior a la simplificacion de obras sociales. */
+	@SuppressWarnings("java:S107")
+	public SesionCerrada(
+			long sesionId,
+			long organizationId,
+			long consultorioId,
+			long personaId,
+			long ofertaId,
+			int numeroSesion,
+			boolean asistio,
+			Instant cerradaEn,
+			Long cerradaPorCuentaId,
+			BigDecimal precioDeLaOferta,
+			String moneda,
+			Set<Long> practicasRealizadas,
+			Long casoId,
+			boolean ofertaAdmiteObraSocial,
+			Long turnoId,
+			boolean particularPorRecepcion,
+			Long claseId) {
+		this(sesionId, organizationId, consultorioId, personaId, ofertaId, numeroSesion, asistio,
+				cerradaEn, cerradaPorCuentaId, precioDeLaOferta, moneda, practicasRealizadas, casoId,
+				ofertaAdmiteObraSocial, turnoId, particularPorRecepcion, claseId, null);
 	}
 
 	/** Sin el origen grupal: la forma anterior a AKINE-08.05. */
