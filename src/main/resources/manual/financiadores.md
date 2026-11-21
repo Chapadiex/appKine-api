@@ -23,15 +23,19 @@ que es el que define los precios.
 
 ### Agregar un financiador desde el catálogo
 
-![El catálogo de financiadores, con el buscador y el botón Agregar al centro de la primera fila marcados](captura:financiadores/agregar-desde-catalogo)
+![El catálogo de financiadores, con el buscador y la casilla de la primera fila marcados](captura:financiadores/agregar-desde-catalogo)
 
 1. Entrá a :icono[contratacion]: **Contratación → Financiadores** y tocá **Agregar desde el
    catálogo**.
 2. Buscá por **Nombre, código o CUIT** y tocá **Buscar**.
-3. En la fila que corresponde, tocá **Agregar al centro**.
+3. Tocá la fila para ver sus planes en el panel de la derecha, y tocá **Agregar al centro**.
 
-Se crea una **copia propia** con sus planes activos. Desde ahí es del centro y se edita como
-cualquier otro; los cambios posteriores del catálogo no la modifican.
+Para agregar varios a la vez, marcá la casilla de cada fila y tocá **Agregar al centro (N)** en la
+barra que aparece arriba de la tabla.
+
+Se crea una **copia propia** con todos sus planes activos. Desde ahí es del centro y se edita como
+cualquier otro; los cambios posteriores del catálogo no la modifican. Los planes que el centro no
+trabaje se dan de baja después desde sus planes.
 
 ### Dar de alta una obra social o prepaga a mano
 
@@ -77,8 +81,8 @@ impide crear planes nuevos y elegirlo de nuevo. No hay reactivación.
 
 - **Activo**: se puede usar en coberturas y convenios nuevos.
 - **Dado de baja**: queda a la vista con su motivo, pero no admite planes ni selecciones nuevas.
-- **Ya agregado** (en el catálogo): el centro ya tiene su copia. Tocá **Ver la copia del centro**
-  para abrirla.
+- **En el centro** (en el catálogo): el centro ya tiene su copia. Tocá la fila y después **Ver sus
+  planes en el centro** para abrirla.
 
 Los planes muestran además su situación de vigencia: **Activo y vigente**, **Activo, todavía sin
 vigencia**, **Activo, vigencia terminada** o **Dado de baja**.
