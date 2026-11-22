@@ -27,8 +27,9 @@ actividad.
 
 1. Entrá a :icono[servicios]: **Servicios y catálogo → Actividades de la sede** y tocá
    :icono[agregar]: **Publicar un servicio en la sede**.
-2. En **Servicio del catálogo**, elegí el servicio. Después no se cambia: otro servicio es otra
-   actividad.
+2. En **Servicio del catálogo**, elegí el servicio. La lista viene agrupada por categoría
+   (por ejemplo, **Kinesiología neurológica** o **Pilates y disciplinas relacionadas**). Después no
+   se cambia: otro servicio es otra actividad.
 3. Escribí el **Nombre comercial**. Es el que ve el paciente.
 4. Completá la **Duración (minutos)**.
 5. Completá la **Capacidad**: 1 para una actividad individual, más de 1 para una grupal.

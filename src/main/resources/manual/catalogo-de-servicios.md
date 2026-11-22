@@ -5,7 +5,7 @@ grupo: Servicios y catálogo
 rutas: ["/servicios/catalogo"]
 permisos: []
 relacionadas: [actividades-de-la-sede, catalogo-clinico, espacios-y-boxes]
-palabras: [servicio, servicios, catálogo, alta de servicio, kinesiología, pilates, yoga, naturaleza, modalidad, servicio propio]
+palabras: [servicio, servicios, catálogo, categoría, precargado, alta de servicio, kinesiología, pilates, yoga, naturaleza, modalidad, servicio propio]
 ---
 
 ## Para qué sirve
@@ -20,7 +20,9 @@ yoga. Acá no se pone precio ni horario: eso lo define cada sede en sus activida
 
 Hay dos clases de servicios en la tabla, según la columna **Origen**:
 
-- **AKINE**: el catálogo común. Lo ven todos los centros y lo mantiene la plataforma.
+- **AKINE**: el catálogo común. Lo ven todos los centros y lo mantiene la plataforma. Viene
+  precargado con cientos de actividades y prestaciones de kinesiología, agrupadas por **Categoría**:
+  elegí las que da tu centro y publicalas como actividad de tu sede.
 - **Del centro**: los dio de alta tu centro y los ve solo tu organización.
 
 ## Tareas
@@ -30,7 +32,8 @@ Hay dos clases de servicios en la tabla, según la columna **Origen**:
 1. Entrá a :icono[servicios]: **Servicios y catálogo → Catálogo de servicios**.
 2. Escribí parte del nombre o del código en **Buscar**. La lista se filtra mientras escribís, sin
    importar mayúsculas ni acentos.
-3. Si no aparece, cambiá **Mostrar** a **Todos** para ver también los dados de baja.
+3. Para recorrer una sola área, abrí el embudo y elegí una **Categoría**.
+4. Si no aparece, cambiá **Mostrar** a **Todos** para ver también los dados de baja.
 
 ### Dar de alta un servicio propio
 

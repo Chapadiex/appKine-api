@@ -218,7 +218,7 @@ class ServicioControllerTest {
 
 	private static ServicioView vista() {
 		return new ServicioView(12L, "KINESIOLOGIA_SESION", "Sesion de kinesiologia", null,
-				"TERAPEUTICO", "INDIVIDUAL", false, true, "GLOBAL", "ACTIVO", null, null, 0L, null);
+				"TERAPEUTICO", "INDIVIDUAL", false, true, "GLOBAL", "ACTIVO", null, null, 0L, null, null);
 	}
 
 	private record PrincipalDePrueba(long accountId, boolean platformAdmin)
