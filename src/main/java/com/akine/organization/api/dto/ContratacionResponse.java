@@ -31,6 +31,9 @@ public record ContratacionResponse(
 		@Schema(description = "El centro lo dio de alta o lo ajusto la plataforma. Sin esto es un centro "
 				+ "autoregistrado o anterior al 18/11/2026, y tiene los dos servicios y la IA")
 		boolean definidaPorPlataforma,
+		@Schema(description = "El centro nacio del alta de la plataforma (en prueba gratis), no del "
+				+ "autoregistro. Es el que recibe la guia de primeros pasos aunque despues contrate")
+		boolean altaPorPlataforma,
 		@Schema(description = "Version de la suscripcion, para cambiar la contratacion", example = "0")
 		long version) {
 
@@ -40,6 +43,6 @@ public record ContratacionResponse(
 				view.servicios().stream().sorted().toList(),
 				view.adicionales().stream().sorted().toList(),
 				view.estado(), view.pruebaHasta(), view.soloLectura(), view.definidaPorPlataforma(),
-				view.version());
+				view.altaPorPlataforma(), view.version());
 	}
 }
