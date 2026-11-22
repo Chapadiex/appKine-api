@@ -14,6 +14,7 @@ import java.util.Set;
  * @param pruebaHasta fin de la prueba gratis; {@code null} fuera de prueba
  * @param soloLectura la suscripcion no admite cargas: suspendida o prueba vencida
  * @param maxSedes    tope de sedes del plan; {@code null} = sin tope
+ * @param maxProfesionales tope de profesionales del plan; {@code null} = sin tope
  * @param definidaPorPlataforma el centro lo dio de alta (o lo ajusto) la plataforma; si no, es un
  *                    centro autoregistrado o anterior al 18/11/2026 y tiene todo
  * @param altaPorPlataforma el centro nacio del alta de la plataforma (en prueba), no del
@@ -24,6 +25,7 @@ public record ContratacionView(
 		String planCode,
 		String planNombre,
 		Integer maxSedes,
+		Integer maxProfesionales,
 		Set<Servicio> servicios,
 		Set<Adicional> adicionales,
 		SubscriptionStatus estado,

@@ -66,6 +66,15 @@ public interface MembershipRepositoryPort {
 	long countByOrganizationIdAndActiveTrue(Long organizationId);
 
 	/**
+	 * Conteo de uso para {@code MAX_PROFESIONALES}: cuentas distintas con una membership activa de
+	 * rol {@code PROFESIONAL}. Mismas condiciones que el de sedes.
+	 */
+	long contarProfesionalesActivos(Long organizationId);
+
+	/** Si la cuenta ya ocupa un cupo de profesional en la organizacion (por otra membership). */
+	boolean esProfesionalActivo(Long organizationId, Long accountId);
+
+	/**
 	 * Persiste y sincroniza con la base de inmediato.
 	 *
 	 * <p>Existe para que una violacion de {@code uk_membership_org_account_scope} sea un 409 y

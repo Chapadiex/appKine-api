@@ -22,5 +22,12 @@ public enum LimitCode {
 	MAX_CONSULTORIOS,
 
 	/** Cuantas memberships activas puede tener la organizacion. */
-	MAX_MIEMBROS_ACTIVOS
+	MAX_MIEMBROS_ACTIVOS,
+
+	/**
+	 * Cuantos profesionales puede tener la organizacion (22/11/2026): cuentas distintas con una
+	 * membership activa de rol {@code PROFESIONAL}. Una cuenta que atiende en dos sedes cuenta una
+	 * vez; administrativos y administradores no cuentan. Suspender no libera el cupo; revocar si.
+	 */
+	MAX_PROFESIONALES
 }

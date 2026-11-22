@@ -21,8 +21,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <h2>Que prueba</h2>
  *
- * <p>El plan BASE permite cinco miembros activos. Con cuatro ya dados de alta, dos hilos
- * intentan a la vez el quinto: uno tiene que entrar y el otro tiene que recibir
+ * <p>El plan BASE permite dos profesionales (desde el 22/11/2026; antes eran cinco miembros
+ * activos de cualquier rol). Con uno ya dado de alta, dos hilos intentan a la vez el segundo: uno tiene que
+ * entrar y el otro tiene que recibir
  * {@code PlanLimitExceededException}. <b>Nunca los dos.</b>
  *
  * <p>Es el unico test que distingue el diseno correcto del incorrecto. Ningun unique cubre el
@@ -39,8 +40,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <h2>Que encontro, y como quedo</h2>
  *
- * <p>Este test fallaba: entraban los dos hilos y la organizacion terminaba con SEIS miembros
- * activos y un tope de cinco, sin error y sin auditoria de rechazo. La causa no era el
+ * <p>Este test fallaba: entraban los dos hilos y la organizacion terminaba con un miembro de
+ * mas sobre el tope, sin error y sin auditoria de rechazo. La causa no era el
  * protocolo del gate sino la isolation: en REPEATABLE READ el conteo posterior al bloqueo lee
  * de un snapshot anterior al commit del otro hilo. El arreglo vive en
  * {@code PlanGate.createWithinLimit}, que abre la transaccion del alta con READ COMMITTED. El
@@ -48,8 +49,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class LimiteDePlanConcurrenteIT extends BaseEscenarioDiferido {
 
-	/** Tope de {@code MAX_MIEMBROS_ACTIVOS} del plan BASE, sembrado por la migracion V28. */
-	private static final int TOPE_BASE = 5;
+	/** Tope de {@code MAX_PROFESIONALES} del plan BASE, sembrado por la migracion V37. */
+	private static final int TOPE_BASE = 2;
 
 	private static final AtomicLong SECUENCIA = new AtomicLong();
 
@@ -78,11 +79,11 @@ class LimiteDePlanConcurrenteIT extends BaseEscenarioDiferido {
 				.as("el alta self-service contrata el plan por defecto, que es el que tiene tope")
 				.isEqualTo("BASE");
 
-		// El fundador ya cuenta como miembro. Se completa hasta dejar el cupo en uno.
-		while (miembrosActivos(organizationId) < TOPE_BASE - 1) {
+		// El fundador es ORG_ADMIN y no ocupa cupo. Se completa hasta dejar el cupo en uno.
+		while (profesionalesActivos(organizationId) < TOPE_BASE - 1) {
 			insertarMembership(organizationId, cuentaSintetica());
 		}
-		assertThat(miembrosActivos(organizationId)).isEqualTo(TOPE_BASE - 1);
+		assertThat(profesionalesActivos(organizationId)).isEqualTo(TOPE_BASE - 1);
 
 		List<Concurrencia.Resultado<Long>> resultados = Concurrencia.enParalelo(List.of(
 				altaConGate(organizationId, cuentaSintetica()),
@@ -104,7 +105,7 @@ class LimiteDePlanConcurrenteIT extends BaseEscenarioDiferido {
 
 		// La afirmacion que no depende del orden en que corrieron los hilos, y que es la razon
 		// de ser del test.
-		assertThat(miembrosActivos(organizationId))
+		assertThat(profesionalesActivos(organizationId))
 				.as("NUNCA dos: el tope del plan es %s", TOPE_BASE)
 				.isEqualTo(TOPE_BASE);
 	}
@@ -123,8 +124,8 @@ class LimiteDePlanConcurrenteIT extends BaseEscenarioDiferido {
 	private Callable<Long> altaConGate(long organizationId, long accountId) {
 		return () -> planGate.createWithinLimit(
 				organizationId,
-				LimitCode.MAX_MIEMBROS_ACTIVOS,
-				() -> miembrosActivos(organizationId),
+				LimitCode.MAX_PROFESIONALES,
+				() -> profesionalesActivos(organizationId),
 				() -> {
 					insertarMembership(organizationId, accountId);
 					return accountId;
@@ -140,7 +141,7 @@ class LimiteDePlanConcurrenteIT extends BaseEscenarioDiferido {
 				INSERT INTO membership (organization_id, consultorio_id, account_id, role_code,
 				                        is_founder, valid_from, active, version,
 				                        created_at, updated_at)
-				VALUES (?, NULL, ?, 'ADMINISTRATIVO', false, CURRENT_TIMESTAMP, true, 0,
+				VALUES (?, NULL, ?, 'PROFESIONAL', false, CURRENT_TIMESTAMP, true, 0,
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", organizationId, accountId);
 	}
@@ -157,9 +158,10 @@ class LimiteDePlanConcurrenteIT extends BaseEscenarioDiferido {
 		return 900_000_000L + SECUENCIA.incrementAndGet();
 	}
 
-	private long miembrosActivos(long organizationId) {
+	private long profesionalesActivos(long organizationId) {
 		Long total = jdbc.queryForObject(
-				"SELECT COUNT(*) FROM membership WHERE organization_id = ? AND active = true",
+				"SELECT COUNT(DISTINCT account_id) FROM membership WHERE organization_id = ? "
+						+ "AND active = true AND role_code = 'PROFESIONAL'",
 				Long.class, organizationId);
 		return total == null ? 0L : total;
 	}

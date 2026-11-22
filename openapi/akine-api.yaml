@@ -34116,6 +34116,11 @@ components:
           - SUSPENDIDA
           - CANCELADA
           example: PRUEBA
+        maxProfesionales:
+          type: integer
+          format: int32
+          description: Tope de profesionales del plan (cuentas con rol PROFESIONAL); ausente = sin tope
+          example: 6
         maxSedes:
           type: integer
           format: int32
@@ -40925,6 +40930,7 @@ components:
           enum:
           - MAX_CONSULTORIOS
           - MAX_MIEMBROS_ACTIVOS
+          - MAX_PROFESIONALES
           example: MAX_CONSULTORIOS
         currentUsage:
           type: integer
@@ -44009,6 +44015,7 @@ components:
           enum:
           - MAX_CONSULTORIOS
           - MAX_MIEMBROS_ACTIVOS
+          - MAX_PROFESIONALES
           example: MAX_CONSULTORIOS
         unlimited:
           type: boolean

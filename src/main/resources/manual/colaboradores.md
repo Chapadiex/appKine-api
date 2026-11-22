@@ -35,8 +35,10 @@ Hay tres formas de sumar a alguien:
 El vínculo nace cuando la persona **acepta**, no cuando invitás.
 
 > [!importante]
-> Invitar no ocupa un lugar de tu plan, pero aceptar sí. Si te queda un solo lugar y mandás cinco
-> invitaciones, entra la primera que responda.
+> Tu plan limita cuántos **profesionales** podés tener: el Básico admite 2, el Intermedio 6 y el
+> Plus no tiene tope. Administrativos y administradores no ocupan lugar, y un profesional que
+> atiende en dos sedes cuenta una sola vez. Invitar no ocupa un lugar, pero aceptar sí: si te queda
+> uno solo y mandás cinco invitaciones de profesional, entra la primera que responda.
 
 ### Vincular a alguien que ya tiene cuenta
 
@@ -106,6 +108,9 @@ Para sacarlo, tocá **Dar de baja** al lado del permiso, en **Permisos vigentes*
   está suspendida, reactivala desde ahí en vez de vincularla de nuevo.
 - **Al vincular dice que la cuenta no existe**: la persona todavía no se registró en AKINE. Mandale
   una invitación.
+- **Dice que llegaste al tope del plan**: ya tenés todos los profesionales que tu plan admite. Pasá
+  a la persona a otro rol, revocá a un profesional que ya no trabaje con vos o pedí un cambio de
+  plan. Suspender no libera el lugar.
 - **No le llegó el correo de invitación**: mirá la pestaña **Notificaciones**. Si el envío falló,
   tocá **Reintentar**.
 - **No veo las pestañas Invitaciones ni Notificaciones, ni los botones para sumar gente**: hace
