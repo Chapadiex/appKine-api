@@ -19,14 +19,14 @@ class PlanTest {
 	@Test
 	@DisplayName("Un plan nuevo nace activo con su codigo estable")
 	void nace_activo() {
-		Plan plan = new Plan("BASE", "Plan Básico");
+		Plan plan = new Plan("BASE", "Plan Base");
 
 		assertThat(plan.isActive()).isTrue();
 		assertThat(plan.getDeletedAt()).isNull();
 		// El codigo lo consumen el seed y el spi de onboarding: cambiarlo rompe los dos, por
 		// eso la columna es updatable = false y no hay setter.
 		assertThat(plan.getCode()).isEqualTo("BASE");
-		assertThat(plan.getName()).isEqualTo("Plan Básico");
+		assertThat(plan.getName()).isEqualTo("Plan Base");
 		assertThat(plan.getId()).isNull();
 		assertThat(plan.getVersion()).isZero();
 	}
@@ -34,7 +34,7 @@ class PlanTest {
 	@Test
 	@DisplayName("Renombrar el plan no toca su codigo")
 	void renombrar_no_toca_el_codigo() {
-		Plan plan = new Plan("BASE", "Plan Básico");
+		Plan plan = new Plan("BASE", "Plan Base");
 
 		plan.rename("Plan Inicial");
 
@@ -47,7 +47,7 @@ class PlanTest {
 	@Test
 	@DisplayName("Retirar el plan es baja logica: las suscripciones vigentes lo siguen usando")
 	void retirar_es_baja_logica() {
-		Plan plan = new Plan("BASE", "Plan Básico");
+		Plan plan = new Plan("BASE", "Plan Base");
 		Instant momento = Instant.parse("2026-02-10T00:00:00Z");
 
 		plan.deactivate(momento);

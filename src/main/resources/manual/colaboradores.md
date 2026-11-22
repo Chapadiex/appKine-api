@@ -35,7 +35,7 @@ Hay tres formas de sumar a alguien:
 El vínculo nace cuando la persona **acepta**, no cuando invitás.
 
 > [!importante]
-> Tu plan limita cuántos **profesionales** podés tener: el Básico admite 2, el Intermedio 6 y el
+> Tu plan limita cuántos **profesionales** podés tener: el Base admite 2, el Intermedio 6 y el
 > Plus no tiene tope. Administrativos y administradores no ocupan lugar, y un profesional que
 > atiende en dos sedes cuenta una sola vez. Invitar no ocupa un lugar, pero aceptar sí: si te queda
 > uno solo y mandás cinco invitaciones de profesional, entra la primera que responda.

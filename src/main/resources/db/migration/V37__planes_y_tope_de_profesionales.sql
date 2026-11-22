@@ -50,7 +50,7 @@ DELETE FROM plan_feature WHERE plan_id IN (SELECT id FROM plan WHERE code IN ('B
 DELETE FROM plan WHERE code IN ('BASICO', 'PROFESIONAL');
 
 -- 4. Nombres visibles. El codigo no cambia.
-UPDATE plan SET name = 'Plan Básico', updated_at = CURRENT_TIMESTAMP WHERE code = 'BASE';
+UPDATE plan SET name = 'Plan Base', updated_at = CURRENT_TIMESTAMP WHERE code = 'BASE';
 UPDATE plan SET name = 'Plan Intermedio', updated_at = CURRENT_TIMESTAMP WHERE code = 'CRECIMIENTO';
 UPDATE plan SET name = 'Plan Plus', updated_at = CURRENT_TIMESTAMP WHERE code = 'RED';
 

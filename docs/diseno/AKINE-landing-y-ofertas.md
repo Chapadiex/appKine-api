@@ -281,7 +281,7 @@ Decisiones que se tomaron al implementar y se apartan de §7:
 
 ## 12. Tres planes y tope de profesionales (19/11 y 22/11/2026)
 
-- **Tres planes, nombres nuevos** (`V37`): `BASE` = **Plan Básico**, `CRECIMIENTO` = **Plan
+- **Tres planes, nombres nuevos** (`V37`): `BASE` = **Plan Base**, `CRECIMIENTO` = **Plan
   Intermedio**, `RED` = **Plan Plus**. Los códigos no cambian. `BASICO` y `PROFESIONAL` dejan de
   existir: sus suscripciones pasan a `BASE` y `RED`, que daban lo mismo, y se reapunta el historial.
 - **El plan se mide por sedes y por profesionales.** `LimitCode.MAX_PROFESIONALES` cuenta cuentas
@@ -289,7 +289,7 @@ Decisiones que se tomaron al implementar y se apartan de §7:
 
   | Plan | Sedes | Profesionales |
   |---|---|---|
-  | Básico | 1 | 2 |
+  | Base | 1 | 2 |
   | Intermedio | 3 | 6 |
   | Plus | sin tope | sin tope |
 

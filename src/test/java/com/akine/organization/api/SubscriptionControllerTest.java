@@ -84,7 +84,7 @@ class SubscriptionControllerTest {
 				.andExpect(jsonPath("$.id").value(50))
 				.andExpect(jsonPath("$.organizationId").value(1))
 				.andExpect(jsonPath("$.planCode").value("BASE"))
-				.andExpect(jsonPath("$.planName").value("Plan Básico"))
+				.andExpect(jsonPath("$.planName").value("Plan Base"))
 				.andExpect(jsonPath("$.status").value("ACTIVA"))
 				.andExpect(jsonPath("$.version").value(2))
 				.andExpect(jsonPath("$.startedAt").exists())
@@ -101,7 +101,7 @@ class SubscriptionControllerTest {
 	@DisplayName("Un limite ya superado viaja con exceeded=true: un downgrade avisa, no borra")
 	void un_limite_superado_viaja_como_excedido() throws Exception {
 		given(subscriptionService.find(1L)).willReturn(new SubscriptionView(
-				50L, 1L, "BASE", "Plan Básico", SubscriptionStatus.ACTIVA,
+				50L, 1L, "BASE", "Plan Base", SubscriptionStatus.ACTIVA,
 				Instant.parse("2026-01-15T13:45:00Z"), 0L,
 				List.of(new LimitUsageView(LimitCode.MAX_CONSULTORIOS, 1, 4)),
 				Set.of()));
@@ -466,7 +466,7 @@ class SubscriptionControllerTest {
 				50L,
 				1L,
 				"BASE",
-				"Plan Básico",
+				"Plan Base",
 				status,
 				Instant.parse("2026-01-15T13:45:00Z"),
 				version,

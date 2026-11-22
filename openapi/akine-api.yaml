@@ -44050,7 +44050,7 @@ components:
         name:
           type: string
           description: Nombre comercial del plan
-          example: Plan Básico
+          example: Plan Base
         ofrecido:
           type: boolean
           description: "Si la plataforma lo ofrece hoy al dar de alta o cambiar la\
@@ -44250,7 +44250,7 @@ components:
         planName:
           type: string
           description: Nombre comercial del plan contratado
-          example: Plan Básico
+          example: Plan Base
         pruebaHasta:
           type: string
           format: date-time
@@ -44356,7 +44356,7 @@ components:
         planName:
           type: string
           description: Nombre comercial del plan contratado
-          example: Plan Básico
+          example: Plan Base
         startedAt:
           type: string
           format: date-time
@@ -48814,7 +48814,7 @@ components:
         planName:
           type: string
           description: Nombre comercial del plan contratado
-          example: Plan Básico
+          example: Plan Base
         startedAt:
           type: string
           format: date-time

@@ -20,7 +20,7 @@ public record PlanResponse(
 		@Schema(description = "Codigo estable del plan, usado para contratarlo", example = "BASE")
 		String code,
 
-		@Schema(description = "Nombre comercial del plan", example = "Plan Básico")
+		@Schema(description = "Nombre comercial del plan", example = "Plan Base")
 		String name,
 
 		@Schema(description = "Limites cuantitativos que impone el plan")
