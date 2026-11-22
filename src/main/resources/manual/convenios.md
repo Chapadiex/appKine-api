@@ -5,7 +5,7 @@ grupo: Contratación
 rutas: ["/contratacion", "/contratacion/convenios", "/contratacion/convenios/:convenioId/aranceles", "/contratacion/convenios/:convenioId/aranceles/importar"]
 permisos: [convenio:read]
 servicio: KINESIOLOGIA
-relacionadas: [financiadores, arancel-efectivo, catalogo-clinico, actividades-de-la-sede, presentaciones]
+relacionadas: [financiadores, catalogo-clinico, actividades-de-la-sede, presentaciones]
 palabras: [convenio, arancel, coseguro, obra social, prepaga, precio por práctica, renovar convenio, importar aranceles, planilla, nomenclador]
 ---
 

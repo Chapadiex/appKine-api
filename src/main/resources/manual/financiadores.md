@@ -5,7 +5,7 @@ grupo: Contratación
 rutas: ["/contratacion/financiadores", "/contratacion/financiadores/catalogo", "/contratacion/financiadores/:financiadorId/planes"]
 permisos: [convenio:read]
 servicio: KINESIOLOGIA
-relacionadas: [convenios, arancel-efectivo, ficha-de-la-persona, presentaciones]
+relacionadas: [convenios, ficha-de-la-persona, presentaciones]
 palabras: [financiador, obra social, prepaga, ART, mutual, plan, plan de cobertura, CUIT, catálogo de financiadores, copago]
 ---
 
