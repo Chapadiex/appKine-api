@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.186.0
+  version: 0.187.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -17637,6 +17637,103 @@ paths:
       summary: "Editar un plan, o cerrar su vigencia"
       tags:
       - Financiadores y planes
+  /api/v1/financiadores/{financiadorId}/planes/{planId}/convenio:
+    get:
+      description: "El convenio sin sede del plan, que vale para todas las sedes:\
+        \ sus aranceles son lo que paga la obra social por cada practica. 404 si el\
+        \ plan todavia no tiene precios cargados. Exige convenio:read."
+      operationId: getConvenioDelPlan
+      parameters:
+      - description: Identificador del financiador
+        example: 10
+        in: path
+        name: financiadorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del plan
+        example: 30
+        in: path
+        name: planId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConvenioResponse"
+          description: El convenio del plan
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:read
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El plan no existe, no es de ese financiador o todavia no tiene\
+            \ precios"
+      summary: Ver el convenio del plan
+      tags:
+      - Convenios y aranceles
+    post:
+      description: "Devuelve el convenio del plan y lo crea si falta. Idempotente.\
+        \ Nace por prestacion, en la moneda del plan (pesos si no declara), con los\
+        \ requisitos del plan y sin fecha de fin: lo que tiene fechas es cada arancel.\
+        \ Exige convenio:manage sobre la sede del contexto."
+      operationId: asegurarConvenioDelPlan
+      parameters:
+      - description: Identificador del financiador
+        example: 10
+        in: path
+        name: financiadorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del plan
+        example: 30
+        in: path
+        name: planId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConvenioResponse"
+          description: El convenio del plan
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El plan no existe o no es de ese financiador
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El financiador o el plan estan dados de baja
+      summary: Preparar el plan para cargarle precios
+      tags:
+      - Convenios y aranceles
   /api/v1/historias-clinicas/por-persona/{personaId}:
     get:
       description: |-
@@ -34243,9 +34340,12 @@ components:
           description: Clave estable dentro de la sede. No cambia
           example: OSDE-210-2026
         consultorioId:
-          type: integer
+          type:
+          - integer
+          - "null"
           format: int64
-          description: Sede a la que pertenece. No cambia nunca
+          description: "Sede a la que pertenece. No cambia nunca. Nulo en el convenio\
+            \ del plan, que vale para todas las sedes (V37)"
           example: 20
         deactivationReason:
           type: string

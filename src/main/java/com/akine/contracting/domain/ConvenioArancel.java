@@ -57,7 +57,8 @@ public class ConvenioArancel extends MarcaTemporal {
 	@Column(name = "organization_id", nullable = false, updatable = false)
 	private Long organizationId;
 
-	@Column(name = "consultorio_id", nullable = false, updatable = false)
+	/** Copia de la sede del convenio. {@code null} si es del convenio del plan (V37). */
+	@Column(name = "consultorio_id", updatable = false)
 	private Long consultorioId;
 
 	@Column(name = "convenio_id", nullable = false, updatable = false)
@@ -117,7 +118,7 @@ public class ConvenioArancel extends MarcaTemporal {
 	@SuppressWarnings("java:S107")
 	public ConvenioArancel(
 			long organizationId,
-			long consultorioId,
+			Long consultorioId,
 			long convenioId,
 			long practicaId,
 			BigDecimal importeFinanciador,
@@ -133,7 +134,7 @@ public class ConvenioArancel extends MarcaTemporal {
 	@SuppressWarnings("java:S107")
 	public ConvenioArancel(
 			long organizationId,
-			long consultorioId,
+			Long consultorioId,
 			long convenioId,
 			long practicaId,
 			Long ofertaId,

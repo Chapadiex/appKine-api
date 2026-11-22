@@ -59,6 +59,18 @@ public interface ConvenioLockRepository
 	 * carrera en una sola sentencia atomica, sin excepcion y sin lectura previa. Es especifico de
 	 * MySQL, que es la base fijada por DP-09.
 	 */
+	/** Ver el puerto: la fila del plan hace de lock del convenio del plan (V37). */
+	@Query(value = """
+			SELECT id FROM plan_cobertura
+			 WHERE organization_id = :organizationId
+			   AND id = :planId
+			 FOR UPDATE
+			""", nativeQuery = true)
+	@Override
+	Optional<Long> lockDelPlan(
+			@Param("organizationId") long organizationId,
+			@Param("planId") long planId);
+
 	@Modifying
 	@Query(value = """
 			INSERT INTO convenio_lock (organization_id, consultorio_id, created_at)

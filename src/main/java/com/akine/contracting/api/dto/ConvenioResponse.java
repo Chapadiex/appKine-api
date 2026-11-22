@@ -21,8 +21,8 @@ public record ConvenioResponse(
 		@Schema(description = "Identificador del convenio", example = "140")
 		long id,
 
-		@Schema(description = "Sede a la que pertenece. No cambia nunca", example = "20")
-		long consultorioId,
+		@Schema(description = "Sede a la que pertenece. No cambia nunca. Nulo en el convenio del plan, que vale para todas las sedes (V37)", example = "20", nullable = true)
+		Long consultorioId,
 
 		@Schema(description = "Financiador con el que se negocio. No cambia", example = "31")
 		long financiadorId,

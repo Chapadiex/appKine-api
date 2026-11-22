@@ -292,7 +292,7 @@ public class ArancelService {
 
 		ConvenioArancel arancel = new ConvenioArancel(
 				organizationId,
-				consultorioId,
+				convenio.getConsultorioId(),
 				convenioId,
 				command.practicaId(),
 				command.ofertaId(),
@@ -304,7 +304,7 @@ public class ArancelService {
 		exigirContenidaEnElConvenio(arancel.vigencia(), convenio);
 
 		// EL ORDEN DE ESTAS TRES LINEAS ES LA GARANTIA. Ver la cabecera de ConvenioService.
-		BloqueoDeConvenios.tomar(locks, organizationId, consultorioId);
+		bloquearAlcance(organizationId, convenio);
 		exigirSinSolapamiento(organizationId, convenioId, command.practicaId(), command.ofertaId(),
 				arancel.vigencia(), null);
 
@@ -355,9 +355,11 @@ public class ArancelService {
 			OperatingActor actor, long consultorioId, long convenioId, long arancelId,
 			ArancelEdicionCommand command, long organizationId) {
 
-		BloqueoDeConvenios.tomar(locks, organizationId, consultorioId);
-
+		// El convenio se lee antes del lock para saber cual tomar: el de la sede o, si es el
+		// convenio del plan, la fila del plan. Leerlo no bloquea nada; lo que se valida bajo el lock
+		// es el conjunto de aranceles, que se lee despues.
 		Convenio convenio = cargarConvenio(organizationId, consultorioId, convenioId);
+		bloquearAlcance(organizationId, convenio);
 		ConvenioArancel arancel = cargarArancel(organizationId, convenioId, arancelId);
 		exigirArancelOperable(arancel, "editar");
 		exigirVersion(arancel, command.expectedVersion());
@@ -496,6 +498,18 @@ public class ArancelService {
 	private void exigirPracticaDelTenant(long organizationId, long practicaId) {
 		catalogo.findPractica(organizationId, practicaId, Instant.now())
 				.orElseThrow(() -> new PracticaNoAccesibleException(practicaId));
+	}
+
+	/**
+	 * El lock de las escrituras de aranceles de ESE convenio: la fila de {@code convenio_lock} de
+	 * su sede o, si es el convenio del plan (V37), la fila del plan.
+	 */
+	private void bloquearAlcance(long organizationId, Convenio convenio) {
+		if (convenio.esDelPlan()) {
+			BloqueoDeConvenios.tomarDelPlan(locks, organizationId, convenio.getPlanId());
+		} else {
+			BloqueoDeConvenios.tomar(locks, organizationId, convenio.getConsultorioId());
+		}
 	}
 
 	private Convenio cargarConvenio(long organizationId, long consultorioId, long convenioId) {

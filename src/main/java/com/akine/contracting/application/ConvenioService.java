@@ -1,6 +1,8 @@
 package com.akine.contracting.application;
 
 import com.akine.contracting.domain.Convenio;
+import com.akine.contracting.domain.Financiador;
+import com.akine.contracting.domain.ModalidadConvenio;
 import com.akine.contracting.domain.PlanCobertura;
 import com.akine.contracting.domain.Vigencia;
 import com.akine.contracting.domain.exception.ConvenioCodigoTakenException;
@@ -41,6 +43,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Convenios de una sede con un plan de un financiador (M16, AKINE-03.05).
@@ -92,6 +95,15 @@ import java.util.Map;
  */
 @Service
 public class ConvenioService {
+
+	/**
+	 * Desde cuando vale el convenio del plan (V37). Lo que tiene fechas es cada arancel, que tiene
+	 * que caber en la vigencia de su convenio: el del plan no pone limite.
+	 */
+	static final LocalDate DESDE_SIEMPRE = LocalDate.of(2000, 1, 1);
+
+	/** Moneda del convenio del plan cuando el plan no declara una. */
+	static final String MONEDA_POR_DEFECTO = "ARS";
 
 	private static final Logger log = LoggerFactory.getLogger(ConvenioService.class);
 
@@ -428,6 +440,9 @@ public class ConvenioService {
 			Long excluirId) {
 
 		convenios.findActivosPorAlcance(organizationId, consultorioId, financiadorId, planId).stream()
+				// El convenio del plan (V37) no compite con los de la sede: los de la sede mandan
+				// sobre el. Solo se solapan dos convenios de la misma sede.
+				.filter(existente -> !existente.esDelPlan())
 				.filter(existente -> !existente.getId().equals(excluirId))
 				.filter(existente -> existente.vigencia().seSolapaCon(vigencia))
 				.findFirst()
@@ -437,6 +452,110 @@ public class ConvenioService {
 					throw new ConvenioSolapadoException(
 							choque.getId(), choque.vigencia().toString());
 				});
+	}
+
+	// =================================================================================
+	// El convenio del plan (V37)
+	// =================================================================================
+
+	/**
+	 * El convenio del plan, o vacio si el plan todavia no tiene precios cargados.
+	 *
+	 * <p>Es el convenio sin sede que vale para todas (V37): lo que se carga en el plan es cuanto
+	 * paga la obra social por practica, y eso son los aranceles de este convenio.
+	 */
+	@Transactional(readOnly = true)
+	public Optional<ConvenioView> delPlan(OperatingActor actor, long financiadorId, long planId) {
+		long organizationId = AutorizacionDeCatalogo.exigirLectura(
+				permissionGuard, actor, "Ver los precios de un plan");
+		PlanCobertura plan = exigirPlanDeEseFinanciador(organizationId, financiadorId, planId);
+		LocalDate hoy = hoyDelActor(actor, organizationId);
+		return convenios.findDelPlan(organizationId, plan.getId())
+				.map(convenio -> ConvenioView.de(convenio, hoy));
+	}
+
+	/**
+	 * El convenio del plan, creandolo si falta. Idempotente: llamarlo dos veces devuelve el mismo.
+	 *
+	 * <p>Nace con lo que casi siempre se pacta: por prestacion, en la moneda del plan (pesos si no
+	 * declara), con los requisitos del plan, y vigente desde siempre y sin fin —lo que tiene fechas
+	 * es cada arancel, no el acuerdo—. Se serializa sobre la fila del plan, que es tambien el lock
+	 * de sus aranceles.
+	 */
+	public ConvenioView asegurarDelPlan(OperatingActor actor, long financiadorId, long planId) {
+		AutorizacionDeCatalogo.exigirGestionDelCatalogo(
+				permissionGuard, actor, "Cargar los precios de un plan");
+		long organizationId = actor.contextOrganizationId();
+		return transaccionReadCommitted.execute(estado ->
+				asegurarDelPlanEnTransaccion(actor, organizationId, financiadorId, planId));
+	}
+
+	private ConvenioView asegurarDelPlanEnTransaccion(
+			OperatingActor actor, long organizationId, long financiadorId, long planId) {
+
+		PlanCobertura plan = exigirPlanDeEseFinanciador(organizationId, financiadorId, planId);
+		BloqueoDeConvenios.tomarDelPlan(locks, organizationId, planId);
+		LocalDate hoy = hoyDelActor(actor, organizationId);
+
+		Optional<Convenio> existente = convenios.findDelPlan(organizationId, planId);
+		if (existente.isPresent()) {
+			return ConvenioView.de(existente.get(), hoy);
+		}
+
+		Financiador financiador = financiadores.findByIdAndOrganizationId(financiadorId, organizationId)
+				.orElseThrow(() -> new FinanciadorNotAccessibleException(financiadorId));
+		if (!financiador.isOperable()) {
+			throw new FinanciadorInactivoException(financiadorId);
+		}
+		if (!plan.isOperable()) {
+			throw new PlanYaInactivoException(planId, "referenciar");
+		}
+
+		Convenio convenio = new Convenio(
+				organizationId,
+				null,
+				financiadorId,
+				planId,
+				recortar(financiador.getCodigo() + "-" + plan.getCodigo(), 64),
+				recortar(financiador.getNombre() + " · " + plan.getNombre(), 160),
+				ModalidadConvenio.POR_PRESTACION,
+				DESDE_SIEMPRE,
+				null,
+				plan.getMoneda() == null ? MONEDA_POR_DEFECTO : plan.getMoneda(),
+				false,
+				plan.isRequiereAutorizacion(),
+				plan.isRequiereCredencial(),
+				null,
+				null,
+				null);
+		Convenio creado = convenios.saveAndFlush(convenio);
+
+		Map<String, String> detalles = new LinkedHashMap<>();
+		detalles.put("codigo", creado.getCodigo());
+		detalles.put("financiadorId", String.valueOf(financiadorId));
+		detalles.put("planId", String.valueOf(planId));
+		detalles.put("alcance", "TODAS_LAS_SEDES");
+		auditar(AuditEvents.CONVENIO_CREATED, creado, actor, null, "ACTIVO", null, detalles);
+
+		log.info("Convenio del plan creado: convenioId={} planId={}", creado.getId(), planId);
+		return ConvenioView.de(creado, hoy);
+	}
+
+	private PlanCobertura exigirPlanDeEseFinanciador(
+			long organizationId, long financiadorId, long planId) {
+		return planes.findByIdAndOrganizationIdAndFinanciadorId(planId, organizationId, financiadorId)
+				.orElseThrow(() -> new PlanNotAccessibleException(planId));
+	}
+
+	/** "Hoy" en la sede del contexto, o en la del reloj si el actor no tiene sede elegida. */
+	private LocalDate hoyDelActor(OperatingActor actor, long organizationId) {
+		return actor.consultorioId() == null
+				? LocalDate.now(clock)
+				: hoyEnLaSede(organizationId, actor.consultorioId());
+	}
+
+	private static String recortar(String texto, int maximo) {
+		return texto.length() <= maximo ? texto : texto.substring(0, maximo);
 	}
 
 	/** "Hoy" en la zona de la sede: un convenio es de la sede. */

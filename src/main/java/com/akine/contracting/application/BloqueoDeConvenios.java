@@ -21,6 +21,16 @@ final class BloqueoDeConvenios {
 		// Utilidad de concurrencia.
 	}
 
+	/**
+	 * El lock del convenio del plan (V37): la fila del plan, que siempre existe. No necesita la
+	 * creacion previa de {@code convenio_lock}.
+	 */
+	static void tomarDelPlan(ConvenioLockRepositoryPort locks, long organizationId, long planId) {
+		locks.lockDelPlan(organizationId, planId)
+				.orElseThrow(() -> new IllegalStateException(
+						"El plan " + planId + " no existe al tomar el lock de su convenio."));
+	}
+
 	static void tomar(
 			ConvenioLockRepositoryPort locks, long organizationId, long consultorioId) {
 
