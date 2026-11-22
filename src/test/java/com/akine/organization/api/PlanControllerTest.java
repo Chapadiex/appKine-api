@@ -43,14 +43,14 @@ class PlanControllerTest {
 				new PlanView(
 						1L,
 						"BASE",
-						"Plan Básico",
+						"Plan Base",
 						List.of(new PlanLimitView(LimitCode.MAX_CONSULTORIOS, 3)),
 						List.of(FeatureCode.NOTIFICACIONES_PACIENTE))));
 
 		mockMvc.perform(get("/api/v1/plans"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[0].code").value("BASE"))
-				.andExpect(jsonPath("$[0].name").value("Plan Básico"))
+				.andExpect(jsonPath("$[0].name").value("Plan Base"))
 				.andExpect(jsonPath("$[0].limits[0].code").value("MAX_CONSULTORIOS"))
 				.andExpect(jsonPath("$[0].limits[0].value").value(3))
 				.andExpect(jsonPath("$[0].limits[0].unlimited").value(false))

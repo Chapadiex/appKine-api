@@ -35,7 +35,7 @@ public record PlatformOrganizationResponse(
 		@Schema(description = "Codigo del plan contratado", example = "BASE")
 		String planCode,
 
-		@Schema(description = "Nombre comercial del plan contratado", example = "Plan Básico")
+		@Schema(description = "Nombre comercial del plan contratado", example = "Plan Base")
 		String planName,
 
 		@Schema(description = "Instante de alta de la organizacion", example = "2026-01-15T13:45:00Z")

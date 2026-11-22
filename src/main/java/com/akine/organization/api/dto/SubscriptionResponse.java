@@ -31,7 +31,7 @@ public record SubscriptionResponse(
 		@Schema(description = "Codigo del plan contratado", example = "BASE")
 		String planCode,
 
-		@Schema(description = "Nombre comercial del plan contratado", example = "Plan Básico")
+		@Schema(description = "Nombre comercial del plan contratado", example = "Plan Base")
 		String planName,
 
 		@Schema(
