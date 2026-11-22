@@ -16,6 +16,7 @@ import java.time.Instant;
  * @param alcance  {@code GLOBAL} (catalogo de la plataforma) u {@code ORGANIZACION} (propio del centro)
  * @param estado   DERIVADO de {@code active}, no una columna. Ver {@link Servicio}
  * @param version  la que hay que reenviar para editar
+ * @param categoria agrupador del catalogo, o null. Solo ordena el selector
  */
 public record ServicioView(
 		long id,
@@ -31,7 +32,8 @@ public record ServicioView(
 		Instant deletedAt,
 		String deactivationReason,
 		long version,
-		Long personalizaServicioId) {
+		Long personalizaServicioId,
+		String categoria) {
 
 	public static ServicioView de(Servicio servicio) {
 		return new ServicioView(
@@ -48,7 +50,8 @@ public record ServicioView(
 				servicio.getDeletedAt(),
 				servicio.getDeactivationReason(),
 				servicio.getVersion(),
-				servicio.getPersonalizaServicioId());
+				servicio.getPersonalizaServicioId(),
+				servicio.getCategoria());
 	}
 
 	static String alcanceDe(Servicio servicio) {

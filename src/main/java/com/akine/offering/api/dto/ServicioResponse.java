@@ -80,7 +80,15 @@ public record ServicioResponse(
 						+ "organizacion (todas sus sedes), o null. Mientras este vigente, el de AKINE "
 						+ "no se lista para esa organizacion y sus ofertas apuntan a este",
 				example = "3")
-		Long personalizaServicioId) {
+		Long personalizaServicioId,
+
+		@Schema(
+				description = "Categoria del catalogo con la que se agrupa el servicio en los "
+						+ "selectores. Solo ordena: no decide ningun comportamiento. Null en los "
+						+ "servicios propios creados desde cero",
+				example = "Kinesiologia neurologica",
+				nullable = true)
+		String categoria) {
 
 	public static ServicioResponse de(ServicioView view) {
 		return new ServicioResponse(
@@ -97,6 +105,7 @@ public record ServicioResponse(
 				view.deletedAt(),
 				view.deactivationReason(),
 				view.version(),
-				view.personalizaServicioId());
+				view.personalizaServicioId(),
+				view.categoria());
 	}
 }
