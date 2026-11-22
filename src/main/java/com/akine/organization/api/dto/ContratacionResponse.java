@@ -17,6 +17,8 @@ public record ContratacionResponse(
 		String planNombre,
 		@Schema(description = "Tope de sedes del plan; ausente = sin tope", example = "3")
 		Integer maxSedes,
+		@Schema(description = "Tope de profesionales del plan (cuentas con rol PROFESIONAL); ausente = sin tope", example = "6")
+		Integer maxProfesionales,
 		@Schema(description = "Servicios contratados, al menos uno")
 		List<Servicio> servicios,
 		@Schema(description = "Adicionales contratados")
@@ -39,7 +41,7 @@ public record ContratacionResponse(
 
 	public static ContratacionResponse from(ContratacionView view) {
 		return new ContratacionResponse(
-				view.planCode(), view.planNombre(), view.maxSedes(),
+				view.planCode(), view.planNombre(), view.maxSedes(), view.maxProfesionales(),
 				view.servicios().stream().sorted().toList(),
 				view.adicionales().stream().sorted().toList(),
 				view.estado(), view.pruebaHasta(), view.soloLectura(), view.definidaPorPlataforma(),

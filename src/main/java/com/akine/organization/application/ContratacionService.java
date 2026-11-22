@@ -161,14 +161,12 @@ public class ContratacionService implements PruebasGratis, ServiciosDelCentro {
 
 	private ContratacionView vista(long organizationId, Subscription subscription) {
 		Plan plan = planCatalogService.requireById(subscription.getPlanId());
-		Integer maxSedes = planCatalogService.limitsOf(plan.getId()).stream()
-				.filter(l -> l.code() == LimitCode.MAX_CONSULTORIOS)
-				.findFirst()
-				.map(PlanLimitView::value)
-				.orElse(null);
+		java.util.List<PlanLimitView> limites = planCatalogService.limitsOf(plan.getId());
+		Integer maxSedes = tope(limites, LimitCode.MAX_CONSULTORIOS);
+		Integer maxProfesionales = tope(limites, LimitCode.MAX_PROFESIONALES);
 		boolean soloLectura = subscription.estadoEfectivo(Instant.now()) != SubscriptionStatus.ACTIVA;
 		return new ContratacionView(
-				organizationId, plan.getCode(), plan.getName(), maxSedes,
+				organizationId, plan.getCode(), plan.getName(), maxSedes, maxProfesionales,
 				contratacionRepository.serviciosDe(organizationId),
 				contratacionRepository.adicionalesDe(organizationId),
 				subscription.getStatus(), subscription.getPruebaHasta(), soloLectura,
@@ -186,6 +184,15 @@ public class ContratacionService implements PruebasGratis, ServiciosDelCentro {
 	@Transactional(readOnly = true)
 	public Set<Long> administradores(long organizationId) {
 		return contratacionRepository.administradores(organizationId);
+	}
+
+	/** El tope de ese limite en el plan; {@code null} si no tiene tope o no lo declara. */
+	private static Integer tope(java.util.List<PlanLimitView> limites, LimitCode codigo) {
+		return limites.stream()
+				.filter(l -> l.code() == codigo)
+				.findFirst()
+				.map(PlanLimitView::value)
+				.orElse(null);
 	}
 
 	private static void exigirServicios(Set<Servicio> servicios) {

@@ -55,3 +55,20 @@ UPDATE plan SET name = 'Plan Intermedio', updated_at = CURRENT_TIMESTAMP WHERE c
 UPDATE plan SET name = 'Plan Plus', updated_at = CURRENT_TIMESTAMP WHERE code = 'RED';
 
 COMMENT ON COLUMN plan.ofrecido IS 'Si la plataforma lo ofrece al dar de alta o cambiar la contratacion de un centro. Desde V37 los tres planes del catalogo se ofrecen; un plan que se retire a futuro queda en false y sigue vigente para quien lo tiene';
+
+-- 5. Tope de profesionales (22/11/2026). El plan se mide por sedes y por profesionales: cuentas
+-- distintas con una membership activa de rol PROFESIONAL (LimitCode.MAX_PROFESIONALES).
+-- NULL = sin tope. El tope de miembros en total deja de existir: administrativos y
+-- administradores no consumen cupo. Sin fila de limite el limite no aplica (PlanGateService).
+DELETE FROM plan_limit
+ WHERE limit_code = 'MAX_MIEMBROS_ACTIVOS'
+   AND plan_id IN (SELECT id FROM plan WHERE code IN ('BASE', 'CRECIMIENTO', 'RED'));
+
+INSERT INTO plan_limit (plan_id, limit_code, limit_value, active, created_at, updated_at)
+SELECT p.id, l.codigo, l.valor, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+  FROM plan p
+  JOIN (VALUES
+      ('BASE', 'MAX_PROFESIONALES', 2),
+      ('CRECIMIENTO', 'MAX_PROFESIONALES', 6),
+      ('RED', 'MAX_PROFESIONALES', NULL::integer)
+  ) AS l (plan_code, codigo, valor) ON l.plan_code = p.code;
