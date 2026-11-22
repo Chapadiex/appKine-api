@@ -86,12 +86,11 @@ La variante de cobertura del financiador que tiene el paciente, por ejemplo «Pl
 
 ### Convenio
 
-El acuerdo del centro con un financiador: qué prácticas cubre, a qué valor y con qué requisitos.
+El acuerdo del centro con un financiador: qué prácticas cubre, a qué valor y con qué requisitos. Se carga en cada plan, en **Precios**, y vale para todas las sedes.
 
 ### Arancel
 
-El valor acordado para una práctica dentro de un convenio. El **arancel efectivo** es el que se
-aplica hoy para un paciente en particular.
+Lo que paga la obra social por una práctica: uno de los **precios del plan**. El coseguro es el precio de la actividad menos el arancel.
 
 ### Coseguro
 
