@@ -298,6 +298,50 @@ class AgenteDelAsistenteTest {
 		assertThat(auditados.getFirst().details()).containsEntry("resultado", "PROPUESTA");
 	}
 
+	@Test
+	void la_aclaracion_ofrece_personas_con_persona_id_tambien_dentro_de_una_ficha() {
+		HerramientaDelAgente conClavesNuevas = new HerramientaDelAgente() {
+			@Override
+			public String nombre() {
+				return "buscar_persona";
+			}
+
+			@Override
+			public String descripcion() {
+				return "Busca personas";
+			}
+
+			@Override
+			public String esquemaEntrada() {
+				return "{\"type\":\"object\"}";
+			}
+
+			@Override
+			public ResultadoDeHerramienta ejecutar(ActorDelAsistente actor, Map<String, Object> entrada,
+					ContextoDeConsulta ctx) {
+				// Como buscar_persona y como una ficha: la seccion anida sus filas.
+				return new ResultadoDeHerramienta(List.of(
+						Map.of("persona_id", 1L, "nombre", "Pérez, Juan", "documento", "DNI ***456"),
+						Map.of("seccion", "datos_persona", "filas",
+								List.of(Map.of("persona_id", 2L, "nombre", "Pérez, Juana")))),
+						List.of(), null, false);
+			}
+		};
+		ModeloGrabado modelo = new ModeloGrabado(
+				pide("buscar_persona", "{\"nombre\":\"Pérez\"}"),
+				pide(AgenteDelAsistente.PEDIR_ACLARACION,
+						"{\"pregunta\":\"¿Juan o Juana Pérez?\",\"personaIds\":[1,2]}"));
+		AgenteDelAsistente agente = new AgenteDelAsistente(new ProveedoresDelAgente(modelo, null),
+				new CatalogoDeHerramientas(List.of(conClavesNuevas)), new AuditoriaDelAsistente(auditados::add),
+				"SYSTEM", 8, Duration.ofSeconds(30), Clock.systemUTC());
+
+		RespuestaDelAsistente r = agente.responder(ACTOR, CTX, "vino Pérez hoy?", List.of(), null);
+
+		assertThat(r.resultado()).isEqualTo(Resultado.ACLARACION);
+		assertThat(r.opciones()).extracting(RespuestaDelAsistente.OpcionDePersona::etiqueta)
+				.containsExactly("Pérez, Juan · DNI ***456", "Pérez, Juana");
+	}
+
 	private static ProveedorDeAgente caido() {
 		return new ProveedorDeAgente() {
 			@Override

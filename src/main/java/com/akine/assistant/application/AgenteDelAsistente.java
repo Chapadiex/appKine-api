@@ -56,6 +56,8 @@ public class AgenteDelAsistente {
 	private static final Logger log = LoggerFactory.getLogger(AgenteDelAsistente.class);
 
 	static final String PEDIR_ACLARACION = "pedir_aclaracion";
+	/** La clave del id de persona en las filas de las herramientas del agente. */
+	static final String PERSONA_ID = "persona_id";
 	static final int MAX_OPCIONES = 5;
 	static final int MAX_FILAS = 50;
 	static final int MAX_HISTORIAL = 3;
@@ -319,13 +321,31 @@ public class AgenteDelAsistente {
 			return new ResultadoDeLlamada(llamada.id(), json.writeValueAsString(Map.of("error", mensaje)), true);
 		}
 
-		/** Las personas que devolvio alguna herramienta: lo unico que una aclaracion puede ofrecer. */
-		private void recordarPersonas(List<Map<String, Object>> filas) {
-			for (Map<String, Object> fila : filas) {
-				if (fila.get(ClavesDeFila.PERSONA_ID) instanceof Number id && fila.get(ClavesDeFila.NOMBRE) != null) {
+		/**
+		 * Las personas que devolvio alguna herramienta: lo unico que una aclaracion puede ofrecer. Una fila
+		 * es una persona si trae id ({@code persona_id}, o {@code personaId} de las claves viejas) y
+		 * {@code nombre}; las fichas anidan las filas de cada seccion en {@code filas}.
+		 */
+		private void recordarPersonas(List<?> filas) {
+			recordarPersonas(filas, 0);
+		}
+
+		private void recordarPersonas(List<?> filas, int profundidad) {
+			if (profundidad > 2) {
+				return;
+			}
+			for (Object elemento : filas) {
+				if (!(elemento instanceof Map<?, ?> fila)) {
+					continue;
+				}
+				Object id = fila.get(PERSONA_ID) != null ? fila.get(PERSONA_ID) : fila.get(ClavesDeFila.PERSONA_ID);
+				Object nombre = fila.get(ClavesDeFila.NOMBRE);
+				if (id instanceof Number n && nombre != null) {
 					Object documento = fila.get(ClavesDeFila.DOCUMENTO);
-					etiquetas.putIfAbsent(id.longValue(),
-							fila.get(ClavesDeFila.NOMBRE) + (documento == null ? "" : " · " + documento));
+					etiquetas.putIfAbsent(n.longValue(), nombre + (documento == null ? "" : " · " + documento));
+				}
+				if (fila.get("filas") instanceof List<?> anidadas) {
+					recordarPersonas(anidadas, profundidad + 1);
 				}
 			}
 		}
