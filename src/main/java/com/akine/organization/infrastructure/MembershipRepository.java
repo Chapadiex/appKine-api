@@ -48,7 +48,7 @@ public interface MembershipRepository extends JpaRepository<Membership, Long>, M
 	 */
 	@Override
 	@Query("""
-			select new com.akine.organization.domain.LecturaDeContexto(m, c.id, o.id, s.status, s.pruebaHasta)
+			select new com.akine.organization.domain.LecturaDeContexto(m, c.id, o.id, s.status, s.pruebaHasta, s.pagadoHasta)
 			  from Membership m
 			  left join Consultorio c
 			         on c.id = :consultorioId and c.organizationId = :organizationId and c.active = true
@@ -77,6 +77,26 @@ public interface MembershipRepository extends JpaRepository<Membership, Long>, M
 	 * transaccion y despues del bloqueo de la suscripcion.
 	 */
 	long countByOrganizationIdAndActiveTrue(Long organizationId);
+
+	@Override
+	@Query("""
+			select count(distinct m.accountId) from Membership m
+			 where m.organizationId = :organizationId
+			   and m.active = true
+			   and m.roleCode = com.akine.organization.domain.RoleCode.PROFESIONAL
+			""")
+	long contarProfesionalesActivos(@Param("organizationId") Long organizationId);
+
+	@Override
+	@Query("""
+			select count(m) > 0 from Membership m
+			 where m.organizationId = :organizationId
+			   and m.accountId = :accountId
+			   and m.active = true
+			   and m.roleCode = com.akine.organization.domain.RoleCode.PROFESIONAL
+			""")
+	boolean esProfesionalActivo(@Param("organizationId") Long organizationId,
+			@Param("accountId") Long accountId);
 
 	/**
 	 * Chequeo previo de pertenencia. Sin llamadores hoy.

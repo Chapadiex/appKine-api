@@ -1,5 +1,6 @@
 package com.akine.organization.application;
 
+import com.akine.organization.domain.SituacionDeCobro;
 import com.akine.organization.domain.SubscriptionStatus;
 import com.akine.organization.spi.Adicional;
 import com.akine.organization.spi.Servicio;
@@ -12,26 +13,48 @@ import java.util.Set;
  *
  * @param estado      el estado guardado de la suscripcion ({@code PRUEBA}, {@code ACTIVA}...)
  * @param pruebaHasta fin de la prueba gratis; {@code null} fuera de prueba
- * @param soloLectura la suscripcion no admite cargas: suspendida o prueba vencida
+ * @param soloLectura la suscripcion no admite cargas: suspendida, prueba vencida o cobro vencido
+ *                    pasada la gracia
  * @param maxSedes    tope de sedes del plan; {@code null} = sin tope
+ * @param maxProfesionales tope de profesionales del plan; {@code null} = sin tope
  * @param definidaPorPlataforma el centro lo dio de alta (o lo ajusto) la plataforma; si no, es un
  *                    centro autoregistrado o anterior al 18/11/2026 y tiene todo
+ * @param altaPorPlataforma el centro nacio del alta de la plataforma (en prueba), no del
+ *                    autoregistro; es el que recibe la guia de primeros pasos
+ * @param pagadoHasta hasta cuando esta pagada (19/11/2026); {@code null} = sin control de cobro
+ * @param situacionDeCobro donde esta respecto del periodo pagado
+ * @param cierreEl    instante en que se cierra el acceso si no paga; {@code null} sin control
  */
 public record ContratacionView(
 		long organizationId,
 		String planCode,
 		String planNombre,
 		Integer maxSedes,
+		Integer maxProfesionales,
 		Set<Servicio> servicios,
 		Set<Adicional> adicionales,
 		SubscriptionStatus estado,
 		Instant pruebaHasta,
 		boolean soloLectura,
 		boolean definidaPorPlataforma,
-		long version) {
+		boolean altaPorPlataforma,
+		long version,
+		Instant pagadoHasta,
+		SituacionDeCobro situacionDeCobro,
+		Instant cierreEl) {
 
 	public ContratacionView {
 		servicios = Set.copyOf(servicios);
 		adicionales = Set.copyOf(adicionales);
+	}
+
+	/** Sin control de cobro. */
+	public ContratacionView(long organizationId, String planCode, String planNombre, Integer maxSedes,
+			Integer maxProfesionales, Set<Servicio> servicios, Set<Adicional> adicionales, SubscriptionStatus estado,
+			Instant pruebaHasta, boolean soloLectura, boolean definidaPorPlataforma, boolean altaPorPlataforma,
+			long version) {
+		this(organizationId, planCode, planNombre, maxSedes, maxProfesionales, servicios, adicionales, estado,
+				pruebaHasta, soloLectura, definidaPorPlataforma, altaPorPlataforma, version, null,
+				SituacionDeCobro.SIN_CONTROL, null);
 	}
 }

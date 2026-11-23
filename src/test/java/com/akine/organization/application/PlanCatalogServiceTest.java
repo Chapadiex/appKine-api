@@ -17,7 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Optional;
 
-import static com.akine.organization.application.Fixtures.PLAN_BASICO_ID;
+import static com.akine.organization.application.Fixtures.PLAN_BASE_ID;
 import static com.akine.organization.application.Fixtures.PLAN_PRO_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -49,19 +49,19 @@ class PlanCatalogServiceTest {
 	@DisplayName("El catalogo devuelve cada plan con sus limites y sus funcionalidades")
 	void el_catalogo_arma_cada_plan_con_lo_que_incluye() {
 		given(planRepository.findAllByActiveTrueOrderByCodeAsc())
-				.willReturn(List.of(Fixtures.plan(PLAN_BASICO_ID, "BASICO")));
-		given(planLimitRepository.findAllByPlanIdAndActiveTrue(PLAN_BASICO_ID))
+				.willReturn(List.of(Fixtures.plan(PLAN_BASE_ID, "BASE")));
+		given(planLimitRepository.findAllByPlanIdAndActiveTrue(PLAN_BASE_ID))
 				.willReturn(List.of(
-						Fixtures.limite(PLAN_BASICO_ID, LimitCode.MAX_CONSULTORIOS, 1),
-						Fixtures.limite(PLAN_BASICO_ID, LimitCode.MAX_MIEMBROS_ACTIVOS, null)));
-		given(planFeatureRepository.findAllByPlanIdAndActiveTrue(PLAN_BASICO_ID))
+						Fixtures.limite(PLAN_BASE_ID, LimitCode.MAX_CONSULTORIOS, 1),
+						Fixtures.limite(PLAN_BASE_ID, LimitCode.MAX_MIEMBROS_ACTIVOS, null)));
+		given(planFeatureRepository.findAllByPlanIdAndActiveTrue(PLAN_BASE_ID))
 				.willReturn(List.of(
-						new PlanFeature(PLAN_BASICO_ID, FeatureCode.NOTIFICACIONES_PACIENTE)));
+						new PlanFeature(PLAN_BASE_ID, FeatureCode.NOTIFICACIONES_PACIENTE)));
 
 		List<PlanView> catalogo = planCatalogService.catalog();
 
 		assertThat(catalogo).containsExactly(new PlanView(
-				PLAN_BASICO_ID, "BASICO", "Plan BASICO",
+				PLAN_BASE_ID, "BASE", "Plan BASE",
 				List.of(
 						new PlanLimitView(LimitCode.MAX_CONSULTORIOS, 1),
 						new PlanLimitView(LimitCode.MAX_MIEMBROS_ACTIVOS, null)),
@@ -128,11 +128,11 @@ class PlanCatalogServiceTest {
 	@Test
 	@DisplayName("Los limites vigentes de un plan se proyectan sin la entity")
 	void los_limites_se_proyectan_sin_entity() {
-		given(planLimitRepository.findAllByPlanIdAndActiveTrue(PLAN_BASICO_ID))
+		given(planLimitRepository.findAllByPlanIdAndActiveTrue(PLAN_BASE_ID))
 				.willReturn(List.of(
-						Fixtures.limite(PLAN_BASICO_ID, LimitCode.MAX_CONSULTORIOS, 5)));
+						Fixtures.limite(PLAN_BASE_ID, LimitCode.MAX_CONSULTORIOS, 5)));
 
-		assertThat(planCatalogService.limitsOf(PLAN_BASICO_ID))
+		assertThat(planCatalogService.limitsOf(PLAN_BASE_ID))
 				.containsExactly(new PlanLimitView(LimitCode.MAX_CONSULTORIOS, 5));
 	}
 }

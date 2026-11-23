@@ -54,6 +54,14 @@ class TenantUsageCounterTest {
 		assertThat(usageCounter.count(LimitCode.MAX_MIEMBROS_ACTIVOS, ORG_ID)).isEqualTo(7L);
 	}
 
+	@Test
+	@DisplayName("MAX_PROFESIONALES cuenta las cuentas con rol PROFESIONAL activo")
+	void max_profesionales_cuenta_profesionales_activos() {
+		given(membershipRepository.contarProfesionalesActivos(ORG_ID)).willReturn(2L);
+
+		assertThat(usageCounter.count(LimitCode.MAX_PROFESIONALES, ORG_ID)).isEqualTo(2L);
+	}
+
 	@ParameterizedTest
 	@EnumSource(LimitCode.class)
 	@MockitoSettings(strictness = Strictness.LENIENT)
@@ -63,6 +71,7 @@ class TenantUsageCounterTest {
 		// tenerlo: nadie mira un limite que nunca rechaza.
 		given(consultorioRepository.countByOrganizationIdAndActiveTrue(ORG_ID)).willReturn(4L);
 		given(membershipRepository.countByOrganizationIdAndActiveTrue(ORG_ID)).willReturn(4L);
+		given(membershipRepository.contarProfesionalesActivos(ORG_ID)).willReturn(4L);
 
 		assertThat(usageCounter.count(limite, ORG_ID)).isEqualTo(4L);
 	}

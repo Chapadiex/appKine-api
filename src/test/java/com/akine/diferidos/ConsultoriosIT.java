@@ -387,8 +387,8 @@ class ConsultoriosIT extends BaseEscenarioDiferido {
 	 * Deja al tenant en un plan sin tope de sedes.
 	 *
 	 * <p><b>Hace falta, y decirlo es parte del resultado de la etapa:</b> el plan por defecto del
-	 * alta self-service es BASICO, y BASICO tiene {@code MAX_CONSULTORIOS = 1} (seed de la
-	 * migracion V4). O sea que <b>un tenant recien registrado no puede crear ni una sola sede
+	 * alta self-service es BASE, y BASE tiene {@code MAX_CONSULTORIOS = 1} (seed de la
+	 * migracion V28). O sea que <b>un tenant recien registrado no puede crear ni una sola sede
 	 * adicional</b> hasta cambiar de plan. No es un bug de 02.01 —el limite se respeta como
 	 * corresponde— pero si es lo primero que va a encontrar cualquiera que pruebe la pantalla
 	 * nueva con una cuenta nueva.
@@ -410,7 +410,7 @@ class ConsultoriosIT extends BaseEscenarioDiferido {
 		Respuesta cambio = post(
 				"/api/v1/organizations/" + sesion.organizationId() + "/subscription/plan-changes",
 				plataforma.token(),
-				"{\"planCode\":\"PROFESIONAL\",\"expectedVersion\":0}");
+				"{\"planCode\":\"RED\",\"expectedVersion\":0}");
 
 		assertThat(cambio.status())
 				.as("el tenant necesita un plan sin tope de sedes: %s", cambio.body())

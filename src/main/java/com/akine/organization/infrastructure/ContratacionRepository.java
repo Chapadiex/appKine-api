@@ -1,5 +1,6 @@
 package com.akine.organization.infrastructure;
 
+import com.akine.organization.domain.SituacionDeCobro;
 import com.akine.organization.domain.port.ContratacionRepositoryPort;
 import com.akine.organization.spi.Adicional;
 import com.akine.organization.spi.Servicio;
@@ -62,6 +63,14 @@ class ContratacionRepository implements ContratacionRepositoryPort {
 	}
 
 	@Override
+	public boolean nacioEnPrueba(long organizationId) {
+		return Boolean.TRUE.equals(jdbc.queryForObject(
+				"SELECT EXISTS (SELECT 1 FROM subscription_transition WHERE organization_id = ?"
+						+ " AND from_status IS NULL AND to_status = 'PRUEBA')",
+				Boolean.class, organizationId));
+	}
+
+	@Override
 	public void reemplazar(long organizationId, Set<Servicio> servicios, Set<Adicional> adicionales) {
 		jdbc.update("DELETE FROM subscription_servicio WHERE organization_id = ?", organizationId);
 		for (Servicio servicio : servicios) {
@@ -92,6 +101,23 @@ class ContratacionRepository implements ContratacionRepositoryPort {
 	}
 
 	@Override
+	public List<PruebasGratis.PagoQueVence> pagosQueVencenEntre(Instant desde, Instant hasta) {
+		return jdbc.query("""
+				SELECT o.id, o.name, s.pagado_hasta
+				  FROM subscription s
+				  JOIN organization o ON o.id = s.organization_id AND o.active
+				 WHERE s.status = 'ACTIVA' AND s.active
+				   AND s.pagado_hasta >= ? AND s.pagado_hasta < ?
+				 ORDER BY s.pagado_hasta, o.id""",
+				(rs, n) -> {
+					Instant pagadoHasta = rs.getTimestamp(3).toInstant();
+					return new PruebasGratis.PagoQueVence(rs.getLong(1), rs.getString(2), pagadoHasta,
+							SituacionDeCobro.soloLecturaDesde(pagadoHasta), SituacionDeCobro.cierreEl(pagadoHasta));
+				},
+				Timestamp.from(desde), Timestamp.from(hasta));
+	}
+
+	@Override
 	public Set<Long> administradores(long organizationId) {
 		return new HashSet<>(jdbc.queryForList("""
 				SELECT DISTINCT account_id FROM membership
@@ -106,5 +132,45 @@ class ContratacionRepository implements ContratacionRepositoryPort {
 				"SELECT contratacion_definida FROM subscription WHERE organization_id = ?",
 				Boolean.class, organizationId);
 		return !marca.isEmpty() && Boolean.TRUE.equals(marca.get(0));
+	}
+
+	@Override
+	public Set<Long> conAdicional(java.util.Collection<Long> organizationIds, Adicional adicional) {
+		if (organizationIds.isEmpty()) {
+			return Set.of();
+		}
+		Set<Long> con = new HashSet<>();
+		jdbc.query("SELECT s.organization_id FROM subscription s"
+						+ " WHERE s.organization_id = ANY (?) AND s.deleted_at IS NULL"
+						+ " AND (s.contratacion_definida = false OR EXISTS (SELECT 1 FROM subscription_adicional a"
+						+ " WHERE a.organization_id = s.organization_id AND a.adicional = ?))",
+				rs -> {
+					con.add(rs.getLong(1));
+				},
+				organizationIds.toArray(Long[]::new), adicional.name());
+		return con;
+	}
+
+	@Override
+	public java.util.Map<Long, Set<Servicio>> serviciosDeVarios(java.util.Collection<Long> organizationIds) {
+		java.util.Map<Long, Set<Servicio>> porCentro = new java.util.HashMap<>();
+		if (organizationIds.isEmpty()) {
+			return porCentro;
+		}
+		jdbc.query("SELECT s.organization_id, s.contratacion_definida, ss.servicio FROM subscription s"
+						+ " LEFT JOIN subscription_servicio ss ON ss.organization_id = s.organization_id"
+						+ " WHERE s.organization_id = ANY (?) AND s.deleted_at IS NULL",
+				rs -> {
+					Set<Servicio> servicios = porCentro.computeIfAbsent(rs.getLong(1),
+							id -> EnumSet.noneOf(Servicio.class));
+					if (!rs.getBoolean(2)) {
+						servicios.addAll(EnumSet.allOf(Servicio.class));
+					} else if (rs.getString(3) != null) {
+						servicios.add(Servicio.valueOf(rs.getString(3)));
+					}
+				},
+				// El cast evita que el arreglo se reparta como varargs: es UN parametro, el de ANY (?).
+				(Object) organizationIds.toArray(Long[]::new));
+		return porCentro;
 	}
 }

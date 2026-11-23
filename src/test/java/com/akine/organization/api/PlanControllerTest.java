@@ -42,15 +42,15 @@ class PlanControllerTest {
 		given(planCatalogService.catalog()).willReturn(List.of(
 				new PlanView(
 						1L,
-						"BASICO",
-						"Basico",
+						"BASE",
+						"Plan Base",
 						List.of(new PlanLimitView(LimitCode.MAX_CONSULTORIOS, 3)),
 						List.of(FeatureCode.NOTIFICACIONES_PACIENTE))));
 
 		mockMvc.perform(get("/api/v1/plans"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$[0].code").value("BASICO"))
-				.andExpect(jsonPath("$[0].name").value("Basico"))
+				.andExpect(jsonPath("$[0].code").value("BASE"))
+				.andExpect(jsonPath("$[0].name").value("Plan Base"))
 				.andExpect(jsonPath("$[0].limits[0].code").value("MAX_CONSULTORIOS"))
 				.andExpect(jsonPath("$[0].limits[0].value").value(3))
 				.andExpect(jsonPath("$[0].limits[0].unlimited").value(false))
@@ -61,7 +61,7 @@ class PlanControllerTest {
 	@DisplayName("El id interno del plan no se publica: el catalogo se referencia por codigo")
 	void no_publica_el_id_interno() throws Exception {
 		given(planCatalogService.catalog()).willReturn(List.of(
-				new PlanView(42L, "PROFESIONAL", "Profesional", List.of(), List.of())));
+				new PlanView(42L, "RED", "Plan Plus", List.of(), List.of())));
 
 		mockMvc.perform(get("/api/v1/plans"))
 				.andExpect(status().isOk())
@@ -74,8 +74,8 @@ class PlanControllerTest {
 		given(planCatalogService.catalog()).willReturn(List.of(
 				new PlanView(
 						2L,
-						"PROFESIONAL",
-						"Profesional",
+						"RED",
+						"Plan Plus",
 						List.of(new PlanLimitView(LimitCode.MAX_MIEMBROS_ACTIVOS, null)),
 						List.of(FeatureCode.REPORTES_AVANZADOS))));
 

@@ -37,6 +37,22 @@ public class SchedulingTurnoDirectory implements TurnoDirectory {
 	}
 
 	@Override
+	public Optional<Long> coberturaElegida(long organizationId, long consultorioId, long turnoId) {
+		var recepcion = recepciones.findVigente(organizationId, turnoId)
+				.filter(r -> r.getConsultorioId() == consultorioId);
+		if (recepcion.isPresent()) {
+			if (recepcion.get().getModalidad() == ModalidadRecepcion.PARTICULAR) {
+				return Optional.empty();
+			}
+			if (recepcion.get().getCoberturaId() != null) {
+				return Optional.of(recepcion.get().getCoberturaId());
+			}
+		}
+		return turnos.findByIdInScope(organizationId, consultorioId, turnoId)
+				.map(Turno::getCoberturaId);
+	}
+
+	@Override
 	public Optional<TurnoSnapshot> find(long organizationId, long consultorioId, long turnoId) {
 		return turnos.findByIdInScope(organizationId, consultorioId, turnoId)
 				.map(SchedulingTurnoDirectory::proyectar);

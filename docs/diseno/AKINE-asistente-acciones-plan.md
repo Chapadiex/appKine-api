@@ -25,7 +25,7 @@ acción; el módulo dueño la prepara y la ejecuta detrás de una SPI nueva en `
 - La frase, los nombres y la nota **no** se guardan ni van al log ni a la auditoría.
 - `akine.asistente.acciones.enabled` apagado por defecto: con él apagado, ningún test existente
   cambia de resultado.
-- Migración `V29`; contrato a la siguiente minor libre al rebasar (hoy 0.179.0, probable 0.180.0).
+- Migración `V46` (nació como `V29`); contrato 0.192.0, renumerados al integrar el 23/11/2026.
 - Mensajes al usuario en español rioplatense, voseo, como `Plantillas`.
 - Commits locales en `akine-asistente-acciones`; sin push hasta que el usuario lo pida.
 - Tests en local: sólo los del módulo tocado (`./mvnw -o test -Dtest="com.akine.<modulo>.**.*Test"
@@ -56,7 +56,7 @@ acción; el módulo dueño la prepara y la ejecuta detrás de una SPI nueva en `
   `assistant/domain/PermissionCodes.java`, `docs/seguridad/matriz-permisos-minima.md` §23,
   `PermissionEvaluatorServiceTest`, `PermisosEsquemaIT` (listas exactas), `application.yml`
   (`akine.asistente.acciones.enabled: false`), `AsistenteProperties`, `AsistenteAjustes`
-  (`boolean acciones()`), `docs/fases/01-trabajo-en-paralelo.md` §6 (reserva de `V29`).
+  (`boolean acciones()`), `docs/fases/01-trabajo-en-paralelo.md` §6 (reserva de `V46`).
 
 **Interfaces que produce**
 

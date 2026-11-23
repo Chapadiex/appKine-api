@@ -1,6 +1,7 @@
 package com.akine.organization.application;
 
 import com.akine.organization.domain.Plan;
+import com.akine.organization.domain.SituacionDeCobro;
 import com.akine.organization.domain.Subscription;
 import com.akine.organization.domain.SubscriptionStatus;
 import com.akine.organization.domain.SubscriptionTransition;
@@ -12,6 +13,7 @@ import com.akine.organization.spi.Adicional;
 import com.akine.organization.spi.LimitCode;
 import com.akine.organization.spi.PruebasGratis;
 import com.akine.organization.spi.Servicio;
+import com.akine.organization.spi.ServiciosDelCentro;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -33,7 +35,7 @@ import java.util.stream.Collectors;
  * Este servicio guarda y responde.
  */
 @Service
-public class ContratacionService implements PruebasGratis {
+public class ContratacionService implements PruebasGratis, ServiciosDelCentro {
 
 	private final ContratacionRepositoryPort contratacionRepository;
 	private final SubscriptionRepositoryPort subscriptionRepository;
@@ -64,6 +66,30 @@ public class ContratacionService implements PruebasGratis {
 	@Transactional(readOnly = true)
 	public boolean tieneServicio(long organizationId, Servicio servicio) {
 		return contratacionRepository.serviciosDe(organizationId).contains(servicio);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public boolean tiene(long organizationId, Servicio servicio) {
+		return tieneServicio(organizationId, servicio);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Set<Servicio> serviciosDe(long organizationId) {
+		return contratacionRepository.serviciosDe(organizationId);
+	}
+
+	/** De los centros dados, los que tienen la IA (una consulta para la pagina del listado). */
+	@Transactional(readOnly = true)
+	public Set<Long> conIa(java.util.Collection<Long> organizationIds) {
+		return contratacionRepository.conAdicional(organizationIds, Adicional.IA);
+	}
+
+	/** Los servicios de cada centro dado (una consulta para la pagina del listado). */
+	@Transactional(readOnly = true)
+	public java.util.Map<Long, Set<Servicio>> serviciosDe(java.util.Collection<Long> organizationIds) {
+		return contratacionRepository.serviciosDeVarios(organizationIds);
 	}
 
 	@Transactional(readOnly = true)
@@ -136,18 +162,26 @@ public class ContratacionService implements PruebasGratis {
 
 	private ContratacionView vista(long organizationId, Subscription subscription) {
 		Plan plan = planCatalogService.requireById(subscription.getPlanId());
-		Integer maxSedes = planCatalogService.limitsOf(plan.getId()).stream()
-				.filter(l -> l.code() == LimitCode.MAX_CONSULTORIOS)
-				.findFirst()
-				.map(PlanLimitView::value)
-				.orElse(null);
-		boolean soloLectura = subscription.estadoEfectivo(Instant.now()) != SubscriptionStatus.ACTIVA;
+		java.util.List<PlanLimitView> limites = planCatalogService.limitsOf(plan.getId());
+		Integer maxSedes = tope(limites, LimitCode.MAX_CONSULTORIOS);
+		Integer maxProfesionales = tope(limites, LimitCode.MAX_PROFESIONALES);
+		Instant ahora = Instant.now();
+		boolean soloLectura = subscription.estadoEfectivo(ahora) != SubscriptionStatus.ACTIVA;
+		Instant pagadoHasta = subscription.getPagadoHasta();
 		return new ContratacionView(
-				organizationId, plan.getCode(), plan.getName(), maxSedes,
+				organizationId, plan.getCode(), plan.getName(), maxSedes, maxProfesionales,
 				contratacionRepository.serviciosDe(organizationId),
 				contratacionRepository.adicionalesDe(organizationId),
 				subscription.getStatus(), subscription.getPruebaHasta(), soloLectura,
-				contratacionRepository.definida(organizationId), subscription.getVersion());
+				contratacionRepository.definida(organizationId),
+				contratacionRepository.nacioEnPrueba(organizationId), subscription.getVersion(),
+				pagadoHasta, SituacionDeCobro.de(pagadoHasta, ahora), SituacionDeCobro.cierreEl(pagadoHasta));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public java.util.List<PagoQueVence> pagosQueVencenEntre(Instant desde, Instant hasta) {
+		return contratacionRepository.pagosQueVencenEntre(desde, hasta);
 	}
 
 	@Override
@@ -160,6 +194,15 @@ public class ContratacionService implements PruebasGratis {
 	@Transactional(readOnly = true)
 	public Set<Long> administradores(long organizationId) {
 		return contratacionRepository.administradores(organizationId);
+	}
+
+	/** El tope de ese limite en el plan; {@code null} si no tiene tope o no lo declara. */
+	private static Integer tope(java.util.List<PlanLimitView> limites, LimitCode codigo) {
+		return limites.stream()
+				.filter(l -> l.code() == codigo)
+				.findFirst()
+				.map(PlanLimitView::value)
+				.orElse(null);
 	}
 
 	private static void exigirServicios(Set<Servicio> servicios) {

@@ -302,4 +302,47 @@ class AsistenteServiceTest {
 	void unPedidoDeCambioNoVaAlSql(String pregunta, boolean cambio) {
 		org.assertj.core.api.Assertions.assertThat(AsistenteService.pideCambio(pregunta)).isEqualTo(cambio);
 	}
+
+	@Test
+	void como_se_hace_cita_el_pasaje_del_manual_con_la_pantalla_actual() {
+		respuestaDelModelo = "{\"intencion\":\"COMO_SE_HACE\"}";
+		AsistenteService servicio = servicio(true, herramienta(Intencion.COMO_SE_HACE, p -> new ResultadoDeHerramienta(
+				List.of(Map.of(ClavesDeFila.MANUAL_FICHA, "caja-diaria", ClavesDeFila.MANUAL_TITULO,
+						"Caja diaria → Abrir la caja", ClavesDeFila.MANUAL_TEXTO, "1. Tocá **Abrir la caja**.")),
+				List.of(), "/caja", false)));
+
+		RespuestaDelAsistente r = servicio.consultar(ACTOR, SEDE, "¿cómo abro la caja?", List.of(), null, "/caja");
+
+		assertThat(r.resultado()).isEqualTo(Resultado.RESPONDIDA);
+		assertThat(r.texto()).isEqualTo("En **Caja diaria → Abrir la caja**:\n\n1. Tocá **Abrir la caja**.");
+		assertThat(r.enlace()).isEqualTo("/caja");
+		assertThat(pedidos).singleElement().satisfies(p -> {
+			assertThat(p.rutaActual()).isEqualTo("/caja");
+			assertThat(p.pregunta()).isEqualTo("¿cómo abro la caja?");
+		});
+	}
+
+	@Test
+	void como_se_hace_sin_pasaje_dice_que_no_esta_en_el_manual_y_sugiere() {
+		respuestaDelModelo = "{\"intencion\":\"COMO_SE_HACE\"}";
+		AsistenteService servicio = servicio(true, herramienta(Intencion.COMO_SE_HACE, p -> new ResultadoDeHerramienta(
+				List.of(), List.of("Egresos → Registrar un egreso|/egresos"), null, false)));
+
+		RespuestaDelAsistente r = servicio.consultar(ACTOR, SEDE, "¿cómo trato una lumbalgia?", List.of(), null);
+
+		assertThat(r.resultado()).isEqualTo(Resultado.FUERA_DE_ALCANCE);
+		assertThat(r.texto()).startsWith("No encontré eso en el manual.")
+				.contains("[Egresos → Registrar un egreso](/egresos)");
+	}
+
+	@Test
+	void como_se_hace_con_el_modelo_caido_dice_que_no_puede_buscar() {
+		respuestaDelModelo = "{\"intencion\":\"COMO_SE_HACE\"}";
+		AsistenteService servicio = servicio(true, herramienta(Intencion.COMO_SE_HACE, p -> new ResultadoDeHerramienta(
+				List.of(), List.of(ClavesDeFila.MANUAL_SIN_MODELO), null, false)));
+
+		RespuestaDelAsistente r = servicio.consultar(ACTOR, SEDE, "¿cómo abro la caja?", List.of(), null);
+
+		assertThat(r.texto()).isEqualTo(Plantillas.MANUAL_SIN_MODELO);
+	}
 }

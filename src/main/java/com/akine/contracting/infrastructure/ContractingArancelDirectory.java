@@ -76,6 +76,15 @@ public class ContractingArancelDirectory implements ArancelDirectory {
 
 	@Override
 	@Transactional(readOnly = true)
+	public Integer topeDeSesionesMensual(long organizationId, long convenioId) {
+		return convenios.findById(convenioId)
+				.filter(convenio -> convenio.getOrganizationId() == organizationId)
+				.map(Convenio::getLimiteSesionesMensual)
+				.orElse(null);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
 	@SuppressWarnings("java:S107")
 	public Optional<ArancelCongelado> congelar(
 			long organizationId,

@@ -30,33 +30,26 @@ public record CreateArancelRequest(
 		Long practicaId,
 
 		@Schema(
-				description = "Lo que vale la practica bajo este convenio. Cero es valido y "
-						+ "significa una practica sin cargo",
-				example = "12000.00",
-				requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotNull(message = "El importe total es obligatorio")
-		@DecimalMin(value = "0.00", message = "El importe total no puede ser negativo")
-		@Digits(integer = 10, fraction = 2, message = "Los importes admiten 2 decimales")
+				description = "OBSOLETO desde 0.189.0: se ignora. El coseguro se calcula al cerrar "
+						+ "la sesion como precio de la oferta menos lo que paga el financiador",
+				example = "12000.00", deprecated = true,
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		BigDecimal importeTotal,
 
 		@Schema(
-				description = "La parte que paga el financiador. Junto con el coseguro tiene que "
-						+ "sumar EXACTAMENTE el importe total, o la peticion se rechaza con 400",
+				description = "Lo que paga el financiador por la practica (B). El paciente paga "
+						+ "la diferencia con el precio de la oferta, nunca menos de cero",
 				example = "9600.00",
 				requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotNull(message = "La parte del financiador es obligatoria")
-		@DecimalMin(value = "0.00", message = "La parte del financiador no puede ser negativa")
+		@NotNull(message = "Lo que paga el financiador es obligatorio")
+		@DecimalMin(value = "0.00", message = "Lo que paga el financiador no puede ser negativo")
 		@Digits(integer = 10, fraction = 2, message = "Los importes admiten 2 decimales")
 		BigDecimal importeFinanciador,
 
 		@Schema(
-				description = "La parte que paga el paciente. Cero es valido y significa cobertura "
-						+ "total",
-				example = "2400.00",
-				requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotNull(message = "El coseguro es obligatorio")
-		@DecimalMin(value = "0.00", message = "El coseguro no puede ser negativo")
-		@Digits(integer = 10, fraction = 2, message = "El coseguro admite 2 decimales")
+				description = "OBSOLETO desde 0.189.0: se ignora. Ver importeTotal",
+				example = "2400.00", deprecated = true,
+				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		BigDecimal coseguro,
 
 		@Schema(description = "Primer dia en que este importe se aplica", example = "2026-01-01",

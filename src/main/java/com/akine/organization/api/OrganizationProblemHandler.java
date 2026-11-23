@@ -25,6 +25,7 @@ import com.akine.organization.domain.exception.SelfRevokeNotAllowedException;
 import com.akine.organization.domain.exception.SupportAccessNotFoundException;
 import com.akine.organization.domain.exception.UnknownPermissionCodeException;
 import com.akine.organization.domain.exception.FeatureNotAvailableException;
+import com.akine.organization.domain.exception.CobroNoAdmitidoException;
 import com.akine.organization.domain.exception.InvalidSubscriptionTransitionException;
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
 import com.akine.organization.domain.exception.OrganizationSlugTakenException;
@@ -32,6 +33,7 @@ import com.akine.organization.domain.exception.PlanLimitExceededException;
 import com.akine.organization.domain.exception.ServicioNoContratadoException;
 import com.akine.organization.domain.exception.SolicitudDePruebaNotFoundException;
 import com.akine.organization.domain.exception.SubscriptionSuspendedException;
+import com.akine.organization.domain.exception.TerminosDelPedidoException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
@@ -134,6 +136,17 @@ public class OrganizationProblemHandler {
 	@ExceptionHandler(SolicitudDePruebaNotFoundException.class)
 	public ProblemDetail handleSolicitudDePruebaNotFound(SolicitudDePruebaNotFoundException exception) {
 		return noEncontrado();
+	}
+
+	/** El pedido de prueba no acepto los terminos vigentes: 400 con el campo, como el alta. */
+	@ExceptionHandler(TerminosDelPedidoException.class)
+	public ProblemDetail handleTerminosDelPedido(TerminosDelPedidoException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.BAD_REQUEST, "La solicitud contiene campos invalidos");
+		problem.setTitle("Error de validacion");
+		problem.setType(VALIDATION_ERROR);
+		problem.setProperty("errors", Map.of(exception.getCampo(), exception.getMessage()));
+		return problem;
 	}
 
 	@ExceptionHandler(OrganizationNotFoundException.class)
@@ -256,6 +269,25 @@ public class OrganizationProblemHandler {
 						+ "administracion, no mutaciones de negocio.");
 		problem.setTitle("Suscripcion suspendida");
 		problem.setType(SUBSCRIPTION_SUSPENDED);
+		return problem;
+	}
+
+	/**
+	 * Cobro sobre una suscripcion SUSPENDIDA o CANCELADA guardada (19/11/2026). Mismo {@code type}
+	 * que la suscripcion no activa, con el estado en {@code subscriptionStatus}: la salida es reactivarla
+	 * primero por la transicion de siempre.
+	 */
+	@ExceptionHandler(CobroNoAdmitidoException.class)
+	public ProblemDetail handleCobroNoAdmitido(CobroNoAdmitidoException exception) {
+		log.info("Cobro rechazado por suscripcion {}: organizationId={}",
+				exception.getStatus(), exception.getOrganizationId());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+				HttpStatus.CONFLICT,
+				"La suscripcion esta " + exception.getStatus()
+						+ ": primero se reactiva y despues se registra el cobro.");
+		problem.setTitle("La suscripcion no admite cobros");
+		problem.setType(SUBSCRIPTION_SUSPENDED);
+		problem.setProperty("subscriptionStatus", exception.getStatus());
 		return problem;
 	}
 

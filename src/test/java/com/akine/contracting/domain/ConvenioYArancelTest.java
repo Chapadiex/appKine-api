@@ -171,43 +171,26 @@ class ConvenioYArancelTest {
 	class DelArancel {
 
 		@Test
-		@DisplayName("las partes tienen que sumar EXACTAMENTE el total")
-		void las_partes_suman_el_total() {
-			assertThatCode(() -> arancel("12000.00", "9600.00", "2400.00"))
-					.doesNotThrowAnyException();
+		@DisplayName("V39: el arancel guarda solo lo que paga el financiador; cero vale")
+		void guarda_solo_el_financiador() {
+			ConvenioArancel arancel = arancel("9600.00");
 
-			assertThatThrownBy(() -> arancel("12000.00", "9600.00", "2500.00"))
-					.isInstanceOf(IllegalArgumentException.class)
-					.hasMessageContaining("sumar exactamente");
-		}
-
-		@Test
-		@DisplayName("la comparacion es por VALOR: 12000.0 y 12000.00 son el mismo importe")
-		void compara_por_valor_y_no_por_escala() {
-			// compareTo y no equals. Con equals, 12000.0 != 12000.00 y este arancel legitimo se
-			// rechazaria.
-			assertThatCode(() -> arancel("12000.0", "12000.00", "0.000"))
-					.doesNotThrowAnyException();
-		}
-
-		@Test
-		@DisplayName("ningun importe puede ser negativo; cero si es valido en los tres")
-		void nada_negativo_pero_cero_vale() {
-			assertThatCode(() -> arancel("0.00", "0.00", "0.00")).doesNotThrowAnyException();
-			assertThatCode(() -> arancel("12000.00", "0.00", "12000.00"))
+			assertThat(arancel.getImporteFinanciador()).isEqualByComparingTo("9600.00");
+			assertThat(arancel.getImporteTotal()).as("historico: nulo en los nuevos").isNull();
+			assertThat(arancel.getCoseguro()).as("historico: nulo en los nuevos").isNull();
+			assertThatCode(() -> arancel("0.00"))
 					.as("una practica que el financiador no cubre")
 					.doesNotThrowAnyException();
-
-			assertThatThrownBy(() -> arancel("12000.00", "13000.00", "-1000.00"))
-					.isInstanceOf(IllegalArgumentException.class)
-					.hasMessageContaining("no puede ser negativo");
 		}
 
 		@Test
-		@DisplayName("un importe nulo es obligatorio, no cero por descuido")
-		void importe_nulo_se_rechaza() {
+		@DisplayName("lo que paga el financiador no puede ser negativo ni nulo")
+		void financiador_negativo_o_nulo_se_rechaza() {
+			assertThatThrownBy(() -> arancel("-1.00"))
+					.isInstanceOf(IllegalArgumentException.class)
+					.hasMessageContaining("no puede ser negativo");
 			assertThatThrownBy(() -> new ConvenioArancel(7L, 20L, 140L, 412L,
-					null, BigDecimal.ZERO, BigDecimal.ZERO, "ARS", ENERO, null))
+					null, "ARS", ENERO, null))
 					.isInstanceOf(IllegalArgumentException.class)
 					.hasMessageContaining("obligatorio");
 		}
@@ -216,44 +199,26 @@ class ConvenioYArancelTest {
 		@DisplayName("un importe sin moneda no es un importe")
 		void moneda_obligatoria() {
 			assertThatThrownBy(() -> new ConvenioArancel(7L, 20L, 140L, 412L,
-					BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ZERO, null, ENERO, null))
+					BigDecimal.TEN, null, ENERO, null))
 					.isInstanceOf(IllegalArgumentException.class)
 					.hasMessageContaining("sin moneda");
 		}
 
 		@Test
-		@DisplayName("la edicion valida los importes COMO TERNA aunque llegue uno solo")
-		void la_edicion_valida_la_terna() {
-			// Es el descuido con el que se rompe la invariante economica sin darse cuenta: subir el
-			// total y olvidarse de repartir la diferencia.
-			ConvenioArancel arancel = arancel("12000.00", "9600.00", "2400.00");
+		@DisplayName("editar el importe cambia B y no toca la vigencia")
+		void editar_el_importe() {
+			ConvenioArancel arancel = arancel("9600.00");
 
-			assertThatThrownBy(() -> arancel.updateDatos(
-					new BigDecimal("13000.00"), null, null, null, null))
-					.isInstanceOf(IllegalArgumentException.class)
-					.hasMessageContaining("sumar exactamente");
+			arancel.updateDatos(new BigDecimal("10400.00"), null, null);
 
-			assertThat(arancel.getImporteTotal())
-					.as("y la entidad no queda a medio editar")
-					.isEqualByComparingTo("12000.00");
-		}
-
-		@Test
-		@DisplayName("subir el precio bien: los tres importes juntos")
-		void subir_el_precio_bien() {
-			ConvenioArancel arancel = arancel("12000.00", "9600.00", "2400.00");
-
-			arancel.updateDatos(new BigDecimal("13000.00"), new BigDecimal("10400.00"),
-					new BigDecimal("2600.00"), null, null);
-
-			assertThat(arancel.getImporteTotal()).isEqualByComparingTo("13000.00");
+			assertThat(arancel.getImporteFinanciador()).isEqualByComparingTo("10400.00");
 			assertThat(arancel.getVigenciaDesde()).as("la vigencia no se toco").isEqualTo(ENERO);
 		}
 
 		@Test
 		@DisplayName("ciclo de vida y vigencia son dos cosas tambien aca")
 		void ciclo_de_vida_y_vigencia() {
-			ConvenioArancel arancel = arancel("12000.00", "9600.00", "2400.00");
+			ConvenioArancel arancel = arancel("9600.00");
 
 			assertThat(arancel.aplicaEl(ENERO)).isTrue();
 			arancel.deactivate(Instant.now(), "Renegociado");
@@ -288,15 +253,14 @@ class ConvenioYArancelTest {
 				ENERO, null, moneda, false, false, true, null, null, null);
 	}
 
-	private static ConvenioArancel arancel(String total, String financiador, String coseguro) {
-		return new ConvenioArancel(7L, 20L, 140L, 412L,
-				new BigDecimal(total), new BigDecimal(financiador), new BigDecimal(coseguro),
-				"ARS", ENERO, DICIEMBRE);
+	private static ConvenioArancel arancel(String financiador) {
+		return new ConvenioArancel(7L, 20L, 140L, 412L, new BigDecimal(financiador), "ARS", ENERO,
+				DICIEMBRE);
 	}
 
 	private static ConvenioArancel arancelCon(LocalDate desde, LocalDate hasta) {
 		return new ConvenioArancel(7L, 20L, 140L, 412L,
-				new BigDecimal("100.00"), new BigDecimal("100.00"), BigDecimal.ZERO,
+				new BigDecimal("100.00"),
 				"ARS", desde, hasta);
 	}
 }

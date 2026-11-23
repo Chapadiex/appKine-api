@@ -115,9 +115,8 @@ public class OrganizationMembershipDirectory implements MembershipDirectory {
 		}
 
 		TenantOperationalStatus estado =
-				traducir(Subscription.operationalStatus(Subscription.estadoEfectivo(
-						contexto.estadoSuscripcion(), contexto.pruebaHasta(), java.time.Instant.now()),
-						true));
+				traducir(Subscription.estadoOperativo(contexto.estadoSuscripcion(), contexto.pruebaHasta(),
+						contexto.pagadoHasta(), java.time.Instant.now(), true));
 
 		return Optional.of(new TenantMembership(
 				membership.getId(), membership.getRoleCode().name(), estado));
@@ -137,6 +136,7 @@ public class OrganizationMembershipDirectory implements MembershipDirectory {
 			case SUSPENDIDA -> TenantOperationalStatus.SUSPENDIDA;
 			case CANCELADA -> TenantOperationalStatus.CANCELADA;
 			case BAJA -> TenantOperationalStatus.BAJA;
+			case SIN_ACCESO -> TenantOperationalStatus.SIN_ACCESO;
 		};
 	}
 }

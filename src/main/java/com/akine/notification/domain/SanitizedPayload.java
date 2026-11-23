@@ -41,10 +41,19 @@ public final class SanitizedPayload {
 			// Prueba gratis (18/11/2026): el dia en que vence, y del pedido de la landing los
 			// servicios y las sedes declarados. Ningun dato de contacto: esos quedan en la bandeja.
 			"pruebaVencimiento",
+			// Cobro mensual (19/11/2026): cuantos dias faltan, el dia en que vence el periodo pagado,
+			// cuando pasa a solo lectura y cuando se cierra el acceso. Fechas dd/MM/yyyy y un numero.
+			"diasRestantes",
+			"suscripcionVencimiento",
+			"suscripcionSoloLectura",
+			"suscripcionCierre",
 			"pedidoServicios",
 			"pedidoSedes",
 			"organizacionNombre",
 			"invitadoPor",
+			// 19/11/2026: marca ("si") de que la invitacion es la del duenio de un centro recien
+			// dado de alta por la plataforma. No nombra a nadie.
+			"altaDeCentro",
 			// AKINE-08.02: lo minimo para que un aviso de clase diga de que clase habla. Ningun
 			// dato de otro participante, ningun dato clinico y ningun identificador interno.
 			// U-46 (d), 17/10/2026: "claseTitulo" salio de la lista (ver CLAVES_RETIRADAS).

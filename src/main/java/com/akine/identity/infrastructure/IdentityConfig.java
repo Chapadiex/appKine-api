@@ -3,6 +3,7 @@ package com.akine.identity.infrastructure;
 import com.akine.identity.domain.SessionSettings;
 import com.akine.identity.domain.TerminosSettings;
 import com.akine.identity.domain.port.IdentityClock;
+import com.akine.platform.spi.terminos.TerminosVigentes;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -41,6 +42,12 @@ public class IdentityConfig {
 		return new TerminosSettings(
 				properties.getTerminos().getVersionVigente(),
 				properties.getTerminos().getUrl());
+	}
+
+	/** La misma version, publicada para otros modulos (el pedido de prueba de organization). */
+	@Bean
+	public TerminosVigentes terminosVigentes(TerminosSettings terminosSettings) {
+		return terminosSettings::version;
 	}
 
 	/**

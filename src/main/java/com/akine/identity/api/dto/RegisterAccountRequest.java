@@ -76,7 +76,7 @@ public record RegisterAccountRequest(
 		@Schema(
 				description = "Plan a contratar, del catalogo de GET /api/v1/plans. Si se omite "
 						+ "se usa el plan por defecto",
-				example = "BASICO",
+				example = "BASE",
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		@Size(max = 32, message = "El codigo de plan no puede superar los 32 caracteres")
 		String planCode,

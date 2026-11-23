@@ -134,7 +134,7 @@ FROM convenio_arancel WHERE convenio_id = @convenio;
 
 Esperado: `importe_total = importe_financiador + coseguro`. Un segundo arancel solapado para la
 misma práctica y oferta es rechazo (lo hace cumplir `convenio_lock`, **ningún índice lo expresa**).
-`/contratacion/arancel-efectivo` muestra el arancel que aplicaría hoy.
+En la ficha de la persona, Coberturas → cobertura aplicable muestra lo que paga la obra social y lo que paga el paciente.
 
 **Auditoría:** `CONVENIO_CREATED`, `ARANCEL_CREATED`.
 

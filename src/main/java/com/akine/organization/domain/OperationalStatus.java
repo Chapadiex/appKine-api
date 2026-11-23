@@ -22,5 +22,12 @@ public enum OperationalStatus {
 	CANCELADA,
 
 	/** La organizacion en si fue dada de baja logica. Distinto de cancelar la suscripcion. */
-	BAJA
+	BAJA,
+
+	/**
+	 * Suscripcion ACTIVA cuyo periodo pagado vencio hace mas que el cierre (19/11/2026,
+	 * {@link SituacionDeCobro#SIN_ACCESO}). Como CANCELADA, el contexto no puede seleccionarse; a
+	 * diferencia de ella, registrar un cobro lo devuelve a ACTIVA en el acto.
+	 */
+	SIN_ACCESO
 }

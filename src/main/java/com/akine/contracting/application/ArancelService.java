@@ -18,6 +18,7 @@ import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioLockRep
 import com.akine.contracting.domain.port.ConvenioRepositoryPorts.ConvenioRepositoryPort;
 import com.akine.contracting.spi.ResolucionDeArancel;
 import com.akine.offering.spi.OfertaDirectory;
+import com.akine.offering.spi.PrecioDeOferta;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ConsultorioSnapshot;
@@ -37,6 +38,7 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -228,7 +230,7 @@ public class ArancelService {
 
 		// Los aranceles se leen SOLO si hay convenio aplicable: pedirlos antes seria una consulta
 		// que en el caso mas frecuente —paciente particular, sin convenio— no se usa para nada.
-		return ResolutorDeArancel.convenioAplicable(candidatos, contra)
+		ResolucionDeArancel resolucion = ResolutorDeArancel.convenioAplicable(candidatos, contra)
 				.map(convenio -> ResolutorDeArancel.resolver(
 						List.of(convenio),
 						aranceles.findActivosPorPractica(
@@ -237,6 +239,14 @@ public class ArancelService {
 						ofertaId,
 						contra))
 				.orElseGet(() -> ResolutorDeArancel.resolver(List.of(), List.of(), practicaId, contra));
+		if (!resolucion.estaResuelta()) {
+			return resolucion;
+		}
+		// V39: con oferta se conoce A y se muestra el coseguro (A − B); sin oferta viaja nulo.
+		BigDecimal precioA = ofertaId == null ? null
+				: ofertas.precioVigenteEl(organizationId, consultorioId, ofertaId, contra)
+						.map(PrecioDeOferta::precioBase).orElse(null);
+		return ResolucionDeArancel.resuelta(resolucion.arancel().conPrecio(precioA));
 	}
 
 	// =================================================================================
@@ -282,13 +292,11 @@ public class ArancelService {
 
 		ConvenioArancel arancel = new ConvenioArancel(
 				organizationId,
-				consultorioId,
+				convenio.getConsultorioId(),
 				convenioId,
 				command.practicaId(),
 				command.ofertaId(),
-				command.importeTotal(),
 				command.importeFinanciador(),
-				command.coseguro(),
 				convenio.getMoneda(),
 				command.vigenciaDesde(),
 				command.vigenciaHasta());
@@ -296,7 +304,7 @@ public class ArancelService {
 		exigirContenidaEnElConvenio(arancel.vigencia(), convenio);
 
 		// EL ORDEN DE ESTAS TRES LINEAS ES LA GARANTIA. Ver la cabecera de ConvenioService.
-		BloqueoDeConvenios.tomar(locks, organizationId, consultorioId);
+		bloquearAlcance(organizationId, convenio);
 		exigirSinSolapamiento(organizationId, convenioId, command.practicaId(), command.ofertaId(),
 				arancel.vigencia(), null);
 
@@ -308,9 +316,7 @@ public class ArancelService {
 			detalles.put("ofertaId", String.valueOf(command.ofertaId()));
 		}
 		detalles.put("vigencia", creado.vigencia().toString());
-		detalles.put("importeTotal", creado.getImporteTotal() + " " + creado.getMoneda());
-		detalles.put("importeFinanciador", creado.getImporteFinanciador().toString());
-		detalles.put("coseguro", creado.getCoseguro().toString());
+		detalles.put("importeFinanciador", creado.getImporteFinanciador() + " " + creado.getMoneda());
 		auditar(AuditEvents.ARANCEL_CREATED, creado, actor, null, "ACTIVO", null, detalles);
 
 		log.info("Arancel creado: arancelId={} convenioId={} practicaId={}",
@@ -349,9 +355,11 @@ public class ArancelService {
 			OperatingActor actor, long consultorioId, long convenioId, long arancelId,
 			ArancelEdicionCommand command, long organizationId) {
 
-		BloqueoDeConvenios.tomar(locks, organizationId, consultorioId);
-
+		// El convenio se lee antes del lock para saber cual tomar: el de la sede o, si es el
+		// convenio del plan, la fila del plan. Leerlo no bloquea nada; lo que se valida bajo el lock
+		// es el conjunto de aranceles, que se lee despues.
 		Convenio convenio = cargarConvenio(organizationId, consultorioId, convenioId);
+		bloquearAlcance(organizationId, convenio);
 		ConvenioArancel arancel = cargarArancel(organizationId, convenioId, arancelId);
 		exigirArancelOperable(arancel, "editar");
 		exigirVersion(arancel, command.expectedVersion());
@@ -359,9 +367,7 @@ public class ArancelService {
 		Map<String, String> detalles = cambios(arancel, command);
 
 		arancel.updateDatos(
-				command.importeTotal(),
 				command.importeFinanciador(),
-				command.coseguro(),
 				command.vigenciaDesde(),
 				command.vigenciaHasta());
 
@@ -494,6 +500,18 @@ public class ArancelService {
 				.orElseThrow(() -> new PracticaNoAccesibleException(practicaId));
 	}
 
+	/**
+	 * El lock de las escrituras de aranceles de ESE convenio: la fila de {@code convenio_lock} de
+	 * su sede o, si es el convenio del plan (V43), la fila del plan.
+	 */
+	private void bloquearAlcance(long organizationId, Convenio convenio) {
+		if (convenio.esDelPlan()) {
+			BloqueoDeConvenios.tomarDelPlan(locks, organizationId, convenio.getPlanId());
+		} else {
+			BloqueoDeConvenios.tomar(locks, organizationId, convenio.getConsultorioId());
+		}
+	}
+
 	private Convenio cargarConvenio(long organizationId, long consultorioId, long convenioId) {
 		return convenios.findByIdAndScope(convenioId, organizationId, consultorioId)
 				.orElseThrow(() -> new ConvenioNotAccessibleException(convenioId));
@@ -534,18 +552,10 @@ public class ArancelService {
 			ConvenioArancel arancel, ArancelEdicionCommand command) {
 
 		Map<String, String> detalles = new LinkedHashMap<>();
-		if (command.importeTotal() != null
-				&& arancel.getImporteTotal().compareTo(command.importeTotal()) != 0) {
-			detalles.put("importeTotal", arancel.getImporteTotal() + " -> " + command.importeTotal());
-		}
 		if (command.importeFinanciador() != null
 				&& arancel.getImporteFinanciador().compareTo(command.importeFinanciador()) != 0) {
 			detalles.put("importeFinanciador",
 					arancel.getImporteFinanciador() + " -> " + command.importeFinanciador());
-		}
-		if (command.coseguro() != null
-				&& arancel.getCoseguro().compareTo(command.coseguro()) != 0) {
-			detalles.put("coseguro", arancel.getCoseguro() + " -> " + command.coseguro());
 		}
 		LocalDate desde =
 				command.vigenciaDesde() == null ? arancel.getVigenciaDesde() : command.vigenciaDesde();

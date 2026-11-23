@@ -81,6 +81,6 @@ public class AsistenteController {
 			@RequestBody @Valid ConsultaAsistenteRequest request) {
 
 		return RespuestaAsistenteResponse.de(asistente.consultar(apiActor.current(), consultorioId,
-				request.pregunta(), request.aHistorial(), request.personaId()));
+				request.pregunta(), request.aHistorial(), request.personaId(), request.rutaActual()));
 	}
 }

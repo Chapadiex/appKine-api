@@ -223,7 +223,8 @@ class SubscriptionTest {
 				OperationalStatus.ACTIVA,
 				OperationalStatus.SUSPENDIDA,
 				OperationalStatus.CANCELADA,
-				OperationalStatus.BAJA);
+				OperationalStatus.BAJA,
+				OperationalStatus.SIN_ACCESO);
 		assertThat(OperationalStatus.valueOf("BAJA")).isEqualTo(OperationalStatus.BAJA);
 	}
 

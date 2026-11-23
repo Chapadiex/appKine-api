@@ -50,4 +50,16 @@ public interface TurnoDirectory {
 	 * no se mueve.
 	 */
 	boolean atendidoComoParticular(long organizationId, long consultorioId, long turnoId);
+
+	/**
+	 * La cobertura con la que se eligió atender ese turno: la de la recepción vigente resuelta
+	 * como {@code COBERTURA} y, si no hay recepción con cobertura, la elegida al reservar
+	 * ({@code turno.cobertura_id}). Vacío si no se eligió ninguna o si la recepción se resolvió
+	 * como Particular.
+	 *
+	 * <p>Lo lee {@code encounter} al cerrar la sesión para que el devengo use la cobertura
+	 * elegida y no la primera que aplique. Así la deuda del financiador va a parar a la obra
+	 * social correcta y entra en la liquidación que corresponde.
+	 */
+	Optional<Long> coberturaElegida(long organizationId, long consultorioId, long turnoId);
 }

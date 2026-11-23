@@ -14,6 +14,9 @@ public interface ObligacionRepositoryPort {
 
 	Optional<Obligacion> findByIdInScope(long organizationId, long consultorioId, long obligacionId);
 
+	/** Varias obligaciones de la organizacion por id, en una consulta. Lo usa la liquidacion legible. */
+	List<Obligacion> findAllDeLaOrganizacion(long organizationId, java.util.Collection<Long> ids);
+
 	/**
 	 * Las obligaciones vivas ya devengadas por esa prestacion, de cualquier responsable.
 	 *
@@ -26,6 +29,15 @@ public interface ObligacionRepositoryPort {
 	 * devengo financiador y coseguro no veria nada que la frene y agregaria una particular encima.
 	 */
 	List<Obligacion> findDeLaSesion(long sesionId);
+
+	/**
+	 * Cuantas sesiones distintas de la persona ya devengaron parte del financiador bajo ese plan
+	 * entre {@code desde} (incluido) y {@code hasta} (excluido). Es el contador del tope mensual
+	 * del convenio: cuenta en TODAS las sedes, porque el tope es del plan y no de la sede. Las
+	 * anuladas no cuentan.
+	 */
+	long contarSesionesCubiertas(
+			long organizationId, long personaId, long planId, Instant desde, Instant hasta);
 
 	/**
 	 * La obligacion viva devengada por la venta de ese pase (AKINE-08.06). Es la idempotencia de

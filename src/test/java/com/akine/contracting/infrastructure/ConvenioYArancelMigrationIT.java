@@ -193,24 +193,22 @@ class ConvenioYArancelMigrationIT {
 	}
 
 	@Test
-	@DisplayName("LA INVARIANTE ECONOMICA: las partes tienen que sumar el total, tambien en la base")
-	void las_partes_suman_el_total() {
-		// El CHECK existe porque la aplicacion no es el unico camino de escritura. Si algun dia se
-		// admitiera un porcentaje de cobertura, ESTE es el constraint que habria que reemplazar por
-		// una regla de redondeo documentada (§37) — y por eso conviene no hacerlo.
+	@DisplayName("V39: el arancel se guarda solo con lo que paga el financiador")
+	void el_arancel_guarda_solo_el_financiador() {
+		// V39 borro ck_arancel_partes_suman_total: el total y el coseguro son historicos y el
+		// coseguro se calcula al cerrar la sesion (precio de la oferta - B).
 		Escenario escenario = fixtures.crear();
 		long convenioId = insertarConvenio(escenario, "A", "2026-01-01", "2026-12-31");
 
-		assertThatThrownBy(() -> jdbc.update("""
+		assertThatCode(() -> jdbc.update("""
 				INSERT INTO convenio_arancel (organization_id, consultorio_id, convenio_id,
-				                              practica_id, importe_total, importe_financiador,
-				                              coseguro, moneda, vigencia_desde, active, version,
-				                              created_at, updated_at)
-				VALUES (?, ?, ?, ?, 12000.00, 9600.00, 2500.00, 'ARS', '2026-01-01', true, 0,
+				                              practica_id, importe_financiador, moneda,
+				                              vigencia_desde, active, version, created_at, updated_at)
+				VALUES (?, ?, ?, ?, 9600.00, 'ARS', '2026-01-01', true, 0,
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", escenario.organizationId(), escenario.consultorioId(), convenioId,
 				escenario.practicaId()))
-				.isInstanceOf(DataIntegrityViolationException.class);
+				.doesNotThrowAnyException();
 	}
 
 	@Test

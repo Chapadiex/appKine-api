@@ -73,6 +73,12 @@ public final class ConvenioRepositoryPorts {
 		 */
 		List<Convenio> findActivosPorAlcance(
 				Long organizationId, Long consultorioId, Long financiadorId, Long planId);
+
+		/**
+		 * El convenio del plan (V43): el que no es de ninguna sede y vale para todas. Como mucho
+		 * hay uno activo por plan ({@code uk_convenio_del_plan_activo}).
+		 */
+		Optional<Convenio> findDelPlan(Long organizationId, Long planId);
 	}
 
 	/** Acceso a los aranceles de un convenio (M16). */
@@ -131,5 +137,12 @@ public final class ConvenioRepositoryPorts {
 
 		/** Lectura SIN lock: si la fila ya existe, el iniciador no la toca. Ver FilaLockPrevia. */
 		boolean existeFila(long organizationId, long consultorioId);
+
+		/**
+		 * Toma la fila del plan con {@code FOR UPDATE}: es el lock de las escrituras del convenio
+		 * del plan (V43), que no es de ninguna sede y por eso no tiene fila en
+		 * {@code convenio_lock}. Vacio si el plan no existe en el tenant.
+		 */
+		Optional<Long> lockDelPlan(long organizationId, long planId);
 	}
 }

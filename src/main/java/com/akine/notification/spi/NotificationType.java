@@ -96,7 +96,22 @@ public enum NotificationType {
 	PRUEBA_POR_VENCER(false),
 
 	/** Al duenio: termino la prueba y el centro quedo en solo lectura. */
-	PRUEBA_VENCIDA(false);
+	PRUEBA_VENCIDA(false),
+
+	/**
+	 * A los administradores del centro (19/11/2026, docs/diseno/AKINE-cobro-mensual.md): el periodo
+	 * pagado vence en 15, 10, 5, 2 o 1 dias. Dice cuantos dias quedan y la fecha.
+	 */
+	SUSCRIPCION_POR_VENCER(false),
+
+	/** Vencio el periodo pagado: quedan 3 dias de gracia y dice cuando pasa a solo lectura. */
+	SUSCRIPCION_VENCIDA(false),
+
+	/** Paso la gracia: el centro quedo en solo lectura y dice cuando se cierra el acceso. */
+	SUSCRIPCION_SUSPENDIDA(false),
+
+	/** Se cerro el acceso por falta de pago. Los datos se conservan. */
+	SUSCRIPCION_CERRADA(false);
 
 	private final boolean requiereEnlaceSeguro;
 

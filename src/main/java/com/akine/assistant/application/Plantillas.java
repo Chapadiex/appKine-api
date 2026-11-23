@@ -51,6 +51,34 @@ final class Plantillas {
 			+ "permiso para verlos (hc:read). Pedíselo a quien administra el centro.";
 	static final String FALTA_PERSONA = "¿De qué persona? Escribí el nombre.";
 
+	/** El modelo no respondio al buscar en el manual: no es que el manual no lo tenga. */
+	static final String MANUAL_SIN_MODELO =
+			"Ahora no puedo buscar en el manual. Abrí la Ayuda (F1) y buscalo ahí.";
+
+	/**
+	 * El manual no tiene un pasaje para la pregunta. Las sugerencias llegan como "titulo|enlace" desde la
+	 * herramienta del manual; se muestran como enlaces en Markdown, sin redactar nada.
+	 */
+	static String sinPasajeDelManual(List<String> sugerencias) {
+		StringBuilder texto = new StringBuilder("No encontré eso en el manual.");
+		if (!sugerencias.isEmpty()) {
+			texto.append(" Quizás te sirva:\n");
+			for (String sugerencia : sugerencias) {
+				String[] partes = sugerencia.split("\\|", 2);
+				texto.append("\n- ").append(partes.length == 2 && !partes[1].isBlank()
+						? "[" + partes[0] + "](" + partes[1] + ")"
+						: partes[0]);
+			}
+		}
+		return texto.toString();
+	}
+
+	/** El pasaje del manual, textual, con su ubicación arriba. */
+	private static String manual(List<Map<String, Object>> filas) {
+		Map<String, Object> pasaje = filas.getFirst();
+		return "En **" + pasaje.get(ClavesDeFila.MANUAL_TITULO) + "**:\n\n" + pasaje.get(ClavesDeFila.MANUAL_TEXTO);
+	}
+
 	/** La continuacion encontro varias personas con el nombre de la charla. */
 	static String variasPersonas(List<String> personas) {
 		List<String> primeras = personas.subList(0, Math.min(5, personas.size()));
@@ -127,6 +155,7 @@ final class Plantillas {
 			case AGENDA_DEL_DIA -> agenda(rango, zona, sede, filas);
 			case ASISTENTES_CLASE -> clases(clase, rango, zona, sede, filas);
 			case REPORTE -> reporte(reporte, rango, sede, filas);
+			case COMO_SE_HACE -> filas.isEmpty() ? sinPasajeDelManual(List.of()) : manual(filas);
 			case BUSCAR_PERSONA, FUERA_DE_ALCANCE -> AYUDA;
 		};
 	}

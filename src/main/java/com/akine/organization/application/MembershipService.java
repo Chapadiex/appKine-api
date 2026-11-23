@@ -323,6 +323,7 @@ public class MembershipService implements MembershipProvisioning {
 		// Ver `exigirCupoDeMiembros` para por que este metodo cuenta con un limite que la etapa
 		// anterior tenia configurado y no aplicaba.
 		exigirCupoDeMiembros(organizationId);
+		exigirCupoDeProfesionales(organizationId, command.accountId(), rolValido(command.roleCode()));
 
 		// Y despues el bloqueo del tenant, que agrega la fila de `organization`.
 		bloquearTenant(organizationId);
@@ -376,6 +377,7 @@ public class MembershipService implements MembershipProvisioning {
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public long createFromInvitation(long organizationId, InvitationMembershipCommand command) {
 		exigirCupoDeMiembros(organizationId);
+		exigirCupoDeProfesionales(organizationId, command.accountId(), rolValido(command.roleCode()));
 		bloquearTenant(organizationId);
 
 		Map<String, String> detalles = new LinkedHashMap<>();
@@ -418,6 +420,23 @@ public class MembershipService implements MembershipProvisioning {
 	 *
 	 * @throws com.akine.organization.domain.exception.PlanLimitExceededException si no hay cupo
 	 */
+	/**
+	 * Exige cupo de profesionales cuando la cuenta pasa a ocupar uno (22/11/2026). No lo pide si el
+	 * rol no es {@code PROFESIONAL} ni si la cuenta ya es profesional en otra sede de la
+	 * organizacion: el limite cuenta personas, no memberships. Mismo orden de bloqueo y misma
+	 * exigencia de READ COMMITTED que {@link #exigirCupoDeMiembros}.
+	 */
+	private void exigirCupoDeProfesionales(long organizationId, long accountId, RoleCode rol) {
+		if (rol != RoleCode.PROFESIONAL
+				|| membershipRepository.esProfesionalActivo(organizationId, accountId)) {
+			return;
+		}
+		planGate.evaluateCreationAndLock(
+				organizationId,
+				LimitCode.MAX_PROFESIONALES,
+				() -> usageCounter.count(LimitCode.MAX_PROFESIONALES, organizationId));
+	}
+
 	private void exigirCupoDeMiembros(long organizationId) {
 		planGate.evaluateCreationAndLock(
 				organizationId,
@@ -499,6 +518,14 @@ public class MembershipService implements MembershipProvisioning {
 			Long nuevaSede,
 			String motivo) {
 
+		// Pasar a PROFESIONAL ocupa un cupo del plan. El gate bloquea `subscription` y va antes que
+		// el bloqueo del tenant, por el orden subscription -> organization.
+		if (nuevoRol != null && rolValido(nuevoRol) == RoleCode.PROFESIONAL) {
+			Membership actual = cargar(organizationId, membershipId);
+			if (actual.getRoleCode() != RoleCode.PROFESIONAL) {
+				exigirCupoDeProfesionales(organizationId, actual.getAccountId(), RoleCode.PROFESIONAL);
+			}
+		}
 		bloquearTenant(organizationId);
 		exigirMotivo(motivo, "el cambio de rol de un colaborador");
 

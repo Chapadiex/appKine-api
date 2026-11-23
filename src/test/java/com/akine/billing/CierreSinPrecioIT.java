@@ -103,7 +103,7 @@ class CierreSinPrecioIT {
 	}
 
 	@Test
-	@DisplayName("control: con cobertura y oferta sin precio cierra igual: financiador + coseguro del arancel")
+	@DisplayName("control: con cobertura y oferta sin precio cierra igual: solo el financiador (sin A no hay coseguro, V39)")
 	void con_cobertura_no_hace_falta_precio() {
 		Fixture f = crearFixture();
 		long autorizacion = autorizar(f);
@@ -115,7 +115,7 @@ class CierreSinPrecioIT {
 		cerrar(f, sesion);
 
 		assertThat(obligacionesDe(sesion)).extracting(deuda -> deuda.get("concepto"))
-				.containsExactly("FINANCIADOR", "COSEGURO");
+				.containsExactly("FINANCIADOR");
 		assertThat(consumida(autorizacion)).isEqualTo(1);
 	}
 

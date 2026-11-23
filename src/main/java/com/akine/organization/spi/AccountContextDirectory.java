@@ -31,7 +31,7 @@ public interface AccountContextDirectory {
 	 * <p>Es el producto de las memberships VIGENTES por los consultorios ACTIVOS que cada una
 	 * alcanza: una membership con {@code consultorio_id = null} alcanza toda la organizacion y
 	 * produce una fila por sede. Se excluyen las organizaciones dadas de baja y las que tienen
-	 * la suscripcion CANCELADA: ofrecer un contexto en el que la proxima operacion va a fallar
+	 * la suscripcion CANCELADA o cerrada por falta de pago: ofrecer un contexto en el que la proxima operacion va a fallar
 	 * es peor que no ofrecerlo.
 	 *
 	 * <p>Cross-tenant por naturaleza: es la unica consulta del modulo que no filtra por
@@ -39,6 +39,14 @@ public interface AccountContextDirectory {
 	 * ocurre dentro de un tenant.
 	 */
 	List<AuthorizedContext> authorizedContexts(long accountId);
+
+	/**
+	 * Los contextos que la cuenta tendria si su organizacion no estuviera cerrada por falta de pago
+	 * (19/11/2026, {@code SIN_ACCESO}). No habilitan nada: existen para que el selector muestre el
+	 * centro con su motivo en vez de hacerlo desaparecer. Mismos criterios que
+	 * {@link #authorizedContexts} en todo lo demas.
+	 */
+	List<AuthorizedContext> contextosSinAcceso(long accountId);
 
 	/** Indica si la cuenta tiene una membership vigente en la organizacion. */
 	boolean hasActiveMembership(long accountId, long organizationId);

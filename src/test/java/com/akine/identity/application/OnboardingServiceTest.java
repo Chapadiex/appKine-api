@@ -117,7 +117,7 @@ class OnboardingServiceTest {
 	private static RegistroCuentaCommand comando() {
 		return new RegistroCuentaCommand(CLAVE, "hash-del-request", EMAIL, PASSWORD_VALIDA,
 				"Ana", "Gomez", "Centro Kine Norte", "centro-kine-norte", "Sede Centro",
-				"BASICO");
+				"BASE");
 	}
 
 	private void sinReintentoPrevio() {
@@ -314,13 +314,13 @@ class OnboardingServiceTest {
 	@DisplayName("la huella del alta ignora la contrasena y normaliza mayusculas y espacios")
 	void la_huella_ignora_la_contrasena_y_normaliza() {
 		String base = HuellaDeRegistro.de("Ana@Ejemplo.test", "Ana", "Gomez", "Centro",
-				null, null, "BASICO");
+				null, null, "BASE");
 
 		assertThat(base).hasSize(64);
 		assertThat(HuellaDeRegistro.de(" ana@ejemplo.test ", "ANA", "gomez", "centro",
-				"", "  ", "basico")).isEqualTo(base);
+				"", "  ", "base")).isEqualTo(base);
 		assertThat(HuellaDeRegistro.de("otra@ejemplo.test", "Ana", "Gomez", "Centro",
-				null, null, "BASICO")).isNotEqualTo(base);
+				null, null, "BASE")).isNotEqualTo(base);
 	}
 
 	@Test
@@ -342,7 +342,7 @@ class OnboardingServiceTest {
 	@DisplayName("una contrasena que no cumple la politica corta antes de tocar la base")
 	void una_contrasena_invalida_corta_antes_de_tocar_la_base() {
 		RegistroCuentaCommand invalido = new RegistroCuentaCommand(CLAVE, "hash", EMAIL, "corta",
-				"Ana", "Gomez", "Centro", "centro", "Sede", "BASICO");
+				"Ana", "Gomez", "Centro", "centro", "Sede", "BASE");
 
 		assertThatThrownBy(() -> service().registrar(invalido))
 				.isInstanceOf(com.akine.identity.domain.exception.PasswordPolicyViolationException.class);
@@ -354,13 +354,13 @@ class OnboardingServiceTest {
 	@DisplayName("el comando exige clave, email y nombre de organizacion")
 	void el_comando_exige_lo_minimo() {
 		assertThatThrownBy(() -> new RegistroCuentaCommand(null, "h", EMAIL, PASSWORD_VALIDA,
-				"Ana", "Gomez", "Centro", "centro", "Sede", "BASICO"))
+				"Ana", "Gomez", "Centro", "centro", "Sede", "BASE"))
 				.isInstanceOf(IllegalArgumentException.class);
 		assertThatThrownBy(() -> new RegistroCuentaCommand(CLAVE, "h", "  ", PASSWORD_VALIDA,
-				"Ana", "Gomez", "Centro", "centro", "Sede", "BASICO"))
+				"Ana", "Gomez", "Centro", "centro", "Sede", "BASE"))
 				.isInstanceOf(IllegalArgumentException.class);
 		assertThatThrownBy(() -> new RegistroCuentaCommand(CLAVE, "h", EMAIL, PASSWORD_VALIDA,
-				"Ana", "Gomez", null, "centro", "Sede", "BASICO"))
+				"Ana", "Gomez", null, "centro", "Sede", "BASE"))
 				.isInstanceOf(IllegalArgumentException.class);
 	}
 
@@ -371,7 +371,7 @@ class OnboardingServiceTest {
 	private static RegistroCuentaCommand comandoConTerminos(Boolean acepta, String version) {
 		return new RegistroCuentaCommand(CLAVE, "hash-del-request", EMAIL, PASSWORD_VALIDA,
 				"Ana", "Gomez", "Centro Kine Norte", "centro-kine-norte", "Sede Centro",
-				"BASICO", acepta, version);
+				"BASE", acepta, version);
 	}
 
 	@Test

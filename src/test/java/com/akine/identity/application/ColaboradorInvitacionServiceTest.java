@@ -140,8 +140,19 @@ class ColaboradorInvitacionServiceTest {
 				organizationDirectory, consultorioDirectory, permissionGuard, tokenGenerator,
 				linkBuilder, notificationOutbox, passwordHasher, new PasswordPolicy(), auditTrail,
 				clock, new TerminosService(
-						com.akine.identity.domain.TerminosSettings.sinTerminos(), aceptacion -> aceptacion),
-				ofertaDirectory);
+						com.akine.identity.domain.TerminosSettings.sinTerminos(),
+						org.mockito.Mockito.mock(com.akine.identity.domain.port.AceptacionTerminosRepositoryPort.class)),
+				ofertaDirectory, new com.akine.organization.spi.ServiciosDelCentro() {
+						@Override
+						public boolean tiene(long organizationId, com.akine.organization.spi.Servicio servicio) {
+							return true;
+						}
+
+						@Override
+						public java.util.Set<com.akine.organization.spi.Servicio> serviciosDe(long organizationId) {
+							return java.util.EnumSet.allOf(com.akine.organization.spi.Servicio.class);
+						}
+					});
 	}
 
 	@Test

@@ -97,6 +97,27 @@ class EmailTemplatesTest {
 	}
 
 	@Test
+	@DisplayName("la invitacion del duenio de un centro nuevo le da la bienvenida y no nombra a quien invita")
+	void la_invitacion_del_duenio_da_la_bienvenida() {
+		EmailMessage mensaje = EmailTemplates.render(
+				NotificationType.INVITACION_COLABORADOR,
+				DESTINATARIO,
+				SanitizedPayload.of(Map.of(
+						"organizacionNombre", "Kine Sur",
+						"invitadoPor", "Soporte AKINE",
+						"altaDeCentro", "si")),
+				ENLACE);
+
+		assertThat(mensaje.asunto()).isEqualTo("Tu centro Kine Sur ya esta en AKINE");
+		assertThat(mensaje.cuerpo())
+				.contains("bienvenida")
+				.contains("Kine Sur")
+				.contains(ENLACE)
+				.doesNotContain("Soporte AKINE")
+				.doesNotContain("te invito");
+	}
+
+	@Test
 	@DisplayName("la invitacion sin datos de render usa textos neutros y no imprime null")
 	void la_invitacion_sin_datos_usa_textos_neutros() {
 		// "Hola null," y "null te invito a null" es el bug clasico de un template con getters

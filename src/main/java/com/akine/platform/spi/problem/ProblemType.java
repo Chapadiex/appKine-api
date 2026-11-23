@@ -71,6 +71,15 @@ public enum ProblemType {
 	INVALID_REFRESH("invalid-refresh"),
 	/** Token de activacion o de recuperacion invalido, vencido o ya usado. */
 	INVALID_TOKEN("invalid-token"),
+	/**
+	 * La cuenta no acepto la version vigente de los terminos y condiciones (403, 19/11/2026).
+	 *
+	 * <p>Lo emite cualquier endpoint autenticado salvo los de sesion y los de los propios
+	 * terminos, hasta que la cuenta acepte con {@code POST /api/v1/me/terminos}. La sesion sigue
+	 * valida: 403 y nunca 401, que el frontend lee como sesion perdida. Lleva la extension
+	 * {@code versionVigente}.
+	 */
+	TERMINOS_PENDIENTES("terminos-pendientes"),
 	/** Falta el contexto de trabajo, o el elegido dejo de ser valido (403). */
 	MISSING_TENANT_CONTEXT("missing-tenant-context"),
 	/** Origin ausente o fuera de la lista blanca en un endpoint que se autentica por cookie. */

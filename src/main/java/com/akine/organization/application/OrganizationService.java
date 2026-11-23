@@ -306,7 +306,13 @@ public class OrganizationService {
 	@Transactional(readOnly = true)
 	public Page<OrganizationListing> listForPlatform(
 			String q, SubscriptionStatus status, Pageable pageable) {
-		return organizationRepository.listForPlatform(patronDeBusqueda(q), status, pageable);
+		Page<OrganizationListing> pagina =
+				organizationRepository.listForPlatform(patronDeBusqueda(q), status, pageable);
+		java.util.List<Long> ids = pagina.getContent().stream().map(OrganizationListing::id).toList();
+		java.util.Set<Long> conIa = contratacionService.conIa(ids);
+		var servicios = contratacionService.serviciosDe(ids);
+		return pagina.map(centro -> centro.conContratacion(conIa.contains(centro.id()),
+				servicios.getOrDefault(centro.id(), java.util.Set.of())));
 	}
 
 	/**

@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.179.0
+  version: 0.192.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -57,6 +57,8 @@ tags:
   name: Historia clinica
 - description: Dictado por voz en los campos de texto
   name: Dictado
+- description: Manual de usuario por pantalla
+  name: Manual
 - description: Deuda derivada de prestaciones. No es el cobro ni la caja (M18)
   name: Obligaciones
 - description: "Bloqueo, desbloqueo y baja logica de cuentas de la propia organizacion"
@@ -17767,6 +17769,103 @@ paths:
       summary: "Editar un plan, o cerrar su vigencia"
       tags:
       - Financiadores y planes
+  /api/v1/financiadores/{financiadorId}/planes/{planId}/convenio:
+    get:
+      description: "El convenio sin sede del plan, que vale para todas las sedes:\
+        \ sus aranceles son lo que paga la obra social por cada practica. 404 si el\
+        \ plan todavia no tiene precios cargados. Exige convenio:read."
+      operationId: getConvenioDelPlan
+      parameters:
+      - description: Identificador del financiador
+        example: 10
+        in: path
+        name: financiadorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del plan
+        example: 30
+        in: path
+        name: planId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConvenioResponse"
+          description: El convenio del plan
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:read
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El plan no existe, no es de ese financiador o todavia no tiene\
+            \ precios"
+      summary: Ver el convenio del plan
+      tags:
+      - Convenios y aranceles
+    post:
+      description: "Devuelve el convenio del plan y lo crea si falta. Idempotente.\
+        \ Nace por prestacion, en la moneda del plan (pesos si no declara), con los\
+        \ requisitos del plan y sin fecha de fin: lo que tiene fechas es cada arancel.\
+        \ Exige convenio:manage sobre la sede del contexto."
+      operationId: asegurarConvenioDelPlan
+      parameters:
+      - description: Identificador del financiador
+        example: 10
+        in: path
+        name: financiadorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del plan
+        example: 30
+        in: path
+        name: planId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConvenioResponse"
+          description: El convenio del plan
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El plan no existe o no es de ese financiador
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El financiador o el plan estan dados de baja
+      summary: Preparar el plan para cargarle precios
+      tags:
+      - Convenios y aranceles
   /api/v1/historias-clinicas/por-persona/{personaId}:
     get:
       description: |-
@@ -19335,6 +19434,178 @@ paths:
       summary: Ver el timeline de una Historia Clinica
       tags:
       - Timeline clinico
+  /api/v1/manual:
+    get:
+      description: "Las fichas que la persona puede ver en la sede activa, por grupo\
+        \ del menu, con los titulos de sus tareas."
+      operationId: verIndiceDelManual
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IndiceDelManualResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/IndiceDelManualResponse"
+          description: "Indice, posiblemente vacio"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin organizacion y sede en contexto
+      summary: Indice del manual
+      tags:
+      - Manual
+  /api/v1/manual/busqueda:
+    get:
+      description: "Hasta 10 pasajes de las fichas visibles, del mas al menos parecido.\
+        \ Con `ruta` se prefieren los de la pantalla actual."
+      operationId: buscarEnElManual
+      parameters:
+      - in: query
+        name: q
+        required: true
+        schema:
+          type: string
+      - in: query
+        name: ruta
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PasajeDelManualResponse"
+            application/problem+json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PasajeDelManualResponse"
+          description: "Pasajes, posiblemente ninguno"
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Consulta de menos de 2 o mas de 200 caracteres
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin organizacion y sede en contexto
+      summary: Buscar en el manual
+      tags:
+      - Manual
+  /api/v1/manual/contexto:
+    get:
+      description: La ficha de la ruta del frontend que la persona esta mirando; los
+        segmentos con parametros y la query se resuelven. 204 si la pantalla no tiene
+        ficha visible.
+      operationId: verFichaDeLaRuta
+      parameters:
+      - description: "Ruta del frontend, por ejemplo /caja o /pacientes/12/resumen"
+        in: query
+        name: ruta
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FichaDelManualResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/FichaDelManualResponse"
+          description: La ficha de la pantalla
+        "204":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FichaDelManualResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/FichaDelManualResponse"
+          description: La pantalla no tiene ficha
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ruta en blanco o de mas de 300 caracteres
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin organizacion y sede en contexto
+      summary: Ficha de una pantalla
+      tags:
+      - Manual
+  /api/v1/manual/fichas/{id}:
+    get:
+      description: Una ficha completa. 404 si no existe o la persona no la puede ver.
+      operationId: verFichaDelManual
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FichaDelManualResponse"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/FichaDelManualResponse"
+          description: La ficha
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin organizacion y sede en contexto
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`not-found`: no existe o no es visible"
+      summary: Ficha del manual
+      tags:
+      - Manual
   /api/v1/me:
     get:
       description: |-
@@ -19368,6 +19639,8 @@ paths:
         No requiere contexto de tenant: es el endpoint con el que se averigua que contextos hay. Devuelve una lista vacia —no un error— cuando la cuenta todavia no tiene ninguno; el frontend distingue 'no elegiste' de 'no tenes donde'.
 
         lastSelected marca el ultimo contexto elegido, revalidado: si dejo de estar habilitado no lo trae ninguno.
+
+        Al final van, con sinAcceso=true, los contextos de los centros cerrados por falta de pago: no se pueden elegir (seleccionarlos responde 404) y estan para que la pantalla muestre el motivo en vez de hacer desaparecer el centro.
 
         Este endpoint no cambia el contexto activo. Seleccionarlo renueva el token, y eso lo publica el modulo de identidad en 01.02 como POST /api/v1/auth/context.
       operationId: listMyContexts
@@ -19444,6 +19717,45 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: No hay sesion autenticada. Nunca 401
       summary: Si la cuenta administra la plataforma
+      tags:
+      - Mi cuenta
+  /api/v1/me/terminos:
+    get:
+      description: "Version vigente, enlace al texto y si la cuenta la tiene pendiente.\
+        \ Responde aunque haya terminos pendientes: es lo que la pantalla de aceptacion\
+        \ lee."
+      operationId: getMisTerminos
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MisTerminosResponse"
+          description: Estado de los terminos de la cuenta
+      summary: Terminos vigentes para la cuenta autenticada
+      tags:
+      - Mi cuenta
+    post:
+      description: "Deja constancia de que la cuenta acepto la version vigente y destraba\
+        \ la API. Idempotente: aceptar una version ya aceptada responde igual."
+      operationId: aceptarMisTerminos
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AceptarTerminosRequest"
+        required: true
+      responses:
+        "204":
+          description: Aceptada
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La version no es la vigente (errors.versionTerminos): hay\
+            \ que recargar"
+      summary: Aceptar la version vigente de los terminos
       tags:
       - Mi cuenta
   /api/v1/mediciones/definiciones:
@@ -26119,7 +26431,7 @@ paths:
 
         NO AFIRMA QUE LA PRESTACION SEA FACTURABLE (RN-M08-004): dice si la documentacion administrativa esta presente, que es otra cosa.
 
-        limiteSesionesMensual viaja INFORMATIVO y sin veredicto: verificarlo exige contar sesiones ya atendidas, o sea el consumo que esta version no cablea.
+        limiteSesionesMensual viaja sin veredicto aca: lo aplica el cierre de la sesion, que pasada la cantidad del mes la cobra como particular.
 
         Exige consultorio en el contexto: el convenio que fija los requisitos es de la SEDE (RN-M16-001), asi que la misma cobertura del mismo paciente puede exigir cosas distintas en dos sedes de la misma organizacion.
       operationId: consultarElegibilidadAdministrativa
@@ -27848,6 +28160,102 @@ paths:
       summary: Dar de alta un centro
       tags:
       - Contratacion
+  /api/v1/platform/organizations/{orgId}/cobros:
+    get:
+      description: "Todos los cobros registrados al centro, el mas nuevo primero.\
+        \ El vencimiento vigente es el periodoHasta del primero, y tambien viaja como\
+        \ pagadoHasta en el listado de centros y en la contratacion. Reservado a la\
+        \ administracion de plataforma."
+      operationId: listCobrosDeSuscripcion
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CobroDeSuscripcionResponse"
+          description: "Cobros, el mas nuevo primero. Vacio si no tiene"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Reservado a la administracion de plataforma
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La organizacion no existe o esta dada de baja
+      summary: Historial de cobros de la suscripcion de un centro
+      tags:
+      - Plataforma
+    post:
+      description: |-
+        Extiende el periodo pagado del centro en la cantidad de meses (1 a 12). El periodo arranca en el vencimiento anterior si todavia no llego (pagar antes conserva el ciclo) o ahora si ya paso o es el primer cobro, y suma meses calendario en la zona del centro. El centro vuelve a operar normalmente en el acto.
+
+        Sobre una suscripcion en PRUEBA, el cobro la pasa a ACTIVA. Sobre una SUSPENDIDA o CANCELADA guardada responde 409 subscription-suspended: primero se reactiva por la transicion de siempre. Reservado a la administracion de plataforma.
+      operationId: registrarCobroDeSuscripcion
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrarCobroRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CobroDeSuscripcionResponse"
+          description: Cobro registrado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Meses fuera de 1 a 12 o nota de mas de 200 caracteres
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Reservado a la administracion de plataforma
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La organizacion no existe o esta dada de baja
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La suscripcion esta suspendida o cancelada, o la modifico\
+            \ otra operacion al mismo tiempo"
+      summary: Registrar un cobro de la suscripcion de un centro
+      tags:
+      - Plataforma
   /api/v1/platform/organizations/{orgId}/contratacion:
     get:
       description: "La misma lectura que ve el centro, reservada a la administracion\
@@ -28065,6 +28473,51 @@ paths:
                 $ref: "#/components/schemas/ProblemDetail"
           description: La organizacion no existe o esta dada de baja
       summary: Conceder acceso de soporte sobre una organizacion
+      tags:
+      - Plataforma
+  /api/v1/platform/resumen:
+    get:
+      description: "Centros por estado de su suscripcion (activos, en prueba, por\
+        \ vencer en 7 dias, vencidos, suspendidos y cancelados), pedidos de prueba\
+        \ pendientes, las pruebas que terminan en los proximos 30 dias y los ultimos\
+        \ centros, pedidos y cambios de suscripcion. Todo leido de la base, sin cache.\
+        \ Reservado a la administracion de plataforma."
+      operationId: getPanelDePlataforma
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PanelDePlataformaResponse"
+          description: El panel
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Reservado a la administracion de plataforma
+      summary: Estado general de la plataforma
+      tags:
+      - Plataforma
+  /api/v1/platform/resumen/cuentas:
+    get:
+      description: "Cuentas vigentes activas, pendientes de activar y bloqueadas.\
+        \ Reservado a la administracion de plataforma."
+      operationId: getCuentasDePlataforma
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CuentasDePlataformaResponse"
+          description: Los conteos
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Reservado a la administracion de plataforma
+      summary: Cuentas por estado
       tags:
       - Plataforma
   /api/v1/platform/roles:
@@ -28469,7 +28922,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Falta un dato, un dato invalido o ningun servicio elegido"
+          description: "Falta un dato, un dato invalido, ningun servicio elegido,\
+            \ o no se aceptaron los terminos vigentes (errors.aceptaTerminos o errors.versionTerminos)"
         "429":
           content:
             application/problem+json:
@@ -29081,6 +29535,20 @@ components:
           minLength: 0
       required:
       - reason
+    AceptarTerminosRequest:
+      type: object
+      description: Aceptacion de la version vigente de los terminos por una cuenta
+        ya creada
+      properties:
+        versionTerminos:
+          type: string
+          description: La versionVigente de GET /api/v1/me/terminos. Tiene que coincidir
+            exacta
+          example: 2026-11-19
+          maxLength: 40
+          minLength: 0
+      required:
+      - versionTerminos
     ActivarPerfilPacienteRequest:
       type: object
       description: "Activacion del perfil clinico. No recibe datos personales: los\
@@ -30214,8 +30682,11 @@ components:
           format: date
           description: "Ultimo dia de vigencia del CONVENIO, INCLUSIVE"
         coseguro:
-          type: number
-          description: La parte que paga el paciente
+          type:
+          - number
+          - "null"
+          description: "Lo que paga el paciente: precio de la oferta menos B, nunca\
+            \ negativo. Nulo si no se paso la oferta"
           example: 2400.0
         fecha:
           type: string
@@ -30224,11 +30695,14 @@ components:
           example: 2026-03-15
         importeFinanciador:
           type: number
-          description: La parte que paga el financiador
+          description: Lo que paga el financiador (B)
           example: 9600.0
         importeTotal:
-          type: number
-          description: Lo que vale la practica bajo ese convenio
+          type:
+          - number
+          - "null"
+          description: "Lo que paga en total la practica: financiador mas coseguro.\
+            \ Nulo si no se paso la oferta, porque sin su precio no se calcula"
           example: 12000.0
         limiteSesionesMensual:
           type: integer
@@ -30281,8 +30755,12 @@ components:
           description: Convenio al que pertenece. No cambia
           example: 140
         coseguro:
-          type: number
-          description: La parte que paga el paciente
+          type:
+          - number
+          - "null"
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: historico; nulo en los nuevos. El\
+            \ coseguro es precio de la oferta menos importeFinanciador"
           example: 2400.0
         deactivationReason:
           type: string
@@ -30305,11 +30783,15 @@ components:
           example: 901
         importeFinanciador:
           type: number
-          description: La parte que paga el financiador
+          description: Lo que paga el financiador por la practica (B)
           example: 9600.0
         importeTotal:
-          type: number
-          description: Lo que vale la practica bajo este convenio
+          type:
+          - number
+          - "null"
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: historico de aranceles anteriores;\
+            \ nulo en los nuevos"
           example: 12000.0
         moneda:
           type: string
@@ -30709,6 +31191,13 @@ components:
           type: string
           description: Nombre de la organizacion
           example: Centro Kinesico Belgrano
+        sinAcceso:
+          type: boolean
+          description: "true si el centro esta cerrado por falta de pago (suscripcion\
+            \ sin acceso): el contexto se muestra para explicar el motivo pero no\
+            \ se puede elegir. Estos elementos van al final y nunca traen lastSelected\
+            \ en true"
+          example: false
     AutorizacionElegibleResponse:
       type: object
       description: Autorizacion candidata con su veredicto de elegibilidad
@@ -31727,6 +32216,28 @@ components:
           format: int64
           description: "En un traslado, el turno que nacio en la sede de destino"
           example: 4101
+    CambioDeSuscripcionResponse:
+      type: object
+      description: Un cambio de estado o de plan de una suscripcion
+      properties:
+        cuando:
+          type: string
+          format: date-time
+          description: "Cuando, instante UTC"
+        desde:
+          type: string
+          description: Estado anterior; vacio en el alta
+          example: PRUEBA
+        hacia:
+          type: string
+          example: ACTIVA
+        nombre:
+          type: string
+          example: Centro Movimiento
+        organizationId:
+          type: integer
+          format: int64
+          example: 7
     CancelInvitacionRequest:
       type: object
       description: Motivo con el que se retira una invitacion pendiente
@@ -32440,6 +32951,64 @@ components:
           format: int64
           description: Version a reenviar para resolver
           example: 0
+    CentroRecienteResponse:
+      type: object
+      description: Un centro dado de alta hace poco
+      properties:
+        creadoEn:
+          type: string
+          format: date-time
+          description: "Alta, instante UTC"
+        estado:
+          type: string
+          description: Estado de su suscripcion
+          example: PRUEBA
+        nombre:
+          type: string
+          example: Centro Movimiento
+        organizationId:
+          type: integer
+          format: int64
+          example: 7
+    CentrosDelPanelResponse:
+      type: object
+      description: Centros vigentes por estado de su suscripcion
+      properties:
+        activos:
+          type: integer
+          format: int64
+          description: Con suscripcion activa
+          example: 8
+        cancelados:
+          type: integer
+          format: int64
+          description: Cancelados
+          example: 0
+        enPrueba:
+          type: integer
+          format: int64
+          description: En prueba gratis y todavia dentro del plazo
+          example: 3
+        pruebaPorVencer:
+          type: integer
+          format: int64
+          description: En prueba y terminan en los proximos 7 dias (incluidos en enPrueba)
+          example: 1
+        pruebaVencida:
+          type: integer
+          format: int64
+          description: "En prueba con el plazo cumplido: solo lectura hasta contratar"
+          example: 1
+        suspendidos:
+          type: integer
+          format: int64
+          description: Suspendidos
+          example: 0
+        total:
+          type: integer
+          format: int64
+          description: Todos los centros vigentes
+          example: 12
     CerrarCaja:
       type: object
       description: "Cierra el turno de caja declarando lo que se conto. La diferencia\
@@ -33002,13 +33571,21 @@ components:
           description: Convenio del que salio
           example: 140
         coseguro:
-          type: number
+          type:
+          - number
+          - "null"
+          description: "Precio de la oferta menos B, nunca negativo. Nulo si la oferta\
+            \ no tiene precio"
           example: 2400.0
         importeFinanciador:
           type: number
+          description: Lo que paga el financiador (B)
           example: 9600.0
         importeTotal:
-          type: number
+          type:
+          - number
+          - "null"
+          description: Financiador mas coseguro. Nulo si la oferta no tiene precio
           example: 12000.0
         moneda:
           type: string
@@ -33322,6 +33899,46 @@ components:
           type: integer
           format: int64
           example: 0
+    CobroDeSuscripcionResponse:
+      type: object
+      description: Un cobro de la suscripcion registrado por la plataforma
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Identificador del cobro
+          example: 12
+        meses:
+          type: integer
+          format: int32
+          description: Meses cobrados
+          example: 1
+        nota:
+          type: string
+          description: Nota libre de quien lo registro
+          example: Transferencia del 19/11
+        periodoDesde:
+          type: string
+          format: date-time
+          description: "Desde cuando cubre, instante UTC: el vencimiento anterior\
+            \ si todavia no habia llegado, o el momento del registro"
+          example: 2026-11-19T15:00:00Z
+        periodoHasta:
+          type: string
+          format: date-time
+          description: "Hasta cuando cubre, instante UTC: periodoDesde mas los meses,\
+            \ en la zona del centro. Es el nuevo pagadoHasta"
+          example: 2026-12-19T15:00:00Z
+        registradoEn:
+          type: string
+          format: date-time
+          description: Instante del registro
+          example: 2026-11-19T15:00:00Z
+        registradoPor:
+          type: integer
+          format: int64
+          description: Cuenta de plataforma que lo registro
+          example: 1
     ColoresDeInterfaz:
       type: object
       description: "Colores de las zonas de la interfaz para un tema. Cada uno es\
@@ -33572,6 +34189,13 @@ components:
           type: string
           example: ¿Juan vino esta semana?
           maxLength: 600
+          minLength: 0
+        rutaActual:
+          type: string
+          description: Ruta del frontend desde la que se pregunta. Las preguntas sobre
+            como usar AKINE prefieren la ficha del manual de esa pantalla
+          example: /caja
+          maxLength: 300
           minLength: 0
       required:
       - pregunta
@@ -33953,6 +34577,17 @@ components:
             type: string
             enum:
             - IA
+        altaPorPlataforma:
+          type: boolean
+          description: "El centro nacio del alta de la plataforma (en prueba gratis),\
+            \ no del autoregistro. Es el que recibe la guia de primeros pasos aunque\
+            \ despues contrate"
+        cierreEl:
+          type: string
+          format: date-time
+          description: "Instante en que se cierra el acceso si no paga: pagadoHasta\
+            \ + 18 dias. Ausente sin control de cobro"
+          example: 2027-01-06T03:00:00Z
         definidaPorPlataforma:
           type: boolean
           description: "El centro lo dio de alta o lo ajusto la plataforma. Sin esto\
@@ -33967,11 +34602,23 @@ components:
           - SUSPENDIDA
           - CANCELADA
           example: PRUEBA
+        maxProfesionales:
+          type: integer
+          format: int32
+          description: Tope de profesionales del plan (cuentas con rol PROFESIONAL);
+            ausente = sin tope
+          example: 6
         maxSedes:
           type: integer
           format: int32
           description: Tope de sedes del plan; ausente = sin tope
           example: 3
+        pagadoHasta:
+          type: string
+          format: date-time
+          description: "Hasta cuando esta pagada la suscripcion, instante UTC. Ausente\
+            \ = sin control de cobro (el centro opera como siempre)"
+          example: 2026-12-19T03:00:00Z
         planCode:
           type: string
           description: Codigo del plan
@@ -33979,7 +34626,7 @@ components:
         planNombre:
           type: string
           description: Nombre del plan
-          example: Crecimiento
+          example: Plan Intermedio
         pruebaHasta:
           type: string
           format: date-time
@@ -33992,10 +34639,25 @@ components:
             enum:
             - KINESIOLOGIA
             - ACTIVIDADES
+        situacionDeCobro:
+          type: string
+          description: "Donde esta el centro respecto de su periodo pagado: SIN_CONTROL\
+            \ (sin pagadoHasta), AL_DIA, POR_VENCER (15 dias o menos), EN_GRACIA (vencido\
+            \ hace menos de 3 dias, sigue operando), SOLO_LECTURA (de 3 a 18 dias\
+            \ vencido) o SIN_ACCESO (desde los 18 dias)"
+          enum:
+          - SIN_CONTROL
+          - AL_DIA
+          - POR_VENCER
+          - EN_GRACIA
+          - SOLO_LECTURA
+          - SIN_ACCESO
+          example: AL_DIA
         soloLectura:
           type: boolean
-          description: "El centro no puede cargar nada: suscripcion suspendida o prueba\
-            \ vencida. Las lecturas siguen"
+          description: "El centro no puede cargar nada: suscripcion suspendida, prueba\
+            \ vencida o cobro vencido pasada la gracia (SOLO_LECTURA). Las lecturas\
+            \ siguen"
         version:
           type: integer
           format: int64
@@ -34077,9 +34739,12 @@ components:
           description: Clave estable dentro de la sede. No cambia
           example: OSDE-210-2026
         consultorioId:
-          type: integer
+          type:
+          - integer
+          - "null"
           format: int64
-          description: Sede a la que pertenece. No cambia nunca
+          description: "Sede a la que pertenece. No cambia nunca. Nulo en el convenio\
+            \ del plan, que vale para todas las sedes (V43)"
           example: 20
         deactivationReason:
           type: string
@@ -34499,23 +35164,21 @@ components:
       properties:
         coseguro:
           type: number
-          description: La parte que paga el paciente. Cero es valido y significa cobertura
-            total
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: se ignora. Ver importeTotal"
           example: 2400.0
-          minimum: 0.00
         importeFinanciador:
           type: number
-          description: "La parte que paga el financiador. Junto con el coseguro tiene\
-            \ que sumar EXACTAMENTE el importe total, o la peticion se rechaza con\
-            \ 400"
+          description: "Lo que paga el financiador por la practica (B). El paciente\
+            \ paga la diferencia con el precio de la oferta, nunca menos de cero"
           example: 9600.0
           minimum: 0.00
         importeTotal:
           type: number
-          description: Lo que vale la practica bajo este convenio. Cero es valido
-            y significa una practica sin cargo
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: se ignora. El coseguro se calcula\
+            \ al cerrar la sesion como precio de la oferta menos lo que paga el financiador"
           example: 12000.0
-          minimum: 0.00
         ofertaId:
           type: integer
           format: int64
@@ -34544,9 +35207,7 @@ components:
             \ fin previsto. Tiene que estar contenido en la vigencia del convenio"
           example: 2026-06-30
       required:
-      - coseguro
       - importeFinanciador
-      - importeTotal
       - practicaId
       - vigenciaDesde
     CreateAutorizacionRequest:
@@ -35654,7 +36315,7 @@ components:
         planCode:
           type: string
           description: "Codigo del plan a contratar, del catalogo de GET /api/v1/plans"
-          example: BASICO
+          example: BASE
           maxLength: 32
           minLength: 0
         slug:
@@ -35982,6 +36643,25 @@ components:
           type: number
           description: "Decimal exacto, nunca float"
           example: 1250000.0
+    CuentasDePlataformaResponse:
+      type: object
+      description: Cuentas vigentes por estado
+      properties:
+        activas:
+          type: integer
+          format: int64
+          description: Pueden iniciar sesion
+          example: 40
+        bloqueadas:
+          type: integer
+          format: int64
+          description: Bloqueadas por intentos fallidos o por la plataforma
+          example: 1
+        pendientesDeActivar:
+          type: integer
+          format: int64
+          description: Recibieron el enlace y todavia no lo usaron
+          example: 3
     Cupos:
       type: object
       description: "Disponibilidad de una clase. Sostiene CA-M12-010-06: la agenda\
@@ -37607,6 +38287,22 @@ components:
         version:
           type: integer
           format: int64
+    EntradaDelManualResponse:
+      type: object
+      description: "Una ficha del indice, con los titulos de sus tareas"
+      properties:
+        id:
+          type: string
+        tareas:
+          type: array
+          items:
+            type: string
+        titulo:
+          type: string
+      required:
+      - id
+      - tareas
+      - titulo
     EquipoDelCasoRequest:
       type: object
       description: Reemplazo completo del equipo tratante de un caso
@@ -38920,6 +39616,41 @@ components:
       required:
       - origen
       - version
+    FichaDelManualResponse:
+      type: object
+      description: Ficha del manual de una pantalla
+      properties:
+        grupo:
+          type: string
+        id:
+          type: string
+        markdown:
+          type: string
+          description: "Cuerpo en Markdown: titulos, listas, negrita, avisos `> [!importante]`,\
+            \ iconos `:icono[x]:` y capturas `![alt](captura:ficha/nombre)`"
+        relacionadas:
+          type: array
+          items:
+            $ref: "#/components/schemas/FichaRelacionadaResponse"
+        titulo:
+          type: string
+      required:
+      - grupo
+      - id
+      - markdown
+      - relacionadas
+      - titulo
+    FichaRelacionadaResponse:
+      type: object
+      description: Ficha relacionada
+      properties:
+        id:
+          type: string
+        titulo:
+          type: string
+      required:
+      - id
+      - titulo
     FijarPoliticaDeEnmienda:
       type: object
       description: Dias desde el cierre en que una sesion se puede enmendar.
@@ -38955,16 +39686,17 @@ components:
           example: 25.01.01
         coseguro:
           type: number
-          description: La parte del paciente
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: se ignora"
           example: 2400.0
         importeFinanciador:
           type: number
-          description: La parte del financiador. Con el coseguro tiene que sumar EXACTAMENTE
-            el importe total
+          description: Lo que paga el financiador por la practica (B). Hasta 2 decimales
           example: 9600.0
         importeTotal:
           type: number
-          description: Lo que vale la practica bajo el convenio. Hasta 2 decimales
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: se ignora"
           example: 12000.0
         ofertaId:
           type: integer
@@ -39357,6 +40089,19 @@ components:
           minLength: 0
       required:
       - reason
+    GrupoDelManualResponse:
+      type: object
+      description: Un grupo del menu con sus fichas
+      properties:
+        fichas:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntradaDelManualResponse"
+        nombre:
+          type: string
+      required:
+      - fichas
+      - nombre
     GuardarBorrador:
       type: object
       description: "Guardado parcial de la atencion. La version es obligatoria: sin\
@@ -40055,6 +40800,16 @@ components:
           type: string
           description: "Moneda ISO 4217, presente solo cuando hay importe"
           example: ARS
+    IndiceDelManualResponse:
+      type: object
+      description: "Indice del manual, por grupo"
+      properties:
+        grupos:
+          type: array
+          items:
+            $ref: "#/components/schemas/GrupoDelManualResponse"
+      required:
+      - grupos
     IngresoSinInscripcion:
       type: object
       description: "Inscribe y marca en un solo acto. Es la unica operacion de esta\
@@ -40320,6 +41075,7 @@ components:
           - ASISTENTES_CLASE
           - REPORTE
           - BUSCAR_PERSONA
+          - COMO_SE_HACE
           - FUERA_DE_ALCANCE
         periodo:
           type: string
@@ -40379,6 +41135,15 @@ components:
         roleCode:
           type: string
           example: PROFESIONAL
+        servicios:
+          type: array
+          description: "Servicios que contrato el centro (KINESIOLOGIA, ACTIVIDADES).\
+            \ La pantalla elige con esto su ilustracion"
+          items:
+            type: string
+            enum:
+            - KINESIOLOGIA
+            - ACTIVIDADES
     InvitacionResponse:
       type: object
       description: Invitacion emitida por la organizacion
@@ -40716,6 +41481,7 @@ components:
           enum:
           - MAX_CONSULTORIOS
           - MAX_MIEMBROS_ACTIVOS
+          - MAX_PROFESIONALES
           example: MAX_CONSULTORIOS
         currentUsage:
           type: integer
@@ -41538,6 +42304,33 @@ components:
           type: string
           format: date-time
           description: "Momento hasta el que el vinculo es valido, o null si no vence"
+    MisTerminosResponse:
+      type: object
+      description: "Terminos vigentes para la cuenta autenticada, y si los tiene pendientes"
+      properties:
+        aceptadaEn:
+          type:
+          - string
+          - "null"
+          format: date-time
+          description: "Cuando acepto la version vigente, o null si no la acepto"
+        pendiente:
+          type: boolean
+          description: "true si la cuenta todavia no acepto la version vigente: hasta\
+            \ aceptarla, la API responde 403 terminos-pendientes"
+        url:
+          type:
+          - string
+          - "null"
+          description: Donde se publica el texto de los terminos
+          example: /terminos
+        versionVigente:
+          type:
+          - string
+          - "null"
+          description: "Version que hay que aceptar, o null si el despliegue no exige\
+            \ terminos"
+          example: 2026-11-19
     ModeloDelMotorResponse:
       type: object
       description: Un modelo configurado
@@ -42015,6 +42808,10 @@ components:
           - PEDIDO_DE_PRUEBA_RECIBIDO
           - PRUEBA_POR_VENCER
           - PRUEBA_VENCIDA
+          - SUSCRIPCION_POR_VENCER
+          - SUSCRIPCION_VENCIDA
+          - SUSCRIPCION_SUSPENDIDA
+          - SUSCRIPCION_CERRADA
           example: INVITACION_COLABORADOR
         ultimoError:
           type: string
@@ -42708,6 +43505,7 @@ components:
           - SUSPENDIDA
           - CANCELADA
           - BAJA
+          - SIN_ACCESO
           example: ACTIVA
         slug:
           type: string
@@ -42866,6 +43664,40 @@ components:
           type: string
           format: date-time
           example: 2026-09-18T14:02:00Z
+    PanelDePlataformaResponse:
+      type: object
+      description: "Estado general de la plataforma: lo que necesita atencion y lo\
+        \ ultimo que paso"
+      properties:
+        centros:
+          $ref: "#/components/schemas/CentrosDelPanelResponse"
+          description: Centros vigentes por estado de su suscripcion
+        pedidosPendientes:
+          type: integer
+          format: int64
+          description: Pedidos de prueba gratis sin resolver
+          example: 3
+        pruebasQueTerminan:
+          type: array
+          description: "Pruebas vencidas y las que terminan en los proximos 30 dias,\
+            \ la mas proxima primero"
+          items:
+            $ref: "#/components/schemas/PruebaQueTerminaResponse"
+        ultimosCambios:
+          type: array
+          description: Ultimos cambios de estado o de plan de una suscripcion
+          items:
+            $ref: "#/components/schemas/CambioDeSuscripcionResponse"
+        ultimosCentros:
+          type: array
+          description: Ultimos centros dados de alta
+          items:
+            $ref: "#/components/schemas/CentroRecienteResponse"
+        ultimosPedidos:
+          type: array
+          description: Ultimos pedidos de prueba recibidos
+          items:
+            $ref: "#/components/schemas/PedidoRecienteResponse"
     ParametroDeTratamiento:
       type: object
       description: Parametro tipado. El valor va en el campo que corresponde al tipo
@@ -43012,6 +43844,31 @@ components:
           type: string
         tipoDocumento:
           type: string
+    PasajeDelManualResponse:
+      type: object
+      description: Pasaje del manual encontrado por la busqueda
+      properties:
+        enlace:
+          type: string
+          description: "Ruta de la pantalla, o null si todas sus rutas llevan parametros"
+        fichaId:
+          type: string
+        fichaTitulo:
+          type: string
+        fragmento:
+          type: string
+          description: "El comienzo del pasaje, sin Markdown"
+          maxLength: 240
+        pasajeId:
+          type: string
+        titulo:
+          type: string
+      required:
+      - fichaId
+      - fichaTitulo
+      - fragmento
+      - pasajeId
+      - titulo
     Pase:
       type: object
       description: "Pase comprado por una Persona (RF-M29-002). Nombre, precio, moneda,\
@@ -43197,6 +44054,28 @@ components:
           minLength: 0
       required:
       - email
+    PedidoRecienteResponse:
+      type: object
+      description: Un pedido de prueba recibido hace poco
+      properties:
+        estado:
+          type: string
+          example: PENDIENTE
+        id:
+          type: integer
+          format: int64
+          example: 5
+        nombreCentro:
+          type: string
+          example: Estudio Pilates
+        persona:
+          type: string
+          description: Nombre y apellido de quien pide
+          example: Ana Gomez
+        recibidoEn:
+          type: string
+          format: date-time
+          description: "Cuando llego, instante UTC"
     PerfilDeInvitacion:
       type: object
       properties:
@@ -43459,7 +44338,7 @@ components:
         planCode:
           type: string
           description: "Codigo del plan a contratar, del catalogo de GET /api/v1/plans"
-          example: PROFESIONAL
+          example: RED
           maxLength: 32
           minLength: 0
       required:
@@ -43700,6 +44579,7 @@ components:
           enum:
           - MAX_CONSULTORIOS
           - MAX_MIEMBROS_ACTIVOS
+          - MAX_PROFESIONALES
           example: MAX_CONSULTORIOS
         unlimited:
           type: boolean
@@ -43717,7 +44597,7 @@ components:
         code:
           type: string
           description: "Codigo estable del plan, usado para contratarlo"
-          example: BASICO
+          example: BASE
         features:
           type: array
           description: Funcionalidades habilitadas por el plan
@@ -43734,12 +44614,13 @@ components:
         name:
           type: string
           description: Nombre comercial del plan
-          example: Basico
+          example: Plan Base
         ofrecido:
           type: boolean
-          description: Si la plataforma lo ofrece hoy al dar de alta o cambiar la
-            contratacion de un centro. Los planes anteriores al 18/11/2026 siguen
-            vigentes para quien los tiene y no se ofrecen
+          description: "Si la plataforma lo ofrece hoy al dar de alta o cambiar la\
+            \ contratacion de un centro. Hoy los tres planes del catalogo (BASE, CRECIMIENTO\
+            \ y RED) se ofrecen; un plan que se retire queda en false y sigue vigente\
+            \ para quien lo tiene"
     PlanTratamiento:
       type: object
       description: "Plan de Tratamiento de un Caso Clinico, con su version vigente"
@@ -43908,11 +44789,21 @@ components:
       description: "Centro en el listado de la administracion de plataforma: identificacion,\
         \ estado y plan de la suscripcion, sin datos del centro"
       properties:
+        cierreEl:
+          type: string
+          format: date-time
+          description: "Instante en que se cierra el acceso si no paga: pagadoHasta\
+            \ + 18 dias. Ausente sin control de cobro"
+          example: 2027-01-06T03:00:00Z
         createdAt:
           type: string
           format: date-time
           description: Instante de alta de la organizacion
           example: 2026-01-15T13:45:00Z
+        ia:
+          type: boolean
+          description: Tiene el adicional de IA contratado
+          example: false
         id:
           type: integer
           format: int64
@@ -43922,14 +44813,51 @@ components:
           type: string
           description: Nombre del centro
           example: Centro Kinesio Norte
+        pagadoHasta:
+          type: string
+          format: date-time
+          description: "Hasta cuando esta pagada la suscripcion, instante UTC. Ausente\
+            \ = sin control de cobro (el centro opera como siempre)"
+          example: 2026-12-19T03:00:00Z
         planCode:
           type: string
           description: Codigo del plan contratado
-          example: BASICO
+          example: BASE
         planName:
           type: string
           description: Nombre comercial del plan contratado
-          example: Basico
+          example: Plan Base
+        pruebaHasta:
+          type: string
+          format: date-time
+          description: "Fin de la prueba gratis, instante UTC. Solo en PRUEBA; vencido\
+            \ = solo lectura"
+          example: 2026-12-18T03:00:00Z
+        servicios:
+          type: array
+          description: "Servicios contratados, en orden fijo"
+          example:
+          - KINESIOLOGIA
+          - ACTIVIDADES
+          items:
+            type: string
+            enum:
+            - KINESIOLOGIA
+            - ACTIVIDADES
+        situacionDeCobro:
+          type: string
+          description: "Donde esta el centro respecto de su periodo pagado: SIN_CONTROL\
+            \ (sin pagadoHasta), AL_DIA, POR_VENCER (15 dias o menos), EN_GRACIA (vencido\
+            \ hace menos de 3 dias, sigue operando), SOLO_LECTURA (de 3 a 18 dias\
+            \ vencido) o SIN_ACCESO (desde los 18 dias)"
+          enum:
+          - SIN_CONTROL
+          - AL_DIA
+          - POR_VENCER
+          - EN_GRACIA
+          - SOLO_LECTURA
+          - SIN_ACCESO
+          example: AL_DIA
         slug:
           type: string
           description: Identificador legible y unico del centro
@@ -44014,11 +44942,11 @@ components:
         planCode:
           type: string
           description: Codigo del plan contratado
-          example: BASICO
+          example: BASE
         planName:
           type: string
           description: Nombre comercial del plan contratado
-          example: Basico
+          example: Plan Base
         startedAt:
           type: string
           format: date-time
@@ -44359,6 +45287,13 @@ components:
       description: "Deuda de financiador dentro de un lote. Incluirla **no le mueve\
         \ el saldo**: la obligacion se salda al conciliar."
       properties:
+        autorizacionNumero:
+          type:
+          - string
+          - "null"
+          description: Numero de la autorizacion que consumio la sesion; varias separadas
+            por coma
+          example: AUT-2026-0042
         concepto:
           type: string
           description: "Que se presto, al momento de devengar"
@@ -44405,14 +45340,50 @@ components:
           type: string
           description: Obligatorio al debitar
           example: Falta autorizacion previa
+        numeroAfiliado:
+          type:
+          - string
+          - "null"
+          description: Numero de afiliado de la cobertura con la que se atendio
+          example: AF-123456
         obligacionId:
           type: integer
           format: int64
           example: 9001
+        pacienteDocumento:
+          type:
+          - string
+          - "null"
+          description: Tipo y numero de documento. Solo en el detalle del lote
+          example: DNI 30111222
+        pacienteNombre:
+          type:
+          - string
+          - "null"
+          description: Apellido y nombre del paciente. Solo en el detalle del lote
+          example: "Perez, Ana"
         personaId:
           type: integer
           format: int64
           example: 128
+        planNombre:
+          type:
+          - string
+          - "null"
+          description: "Plan de la cobertura, como estaba al cargarla"
+          example: Plan 310
+        practicaCodigo:
+          type:
+          - string
+          - "null"
+          description: Codigo de la practica en el catalogo
+          example: KIN_SESION
+        practicaNombre:
+          type:
+          - string
+          - "null"
+          description: Nombre de la practica
+          example: Sesion de kinesiologia
         sesionId:
           type: integer
           format: int64
@@ -44618,6 +45589,7 @@ components:
       - https://akine.app/problems/invalid-credentials
       - https://akine.app/problems/invalid-refresh
       - https://akine.app/problems/invalid-token
+      - https://akine.app/problems/terminos-pendientes
       - https://akine.app/problems/missing-tenant-context
       - https://akine.app/problems/csrf-rejected
       - https://akine.app/problems/organization-slug-taken
@@ -45216,6 +46188,21 @@ components:
       required:
       - milisegundos
       - ok
+    PruebaQueTerminaResponse:
+      type: object
+      description: Un centro cuya prueba termino o termina pronto
+      properties:
+        nombre:
+          type: string
+          example: Centro Movimiento
+        organizationId:
+          type: integer
+          format: int64
+          example: 7
+        pruebaHasta:
+          type: string
+          format: date-time
+          description: "Fin de la prueba, instante UTC"
     PuntoDeSerieDeReporte:
       type: object
       description: "Una barra: los dias `desde`..`hasta` inclusive y su valor. Cero\
@@ -45565,7 +46552,7 @@ components:
           type: string
           description: "Plan a contratar, del catalogo de GET /api/v1/plans. Si se\
             \ omite se usa el plan por defecto"
-          example: BASICO
+          example: BASE
           maxLength: 32
           minLength: 0
         versionTerminos:
@@ -45788,6 +46775,25 @@ components:
       - medios
       - personaId
       - total
+    RegistrarCobroRequest:
+      type: object
+      description: Cobro de la suscripcion que registra la plataforma
+      properties:
+        meses:
+          type: integer
+          format: int32
+          description: "Meses que se cobran, de 1 a 12"
+          example: 1
+          maximum: 12
+          minimum: 1
+        nota:
+          type: string
+          description: "Nota libre: medio de pago, comprobante. Hasta 200 caracteres"
+          example: Transferencia del 19/11
+          maxLength: 200
+          minLength: 0
+      required:
+      - meses
     RegistrarDebito:
       type: object
       description: Asienta el rechazo del financiador sobre una prestacion del lote.
@@ -47841,6 +48847,14 @@ components:
           - GLOBAL
           - ORGANIZACION
           example: GLOBAL
+        categoria:
+          type:
+          - string
+          - "null"
+          description: "Categoria del catalogo con la que se agrupa el servicio en\
+            \ los selectores. Solo ordena: no decide ningun comportamiento. Null en\
+            \ los servicios propios creados desde cero"
+          example: Kinesiologia neurologica
         codigo:
           type: string
           description: "Clave estable con la que las ofertas lo referencian. No cambia\
@@ -48308,6 +49322,10 @@ components:
       type: object
       description: "Pedido de prueba gratis de 30 dias, desde la landing publica"
       properties:
+        aceptaTerminos:
+          type: boolean
+          description: "Acepta los terminos y condiciones. Obligatorio en true: GET\
+            \ /api/v1/terms da la version vigente"
         actividades:
           type: boolean
           description: Le interesa el servicio de actividades
@@ -48370,6 +49388,13 @@ components:
           type: string
           description: "Telefono, opcional"
           example: +54 351 555 1234
+          maxLength: 40
+          minLength: 0
+        versionTerminos:
+          type: string
+          description: "Version de los terminos que se acepto, la versionVigente de\
+            \ GET /api/v1/terms. Tiene que coincidir exacta"
+          example: 2026-11-19
           maxLength: 40
           minLength: 0
       required:
@@ -48472,11 +49497,11 @@ components:
         planCode:
           type: string
           description: Codigo del plan contratado
-          example: BASICO
+          example: BASE
         planName:
           type: string
           description: Nombre comercial del plan contratado
-          example: Basico
+          example: Plan Base
         startedAt:
           type: string
           format: date-time
@@ -48575,7 +49600,7 @@ components:
         fromPlanCode:
           type: string
           description: Codigo del plan previo. Ausente en la fila de alta
-          example: BASICO
+          example: BASE
         fromStatus:
           type: string
           description: Estado previo. Ausente en la fila de alta de la suscripcion
@@ -48602,7 +49627,7 @@ components:
         toPlanCode:
           type: string
           description: Codigo del plan resultante
-          example: PROFESIONAL
+          example: RED
         toStatus:
           type: string
           description: Estado resultante
@@ -49893,9 +50918,9 @@ components:
       properties:
         coseguro:
           type: number
-          description: La parte que paga el paciente
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: se ignora"
           example: 2600.0
-          minimum: 0.00
         expectedVersion:
           type: integer
           format: int64
@@ -49904,14 +50929,14 @@ components:
           minimum: 0
         importeFinanciador:
           type: number
-          description: La parte que paga el financiador
+          description: Lo que paga el financiador por la practica (B)
           example: 10400.0
           minimum: 0.00
         importeTotal:
           type: number
-          description: Lo que vale la practica bajo este convenio
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: se ignora"
           example: 13000.0
-          minimum: 0.00
         vigenciaDesde:
           type: string
           format: date
@@ -50331,9 +51356,13 @@ components:
         limiteSesionesMensual:
           type: integer
           format: int32
-          description: Tope de sesiones por mes. Cero no es un valor valido
+          description: "Tope de sesiones por mes y por paciente. Pasado el tope, la\
+            \ sesion se cobra como particular. Cero no es un valor valido"
           example: 20
           minimum: 1
+        limpiarLimiteSesionesMensual:
+          type: boolean
+          description: true quita el tope de sesiones por mes. Gana sobre limiteSesionesMensual
         modalidad:
           type: string
           description: Como se pacto la prestacion

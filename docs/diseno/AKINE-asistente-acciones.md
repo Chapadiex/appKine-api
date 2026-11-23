@@ -167,7 +167,7 @@ public interface AccionDelAsistente {
 
 ### 5.4 La propuesta guardada
 
-Tabla `asistente_accion`, del módulo `assistant` (migración **`V29`**, a reservar según
+Tabla `asistente_accion`, del módulo `assistant` (migración **`V46`**, nacida como `V29`, a reservar según
 `docs/fases/01-trabajo-en-paralelo.md` y confirmar al rebasar):
 
 | Columna | |
@@ -192,7 +192,7 @@ Tabla `asistente_accion`, del módulo `assistant` (migración **`V29`**, a reser
   por su cuenta donde la operación lo permite (§6).
 - Sin borrado físico. Vencida es un estado derivado de `vence_en`, no un job.
 
-### 5.5 API (aditiva; contrato **0.179.0**, a confirmar al rebasar)
+### 5.5 API (aditiva; contrato **0.192.0**)
 
 - `POST /consultorios/{cid}/asistente/consultas` — igual. `RespuestaAsistenteResponse` gana
   `accion` (nullable) y `resultado` gana el valor `PROPUESTA`.
@@ -408,7 +408,7 @@ Permiso de las dos: `paciente:manage`.
   tests de lista exacta (`PermissionEvaluatorServiceTest`, `PermisosEsquemaIT`). Sin migración.
 - Interruptor: `application.yml` bajo `akine.asistente` y `AsistenteProperties`.
 - `AsistenciaService.iniciar` y `registrarLote` se llaman sin transacción abierta.
-- Contrato: `wt-API-REDISENO` ya declara 0.179.0; lo esperable al rebasar es **0.180.0**.
+- Contrato: quedó en **0.192.0** al integrar sobre cobro mensual (0.191.0) el 23/11/2026.
 
 ## 11. Queda para el constructor
 

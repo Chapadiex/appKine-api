@@ -320,7 +320,8 @@ public class ConvenioController {
 						request.limiteSesionesMensual(),
 						request.documentacionRequerida(),
 						request.observaciones(),
-						request.expectedVersion()));
+						request.expectedVersion(),
+						Boolean.TRUE.equals(request.limpiarLimiteSesionesMensual())));
 
 		return ResponseEntity.ok(ConvenioResponse.de(actualizado));
 	}

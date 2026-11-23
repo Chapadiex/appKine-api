@@ -16,7 +16,7 @@ import java.time.LocalDate;
  */
 public record ConvenioView(
 		long id,
-		long consultorioId,
+		Long consultorioId,
 		long financiadorId,
 		long planId,
 		String codigo,

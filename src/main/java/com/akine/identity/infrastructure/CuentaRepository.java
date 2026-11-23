@@ -89,4 +89,8 @@ public interface CuentaRepository extends JpaRepository<Cuenta, Long>, CuentaRep
 
 	@Query(value = "SELECT intentos_fallidos FROM cuenta WHERE id = :cuentaId", nativeQuery = true)
 	int leerIntentosFallidos(@Param("cuentaId") long cuentaId);
+
+	@Override
+	@Query("SELECT COUNT(c) FROM Cuenta c WHERE c.estado = :estado AND c.deletedAt IS NULL")
+	long contarVigentesPorEstado(@Param("estado") com.akine.identity.domain.EstadoCuenta estado);
 }

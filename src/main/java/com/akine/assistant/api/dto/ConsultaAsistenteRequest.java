@@ -26,7 +26,10 @@ public record ConsultaAsistenteRequest(
 		List<@NotNull(message = "El historial no admite elementos vacios") @Valid TurnoPrevioRequest> historial,
 		@Schema(description = "La persona elegida entre las opciones de una aclaracion. Se reenvia la misma "
 				+ "pregunta con este campo", minimum = "1")
-		@Positive(message = "La persona elegida tiene que ser un id positivo") Long personaId) {
+		@Positive(message = "La persona elegida tiene que ser un id positivo") Long personaId,
+		@Schema(description = "Ruta del frontend desde la que se pregunta. Las preguntas sobre como usar AKINE "
+				+ "prefieren la ficha del manual de esa pantalla", maxLength = 300, example = "/caja")
+		@Size(max = 300, message = "La ruta admite hasta 300 caracteres") String rutaActual) {
 
 	public List<TurnoPrevio> aHistorial() {
 		return historial == null ? List.of() : historial.stream().map(TurnoPrevioRequest::aTurno).toList();

@@ -84,7 +84,7 @@ class AuditTrailImplTest {
 	@DisplayName("Dentro de la transaccion del llamador, persiste el evento con sus campos")
 	void dentro_de_la_transaccion_persiste() {
 		Map<String, String> detalle = new LinkedHashMap<>();
-		detalle.put("planCode", "BASICO");
+		detalle.put("planCode", "BASE");
 
 		enTransaccion(() -> auditTrail.record(new AuditEntry(
 				100L, 200L, 7L,
@@ -101,7 +101,7 @@ class AuditTrailImplTest {
 		assertThat(guardado.getEntityId()).isEqualTo(55L);
 		assertThat(guardado.getPreviousState()).isEqualTo("ACTIVA");
 		assertThat(guardado.getNewState()).isEqualTo("SUSPENDIDA");
-		assertThat(guardado.getDetails()).contains("BASICO");
+		assertThat(guardado.getDetails()).contains("BASE");
 		assertThat(guardado.getReason()).isEqualTo("Falta de pago");
 		assertThat(guardado.getCorrelationId()).isEqualTo("trace-abc");
 		assertThat(guardado.getOccurredAt()).isEqualTo(CUANDO);

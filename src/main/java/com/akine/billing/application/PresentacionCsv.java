@@ -1,10 +1,17 @@
 package com.akine.billing.application;
 
+import com.akine.billing.domain.EstadoItemPresentacion;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * El detalle de un lote como CSV: el listado exportable de AKINE-07.04 ("Listados
@@ -14,9 +21,10 @@ import java.time.LocalDate;
  * consulta propia: un export con su query garantiza que algun dia el archivo y la pantalla digan
  * cosas distintas. Es el mismo criterio que el export de reportes (RF-M23-006).
  *
- * <p><b>PHI minima</b> (RNF-M21-001): viaja el {@code personaId} y el concepto congelado, igual que
- * en la pantalla. El nombre y el documento del paciente <b>no</b> se agregan aca: sumarlos es leer el
- * padron desde {@code billing} y es una decision sobre que datos salen del sistema, no un formato.
+ * <p><b>Lo que la obra social pide para liquidar</b> (obras sociales simples, paso 3): cada renglon
+ * lleva paciente, documento, afiliado, plan, practica con su codigo y autorizacion, y al final va un
+ * resumen por paciente. Los datos los completa {@link RenglonesLegibles} en la vista del detalle;
+ * este archivo solo los escribe. Ningun dato clinico.
  *
  * <p>El escapado repite el de {@code reporting.application.ExportadorCsv} —RFC 4180 siempre y un
  * apostrofo delante de una celda que una planilla tomaria por formula— porque {@code billing} no
@@ -51,24 +59,73 @@ public class PresentacionCsv {
 		linea(csv, "Confirmada en", texto(lote.confirmadaEn()));
 		csv.append(FIN_DE_LINEA);
 
-		linea(csv, "Item", "Obligacion", "Sesion", "Persona", "Fecha de prestacion", "Concepto",
-				"Estado", "Importe presentado", "Importe debitado", "Motivo de debito");
-		if (lote.items() != null) {
-			for (PresentacionItemView item : lote.items()) {
-				linea(csv,
-						String.valueOf(item.id()),
-						String.valueOf(item.obligacionId()),
-						String.valueOf(item.sesionId()),
-						String.valueOf(item.personaId()),
-						texto(item.fechaPrestacion()),
-						item.concepto(),
-						item.estado().name(),
-						texto(item.importePresentado()),
-						texto(item.importeDebitado()),
-						item.motivoDebito());
-			}
+		linea(csv, "Detalle");
+		linea(csv, "Paciente", "Documento", "Afiliado", "Plan", "Fecha de prestacion",
+				"Codigo de practica", "Practica", "Autorizacion", "Concepto", "Estado",
+				"Importe presentado", "Importe debitado", "Motivo de debito", "Sesion", "Item");
+		List<PresentacionItemView> items = lote.items() == null ? List.of() : lote.items();
+		for (PresentacionItemView item : items) {
+			linea(csv,
+					item.pacienteNombre(),
+					item.pacienteDocumento(),
+					item.numeroAfiliado(),
+					item.planNombre(),
+					texto(item.fechaPrestacion()),
+					item.practicaCodigo(),
+					item.practicaNombre(),
+					item.autorizacionNumero(),
+					item.concepto(),
+					item.estado().name(),
+					texto(item.importePresentado()),
+					texto(item.importeDebitado()),
+					item.motivoDebito(),
+					String.valueOf(item.sesionId()),
+					String.valueOf(item.id()));
 		}
+
+		resumenPorPaciente(csv, items);
 		return csv.toString();
+	}
+
+	/**
+	 * Una linea por paciente con sus sesiones y fechas, para controlar el lote de un vistazo. Cuenta
+	 * los renglones vivos: un renglon anulado ya no esta en la liquidacion.
+	 */
+	private static void resumenPorPaciente(StringBuilder csv, List<PresentacionItemView> items) {
+		Map<Long, List<PresentacionItemView>> porPaciente = items.stream()
+				.filter(item -> item.estado() != EstadoItemPresentacion.ANULADO)
+				.collect(Collectors.groupingBy(PresentacionItemView::personaId, LinkedHashMap::new,
+						Collectors.toList()));
+		if (porPaciente.isEmpty()) {
+			return;
+		}
+		csv.append(FIN_DE_LINEA);
+		linea(csv, "Resumen por paciente");
+		linea(csv, "Paciente", "Documento", "Afiliado", "Plan", "Sesiones", "Fechas",
+				"Importe presentado");
+		porPaciente.values().stream()
+				.sorted(Comparator.comparing(
+						(List<PresentacionItemView> renglones) -> renglones.getFirst().pacienteNombre(),
+						Comparator.nullsLast(Comparator.naturalOrder())))
+				.forEach(renglones -> {
+					PresentacionItemView primero = renglones.getFirst();
+					linea(csv,
+							primero.pacienteNombre(),
+							primero.pacienteDocumento(),
+							primero.numeroAfiliado(),
+							primero.planNombre(),
+							String.valueOf(renglones.size()),
+							renglones.stream()
+									.map(PresentacionItemView::fechaPrestacion)
+									.filter(Objects::nonNull)
+									.sorted()
+									.map(LocalDate::toString)
+									.collect(Collectors.joining(" ")),
+							texto(renglones.stream()
+									.map(PresentacionItemView::importePresentado)
+									.filter(Objects::nonNull)
+									.reduce(BigDecimal.ZERO, BigDecimal::add)));
+				});
 	}
 
 	/** Nombre del archivo: el numero si el lote ya se confirmo, el id si sigue en borrador. */

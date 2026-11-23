@@ -46,6 +46,35 @@ public interface ObligacionRepository
 
 	@Override
 	@Query("""
+			SELECT COUNT(DISTINCT o.sesionId) FROM Obligacion o
+			 WHERE o.organizationId = :organizationId
+			   AND o.personaId = :personaId
+			   AND o.concepto = com.akine.billing.domain.ConceptoObligacion.FINANCIADOR
+			   AND o.snapshotPlanId = :planId
+			   AND o.estado <> com.akine.billing.domain.EstadoObligacion.ANULADA
+			   AND o.deletedAt IS NULL
+			   AND o.devengadaEn >= :desde
+			   AND o.devengadaEn < :hasta
+			""")
+	long contarSesionesCubiertas(
+			@Param("organizationId") long organizationId,
+			@Param("personaId") long personaId,
+			@Param("planId") long planId,
+			@Param("desde") java.time.Instant desde,
+			@Param("hasta") java.time.Instant hasta);
+
+	@Override
+	@Query("""
+			SELECT o FROM Obligacion o
+			 WHERE o.organizationId = :organizationId
+			   AND o.id IN :ids
+			""")
+	List<Obligacion> findAllDeLaOrganizacion(
+			@Param("organizationId") long organizationId,
+			@Param("ids") java.util.Collection<Long> ids);
+
+	@Override
+	@Query("""
 			SELECT o FROM Obligacion o
 			 WHERE o.organizationId = :organizationId
 			   AND o.paseId = :paseId

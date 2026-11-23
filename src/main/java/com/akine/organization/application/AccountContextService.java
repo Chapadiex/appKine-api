@@ -5,7 +5,8 @@ import com.akine.organization.domain.Consultorio;
 import com.akine.organization.domain.Membership;
 import com.akine.organization.domain.MembershipSelection;
 import com.akine.organization.domain.Organization;
-import com.akine.organization.domain.SubscriptionStatus;
+import com.akine.organization.domain.OperationalStatus;
+import com.akine.organization.domain.Subscription;
 import com.akine.organization.domain.exception.ContextNotAuthorizedException;
 import com.akine.organization.domain.port.AccountActiveContextRepositoryPort;
 import com.akine.organization.domain.port.ConsultorioRepositoryPort;
@@ -29,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.LongPredicate;
 
 /**
  * Resolucion y seleccion del contexto de trabajo de una cuenta (RF-M01-005, ADR-0009).
@@ -80,6 +82,24 @@ public class AccountContextService implements AccountContextDirectory {
 	@Override
 	@Transactional(readOnly = true)
 	public List<AuthorizedContext> authorizedContexts(long accountId) {
+		return contextosDonde(accountId, this::esSeleccionable);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Mismo recorrido que {@link #authorizedContexts}, quedandose con las organizaciones cuya
+	 * suscripcion esta {@link OperationalStatus#SIN_ACCESO}.
+	 */
+	@Override
+	@Transactional(readOnly = true)
+	public List<AuthorizedContext> contextosSinAcceso(long accountId) {
+		return contextosDonde(accountId, organizationId -> estadoOperativo(organizationId)
+				.filter(estado -> estado == OperationalStatus.SIN_ACCESO)
+				.isPresent());
+	}
+
+	private List<AuthorizedContext> contextosDonde(long accountId, LongPredicate organizacionAdmitida) {
 		Instant ahora = Instant.now();
 		List<AuthorizedContext> contextos = new ArrayList<>();
 
@@ -89,7 +109,7 @@ public class AccountContextService implements AccountContextDirectory {
 			}
 			Optional<Organization> organization =
 					organizationRepository.findByIdAndActiveTrue(membership.getOrganizationId());
-			if (organization.isEmpty() || !esSeleccionable(membership.getOrganizationId())) {
+			if (organization.isEmpty() || !organizacionAdmitida.test(membership.getOrganizationId())) {
 				continue;
 			}
 			agregarSedes(contextos, membership, organization.get());
@@ -265,9 +285,17 @@ public class AccountContextService implements AccountContextDirectory {
 	 * cliente sin forma de ver su propia informacion ni de regularizar.
 	 */
 	private boolean esSeleccionable(long organizationId) {
+		// Desde el 19/11/2026 tambien se cierra la cerrada por falta de pago (SIN_ACCESO).
+		return estadoOperativo(organizationId)
+				.filter(estado -> estado == OperationalStatus.ACTIVA || estado == OperationalStatus.SUSPENDIDA)
+				.isPresent();
+	}
+
+	/** Estado operativo de una suscripcion vigente; vacio si no la hay. */
+	private Optional<OperationalStatus> estadoOperativo(long organizationId) {
 		return subscriptionRepository.findByOrganizationId(organizationId)
-				.map(s -> s.isActive() && s.getStatus() != SubscriptionStatus.CANCELADA)
-				.orElse(false);
+				.filter(Subscription::isActive)
+				.map(s -> s.operationalStatus(true));
 	}
 
 	private void agregarSedes(
