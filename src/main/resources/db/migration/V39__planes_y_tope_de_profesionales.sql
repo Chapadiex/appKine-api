@@ -54,7 +54,7 @@ UPDATE plan SET name = 'Plan Base', updated_at = CURRENT_TIMESTAMP WHERE code = 
 UPDATE plan SET name = 'Plan Intermedio', updated_at = CURRENT_TIMESTAMP WHERE code = 'CRECIMIENTO';
 UPDATE plan SET name = 'Plan Plus', updated_at = CURRENT_TIMESTAMP WHERE code = 'RED';
 
-COMMENT ON COLUMN plan.ofrecido IS 'Si la plataforma lo ofrece al dar de alta o cambiar la contratacion de un centro. Desde V37 los tres planes del catalogo se ofrecen; un plan que se retire a futuro queda en false y sigue vigente para quien lo tiene';
+COMMENT ON COLUMN plan.ofrecido IS 'Si la plataforma lo ofrece al dar de alta o cambiar la contratacion de un centro. Desde V39 los tres planes del catalogo se ofrecen; un plan que se retire a futuro queda en false y sigue vigente para quien lo tiene';
 
 -- 5. Tope de profesionales (22/11/2026). El plan se mide por sedes y por profesionales: cuentas
 -- distintas con una membership activa de rol PROFESIONAL (LimitCode.MAX_PROFESIONALES).
