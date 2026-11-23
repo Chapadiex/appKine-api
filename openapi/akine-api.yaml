@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.190.0
+  version: 0.191.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -19508,6 +19508,8 @@ paths:
 
         lastSelected marca el ultimo contexto elegido, revalidado: si dejo de estar habilitado no lo trae ninguno.
 
+        Al final van, con sinAcceso=true, los contextos de los centros cerrados por falta de pago: no se pueden elegir (seleccionarlos responde 404) y estan para que la pantalla muestre el motivo en vez de hacer desaparecer el centro.
+
         Este endpoint no cambia el contexto activo. Seleccionarlo renueva el token, y eso lo publica el modulo de identidad en 01.02 como POST /api/v1/auth/context.
       operationId: listMyContexts
       responses:
@@ -28026,6 +28028,102 @@ paths:
       summary: Dar de alta un centro
       tags:
       - Contratacion
+  /api/v1/platform/organizations/{orgId}/cobros:
+    get:
+      description: "Todos los cobros registrados al centro, el mas nuevo primero.\
+        \ El vencimiento vigente es el periodoHasta del primero, y tambien viaja como\
+        \ pagadoHasta en el listado de centros y en la contratacion. Reservado a la\
+        \ administracion de plataforma."
+      operationId: listCobrosDeSuscripcion
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CobroDeSuscripcionResponse"
+          description: "Cobros, el mas nuevo primero. Vacio si no tiene"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Reservado a la administracion de plataforma
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La organizacion no existe o esta dada de baja
+      summary: Historial de cobros de la suscripcion de un centro
+      tags:
+      - Plataforma
+    post:
+      description: |-
+        Extiende el periodo pagado del centro en la cantidad de meses (1 a 12). El periodo arranca en el vencimiento anterior si todavia no llego (pagar antes conserva el ciclo) o ahora si ya paso o es el primer cobro, y suma meses calendario en la zona del centro. El centro vuelve a operar normalmente en el acto.
+
+        Sobre una suscripcion en PRUEBA, el cobro la pasa a ACTIVA. Sobre una SUSPENDIDA o CANCELADA guardada responde 409 subscription-suspended: primero se reactiva por la transicion de siempre. Reservado a la administracion de plataforma.
+      operationId: registrarCobroDeSuscripcion
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrarCobroRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CobroDeSuscripcionResponse"
+          description: Cobro registrado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Meses fuera de 1 a 12 o nota de mas de 200 caracteres
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Reservado a la administracion de plataforma
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: La organizacion no existe o esta dada de baja
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La suscripcion esta suspendida o cancelada, o la modifico\
+            \ otra operacion al mismo tiempo"
+      summary: Registrar un cobro de la suscripcion de un centro
+      tags:
+      - Plataforma
   /api/v1/platform/organizations/{orgId}/contratacion:
     get:
       description: "La misma lectura que ve el centro, reservada a la administracion\
@@ -30909,6 +31007,13 @@ components:
           type: string
           description: Nombre de la organizacion
           example: Centro Kinesico Belgrano
+        sinAcceso:
+          type: boolean
+          description: "true si el centro esta cerrado por falta de pago (suscripcion\
+            \ sin acceso): el contexto se muestra para explicar el motivo pero no\
+            \ se puede elegir. Estos elementos van al final y nunca traen lastSelected\
+            \ en true"
+          example: false
     AutorizacionElegibleResponse:
       type: object
       description: Autorizacion candidata con su veredicto de elegibilidad
@@ -33593,6 +33698,46 @@ components:
           type: integer
           format: int64
           example: 0
+    CobroDeSuscripcionResponse:
+      type: object
+      description: Un cobro de la suscripcion registrado por la plataforma
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Identificador del cobro
+          example: 12
+        meses:
+          type: integer
+          format: int32
+          description: Meses cobrados
+          example: 1
+        nota:
+          type: string
+          description: Nota libre de quien lo registro
+          example: Transferencia del 19/11
+        periodoDesde:
+          type: string
+          format: date-time
+          description: "Desde cuando cubre, instante UTC: el vencimiento anterior\
+            \ si todavia no habia llegado, o el momento del registro"
+          example: 2026-11-19T15:00:00Z
+        periodoHasta:
+          type: string
+          format: date-time
+          description: "Hasta cuando cubre, instante UTC: periodoDesde mas los meses,\
+            \ en la zona del centro. Es el nuevo pagadoHasta"
+          example: 2026-12-19T15:00:00Z
+        registradoEn:
+          type: string
+          format: date-time
+          description: Instante del registro
+          example: 2026-11-19T15:00:00Z
+        registradoPor:
+          type: integer
+          format: int64
+          description: Cuenta de plataforma que lo registro
+          example: 1
     ColoresDeInterfaz:
       type: object
       description: "Colores de las zonas de la interfaz para un tema. Cada uno es\
@@ -34221,6 +34366,12 @@ components:
           description: "El centro nacio del alta de la plataforma (en prueba gratis),\
             \ no del autoregistro. Es el que recibe la guia de primeros pasos aunque\
             \ despues contrate"
+        cierreEl:
+          type: string
+          format: date-time
+          description: "Instante en que se cierra el acceso si no paga: pagadoHasta\
+            \ + 18 dias. Ausente sin control de cobro"
+          example: 2027-01-06T03:00:00Z
         definidaPorPlataforma:
           type: boolean
           description: "El centro lo dio de alta o lo ajusto la plataforma. Sin esto\
@@ -34246,6 +34397,12 @@ components:
           format: int32
           description: Tope de sedes del plan; ausente = sin tope
           example: 3
+        pagadoHasta:
+          type: string
+          format: date-time
+          description: "Hasta cuando esta pagada la suscripcion, instante UTC. Ausente\
+            \ = sin control de cobro (el centro opera como siempre)"
+          example: 2026-12-19T03:00:00Z
         planCode:
           type: string
           description: Codigo del plan
@@ -34266,10 +34423,25 @@ components:
             enum:
             - KINESIOLOGIA
             - ACTIVIDADES
+        situacionDeCobro:
+          type: string
+          description: "Donde esta el centro respecto de su periodo pagado: SIN_CONTROL\
+            \ (sin pagadoHasta), AL_DIA, POR_VENCER (15 dias o menos), EN_GRACIA (vencido\
+            \ hace menos de 3 dias, sigue operando), SOLO_LECTURA (de 3 a 18 dias\
+            \ vencido) o SIN_ACCESO (desde los 18 dias)"
+          enum:
+          - SIN_CONTROL
+          - AL_DIA
+          - POR_VENCER
+          - EN_GRACIA
+          - SOLO_LECTURA
+          - SIN_ACCESO
+          example: AL_DIA
         soloLectura:
           type: boolean
-          description: "El centro no puede cargar nada: suscripcion suspendida o prueba\
-            \ vencida. Las lecturas siguen"
+          description: "El centro no puede cargar nada: suscripcion suspendida, prueba\
+            \ vencida o cobro vencido pasada la gracia (SOLO_LECTURA). Las lecturas\
+            \ siguen"
         version:
           type: integer
           format: int64
@@ -42377,6 +42549,10 @@ components:
           - PEDIDO_DE_PRUEBA_RECIBIDO
           - PRUEBA_POR_VENCER
           - PRUEBA_VENCIDA
+          - SUSCRIPCION_POR_VENCER
+          - SUSCRIPCION_VENCIDA
+          - SUSCRIPCION_SUSPENDIDA
+          - SUSCRIPCION_CERRADA
           example: INVITACION_COLABORADOR
         ultimoError:
           type: string
@@ -43062,6 +43238,7 @@ components:
           - SUSPENDIDA
           - CANCELADA
           - BAJA
+          - SIN_ACCESO
           example: ACTIVA
         slug:
           type: string
@@ -44345,6 +44522,12 @@ components:
       description: "Centro en el listado de la administracion de plataforma: identificacion,\
         \ estado y plan de la suscripcion, sin datos del centro"
       properties:
+        cierreEl:
+          type: string
+          format: date-time
+          description: "Instante en que se cierra el acceso si no paga: pagadoHasta\
+            \ + 18 dias. Ausente sin control de cobro"
+          example: 2027-01-06T03:00:00Z
         createdAt:
           type: string
           format: date-time
@@ -44363,6 +44546,12 @@ components:
           type: string
           description: Nombre del centro
           example: Centro Kinesio Norte
+        pagadoHasta:
+          type: string
+          format: date-time
+          description: "Hasta cuando esta pagada la suscripcion, instante UTC. Ausente\
+            \ = sin control de cobro (el centro opera como siempre)"
+          example: 2026-12-19T03:00:00Z
         planCode:
           type: string
           description: Codigo del plan contratado
@@ -44388,6 +44577,20 @@ components:
             enum:
             - KINESIOLOGIA
             - ACTIVIDADES
+        situacionDeCobro:
+          type: string
+          description: "Donde esta el centro respecto de su periodo pagado: SIN_CONTROL\
+            \ (sin pagadoHasta), AL_DIA, POR_VENCER (15 dias o menos), EN_GRACIA (vencido\
+            \ hace menos de 3 dias, sigue operando), SOLO_LECTURA (de 3 a 18 dias\
+            \ vencido) o SIN_ACCESO (desde los 18 dias)"
+          enum:
+          - SIN_CONTROL
+          - AL_DIA
+          - POR_VENCER
+          - EN_GRACIA
+          - SOLO_LECTURA
+          - SIN_ACCESO
+          example: AL_DIA
         slug:
           type: string
           description: Identificador legible y unico del centro
@@ -46303,6 +46506,25 @@ components:
       - medios
       - personaId
       - total
+    RegistrarCobroRequest:
+      type: object
+      description: Cobro de la suscripcion que registra la plataforma
+      properties:
+        meses:
+          type: integer
+          format: int32
+          description: "Meses que se cobran, de 1 a 12"
+          example: 1
+          maximum: 12
+          minimum: 1
+        nota:
+          type: string
+          description: "Nota libre: medio de pago, comprobante. Hasta 200 caracteres"
+          example: Transferencia del 19/11
+          maxLength: 200
+          minLength: 0
+      required:
+      - meses
     RegistrarDebito:
       type: object
       description: Asienta el rechazo del financiador sobre una prestacion del lote.

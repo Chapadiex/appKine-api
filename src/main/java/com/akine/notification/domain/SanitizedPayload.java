@@ -41,6 +41,12 @@ public final class SanitizedPayload {
 			// Prueba gratis (18/11/2026): el dia en que vence, y del pedido de la landing los
 			// servicios y las sedes declarados. Ningun dato de contacto: esos quedan en la bandeja.
 			"pruebaVencimiento",
+			// Cobro mensual (19/11/2026): cuantos dias faltan, el dia en que vence el periodo pagado,
+			// cuando pasa a solo lectura y cuando se cierra el acceso. Fechas dd/MM/yyyy y un numero.
+			"diasRestantes",
+			"suscripcionVencimiento",
+			"suscripcionSoloLectura",
+			"suscripcionCierre",
 			"pedidoServicios",
 			"pedidoSedes",
 			"organizacionNombre",

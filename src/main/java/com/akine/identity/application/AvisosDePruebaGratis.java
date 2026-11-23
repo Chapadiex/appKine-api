@@ -21,6 +21,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.OptionalInt;
 
 /**
  * Correos de la prueba gratis (18/11/2026, docs/diseno/AKINE-landing-y-ofertas.md §2.4 y §5).
@@ -31,8 +32,10 @@ import java.util.Map;
  *
  * <ul>
  *   <li><b>A la plataforma</b>, cuando entra un pedido de la landing: en la misma transaccion.</li>
- *   <li><b>Al duenio</b>, a {@link #DIAS_DE_AVISO} dias del fin y cuando termina. La clave del
- *       outbox los hace idempotentes: el worker puede pasar todas las veces que quiera.</li>
+ *   <li><b>Al duenio</b>, a 15, 10, 5, 2 y 1 dias del fin ({@link HitosDeAviso}, desde el 19/11/2026;
+ *       antes era uno solo a 7 dias) y cuando termina. La clave del outbox lleva el hito y el fin de
+ *       la prueba, asi que el worker puede pasar todas las veces que quiera y una prueba que se
+ *       extiende vuelve a avisar.</li>
  * </ul>
  */
 @Service
@@ -40,13 +43,10 @@ public class AvisosDePruebaGratis {
 
 	private static final Logger log = LoggerFactory.getLogger(AvisosDePruebaGratis.class);
 
-	/** Cuantos dias antes del fin se avisa. */
-	static final int DIAS_DE_AVISO = 7;
-
 	/** Una prueba vencida hace mas de esto ya no se avisa: cubre un worker caido varios dias. */
 	static final Duration VENTANA_DE_VENCIDAS = Duration.ofDays(7);
 
-	private static final DateTimeFormatter FECHA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+	static final DateTimeFormatter FECHA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
 	private final NotificationOutbox outbox;
 	private final PlatformAdminRoster plataforma;
@@ -70,7 +70,7 @@ public class AvisosDePruebaGratis {
 		datos.put("organizacionNombre", pedido.nombreCentro());
 		datos.put("pedidoServicios", pedido.servicios());
 		datos.put("pedidoSedes", pedido.sedes());
-		for (AccountIdentity cuenta : identidades(plataforma.cuentasConRolDePlataforma(Instant.now()))) {
+		for (AccountIdentity cuenta : identidades(cuentas, plataforma.cuentasConRolDePlataforma(Instant.now()))) {
 			Map<String, String> conNombre = new LinkedHashMap<>(datos);
 			if (primerNombre(cuenta) != null) {
 				conNombre.put("nombre", primerNombre(cuenta));
@@ -82,29 +82,36 @@ public class AvisosDePruebaGratis {
 	}
 
 	/**
-	 * Encola los avisos de las pruebas que terminan en los proximos {@link #DIAS_DE_AVISO} dias y
-	 * de las que terminaron hace menos de {@link #VENTANA_DE_VENCIDAS}. Devuelve cuantos centros
-	 * miro.
+	 * Encola los avisos de las pruebas que terminan en los proximos 15 dias y de las que terminaron
+	 * hace menos de {@link #VENTANA_DE_VENCIDAS}. Devuelve cuantos centros avisaron.
 	 */
 	@Transactional
 	public int avisarVencimientos(Instant ahora) {
 		int centros = 0;
+		Duration primerHito = Duration.ofDays(HitosDeAviso.DIAS.getFirst());
 		for (PruebasGratis.PruebaEnCurso prueba : pruebas.queTerminanEntre(
-				ahora.minus(VENTANA_DE_VENCIDAS), ahora.plus(Duration.ofDays(DIAS_DE_AVISO)))) {
+				ahora.minus(VENTANA_DE_VENCIDAS), ahora.plus(primerHito))) {
 			boolean vencida = !prueba.pruebaHasta().isAfter(ahora);
+			OptionalInt hito = HitosDeAviso.alcanzado(prueba.pruebaHasta(), ahora);
+			if (!vencida && hito.isEmpty()) {
+				continue;
+			}
 			NotificationType tipo = vencida ? NotificationType.PRUEBA_VENCIDA : NotificationType.PRUEBA_POR_VENCER;
-			String prefijo = vencida ? "prueba-vencida-" : "prueba-por-vencer-";
+			String prefijo = vencida ? "prueba-vencida-" : "prueba-por-vencer-" + hito.getAsInt() + "-";
+			String clave = prefijo + prueba.organizationId() + "-" + prueba.pruebaHasta().getEpochSecond();
 			String fin = FECHA.format(prueba.pruebaHasta().atZone(zonas.de(prueba.organizationId())));
-			for (AccountIdentity cuenta : identidades(pruebas.administradores(prueba.organizationId()))) {
+			for (AccountIdentity cuenta : identidades(cuentas, pruebas.administradores(prueba.organizationId()))) {
 				Map<String, String> datos = new LinkedHashMap<>();
 				if (primerNombre(cuenta) != null) {
 					datos.put("nombre", primerNombre(cuenta));
 				}
 				datos.put("organizacionNombre", prueba.nombreCentro());
 				datos.put("pruebaVencimiento", fin);
+				if (!vencida) {
+					datos.put("diasRestantes", String.valueOf(HitosDeAviso.diasRestantes(prueba.pruebaHasta(), ahora)));
+				}
 				outbox.enqueue(new NotificationEnqueueCommand(tipo, cuenta.email(),
-						prefijo + prueba.organizationId() + "-" + cuenta.accountId(),
-						prueba.organizationId(), null, datos));
+						clave + "-" + cuenta.accountId(), prueba.organizationId(), null, datos));
 			}
 			centros++;
 		}
@@ -114,11 +121,11 @@ public class AvisosDePruebaGratis {
 		return centros;
 	}
 
-	private Collection<AccountIdentity> identidades(Collection<Long> accountIds) {
+	static Collection<AccountIdentity> identidades(AccountIdentityDirectory cuentas, Collection<Long> accountIds) {
 		return accountIds.isEmpty() ? java.util.List.of() : cuentas.identidadesDe(accountIds).values();
 	}
 
-	private static String primerNombre(AccountIdentity cuenta) {
+	static String primerNombre(AccountIdentity cuenta) {
 		String nombre = cuenta.nombreCompleto();
 		if (nombre == null || nombre.isBlank()) {
 			return null;

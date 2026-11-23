@@ -47,7 +47,8 @@ class SanitizedPayloadTest {
 						// DP-40 (U-43): al administrador, cuantos abonos y quien los habia autorizado.
 						"abonosAfectados", "renovacionAutorizadaPor",
 						// Prueba gratis (18/11/2026).
-						"pruebaVencimiento", "pedidoServicios", "pedidoSedes");
+						"pruebaVencimiento", "pedidoServicios", "pedidoSedes",
+						"diasRestantes", "suscripcionVencimiento", "suscripcionSoloLectura", "suscripcionCierre");
 	}
 
 	@ParameterizedTest(name = "clave fuera de la lista blanca: {0}")

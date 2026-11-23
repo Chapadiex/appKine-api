@@ -92,6 +92,10 @@ public class MeContextController {
 					lastSelected marca el ultimo contexto elegido, revalidado: si dejo de estar \
 					habilitado no lo trae ninguno.
 
+					Al final van, con sinAcceso=true, los contextos de los centros cerrados por falta \
+					de pago: no se pueden elegir (seleccionarlos responde 404) y estan para que la \
+					pantalla muestre el motivo en vez de hacer desaparecer el centro.
+
 					Este endpoint no cambia el contexto activo. Seleccionarlo renueva el token, y \
 					eso lo publica el modulo de identidad en 01.02 como POST /api/v1/auth/context.""")
 	@ApiResponses({
@@ -113,10 +117,12 @@ public class MeContextController {
 		ApiActor actor = ApiActor.current(tenantContextHolder);
 
 		Optional<ActiveContext> ultimo = accountContextDirectory.activeContext(actor.accountId());
-		List<AuthorizedContextResponse> contextos =
+		List<AuthorizedContextResponse> contextos = java.util.stream.Stream.concat(
 				accountContextDirectory.authorizedContexts(actor.accountId()).stream()
-						.map(contexto -> AuthorizedContextResponse.from(contexto, ultimo))
-						.toList();
+						.map(contexto -> AuthorizedContextResponse.from(contexto, ultimo)),
+				accountContextDirectory.contextosSinAcceso(actor.accountId()).stream()
+						.map(AuthorizedContextResponse::sinAcceso))
+				.toList();
 
 		return ResponseEntity.ok(contextos);
 	}

@@ -1,6 +1,7 @@
 package com.akine.organization.application;
 
 import com.akine.organization.domain.Plan;
+import com.akine.organization.domain.SituacionDeCobro;
 import com.akine.organization.domain.Subscription;
 import com.akine.organization.domain.SubscriptionStatus;
 import com.akine.organization.domain.SubscriptionTransition;
@@ -164,14 +165,23 @@ public class ContratacionService implements PruebasGratis, ServiciosDelCentro {
 		java.util.List<PlanLimitView> limites = planCatalogService.limitsOf(plan.getId());
 		Integer maxSedes = tope(limites, LimitCode.MAX_CONSULTORIOS);
 		Integer maxProfesionales = tope(limites, LimitCode.MAX_PROFESIONALES);
-		boolean soloLectura = subscription.estadoEfectivo(Instant.now()) != SubscriptionStatus.ACTIVA;
+		Instant ahora = Instant.now();
+		boolean soloLectura = subscription.estadoEfectivo(ahora) != SubscriptionStatus.ACTIVA;
+		Instant pagadoHasta = subscription.getPagadoHasta();
 		return new ContratacionView(
 				organizationId, plan.getCode(), plan.getName(), maxSedes, maxProfesionales,
 				contratacionRepository.serviciosDe(organizationId),
 				contratacionRepository.adicionalesDe(organizationId),
 				subscription.getStatus(), subscription.getPruebaHasta(), soloLectura,
 				contratacionRepository.definida(organizationId),
-				contratacionRepository.nacioEnPrueba(organizationId), subscription.getVersion());
+				contratacionRepository.nacioEnPrueba(organizationId), subscription.getVersion(),
+				pagadoHasta, SituacionDeCobro.de(pagadoHasta, ahora), SituacionDeCobro.cierreEl(pagadoHasta));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public java.util.List<PagoQueVence> pagosQueVencenEntre(Instant desde, Instant hasta) {
+		return contratacionRepository.pagosQueVencenEntre(desde, hasta);
 	}
 
 	@Override

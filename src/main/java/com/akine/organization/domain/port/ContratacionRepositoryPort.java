@@ -25,6 +25,10 @@ public interface ContratacionRepositoryPort {
 	java.util.List<com.akine.organization.spi.PruebasGratis.PruebaEnCurso> pruebasQueTerminanEntre(
 			java.time.Instant desde, java.time.Instant hasta);
 
+	/** Centros vigentes con la suscripcion ACTIVA guardada cuyo pagado_hasta cae en [desde, hasta). */
+	java.util.List<com.akine.organization.spi.PruebasGratis.PagoQueVence> pagosQueVencenEntre(
+			java.time.Instant desde, java.time.Instant hasta);
+
 	/** Cuentas con ORG_ADMIN vigente en la organizacion. */
 	Set<Long> administradores(long organizationId);
 

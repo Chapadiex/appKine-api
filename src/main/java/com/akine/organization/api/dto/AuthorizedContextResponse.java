@@ -43,7 +43,14 @@ public record AuthorizedContextResponse(
 						+ "preseleccionar al volver a entrar. A lo sumo un elemento lo trae en true; "
 						+ "ninguno si la cuenta nunca eligio o si el elegido dejo de estar habilitado",
 				example = "true")
-		boolean lastSelected) {
+		boolean lastSelected,
+
+		@Schema(
+				description = "true si el centro esta cerrado por falta de pago (suscripcion sin acceso): "
+						+ "el contexto se muestra para explicar el motivo pero no se puede elegir. "
+						+ "Estos elementos van al final y nunca traen lastSelected en true",
+				example = "false")
+		boolean sinAcceso) {
 
 	public static AuthorizedContextResponse from(
 			AuthorizedContext context, Optional<ActiveContext> ultimo) {
@@ -56,6 +63,18 @@ public record AuthorizedContextResponse(
 				context.organizationName(),
 				context.consultorioId(),
 				context.consultorioName(),
-				esElUltimo);
+				esElUltimo,
+				false);
+	}
+
+	/** Un contexto de un centro cerrado por falta de pago: visible, no elegible. */
+	public static AuthorizedContextResponse sinAcceso(AuthorizedContext context) {
+		return new AuthorizedContextResponse(
+				context.organizationId(),
+				context.organizationName(),
+				context.consultorioId(),
+				context.consultorioName(),
+				false,
+				true);
 	}
 }

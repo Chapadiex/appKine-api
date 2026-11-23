@@ -118,6 +118,9 @@ final class AuditEvents {
 	/** La plataforma cambio el plan, los servicios o los adicionales de un centro (18/11/2026). */
 	static final String CONTRATACION_UPDATED = "CONTRATACION_UPDATED";
 
+	/** La plataforma registro un cobro de la suscripcion de un centro (19/11/2026). */
+	static final String SUBSCRIPTION_COBRO_REGISTRADO = "SUBSCRIPTION_COBRO_REGISTRADO";
+
 	/** Llego un pedido de prueba gratis desde la landing. */
 	static final String SOLICITUD_PRUEBA_RECIBIDA = "SOLICITUD_PRUEBA_RECIBIDA";
 
