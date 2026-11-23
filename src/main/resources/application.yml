@@ -283,6 +283,14 @@ akine:
     acciones:
       enabled: ${AKINE_ASISTENTE_ACCIONES_ENABLED:false}
       vigencia-minutos: ${AKINE_ASISTENTE_ACCIONES_VIGENCIA_MINUTOS:15}
+    # El agente que responde las consultas (docs/diseno/AKINE-asistente-agente.md §5): el modelo pide
+    # herramientas y redacta. proveedor y alternativo son nombres de ProveedorDeAgente (claude,
+    # compatible, prueba); el alternativo se usa si el principal no responde. Tope por consulta.
+    agente:
+      proveedor: ${AKINE_ASISTENTE_AGENTE_PROVEEDOR:claude}
+      alternativo: ${AKINE_ASISTENTE_AGENTE_ALTERNATIVO:}
+      max-vueltas: ${AKINE_ASISTENTE_AGENTE_MAX_VUELTAS:8}
+      plazo-total-segundos: ${AKINE_ASISTENTE_AGENTE_PLAZO_TOTAL_SEGUNDOS:30}
 
   # Dictado por voz (docs/diseno/AKINE-dictado-por-voz.md). Apagado por defecto: toda llamada
   # responde 409 dictado-deshabilitado. Transcribe con un Whisper local (servicio whisper del

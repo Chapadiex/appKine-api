@@ -322,7 +322,7 @@ public class AccionesDelAsistente {
 			return simple(Plantillas.personaNoEncontrada(nombre), Resultado.PERSONA_NO_ENCONTRADA);
 		}
 		List<OpcionDePersona> opciones = filas.stream()
-				.limit(AsistenteService.MAX_OPCIONES)
+				.limit(AgenteDelAsistente.MAX_OPCIONES)
 				.map(f -> new OpcionDePersona(idDe(f), f.get(ClavesDeFila.NOMBRE)
 						+ (f.get(ClavesDeFila.DOCUMENTO) == null ? "" : " · " + f.get(ClavesDeFila.DOCUMENTO))))
 				.toList();
