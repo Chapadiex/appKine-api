@@ -68,16 +68,31 @@ public class JdbcLectorDeVistas implements LectorDeVistas {
 		catch (DataAccessException e) {
 			Throwable causa = e.getMostSpecificCause();
 			String estado = causa instanceof SQLException motor && motor.getSQLState() != null ? " [SQLState " + motor.getSQLState() + "]" : "";
-			throw new ConsultaInvalidaException(sinValores(causa.getMessage() == null ? e.getMessage() : causa.getMessage()) + estado, e);
+			throw new ConsultaInvalidaException(sinValores(causa.getMessage() == null ? e.getMessage() : causa.getMessage(), sql) + estado, e);
 		}
 	}
 
 	/**
 	 * Quita lo que el motor cita entre comillas: un mensaje como {@code invalid input syntax for type integer: "x"}
-	 * puede traer un valor de otro centro. Queda la forma del error, sin los valores.
+	 * puede traer un valor de otro centro. Queda la forma del error; solo se conserva lo citado que aparece en el SQL del modelo.
 	 */
-	public static String sinValores(String mensaje) {
-		return mensaje == null ? "" : mensaje.replaceAll("\"[^\"]*\"", "\"…\"").replaceAll("'[^']*'", "'…'");
+	public static String sinValores(String mensaje, String sql) {
+		if (mensaje == null) {
+			return "";
+		}
+		String propia = sql == null ? "" : sql.toLowerCase(java.util.Locale.ROOT);
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"([^\"]*)\"|'([^']*)'").matcher(mensaje);
+		StringBuilder salida = new StringBuilder();
+		while (m.find()) {
+			String texto = m.group(1) != null ? m.group(1) : m.group(2);
+			char comilla = m.group(1) != null ? (char) 34 : (char) 39;
+			// Lo que el modelo escribio en su consulta (una columna, un alias) no filtra nada: se conserva.
+			String reemplazo = !texto.isEmpty() && propia.contains(texto.toLowerCase(java.util.Locale.ROOT)) ? m.group()
+					: comilla + "…" + comilla;
+			m.appendReplacement(salida, java.util.regex.Matcher.quoteReplacement(reemplazo));
+		}
+		m.appendTail(salida);
+		return salida.toString();
 	}
 
 	/** Columna a valor, con fechas e instantes como tipos de java.time para que se serialicen en ISO. */
