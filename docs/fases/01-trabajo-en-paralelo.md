@@ -181,7 +181,7 @@ commit del paquete). Si una fila resulta innecesaria, se marca "vacía" y el nú
 | `V27` (PostgreSQL) | Funciones de IA por centro (`akine-ia-activable`) | **Reservada** el 18/11/2026, sobre `V26` de `main`: tabla `organization_ia` (dueño `organization`, con `organization_id`). Contrato 0.176.0. `akine-dictado` también declaraba 0.175.0/0.176.0: confirmar la versión del contrato al rebasear |
 | `V31` (PostgreSQL) | Solo tres planes (`akine-api-planes`) | **Vacía**: quedó por debajo de `V32` (términos, en `main`) y se renumeró a `V37` el 22/11/2026. No se reusa. Lo que sigue es la reserva original: reservada el 19/11/2026, sobre `V28` de `main`: migra las suscripciones y su historial de `BASICO` a `BASE` y de `PROFESIONAL` a `RED`, borra los dos planes viejos y renombra los tres que quedan (Plan Básico, Plan Intermedio, Plan Plus). `V29` es de `akine-asistente-acciones` y `V30` de `akine-api-cobro`, sin mergear. Contrato 0.182.0 (solo ejemplos y descripciones): `akine-api-cobro` declara 0.181.0 y `akine-asistente-acciones` queda con 0.180.0; confirmar al rebasear |
 | `V37` (PostgreSQL) | Tres planes y tope de profesionales (`akine-api-planes`) | **Vacía**: quedó por debajo de `V38` (catálogo precargado, en `main`) y se renumeró a `V39` el 22/11/2026. No se reusa |
-| `V39` (PostgreSQL) | Tres planes y tope de profesionales (`akine-api-planes`) | **Usada** el 22/11/2026, sobre `V38` de `main`. Contrato **0.189.0**. `akine-obras-sociales` (PR #219, `V33`–`V36`, 0.185.0/0.186.0) tiene que renumerar sobre esto |
+| `V44` (PostgreSQL) | Tres planes y tope de profesionales (`akine-api-planes`) | **Usada** el 22/11/2026, sobre `V43` de `main` (obras sociales tomó `V39`–`V43` y 0.189.0). Contrato **0.190.0** |
 
 ## 7. Paquetes de trabajo
 

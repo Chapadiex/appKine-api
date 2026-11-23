@@ -49,7 +49,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class LimiteDePlanConcurrenteIT extends BaseEscenarioDiferido {
 
-	/** Tope de {@code MAX_PROFESIONALES} del plan BASE, sembrado por la migracion V39. */
+	/** Tope de {@code MAX_PROFESIONALES} del plan BASE, sembrado por la migracion V44. */
 	private static final int TOPE_BASE = 2;
 
 	private static final AtomicLong SECUENCIA = new AtomicLong();
