@@ -29,7 +29,7 @@ import static com.akine.organization.application.Fixtures.ACCOUNT_ID;
 import static com.akine.organization.application.Fixtures.CONSULTORIO_ID;
 import static com.akine.organization.application.Fixtures.MEMBERSHIP_ID;
 import static com.akine.organization.application.Fixtures.ORG_ID;
-import static com.akine.organization.application.Fixtures.PLAN_BASICO_ID;
+import static com.akine.organization.application.Fixtures.PLAN_BASE_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -79,7 +79,7 @@ class OnboardingServiceTest {
 	}
 
 	private final com.akine.organization.domain.Plan planBasico =
-			Fixtures.plan(PLAN_BASICO_ID, "BASICO");
+			Fixtures.plan(PLAN_BASE_ID, "BASE");
 
 	/** Camino feliz: clave sin usar, plan contratable, tenant aprovisionado. */
 	private void altaNueva() {
@@ -90,7 +90,7 @@ class OnboardingServiceTest {
 				.willReturn(new ProvisionedTenant(
 						Fixtures.organizacion(),
 						Fixtures.consultorio(CONSULTORIO_ID, "Sede Centro"),
-						Fixtures.suscripcionActiva(PLAN_BASICO_ID)));
+						Fixtures.suscripcionActiva(PLAN_BASE_ID)));
 		given(membershipRepository.save(any(Membership.class)))
 				.willAnswer(invocacion ->
 						Fixtures.conId(invocacion.getArgument(0), MEMBERSHIP_ID));
@@ -101,7 +101,7 @@ class OnboardingServiceTest {
 	void el_alta_crea_las_cuatro_entidades() {
 		altaNueva();
 
-		ProvisioningResult resultado = onboardingService.provision(comando("BASICO", "Sede Centro"));
+		ProvisioningResult resultado = onboardingService.provision(comando("BASE", "Sede Centro"));
 
 		assertThat(resultado).isEqualTo(
 				new ProvisioningResult(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID, true));
@@ -155,7 +155,7 @@ class OnboardingServiceTest {
 	void sin_nombre_de_sede_usa_el_de_la_organizacion() {
 		altaNueva();
 
-		onboardingService.provision(comando("BASICO", "   "));
+		onboardingService.provision(comando("BASE", "   "));
 
 		verify(organizationService).provisionTenant(
 				any(), any(), any(), any(), org.mockito.ArgumentMatchers.eq("Centro Kine Norte"),
@@ -168,7 +168,7 @@ class OnboardingServiceTest {
 		given(onboardingRepository.findByIdempotencyKey(CLAVE))
 				.willReturn(Optional.of(Fixtures.onboarding(CLAVE, HASH)));
 
-		ProvisioningResult resultado = onboardingService.provision(comando("BASICO", null));
+		ProvisioningResult resultado = onboardingService.provision(comando("BASE", null));
 
 		assertThat(resultado).isEqualTo(
 				new ProvisioningResult(ORG_ID, CONSULTORIO_ID, MEMBERSHIP_ID, false));
@@ -184,7 +184,7 @@ class OnboardingServiceTest {
 		given(onboardingRepository.findByIdempotencyKey(CLAVE))
 				.willReturn(Optional.of(Fixtures.onboarding(CLAVE, "hash-de-otro-payload")));
 
-		assertThatThrownBy(() -> onboardingService.provision(comando("BASICO", null)))
+		assertThatThrownBy(() -> onboardingService.provision(comando("BASE", null)))
 				.isInstanceOf(IdempotencyKeyConflictException.class)
 				.extracting("idempotencyKey")
 				.isEqualTo(CLAVE);
@@ -198,7 +198,7 @@ class OnboardingServiceTest {
 		given(onboardingRepository.findByIdempotencyKey(CLAVE))
 				.willReturn(Optional.of(Fixtures.onboarding(CLAVE, null)));
 
-		ProvisioningResult resultado = onboardingService.provision(comando("BASICO", null));
+		ProvisioningResult resultado = onboardingService.provision(comando("BASE", null));
 
 		assertThat(resultado.created()).isFalse();
 	}
@@ -213,7 +213,7 @@ class OnboardingServiceTest {
 		willThrow(new DataIntegrityViolationException("uk_onboarding_key"))
 				.given(onboardingRepository).saveAndFlush(any(OrganizationOnboarding.class));
 
-		assertThatThrownBy(() -> onboardingService.provision(comando("BASICO", null)))
+		assertThatThrownBy(() -> onboardingService.provision(comando("BASE", null)))
 				.isInstanceOf(OnboardingKeyTakenException.class);
 
 		// Lo que este test fija es lo que NO se hace: releer al ganador sobre la sesion cuyo
@@ -236,7 +236,7 @@ class OnboardingServiceTest {
 
 		// Dos causas distintas con dos respuestas distintas: el slug tomado es un error del
 		// cliente (409) y la clave tomada es una carrera que termina en el 202 del ganador.
-		assertThatThrownBy(() -> onboardingService.provision(comando("BASICO", null)))
+		assertThatThrownBy(() -> onboardingService.provision(comando("BASE", null)))
 				.isInstanceOf(OrganizationSlugTakenException.class);
 	}
 
@@ -245,7 +245,7 @@ class OnboardingServiceTest {
 	void el_alta_de_la_membership_queda_auditada() {
 		altaNueva();
 
-		onboardingService.provision(comando("BASICO", null));
+		onboardingService.provision(comando("BASE", null));
 
 		ArgumentCaptor<AuditEntry> entrada = ArgumentCaptor.forClass(AuditEntry.class);
 		verify(auditTrail).record(entrada.capture());
@@ -285,7 +285,7 @@ class OnboardingServiceTest {
 	@DisplayName("El comando resuelve el plan y la sede por defecto en un solo lugar")
 	void el_comando_resuelve_los_valores_por_defecto() {
 		InitialOrganizationCommand vacio = comando(" ", " ");
-		assertThat(vacio.planCodeOrDefault()).isEqualTo("BASICO");
+		assertThat(vacio.planCodeOrDefault()).isEqualTo("BASE");
 		assertThat(vacio.consultorioNameOrDefault()).isEqualTo("Centro Kine Norte");
 
 		InitialOrganizationCommand explicito = comando("PRO", "Sede Sur");

@@ -68,8 +68,8 @@ class PlatformOrganizationControllerTest {
 				.andExpect(jsonPath("$.content[0].name").value("Centro Norte"))
 				.andExpect(jsonPath("$.content[0].slug").value("centro-norte"))
 				.andExpect(jsonPath("$.content[0].status").value("SUSPENDIDA"))
-				.andExpect(jsonPath("$.content[0].planCode").value("BASICO"))
-				.andExpect(jsonPath("$.content[0].planName").value("Basico"))
+				.andExpect(jsonPath("$.content[0].planCode").value("BASE"))
+				.andExpect(jsonPath("$.content[0].planName").value("Plan Base"))
 				.andExpect(jsonPath("$.content[0].createdAt").exists())
 				.andExpect(jsonPath("$.totalElements").value(1))
 				.andExpect(jsonPath("$.page").value(0))
@@ -116,6 +116,6 @@ class PlatformOrganizationControllerTest {
 	private static OrganizationListing centro() {
 		return new OrganizationListing(
 				7L, "Centro Norte", "centro-norte", SubscriptionStatus.SUSPENDIDA,
-				"BASICO", "Basico", Instant.parse("2026-01-15T13:45:00Z"), null);
+				"BASE", "Plan Base", Instant.parse("2026-01-15T13:45:00Z"), null);
 	}
 }

@@ -278,3 +278,27 @@ Decisiones que se tomaron al implementar y se apartan de §7:
 - Un administrador de contenidos para la landing.
 - Blog, posicionamiento en buscadores y dominio propio, que vienen con el despliegue (U-02).
 - Que el propio centro cambie su plan: por ahora lo hace la plataforma.
+
+## 12. Tres planes y tope de profesionales (19/11 y 22/11/2026)
+
+- **Tres planes, nombres nuevos** (`V44`, contrato 0.190.0): `BASE` = **Plan Base**, `CRECIMIENTO` = **Plan
+  Intermedio**, `RED` = **Plan Plus**. Los códigos no cambian. `BASICO` y `PROFESIONAL` dejan de
+  existir: sus suscripciones pasan a `BASE` y `RED`, que daban lo mismo, y se reapunta el historial.
+- **El plan se mide por sedes y por profesionales.** `LimitCode.MAX_PROFESIONALES` cuenta cuentas
+  distintas con una membership activa de rol `PROFESIONAL`:
+
+  | Plan | Sedes | Profesionales |
+  |---|---|---|
+  | Base | 1 | 2 |
+  | Intermedio | 3 | 6 |
+  | Plus | sin tope | sin tope |
+
+- **El tope de miembros en total se retira** (se borran sus filas; el código sigue en el enum para
+  planes que lo declaren). Administrativos y administradores no ocupan cupo.
+- **Dónde se pide cupo** (`MembershipService.exigirCupoDeProfesionales`): alta directa, aceptación
+  de invitación y cambio de rol a `PROFESIONAL`. No se pide si la cuenta ya es profesional en otra
+  sede. Suspender no libera el cupo, revocar sí; por eso reactivar no lo pide. Va antes del bloqueo
+  del tenant, por el orden `subscription → organization`.
+- **Lo que ya existe no se toca**: un centro con más profesionales que su tope sigue operando; sólo
+  se rechazan las altas nuevas (409 `plan-limit-exceeded`, `limitCode = MAX_PROFESIONALES`).
+- **Contrato**: `ContratacionResponse.maxProfesionales` y el valor nuevo del enum de límites.

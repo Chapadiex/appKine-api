@@ -34,7 +34,7 @@ import static com.akine.organization.application.Fixtures.CONSULTORIO_ID;
 import static com.akine.organization.application.Fixtures.MEMBERSHIP_ID;
 import static com.akine.organization.application.Fixtures.ORG_ID;
 import static com.akine.organization.application.Fixtures.OTRO_CONSULTORIO_ID;
-import static com.akine.organization.application.Fixtures.PLAN_BASICO_ID;
+import static com.akine.organization.application.Fixtures.PLAN_BASE_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -83,7 +83,7 @@ class AccountContextServiceTest {
 
 	private void suscripcionEn(SubscriptionStatus estado) {
 		given(subscriptionRepository.findByOrganizationId(ORG_ID))
-				.willReturn(Optional.of(Fixtures.suscripcionEn(PLAN_BASICO_ID, estado)));
+				.willReturn(Optional.of(Fixtures.suscripcionEn(PLAN_BASE_ID, estado)));
 	}
 
 	private void sedeVigente(long consultorioId, String nombre) {

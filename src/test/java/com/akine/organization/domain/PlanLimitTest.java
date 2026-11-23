@@ -125,12 +125,13 @@ class PlanLimitTest {
 	}
 
 	@Test
-	@DisplayName("Los codigos de limite son exactamente los dos evaluables en F1")
+	@DisplayName("Los codigos de limite son exactamente los que alguna alta evalua")
 	void los_codigos_de_limite_son_los_de_f1() {
 		// El catalogo crece por etapa consumidora: un codigo que ninguna etapa cuenta es un
 		// limite que se configura y nunca se aplica.
 		assertThat(LimitCode.values()).containsExactly(
-				LimitCode.MAX_CONSULTORIOS, LimitCode.MAX_MIEMBROS_ACTIVOS);
+				LimitCode.MAX_CONSULTORIOS, LimitCode.MAX_MIEMBROS_ACTIVOS,
+				LimitCode.MAX_PROFESIONALES);
 	}
 
 	@ParameterizedTest

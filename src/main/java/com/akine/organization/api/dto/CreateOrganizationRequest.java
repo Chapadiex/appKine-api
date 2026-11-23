@@ -45,7 +45,7 @@ public record CreateOrganizationRequest(
 
 		@Schema(
 				description = "Codigo del plan a contratar, del catalogo de GET /api/v1/plans",
-				example = "BASICO",
+				example = "BASE",
 				requiredMode = Schema.RequiredMode.REQUIRED)
 		@NotBlank(message = "El codigo de plan es obligatorio")
 		@Size(max = 32, message = "El codigo de plan no puede superar los 32 caracteres")

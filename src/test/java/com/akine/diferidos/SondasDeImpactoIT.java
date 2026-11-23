@@ -350,7 +350,7 @@ class SondasDeImpactoIT extends BaseEscenarioDiferido {
 		Respuesta cambio = post(
 				"/api/v1/organizations/" + sesion.organizationId() + "/subscription/plan-changes",
 				plataforma.token(),
-				"{\"planCode\":\"PROFESIONAL\",\"expectedVersion\":0}");
+				"{\"planCode\":\"RED\",\"expectedVersion\":0}");
 		assertThat(cambio.status()).as("plan sin tope de sedes: %s", cambio.body()).isEqualTo(200);
 	}
 
