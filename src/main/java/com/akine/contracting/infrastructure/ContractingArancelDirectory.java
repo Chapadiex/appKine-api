@@ -4,6 +4,7 @@ import com.akine.contracting.domain.Convenio;
 import com.akine.contracting.domain.ResolutorDeArancel;
 import com.akine.contracting.spi.ArancelCongelado;
 import com.akine.contracting.spi.ArancelDirectory;
+import com.akine.contracting.spi.ConvenioDeLaSede;
 import com.akine.contracting.spi.ResolucionDeArancel;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -99,5 +100,15 @@ public class ContractingArancelDirectory implements ArancelDirectory {
 				organizationId, consultorioId, financiadorId, planId, practicaId, ofertaId, fecha)
 				.valor()
 				.map(vigente -> ResolutorDeArancel.congelar(vigente, Instant.now()));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<ConvenioDeLaSede> conveniosActivos(long organizationId, long consultorioId) {
+		return convenios.findActivosDeLaSede(organizationId, consultorioId).stream()
+				.map(c -> new ConvenioDeLaSede(c.getId(), c.getCodigo(), c.getNombre(),
+						c.getFinanciadorId(), c.getPlanId(), c.esDelPlan(),
+						c.getLimiteSesionesMensual()))
+				.toList();
 	}
 }
