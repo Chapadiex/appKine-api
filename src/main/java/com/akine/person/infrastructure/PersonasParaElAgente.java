@@ -72,7 +72,16 @@ class PersonasParaElAgente implements HerramientaDelAgente {
 		Map<String, Object> fila = new LinkedHashMap<>();
 		fila.put("persona_id", persona.id());
 		fila.put("nombre", persona.apellido() + ", " + persona.nombre());
-		fila.put("documento", PersonasEnElAsistente.enmascarado(persona.tipoDocumento(), persona.numeroDocumento()));
+		fila.put("documento", enmascarado(persona.tipoDocumento(), persona.numeroDocumento()));
 		return fila;
+	}
+
+	/** "DNI ***456". Sin documento, {@code null}. */
+	static String enmascarado(String tipo, String numero) {
+		if (numero == null || numero.isBlank()) {
+			return null;
+		}
+		String ultimos = numero.length() <= 3 ? numero : numero.substring(numero.length() - 3);
+		return (tipo == null ? "" : tipo + " ") + "***" + ultimos;
 	}
 }

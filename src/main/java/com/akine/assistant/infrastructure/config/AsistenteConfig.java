@@ -1,12 +1,9 @@
 package com.akine.assistant.infrastructure.config;
 
-import com.akine.assistant.application.InterpretadorDeAcciones;
 import com.akine.assistant.domain.AsistenteAjustes;
 import com.akine.platform.spi.modelo.ConfiguracionDeModelo;
 import com.akine.platform.spi.modelo.FabricaDeModelos;
 import com.akine.platform.spi.modelo.ModeloDeLenguaje;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -32,7 +29,6 @@ import java.util.Set;
 @EnableConfigurationProperties(AsistenteProperties.class)
 public class AsistenteConfig {
 
-	static final String PROMPT_ACCIONES = "asistente/prompt-acciones.txt";
 	static final Set<String> TIPOS_DE_MODELO = Set.of("ollama", "prueba");
 
 	/** Nombre del bean del modelo del asistente: hay otros del mismo tipo. */
@@ -57,13 +53,6 @@ public class AsistenteConfig {
 			throw new IllegalStateException("akine.asistente.modelo.tipo='" + tipo
 					+ "' no es valido: tiene que ser ollama o prueba");
 		}
-	}
-
-	/** El de las acciones, con su propio prompt: el de las consultas no se toca. Existe siempre. */
-	@Bean
-	public InterpretadorDeAcciones interpretadorDeAccionesDelAsistente(
-			@Qualifier(MODELO) ObjectProvider<ModeloDeLenguaje> modelo, AsistenteAjustes ajustes) {
-		return new InterpretadorDeAcciones(modelo::getObject, leerPrompt(PROMPT_ACCIONES), ajustes.plazo());
 	}
 
 	/**

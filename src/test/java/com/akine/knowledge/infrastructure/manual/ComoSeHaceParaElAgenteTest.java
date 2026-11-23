@@ -13,11 +13,11 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
 @SuppressWarnings("unchecked")
-class ComoSeHaceHerramientaTest {
+class ComoSeHaceParaElAgenteTest {
 
-	private final ComoSeHaceHerramienta herramienta = new ComoSeHaceHerramienta(
+	private final ComoSeHaceParaElAgente herramienta = new ComoSeHaceParaElAgente(
 			new IndiceDelManual(new PathMatchingResourcePatternResolver(), mock(ObjectProvider.class)),
-			mock(VisibilidadDelManual.class), mock(ElectorDePasaje.class));
+			mock(VisibilidadDelManual.class));
 
 	@Test
 	void unaPreguntaDeComoNoCompiteConElGlosario() {

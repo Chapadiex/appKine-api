@@ -48,7 +48,8 @@ import java.util.stream.Collectors;
  * publicar: en otro hilo no estaria.
  *
  * <p>Dos herramientas terminan el turno y las resuelve el agente, no un modulo: {@code pedir_aclaracion}
- * (devuelve {@link Resultado#ACLARACION} con las opciones) y, mas adelante, {@code proponer_accion}.
+ * (devuelve {@link Resultado#ACLARACION} con las opciones) y {@code proponer_accion} (devuelve
+ * {@link Resultado#PROPUESTA} con la tarjeta, ver {@link ProponerAccionHerramienta}).
  */
 public class AgenteDelAsistente {
 
@@ -111,7 +112,7 @@ public class AgenteDelAsistente {
 	 */
 	public RespuestaDelAsistente responder(ActorDelAsistente actor, ContextoDeConsulta ctx, String nombreSede,
 			String pregunta, List<TurnoPrevio> historial, Long personaElegida) {
-		Corrida corrida = new Corrida(actor, ctx);
+		Corrida corrida = new Corrida(actor, ctx, pregunta);
 		try {
 			RespuestaDelAsistente respuesta = corrida.correr(
 					mensajesIniciales(actor, ctx, nombreSede, pregunta, historial, personaElegida));
@@ -177,6 +178,7 @@ public class AgenteDelAsistente {
 
 		private final ActorDelAsistente actor;
 		private final ContextoDeConsulta ctx;
+		private final String pregunta;
 		private final ProveedoresDelAgente.Conversacion conversacion = proveedores.conversacion();
 		private final List<LlamadaRegistrada> registradas = new ArrayList<>();
 		private final Set<String> advertencias = new LinkedHashSet<>();
@@ -187,9 +189,10 @@ public class AgenteDelAsistente {
 		private long tokensSalida;
 		private long tokensCache;
 
-		Corrida(ActorDelAsistente actor, ContextoDeConsulta ctx) {
+		Corrida(ActorDelAsistente actor, ContextoDeConsulta ctx, String pregunta) {
 			this.actor = actor;
 			this.ctx = ctx;
+			this.pregunta = pregunta == null ? "" : pregunta.strip();
 		}
 
 		RespuestaDelAsistente correr(List<MensajeDelAgente> iniciales) {
@@ -231,9 +234,21 @@ public class AgenteDelAsistente {
 				if (aclaracion != null) {
 					return aclarar(aclaracion);
 				}
+				// proponer_accion tambien termina el turno, con la tarjeta. Si la entrada no sirve, el error
+				// vuelve al modelo junto con los resultados de las demas llamadas de la vuelta.
+				LlamadaAHerramienta accion = turno.llamadas().stream()
+						.filter(l -> ProponerAccionHerramienta.NOMBRE.equals(l.nombre())).findFirst().orElse(null);
+				ResultadoDeLlamada errorDeAccion = null;
+				if (accion != null) {
+					Propuesta propuesta = proponer(accion);
+					if (propuesta.respuesta() != null) {
+						return propuesta.respuesta();
+					}
+					errorDeAccion = propuesta.error();
+				}
 				List<ResultadoDeLlamada> resultados = new ArrayList<>();
 				for (LlamadaAHerramienta llamada : turno.llamadas()) {
-					resultados.add(ejecutar(llamada));
+					resultados.add(llamada == accion && errorDeAccion != null ? errorDeAccion : ejecutar(llamada));
 				}
 				mensajes.add(new MensajeDelAgente.Resultados(resultados));
 			}
@@ -340,6 +355,40 @@ public class AgenteDelAsistente {
 			return respuesta(texto, Resultado.ACLARACION, opciones);
 		}
 
+		/**
+		 * La tarjeta de {@code proponer_accion}, con las herramientas de la corrida para la auditoria y
+		 * "Ver como lo resolvi". Sin la herramienta disponible para el actor, ninguna de las dos cosas: la
+		 * llamada sigue el camino comun y vuelve denegada.
+		 */
+		private Propuesta proponer(LlamadaAHerramienta llamada) {
+			if (!(catalogo.buscar(ProponerAccionHerramienta.NOMBRE).orElse(null)
+					instanceof ProponerAccionHerramienta herramienta) || !herramienta.disponiblePara(actor)) {
+				return new Propuesta(null, null);
+			}
+			Map<String, Object> entrada;
+			try {
+				entrada = leerEntrada(llamada.entradaJson());
+			}
+			catch (JacksonException | ClassCastException e) {
+				registradas.add(new LlamadaRegistrada(llamada.nombre(), Map.of(), false, 0));
+				return new Propuesta(null, error(llamada, "La entrada no es un objeto JSON válido."));
+			}
+			RespuestaDelAsistente propuesta;
+			try {
+				propuesta = herramienta.proponer(actor, ctx, pregunta, entrada);
+			}
+			catch (IllegalArgumentException e) {
+				registradas.add(new LlamadaRegistrada(llamada.nombre(), entrada, false, 0));
+				return new Propuesta(null, error(llamada, e.getMessage() == null || e.getMessage().isBlank()
+						? "La entrada no es válida para esta herramienta." : e.getMessage()));
+			}
+			registradas.add(new LlamadaRegistrada(llamada.nombre(), entrada,
+					propuesta.resultado() == Resultado.SIN_PERMISO, propuesta.accion() == null ? 0 : 1));
+			return new Propuesta(new RespuestaDelAsistente(propuesta.texto(), Interpretacion.FUERA_DE_ALCANCE,
+					propuesta.filas(), propuesta.opciones(), propuesta.enlace(), propuesta.advertencias(),
+					propuesta.resultado(), null, propuesta.accion(), registradas), null);
+		}
+
 		private RespuestaDelAsistente respuesta(String texto, Resultado resultado, List<OpcionDePersona> opciones) {
 			return new RespuestaDelAsistente(texto, Interpretacion.FUERA_DE_ALCANCE, List.of(), opciones, enlace,
 					List.copyOf(advertencias), resultado, null, null, registradas);
@@ -369,6 +418,10 @@ public class AgenteDelAsistente {
 			}
 			auditoria.registrar(actor.organizationId(), actor.consultorioId(), actor.accountId(), detalles);
 		}
+	}
+
+	/** Lo que dio {@code proponer_accion}: la respuesta que termina el turno, o el error para el modelo. */
+	private record Propuesta(RespuestaDelAsistente respuesta, ResultadoDeLlamada error) {
 	}
 
 	private static Long comoId(Object valor) {

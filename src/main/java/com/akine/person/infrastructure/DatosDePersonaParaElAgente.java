@@ -75,7 +75,7 @@ class DatosDePersonaParaElAgente implements HerramientaDelAgente {
 		Map<String, Object> fila = new LinkedHashMap<>();
 		fila.put("persona_id", persona.id());
 		fila.put("nombre", persona.apellido() + ", " + persona.nombre());
-		fila.put("documento", PersonasEnElAsistente.enmascarado(persona.tipoDocumento(), persona.numeroDocumento()));
+		fila.put("documento", PersonasParaElAgente.enmascarado(persona.tipoDocumento(), persona.numeroDocumento()));
 		fila.put("fecha_nacimiento", persona.fechaNacimiento());
 		fila.put("es_paciente", persona.esPaciente());
 		fila.put("estado", persona.estado());

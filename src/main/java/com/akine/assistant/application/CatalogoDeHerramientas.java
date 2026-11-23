@@ -10,6 +10,7 @@ import org.springframework.security.access.AccessDeniedException;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 
 /**
@@ -66,5 +67,10 @@ public class CatalogoDeHerramientas {
 
 	public boolean existe(String nombre) {
 		return porNombre.containsKey(nombre);
+	}
+
+	/** La herramienta por nombre, para las que resuelve el agente en vez de ejecutarlas como lectura. */
+	public Optional<HerramientaDelAgente> buscar(String nombre) {
+		return Optional.ofNullable(porNombre.get(nombre));
 	}
 }

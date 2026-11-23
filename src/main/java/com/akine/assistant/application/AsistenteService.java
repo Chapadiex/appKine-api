@@ -22,15 +22,15 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Responde una pregunta en lenguaje natural sobre los datos de una sede
  * (docs/diseno/AKINE-asistente-agente.md §5).
  *
  * <p>Orden fijo: interruptor, tenant y permiso <b>antes</b> de llamar a cualquier modelo; despues las
- * acciones con tarjeta (si la frase cuenta o pide algo) y, si no, el agente, que llama a las
- * herramientas con el mismo actor y redacta la respuesta.
+ * agente, que llama a las herramientas con el mismo actor y redacta la respuesta. Si la frase cuenta o
+ * pide algo ("Juan pagó 15.000"), el agente lo propone con {@code proponer_accion}: una tarjeta para
+ * confirmar, que audita por su cuenta con el tipo y los ids.
  *
  * <p><b>Sin transaccion propia</b>: ver {@link AuditoriaDelAsistente}. Solo lectura en todo el
  * recorrido; las escrituras van por las acciones, con confirmacion.
@@ -42,24 +42,22 @@ public class AsistenteService {
 	private final PermissionGuard permissionGuard;
 	private final ConsultorioDirectory sedes;
 	private final FuncionesIaDelCentro funcionesIa;
-	private final AccionesDelAsistente acciones;
 	private final AgenteDelAsistente agente;
 	private final Clock clock;
 
 	/** El de Spring. El otro fija el reloj para los tests; con dos, Spring necesita que se le diga cual. */
 	@Autowired
 	public AsistenteService(AsistenteAjustes ajustes, PermissionGuard permissionGuard, ConsultorioDirectory sedes,
-			FuncionesIaDelCentro funcionesIa, AccionesDelAsistente acciones, AgenteDelAsistente agente) {
-		this(ajustes, permissionGuard, sedes, funcionesIa, acciones, agente, Clock.systemUTC());
+			FuncionesIaDelCentro funcionesIa, AgenteDelAsistente agente) {
+		this(ajustes, permissionGuard, sedes, funcionesIa, agente, Clock.systemUTC());
 	}
 
 	AsistenteService(AsistenteAjustes ajustes, PermissionGuard permissionGuard, ConsultorioDirectory sedes,
-			FuncionesIaDelCentro funcionesIa, AccionesDelAsistente acciones, AgenteDelAsistente agente, Clock clock) {
+			FuncionesIaDelCentro funcionesIa, AgenteDelAsistente agente, Clock clock) {
 		this.ajustes = ajustes;
 		this.permissionGuard = permissionGuard;
 		this.sedes = sedes;
 		this.funcionesIa = funcionesIa;
-		this.acciones = acciones;
 		this.agente = agente;
 		this.clock = clock;
 	}
@@ -98,15 +96,6 @@ public class AsistenteService {
 		ZoneId zona = ZonaDeSede.de(sede);
 		ActorDelAsistente enLaSede = new ActorDelAsistente(actor.accountId(), actor.platformAdmin(),
 				organizationId, consultorioId, actor.roleCode());
-
-		// Una frase que cuenta o pide algo ("Juan pagó 15.000") no es una consulta: si las acciones estan
-		// prendidas se propone una tarjeta para confirmar. Audita por su cuenta, con el tipo y los ids.
-		if (acciones != null) {
-			Optional<RespuestaDelAsistente> propuesta = acciones.proponer(enLaSede, zona, pregunta, personaId);
-			if (propuesta.isPresent()) {
-				return propuesta.get();
-			}
-		}
 
 		ContextoDeConsulta ctx = new ContextoDeConsulta(LocalDate.now(clock.withZone(zona)), zona, rutaActual);
 		return agente.responder(enLaSede, ctx, sede.name(), pregunta, historial == null ? List.of() : historial,

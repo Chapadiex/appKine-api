@@ -26,6 +26,8 @@ import java.util.Map;
 class ReporteParaElAgente implements HerramientaDelAgente {
 
 	static final int TOPE = 50;
+	static final String ENLACE = "/reportes";
+	static final String OMITIDAS = "Hay secciones de este reporte que tu rol no puede ver; no se muestran.";
 	static final List<String> CODIGOS = List.of("ECONOMICO", "TURNOS", "CLASES");
 	private static final String FECHA = "{\"type\":\"string\",\"description\":\"%s (YYYY-MM-DD o hoy, ayer, "
 			+ "esta_semana, semana_pasada, este_mes, mes_pasado)\"}";
@@ -85,7 +87,7 @@ class ReporteParaElAgente implements HerramientaDelAgente {
 		}
 		List<String> advertencias = new ArrayList<>();
 		if (!reporte.omitidas().isEmpty()) {
-			advertencias.add(ReportesEnElAsistente.OMITIDAS);
+			advertencias.add(OMITIDAS);
 		}
 		reporte.advertencias().stream().map(AdvertenciaDeReporte::detalle)
 				.filter(d -> d != null && !d.isBlank()).distinct().forEach(advertencias::add);
@@ -93,6 +95,6 @@ class ReporteParaElAgente implements HerramientaDelAgente {
 			advertencias.add("Hay " + filas.size() + " resultados; muestro los primeros " + TOPE);
 			filas = new ArrayList<>(filas.subList(0, TOPE));
 		}
-		return new ResultadoDeHerramienta(filas, advertencias, ReportesEnElAsistente.ENLACE, false);
+		return new ResultadoDeHerramienta(filas, advertencias, ENLACE, false);
 	}
 }

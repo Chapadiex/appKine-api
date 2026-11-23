@@ -17,11 +17,27 @@ public class ProveedorDeAgenteDePrueba implements ProveedorDeAgente {
 
 	private static final TurnoDelAgente SIN_GUION = new TurnoDelAgente("Sin guion", List.of(), null, null);
 
-	private final Map<String, List<TurnoDelAgente>> guiones;
+	private final Map<String, List<TurnoDelAgente>> guiones = new ConcurrentHashMap<>();
 	private final Map<String, Integer> posicion = new ConcurrentHashMap<>();
 
 	public ProveedorDeAgenteDePrueba(Map<String, List<TurnoDelAgente>> guiones) {
-		this.guiones = Map.copyOf(guiones);
+		this.guiones.putAll(guiones);
+	}
+
+	/**
+	 * Fija (o reemplaza) el guion de una clave y lo vuelve a empezar. Lo usan los tests de integracion
+	 * sobre el bean, que nace sin guiones.
+	 */
+	public void guion(String primeraPalabra, List<TurnoDelAgente> turnos) {
+		String clave = primeraPalabra.toLowerCase(Locale.ROOT);
+		guiones.put(clave, List.copyOf(turnos));
+		posicion.remove(clave);
+	}
+
+	/** Borra todos los guiones. */
+	public void reiniciar() {
+		guiones.clear();
+		posicion.clear();
 	}
 
 	@Override

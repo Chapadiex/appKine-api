@@ -5,15 +5,20 @@ import com.akine.assistant.spi.ContextoDeConsulta;
 import com.akine.assistant.spi.EntradaDeHerramienta;
 import com.akine.assistant.spi.HerramientaDelAgente;
 import com.akine.assistant.spi.ResultadoDeHerramienta;
+import com.akine.knowledge.application.manual.IndiceDelManual;
 import com.akine.knowledge.application.manual.PasajeEncontrado;
 import com.akine.knowledge.application.manual.VisibilidadDelManual;
 import com.akine.knowledge.domain.manual.FichaDelManual;
+import com.akine.knowledge.domain.manual.TipoDePasaje;
 import org.springframework.stereotype.Component;
 
+import java.text.Normalizer;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
 /**
  * {@code como_se_hace}: pasajes textuales del manual de usuario, filtrados por lo que la persona puede ver
@@ -24,12 +29,16 @@ import java.util.function.Predicate;
 class ComoSeHaceParaElAgente implements HerramientaDelAgente {
 
 	static final int PASAJES = 3;
+	/** Candidatos que se buscan en el indice antes de recortar a {@link #PASAJES}. */
+	static final int CANDIDATOS = 8;
+	private static final Pattern PIDE_DEFINICION =
+			Pattern.compile("\\bque (es|son|significa|significan|quiere decir)\\b|\\bdiferencia entre\\b");
 
-	private final ComoSeHaceHerramienta manual;
+	private final IndiceDelManual indice;
 	private final VisibilidadDelManual visibilidad;
 
-	ComoSeHaceParaElAgente(ComoSeHaceHerramienta manual, VisibilidadDelManual visibilidad) {
-		this.manual = manual;
+	ComoSeHaceParaElAgente(IndiceDelManual indice, VisibilidadDelManual visibilidad) {
+		this.indice = indice;
 		this.visibilidad = visibilidad;
 	}
 
@@ -64,10 +73,28 @@ class ComoSeHaceParaElAgente implements HerramientaDelAgente {
 		}
 		Predicate<FichaDelManual> visible = visibilidad.para(actor.accountId(), actor.organizationId(),
 				actor.consultorioId());
-		List<Map<String, Object>> filas = manual.candidatos(pregunta, visible, ctx.rutaActual()).stream()
+		List<Map<String, Object>> filas = candidatos(pregunta, visible, ctx.rutaActual()).stream()
 				.limit(PASAJES).map(ComoSeHaceParaElAgente::fila).toList();
 		return new ResultadoDeHerramienta(filas,
 				filas.isEmpty() ? List.of("El manual no tiene un pasaje sobre eso") : List.of(), null, false);
+	}
+
+	/**
+	 * Los pasajes candidatos. Las definiciones del glosario compiten solo si la pregunta pide una
+	 * definicion ("¿qué es...?", "¿qué significa...?"): ante "¿cómo cierro la atención?" el glosario de
+	 * "sesión o atención" le ganaba a la tarea.
+	 */
+	List<PasajeEncontrado> candidatos(String pregunta, Predicate<FichaDelManual> visible, String rutaActual) {
+		boolean pideDefinicion = PIDE_DEFINICION.matcher(normalizar(pregunta)).find();
+		return indice.buscar(pregunta, visible, rutaActual, CANDIDATOS * 2).stream()
+				.filter(p -> pideDefinicion || p.pasaje().tipo() != TipoDePasaje.TERMINO)
+				.limit(CANDIDATOS)
+				.toList();
+	}
+
+	private static String normalizar(String texto) {
+		return Normalizer.normalize(texto == null ? "" : texto, Normalizer.Form.NFD).replaceAll("\\p{M}", "")
+				.toLowerCase(Locale.ROOT);
 	}
 
 	private static Map<String, Object> fila(PasajeEncontrado p) {

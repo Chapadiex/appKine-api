@@ -1,12 +1,18 @@
 package com.akine.assistant.application;
 
 import com.akine.assistant.application.RespuestaDelAsistente.Resultado;
+import com.akine.assistant.domain.AsistenteAjustes;
 import com.akine.assistant.domain.exception.ModeloNoDisponibleException;
 import com.akine.assistant.spi.ActorDelAsistente;
 import com.akine.assistant.spi.ClavesDeFila;
 import com.akine.assistant.spi.ContextoDeConsulta;
 import com.akine.assistant.spi.HerramientaDelAgente;
+import com.akine.assistant.spi.PedidoDeAccion;
 import com.akine.assistant.spi.ResultadoDeHerramienta;
+import com.akine.assistant.spi.TipoDeAccion;
+import com.akine.organization.spi.DenialKind;
+import com.akine.organization.spi.PermissionDecision;
+import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.platform.infrastructure.modelo.agente.ProveedorDeAgenteDePrueba;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.modelo.agente.LlamadaAHerramienta;
@@ -14,9 +20,12 @@ import com.akine.platform.spi.modelo.agente.ProveedorDeAgente;
 import com.akine.platform.spi.modelo.agente.TurnoDelAgente;
 import com.akine.platform.spi.modelo.agente.UsoDelModelo;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -26,6 +35,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class AgenteDelAsistenteTest {
 
@@ -217,6 +231,71 @@ class AgenteDelAsistenteTest {
 		assertThat(r.opciones().getFirst().etiqueta()).isEqualTo("Pérez, Juan · ***456");
 		assertThat(r.herramientas()).extracting(LlamadaRegistrada::herramienta)
 				.containsExactly("buscar_persona", AgenteDelAsistente.PEDIR_ACLARACION);
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void proponer_accion_termina_el_turno_con_la_tarjeta() {
+		PermissionEvaluator permisos = mock(PermissionEvaluator.class);
+		when(permisos.evaluate(any())).thenReturn(new PermissionDecision(true, DenialKind.NONE, "ORGANIZACION", false));
+		AccionesDelAsistente acciones = mock(AccionesDelAsistente.class);
+		RespuestaDelAsistente.AccionParaConfirmar tarjeta = new RespuestaDelAsistente.AccionParaConfirmar(40L,
+				TipoDeAccion.PAGO, "Pago de Pérez, Juan", Instant.parse("2026-11-23T15:15:00Z"), null, List.of(),
+				List.of());
+		when(acciones.proponerPedido(any(), any(), any())).thenReturn(new RespuestaDelAsistente(
+				AccionesDelAsistente.TEXTO_PROPUESTA, Interpretacion.FUERA_DE_ALCANCE, List.of(), List.of(), null,
+				List.of(), Resultado.PROPUESTA, null, tarjeta));
+		HerramientaDelAgente datosPersona = new HerramientaDelAgente() {
+			@Override
+			public String nombre() {
+				return ProponerAccionHerramienta.DATOS_PERSONA;
+			}
+
+			@Override
+			public String descripcion() {
+				return "Datos de una persona";
+			}
+
+			@Override
+			public String esquemaEntrada() {
+				return "{\"type\":\"object\"}";
+			}
+
+			@Override
+			public ResultadoDeHerramienta ejecutar(ActorDelAsistente actor, Map<String, Object> entrada,
+					ContextoDeConsulta ctx) {
+				return new ResultadoDeHerramienta(List.of(Map.of("persona_id", 1L, "nombre", "Pérez, Juan")),
+						List.of(), null, false);
+			}
+		};
+		ObjectProvider<CatalogoDeHerramientas> proveedorDelCatalogo = mock(ObjectProvider.class);
+		ProponerAccionHerramienta proponer = new ProponerAccionHerramienta(
+				new AsistenteAjustes(true, Duration.ofSeconds(5), false, true, Duration.ofMinutes(15)), permisos,
+				acciones, proveedorDelCatalogo);
+		CatalogoDeHerramientas catalogo = new CatalogoDeHerramientas(List.of(buscarPersona, datosPersona, proponer));
+		when(proveedorDelCatalogo.getIfAvailable()).thenReturn(catalogo);
+		ModeloGrabado modelo = new ModeloGrabado(
+				pide("buscar_persona", "{\"nombre\":\"Pérez\"}"),
+				pide(ProponerAccionHerramienta.NOMBRE,
+						"{\"tipo\":\"PAGO\",\"persona_id\":1,\"monto\":15000,\"medio\":\"EFECTIVO\"}"));
+		AgenteDelAsistente agente = new AgenteDelAsistente(new ProveedoresDelAgente(modelo, null), catalogo,
+				new AuditoriaDelAsistente(auditados::add), "SYSTEM", 8, Duration.ofSeconds(30), Clock.systemUTC());
+
+		RespuestaDelAsistente r = agente.responder(ACTOR, CTX, "Juan Pérez pagó 15000 en efectivo", List.of(), null);
+
+		assertThat(r.resultado()).isEqualTo(Resultado.PROPUESTA);
+		assertThat(r.accion()).isEqualTo(tarjeta);
+		assertThat(modelo.pedidos).as("no vuelve al modelo despues de proponer").hasSize(2);
+		assertThat(modelo.pedidos.getFirst().herramientas()).extracting(d -> d.nombre())
+				.contains(ProponerAccionHerramienta.NOMBRE);
+		assertThat(r.herramientas()).extracting(LlamadaRegistrada::herramienta)
+				.containsExactly("buscar_persona", ProponerAccionHerramienta.NOMBRE);
+		ArgumentCaptor<PedidoDeAccion> pedido = ArgumentCaptor.forClass(PedidoDeAccion.class);
+		verify(acciones).proponerPedido(eq(ACTOR), eq(CTX.zona()), pedido.capture());
+		assertThat(pedido.getValue().personaNombre()).as("el nombre sale del padron").isEqualTo("Pérez, Juan");
+		assertThat(pedido.getValue().monto()).isEqualByComparingTo("15000");
+		assertThat(pedido.getValue().frase()).isEqualTo("Juan Pérez pagó 15000 en efectivo");
+		assertThat(auditados.getFirst().details()).containsEntry("resultado", "PROPUESTA");
 	}
 
 	private static ProveedorDeAgente caido() {

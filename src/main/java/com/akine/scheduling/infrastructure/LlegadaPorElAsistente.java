@@ -143,7 +143,7 @@ class LlegadaPorElAsistente implements AccionDelAsistente {
 		}
 		return ResultadoDeAccion.confirmada(
 				"Registré la llegada de " + tarjeta.nombre() + ".",
-				TurnosEnElAsistente.ENLACE_RECEPCION,
+				TurnosParaElAgente.ENLACE,
 				Map.of("turnoId", tarjeta.turnoId()));
 	}
 

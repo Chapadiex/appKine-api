@@ -10,8 +10,9 @@ import com.akine.person.application.PerfilPacienteService;
 import com.akine.person.application.PersonaAltaCommand;
 import com.akine.person.application.PersonaService;
 import com.akine.person.domain.TipoDocumento;
-import com.akine.platform.infrastructure.modelo.ModeloDeLenguajeDePrueba;
-import com.akine.platform.spi.modelo.ModeloDeLenguaje;
+import com.akine.platform.infrastructure.modelo.agente.ProveedorDeAgenteDePrueba;
+import com.akine.platform.spi.modelo.agente.LlamadaAHerramienta;
+import com.akine.platform.spi.modelo.agente.TurnoDelAgente;
 import com.akine.testsupport.InsertarConId;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -52,7 +53,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Las acciones del asistente de punta a punta (docs/diseno/AKINE-asistente-acciones.md): HTTP real,
  * login y contexto por el camino real, PostgreSQL, y cada accion llamando al servicio de aplicacion
- * de su modulo. Solo el modelo es de prueba: devuelve el JSON que cada caso le fija.
+ * de su modulo. Solo el agente es de prueba: cada caso le fija la llamada a {@code proponer_accion}.
  *
  * <p>Cada caso mira <b>la base</b> despues de confirmar: un 200 no prueba que el dato quedo.
  *
@@ -83,14 +84,13 @@ class AsistenteAccionesIT {
 	@Autowired PersonaService personas;
 	@Autowired PerfilPacienteService perfiles;
 	@Autowired InscripcionService inscripciones;
-	@Autowired ModeloDeLenguaje modeloDeLenguaje;
+	@Autowired ProveedorDeAgenteDePrueba agente;
 
 	private final HttpClient http = HttpClient.newBuilder()
 			.version(HttpClient.Version.HTTP_1_1)
 			.connectTimeout(Duration.ofSeconds(10))
 			.build();
 
-	private ModeloDeLenguajeDePrueba modelo;
 	/** ORG_ADMIN del centro donde pasa casi todo, con la caja abierta. */
 	private Sesion admin;
 	private Sesion profesional;
@@ -104,7 +104,6 @@ class AsistenteAccionesIT {
 
 	@BeforeAll
 	void sembrar() throws Exception {
-		modelo = (ModeloDeLenguajeDePrueba) modeloDeLenguaje;
 		admin = altaCompleta("acciones-a");
 		otroCentro = altaCompleta("acciones-b");
 		profesional = conRolEn(admin, "acciones-pro", "PROFESIONAL");
@@ -157,7 +156,7 @@ class AsistenteAccionesIT {
 
 	@AfterEach
 	void modeloPorDefecto() {
-		modelo.reiniciar();
+		agente.reiniciar();
 	}
 
 	// ============================================================================ a. pago
@@ -641,29 +640,78 @@ class AsistenteAccionesIT {
 	}
 
 	@Test
-	void una_pregunta_sigue_siendo_una_consulta_aunque_el_modelo_devuelva_una_accion() throws Exception {
-		// EsPregunta corta antes del interpretador de acciones: la respuesta nunca es una tarjeta.
-		modelo.responderJson(JSON.writeValueAsString(Map.of("accion", "PACIENTE_ALTA", "nombre", "Nora",
-				"apellido", "Consulta")));
+	void un_persona_id_que_no_es_del_centro_no_arma_tarjeta() throws Exception {
+		String apellido = "Ajeno" + sufijo();
+		long deOtroCentro = paciente(otroCentro, apellido, "Pablo", null, null);
+		String frase = apellido + " pagó 5000 en efectivo";
+		Map<String, Object> entrada = Map.of("tipo", "PAGO", "persona_id", deOtroCentro, "monto", 5000,
+				"medio", "EFECTIVO");
+		// El error vuelve al modelo, que en el guion responde con texto: nunca hay tarjeta.
+		agente.guion(primeraPalabra(frase), List.of(llamada("proponer_accion", entrada),
+				new TurnoDelAgente("No encontré a esa persona.", List.of(), null, null)));
 
 		HttpResponse<String> r = post("/api/v1/consultorios/" + admin.consultorioId() + "/asistente/consultas",
-				admin.token(), JSON.writeValueAsString(Map.of("pregunta", "¿quién es Nora Consulta?")));
+				admin.token(), JSON.writeValueAsString(Map.of("pregunta", frase)));
 
 		assertThat(r.statusCode()).as(r.body()).isEqualTo(200);
 		JsonNode cuerpo = JSON.readTree(r.body());
 		assertThat(cuerpo.get("resultado").asString()).isNotEqualTo("PROPUESTA");
 		assertThat(cuerpo.get("accion") == null || cuerpo.get("accion").isNull()).isTrue();
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM asistente_accion WHERE organization_id = ?",
+				Integer.class, otroCentro.organizationId())).isZero();
 	}
 
 	// ============================================================================ soporte
 
-	/** Dice la frase con el modelo de prueba contestando {@code entendido}. */
+	/**
+	 * Dice la frase con el agente de prueba llamando a {@code proponer_accion}. {@code entendido} va con
+	 * las claves de antes (accion, persona por apellido, modo, nombre...) y se traduce a la entrada de la
+	 * herramienta; el medio sale de la frase, como lo pondria el modelo.
+	 */
 	private JsonNode decir(Sesion sesion, String frase, Map<String, Object> entendido) throws Exception {
-		modelo.responderJson(JSON.writeValueAsString(entendido));
+		agente.guion(primeraPalabra(frase), List.of(llamada("proponer_accion", entrada(sesion, frase, entendido))));
 		HttpResponse<String> r = post("/api/v1/consultorios/" + sesion.consultorioId() + "/asistente/consultas",
 				sesion.token(), JSON.writeValueAsString(Map.of("pregunta", frase)));
 		assertThat(r.statusCode()).as(r.body()).isEqualTo(200);
 		return JSON.readTree(r.body());
+	}
+
+	private Map<String, Object> entrada(Sesion sesion, String frase, Map<String, Object> entendido) {
+		Map<String, Object> entrada = new LinkedHashMap<>();
+		Map<String, Object> datos = new LinkedHashMap<>();
+		entendido.forEach((clave, valor) -> {
+			switch (clave) {
+				case "accion" -> entrada.put("tipo", valor);
+				case "persona" -> entrada.put("persona_id", jdbc.queryForObject(
+						"SELECT id FROM persona WHERE organization_id = ? AND apellido = ?", Long.class,
+						sesion.organizationId(), valor));
+				case "modo" -> entrada.put("modo_asistencia", valor);
+				case "nombre", "apellido", "documento", "telefono", "email" -> datos.put(clave, valor);
+				default -> entrada.put(clave, valor);
+			}
+		});
+		if (!datos.isEmpty()) {
+			entrada.put("datos", datos);
+		}
+		String plegada = frase.toLowerCase(Locale.ROOT);
+		if (!entrada.containsKey("medio") && "PAGO".equals(entrada.get("tipo"))) {
+			if (plegada.contains("efectivo")) {
+				entrada.put("medio", "EFECTIVO");
+			}
+			else if (plegada.contains("transferencia")) {
+				entrada.put("medio", "TRANSFERENCIA");
+			}
+		}
+		return entrada;
+	}
+
+	private static TurnoDelAgente llamada(String herramienta, Map<String, Object> entrada) {
+		return new TurnoDelAgente(null, List.of(new LlamadaAHerramienta("l-" + UUID.randomUUID(), herramienta,
+				JSON.writeValueAsString(entrada))), null, null);
+	}
+
+	private static String primeraPalabra(String frase) {
+		return frase.strip().split("\\s+")[0];
 	}
 
 	/** Confirma devolviendo la tarjeta tal cual vino en la propuesta. */

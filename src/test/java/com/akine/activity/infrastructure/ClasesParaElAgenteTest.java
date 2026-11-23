@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-class ClasesEnElAsistenteTest {
+class ClasesParaElAgenteTest {
 
 	private static final Instant AHORA = Instant.parse("2026-11-15T15:00:00Z");
 
@@ -31,15 +31,15 @@ class ClasesEnElAsistenteTest {
 	@Test
 	void el_titulo_mas_largo_escrito_en_la_pregunta_gana_aunque_el_modelo_lo_acorte() {
 		// Los casos XC2 y XC3 de la medicion del 15/11.
-		assertThat(ClasesEnElAsistente.elegir(semana, "yoga", "quiénes faltaron a la clase de yoga para embarazadas", AHORA))
+		assertThat(ClasesParaElAgente.elegir(semana, "yoga", "quiénes faltaron a la clase de yoga para embarazadas", AHORA))
 				.extracting(ClaseView::id).containsExactly(2L);
-		assertThat(ClasesEnElAsistente.elegir(semana, "pilates", "presentes en pilates reformer ayer", AHORA))
+		assertThat(ClasesParaElAgente.elegir(semana, "pilates", "presentes en pilates reformer ayer", AHORA))
 				.extracting(ClaseView::id).containsExactly(3L);
 	}
 
 	@Test
 	void si_la_pregunta_dice_solo_yoga_vienen_todas_las_de_yoga_las_ya_empezadas_primero() {
-		assertThat(ClasesEnElAsistente.elegir(semana, "yoga", "quienes vinieron a yoga", AHORA))
+		assertThat(ClasesParaElAgente.elegir(semana, "yoga", "quienes vinieron a yoga", AHORA))
 				.extracting(ClaseView::id).containsExactly(2L, 1L, 4L);
 	}
 
@@ -48,14 +48,14 @@ class ClasesEnElAsistenteTest {
 		ClaseView sinTitulo = clase(9, null, "2026-11-16T19:00:00Z");
 		when(sinTitulo.ofertaNombre()).thenReturn("Yoga");
 
-		assertThat(ClasesEnElAsistente.elegir(List.of(sinTitulo), "yoga", "quienes van a yoga manana", AHORA))
+		assertThat(ClasesParaElAgente.elegir(List.of(sinTitulo), "yoga", "quienes van a yoga manana", AHORA))
 				.extracting(ClaseView::id).containsExactly(9L);
-		assertThat(ClasesEnElAsistente.nombre(sinTitulo)).isEqualTo("Yoga");
+		assertThat(ClasesParaElAgente.nombre(sinTitulo)).isEqualTo("Yoga");
 	}
 
 	@Test
 	void sin_coincidencias_o_sin_texto_no_hay_clases() {
-		assertThat(ClasesEnElAsistente.elegir(semana, "zumba", "quienes fueron a zumba", AHORA)).isEmpty();
-		assertThat(ClasesEnElAsistente.elegir(semana, null, "quienes fueron", AHORA)).isEmpty();
+		assertThat(ClasesParaElAgente.elegir(semana, "zumba", "quienes fueron a zumba", AHORA)).isEmpty();
+		assertThat(ClasesParaElAgente.elegir(semana, null, "quienes fueron", AHORA)).isEmpty();
 	}
 }
