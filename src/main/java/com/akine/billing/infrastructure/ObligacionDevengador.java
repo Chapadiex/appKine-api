@@ -15,13 +15,10 @@ import com.akine.encounter.spi.CierreDeSesionObserver;
 import com.akine.encounter.spi.OfertaSinPrecioException;
 import com.akine.encounter.spi.PrecioParticularDelCierre;
 import com.akine.encounter.spi.SesionCerrada;
-import com.akine.offering.spi.PracticasDeOfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ZonaDeSede;
-import com.akine.person.spi.CoberturasAplicablesDirectory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -92,7 +89,6 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 	private final AuditoriaDeObligacion auditoria;
 	private final CotizadorDeAtencion cotizador;
 
-	@Autowired
 	public ObligacionDevengador(
 			ObligacionRepositoryPort obligaciones,
 			ArancelDirectory aranceles,
@@ -105,23 +101,6 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 		this.consultorios = consultorios;
 		this.auditoria = auditoria;
 		this.cotizador = cotizador;
-	}
-
-	/**
-	 * La forma anterior a la extraccion del cotizador, para los tests que arman el devengo con
-	 * dobles: el cotizador se construye con las mismas dependencias (sin ofertas: el devengo no
-	 * cotiza).
-	 */
-	public ObligacionDevengador(
-			ObligacionRepositoryPort obligaciones,
-			CoberturasAplicablesDirectory coberturas,
-			ArancelDirectory aranceles,
-			PracticasDeOfertaDirectory practicasDeOferta,
-			ConsultorioDirectory consultorios,
-			AuditoriaDeObligacion auditoria) {
-
-		this(obligaciones, aranceles, consultorios, auditoria, new CotizadorDeAtencion(
-				obligaciones, coberturas, aranceles, practicasDeOferta, consultorios, null));
 	}
 
 	@Override
@@ -312,14 +291,19 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 	 */
 	private Optional<Cubierta> cubierta(SesionCerrada cierre) {
 		LocalDate dia = diaLocalDeLaSede(cierre);
-		Optional<Cubierta> cubierta = cotizador.resolver(
+		CotizadorDeAtencion.Resolucion resolucion = cotizador.resolver(
 				cierre.organizationId(), cierre.consultorioId(), cierre.personaId(), cierre.ofertaId(),
 				cierre.practicasRealizadas(), cierre.coberturaElegidaId(), dia,
 				(cobertura, practicaId) -> aranceles.congelar(
 						cierre.organizationId(), cierre.consultorioId(),
 						cobertura.referencia().financiadorId(), cobertura.referencia().planId(),
-						practicaId, cierre.ofertaId(), dia))
-				.cubierta();
+						practicaId, cierre.ofertaId(), dia));
+		resolucion.topes().stream().filter(CotizadorDeAtencion.TopeEvaluado::alcanzado).forEach(t ->
+				log.info("Tope de sesiones del mes alcanzado: la sesion no se cubre por el plan. "
+								+ "sesionId={} personaId={} planId={} usadas={} tope={}",
+						cierre.sesionId(), cierre.personaId(), t.cobertura().referencia().planId(),
+						t.usadas(), t.tope()));
+		Optional<Cubierta> cubierta = resolucion.cubierta();
 		cubierta.ifPresent(c -> {
 			if (cierre.coberturaElegidaId() != null
 					&& c.cobertura().coberturaId() != cierre.coberturaElegidaId()) {

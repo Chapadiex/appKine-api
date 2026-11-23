@@ -11,11 +11,15 @@ import com.akine.billing.application.ObligacionService;
 import com.akine.billing.application.ObligacionView;
 import com.akine.billing.application.OperatingActor;
 import com.akine.billing.domain.EstadoObligacion;
+import com.akine.billing.domain.PermissionCodes;
+import com.akine.organization.spi.PermissionGuard;
+import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.PacienteDirectory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -43,11 +47,14 @@ class DeudasEnElAsistente implements HerramientaDelAgente {
 	private final ObligacionService obligaciones;
 	private final CobroService cobros;
 	private final PacienteDirectory pacientes;
+	private final PermissionGuard permisos;
 
-	DeudasEnElAsistente(ObligacionService obligaciones, CobroService cobros, PacienteDirectory pacientes) {
+	DeudasEnElAsistente(ObligacionService obligaciones, CobroService cobros, PacienteDirectory pacientes,
+			PermissionGuard permisos) {
 		this.obligaciones = obligaciones;
 		this.cobros = cobros;
 		this.pacientes = pacientes;
+		this.permisos = permisos;
 	}
 
 	@Override
@@ -83,6 +90,10 @@ class DeudasEnElAsistente implements HerramientaDelAgente {
 		if (actor.organizationId() == null || actor.consultorioId() == null) {
 			throw new AccessDeniedException("La consulta requiere una sede activa");
 		}
+		// El permiso va antes de buscar a la persona: sin cobro:register la respuesta es "sin
+		// permiso" exista o no el id, y no se confirma quien esta en el padron.
+		permisos.requirePermission(new PermissionQuery(actor.accountId(), PermissionCodes.COBRO_REGISTER,
+				actor.organizationId(), actor.consultorioId(), null, Instant.now()));
 		if (pacientes.find(actor.organizationId(), personaId).isEmpty()) {
 			return new ResultadoDeHerramienta(List.of(), List.of("No encontré esa persona"), null, false);
 		}

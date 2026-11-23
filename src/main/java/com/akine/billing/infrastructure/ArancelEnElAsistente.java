@@ -185,13 +185,15 @@ class ArancelEnElAsistente implements HerramientaDelAgente {
 				continue;
 			}
 			planes++;
-			if (planes > TOPE) {
+			// La fila PARTICULAR cuenta dentro del tope de 50.
+			if (filas.size() >= TOPE) {
 				continue;
 			}
 			filas.add(filaDePlan(org, oferta, vigente.get(), convenios, precio));
 		}
-		if (planes > TOPE) {
-			advertencias.add("Hay " + planes + " resultados; muestro los primeros " + TOPE);
+		int resultados = 1 + planes;
+		if (resultados > TOPE) {
+			advertencias.add("Hay " + resultados + " resultados; muestro los primeros " + TOPE);
 		}
 		if (sinPrecio > 0) {
 			advertencias.add(sinPrecio + " plan(es) con convenio no tienen precio vigente para esta actividad "

@@ -187,12 +187,8 @@ public class CotizadorDeAtencion {
 				organizationId, personaId, arancel.planId(),
 				primero.atStartOfDay(zona).toInstant(),
 				primero.plusMonths(1).atStartOfDay(zona).toInstant());
-		boolean alcanzado = usadas >= tope;
-		if (alcanzado) {
-			log.info("Tope de sesiones del mes alcanzado: no se cubre por el plan. personaId={} "
-					+ "planId={} usadas={} tope={}", personaId, arancel.planId(), usadas, tope);
-		}
-		return new TopeEvaluado(cobertura, arancel.convenioId(), tope, usadas, alcanzado);
+		// El log del tope alcanzado lo escribe el devengo, que conoce la sesion.
+		return new TopeEvaluado(cobertura, arancel.convenioId(), tope, usadas, usadas >= tope);
 	}
 
 	/**
