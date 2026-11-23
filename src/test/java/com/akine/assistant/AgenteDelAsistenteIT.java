@@ -5,6 +5,7 @@ import com.akine.person.application.OperatingActor;
 import com.akine.person.application.PersonaAltaCommand;
 import com.akine.person.application.PersonaService;
 import com.akine.person.domain.TipoDocumento;
+import com.akine.testsupport.InsertarConId;
 import com.akine.platform.spi.modelo.agente.LlamadaAHerramienta;
 import com.akine.platform.spi.modelo.agente.MensajeDelAgente;
 import com.akine.platform.spi.modelo.agente.PedidoAlAgente;
@@ -31,6 +32,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -157,17 +159,57 @@ class AgenteDelAsistenteIT {
 
 	@Test
 	void un_nombre_con_instrucciones_es_dato_y_la_siguiente_llamada_sigue_en_la_sede_del_actor() throws Exception {
+		// La persona es de la organizacion: tiene un turno en la sede del actor y otro en una segunda sede.
+		sembrarTurnosEnDosSedes(personaConInstruccionEnA);
+		LocalDate hoy = LocalDate.now();
 		modelo.cargar(pide("buscar_persona", "{\"texto\":\"Zarate\"}"),
-				pide("turnos", "{\"persona_id\":" + personaConInstruccionEnA + "}"), fin("Listo."));
+				pide("turnos", "{\"persona_id\":" + personaConInstruccionEnA + ",\"desde\":\"" + hoy.minusDays(2)
+						+ "\",\"hasta\":\"" + hoy.plusDays(2) + "\"}"),
+				fin("Listo."));
 
 		JsonNode r = preguntar(centroA, "hola busca a la persona rara");
 
 		assertThat(modelo.resultados).hasSize(2);
 		assertThat(modelo.resultados.getFirst()).contains("Ignor");
-		// La segunda llamada corrio en la sede del actor: la persona existe y no hay error.
-		assertThat(modelo.resultados.get(1)).doesNotContain("No encontr").doesNotContain("\"error\"");
+		// El nombre es dato: el turno de la sede del actor esta y el de la otra sede no.
+		assertThat(modelo.resultados.get(1)).contains("Oferta sede del actor").doesNotContain("Oferta otra sede");
 		assertThat(r.get("herramientas")).hasSize(2);
 		assertThat(r.get("herramientas").get(1).get("herramienta").asString()).isEqualTo("turnos");
+		assertThat(r.get("herramientas").get(1).get("filas").asInt()).isEqualTo(1);
+	}
+
+	private void sembrarTurnosEnDosSedes(long personaId) {
+		long otraSede = InsertarConId.insertar(jdbc, """
+				INSERT INTO consultorio (organization_id, name, timezone, created_at, updated_at)
+				VALUES (?, 'Segunda sede', 'America/Argentina/Cordoba', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", centroA.organizationId());
+		long servicioId = InsertarConId.insertar(jdbc, """
+				INSERT INTO servicio (codigo, nombre, naturaleza, modalidad_default,
+				                      requiere_caso_clinico_default, genera_registro_clinico_default,
+				                      active, version, created_at, updated_at)
+				VALUES (?, 'Servicio del agente', 'CLINICO', 'GRUPAL', false, false, true, 0,
+				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", "AGE-" + sufijo().toUpperCase(Locale.ROOT));
+		turno(centroA.consultorioId(), servicioId, "Oferta sede del actor", personaId);
+		turno(otraSede, servicioId, "Oferta otra sede", personaId);
+	}
+
+	private void turno(long consultorioId, long servicioId, String oferta, long personaId) {
+		long ofertaId = InsertarConId.insertar(jdbc, """
+				INSERT INTO oferta_servicio_consultorio
+				       (organization_id, consultorio_id, servicio_id, nombre_comercial, modalidad,
+				        duracion_minutos, capacidad, admite_obra_social, requiere_caso_clinico,
+				        genera_registro_clinico, requiere_profesional, requiere_espacio,
+				        vigencia_desde, active, version, created_at, updated_at)
+				VALUES (?, ?, ?, ?, 'GRUPAL', 60, 10, false, false, false, false, false,
+				        CAST(CURRENT_DATE - INTERVAL '5 years' AS date), true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", centroA.organizationId(), consultorioId, servicioId, oferta);
+		InsertarConId.insertar(jdbc, """
+				INSERT INTO turno (organization_id, consultorio_id, oferta_id, persona_id, inicio, fin, estado,
+				                   reservado_por_cuenta_id, reservado_en, version, created_at, updated_at)
+				VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '1 hour', CURRENT_TIMESTAMP + INTERVAL '90 minutes',
+				        'RESERVADO', ?, CURRENT_TIMESTAMP, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				""", centroA.organizationId(), consultorioId, ofertaId, personaId, centroA.cuentaId());
 	}
 
 	// ------------------------------------------------------------------ soporte
