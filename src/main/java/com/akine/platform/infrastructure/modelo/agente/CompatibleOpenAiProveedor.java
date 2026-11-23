@@ -87,7 +87,7 @@ public class CompatibleOpenAiProveedor implements ProveedorDeAgente {
 				case MensajeDelAgente.Resultados r -> {
 					for (ResultadoDeLlamada res : r.resultados()) {
 						mensajes.addObject().put("role", "tool").put("tool_call_id", res.llamadaId())
-								.put("content", res.contenidoJson());
+								.put("content", contenidoDe(res));
 					}
 				}
 			}
@@ -102,6 +102,21 @@ public class CompatibleOpenAiProveedor implements ProveedorDeAgente {
 			raiz.put("tool_choice", "auto");
 		}
 		return raiz;
+	}
+
+	/** Si la herramienta fallo, el modelo recibe {"error": ...} para saberlo. */
+	private String contenidoDe(ResultadoDeLlamada res) {
+		if (!res.error()) {
+			return res.contenidoJson();
+		}
+		ObjectNode o = json.createObjectNode();
+		try {
+			o.set("error", json.readTree(res.contenidoJson()));
+		}
+		catch (JacksonException | NullPointerException e) {
+			o.put("error", res.contenidoJson());
+		}
+		return json.writeValueAsString(o);
 	}
 
 	/** Reconstruye el mensaje assistant cuando el turno no trae el crudo del proveedor. */
@@ -127,7 +142,8 @@ public class CompatibleOpenAiProveedor implements ProveedorDeAgente {
 			}
 			List<LlamadaAHerramienta> llamadas = new ArrayList<>();
 			for (JsonNode c : mensaje.path("tool_calls")) {
-				String args = c.path("function").path("arguments").asString("{}");
+				JsonNode a = c.path("function").path("arguments");
+				String args = a.isObject() ? a.toString() : a.asString("{}");
 				llamadas.add(new LlamadaAHerramienta(c.path("id").asString(""),
 						c.path("function").path("name").asString(""), args.isBlank() ? "{}" : args));
 			}

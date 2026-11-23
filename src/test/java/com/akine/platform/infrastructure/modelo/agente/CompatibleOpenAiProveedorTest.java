@@ -88,6 +88,16 @@ class CompatibleOpenAiProveedorTest {
 	}
 
 	@Test
+	void argumentosComoObjetoSeConservan() {
+		servidor.expect(requestTo("http://modelo/v1/chat/completions")).andRespond(withSuccess(
+				"{\"choices\":[{\"message\":{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"c2\","
+						+ "\"function\":{\"name\":\"contar\",\"arguments\":{\"x\":2}}}]}}]}",
+				MediaType.APPLICATION_JSON));
+		TurnoDelAgente turno = proveedor.responder(pedido(List.of(new MensajeDelAgente.DelUsuario("hola"))));
+		assertThat(turno.llamadas().get(0).entradaJson()).isEqualTo("{\"x\":2}");
+	}
+
+	@Test
 	void un5xxEsModeloNoDisponible() {
 		servidor.expect(requestTo("http://modelo/v1/chat/completions"))
 				.andRespond(withStatus(HttpStatus.BAD_GATEWAY));
