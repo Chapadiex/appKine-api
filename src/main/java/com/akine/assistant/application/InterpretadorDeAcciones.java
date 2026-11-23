@@ -2,6 +2,7 @@ package com.akine.assistant.application;
 
 import com.akine.assistant.domain.exception.ModeloNoDisponibleException;
 import com.akine.assistant.spi.DatosDePersona;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import com.akine.platform.spi.modelo.MensajeChat;
 import com.akine.platform.spi.modelo.MensajeChat.Rol;
 import com.akine.platform.spi.modelo.ModeloDeLenguaje;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -99,8 +101,8 @@ public class InterpretadorDeAcciones {
 		String modo = texto(raiz, "modo");
 		modo = modo == null ? null : modo.toUpperCase(Locale.ROOT);
 		return new AccionInterpretada(accion,
-				Interpretador.persona(texto(raiz, "persona")),
-				Interpretador.clase(texto(raiz, "clase")),
+				persona(texto(raiz, "persona")),
+				clase(texto(raiz, "clase")),
 				"TODOS_MENOS".equals(modo) || "SOLO".equals(modo) ? modo : null,
 				lista(raiz, "nombres"),
 				ControlDeAccion.importe(texto(raiz, "monto")),
@@ -131,5 +133,30 @@ public class InterpretadorDeAcciones {
 		}
 		String valor = nodo.asString("").strip();
 		return valor.isEmpty() || valor.equalsIgnoreCase("null") ? null : valor;
+	}
+
+	private static final Set<String> TITULOS = Set.of(
+			"sr", "sr.", "sra", "sra.", "senor", "senora", "don", "dona", "el", "la");
+
+	/** Sin titulos adelante ("el senor Rodriguez" es "Rodriguez"); respeta como lo escribio el usuario. */
+	static String persona(String valor) {
+		if (valor == null) {
+			return null;
+		}
+		List<String> palabras = new ArrayList<>(List.of(valor.strip().split("\\s+")));
+		while (!palabras.isEmpty() && TITULOS.contains(TextoDeBusqueda.plegar(palabras.getFirst()))) {
+			palabras.removeFirst();
+		}
+		String limpio = String.join(" ", palabras).strip();
+		return limpio.isEmpty() ? null : limpio;
+	}
+
+	/** El nombre de la actividad en minusculas, sin "la clase de" adelante. */
+	static String clase(String valor) {
+		if (valor == null) {
+			return null;
+		}
+		String limpio = valor.strip().toLowerCase(Locale.ROOT).replaceFirst("^(la )?clase (de )?", "").strip();
+		return limpio.isEmpty() ? null : limpio;
 	}
 }

@@ -52,7 +52,7 @@ class TurnosEnElAsistenteTest {
 		when(recepcion.delRango(any(), anyLong(), any(), any(), any(), any(), anyBoolean(), any()))
 				.thenThrow(new AccessDeniedException("sin turno:read"));
 
-		// El asistente lo convierte en "sin permiso" en un solo lugar (AsistenteService.ejecutar).
+		// El asistente lo convierte en "sin permiso" en un solo lugar (CatalogoDeHerramientas.ejecutar).
 		assertThatThrownBy(() -> new TurnosEnElAsistente.AsistenciaDePersona(recepcion)
 				.ejecutar(ACTOR, pedido(5L, MANANA, MANANA.plusDays(6))))
 				.isInstanceOf(AccessDeniedException.class);

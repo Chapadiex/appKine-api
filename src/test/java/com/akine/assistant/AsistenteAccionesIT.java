@@ -67,7 +67,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 				"akine.security.rate-limit.enabled=false",
 				"akine.asistente.enabled=true",
 				"akine.asistente.acciones.enabled=true",
-				"akine.asistente.modelo.tipo=prueba"})
+				"akine.asistente.modelo.tipo=prueba",
+				"akine.asistente.agente.proveedor=prueba"})
 @ActiveProfiles("local")
 @Import(TestcontainersConfiguration.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
