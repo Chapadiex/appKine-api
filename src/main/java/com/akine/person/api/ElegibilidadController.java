@@ -101,8 +101,8 @@ public class ElegibilidadController {
 					NO AFIRMA QUE LA PRESTACION SEA FACTURABLE (RN-M08-004): dice si la \
 					documentacion administrativa esta presente, que es otra cosa.
 
-					limiteSesionesMensual viaja INFORMATIVO y sin veredicto: verificarlo exige \
-					contar sesiones ya atendidas, o sea el consumo que esta version no cablea.
+					limiteSesionesMensual viaja sin veredicto aca: lo aplica el cierre de la \
+					sesion, que pasada la cantidad del mes la cobra como particular.
 
 					Exige consultorio en el contexto: el convenio que fija los requisitos es de la \
 					SEDE (RN-M16-001), asi que la misma cobertura del mismo paciente puede exigir \

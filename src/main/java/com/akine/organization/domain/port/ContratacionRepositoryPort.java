@@ -15,6 +15,12 @@ public interface ContratacionRepositoryPort {
 	/** Si la plataforma eligio la contratacion (alta o cambio); si no, el centro tiene todo. */
 	boolean definida(long organizationId);
 
+	/**
+	 * Si el centro nacio en prueba gratis, que es como lo crea el alta de la plataforma: el
+	 * autoregistro lo crea ACTIVA. Se lee de la primera transicion de la suscripcion.
+	 */
+	boolean nacioEnPrueba(long organizationId);
+
 	/** Centros vigentes en PRUEBA cuyo fin cae en [desde, hasta). */
 	java.util.List<com.akine.organization.spi.PruebasGratis.PruebaEnCurso> pruebasQueTerminanEntre(
 			java.time.Instant desde, java.time.Instant hasta);
@@ -34,4 +40,10 @@ public interface ContratacionRepositoryPort {
 	 * (centros anteriores al 18/11/2026, que tienen todo). Una sola consulta para una pagina entera.
 	 */
 	Set<Long> conAdicional(java.util.Collection<Long> organizationIds, Adicional adicional);
+
+	/**
+	 * Los servicios de cada centro dado, con la misma regla que {@link #serviciosDe}: sin contratacion
+	 * definida, todos. Una sola consulta para una pagina entera; un centro sin suscripcion no viene.
+	 */
+	java.util.Map<Long, Set<Servicio>> serviciosDeVarios(java.util.Collection<Long> organizationIds);
 }

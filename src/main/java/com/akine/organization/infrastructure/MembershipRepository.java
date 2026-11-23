@@ -78,6 +78,26 @@ public interface MembershipRepository extends JpaRepository<Membership, Long>, M
 	 */
 	long countByOrganizationIdAndActiveTrue(Long organizationId);
 
+	@Override
+	@Query("""
+			select count(distinct m.accountId) from Membership m
+			 where m.organizationId = :organizationId
+			   and m.active = true
+			   and m.roleCode = com.akine.organization.domain.RoleCode.PROFESIONAL
+			""")
+	long contarProfesionalesActivos(@Param("organizationId") Long organizationId);
+
+	@Override
+	@Query("""
+			select count(m) > 0 from Membership m
+			 where m.organizationId = :organizationId
+			   and m.accountId = :accountId
+			   and m.active = true
+			   and m.roleCode = com.akine.organization.domain.RoleCode.PROFESIONAL
+			""")
+	boolean esProfesionalActivo(@Param("organizationId") Long organizationId,
+			@Param("accountId") Long accountId);
+
 	/**
 	 * Chequeo previo de pertenencia. Sin llamadores hoy.
 	 *

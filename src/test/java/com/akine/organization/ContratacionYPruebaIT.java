@@ -160,7 +160,7 @@ class ContratacionYPruebaIT {
 
 		String otro = "red-" + UUID.randomUUID().toString().substring(0, 8) + "@centro.test";
 		solicitudes.recibir(new SolicitudDePruebaService.Pedido("Ana", "Sintetica", otro, null, "Red Sintetica",
-				null, true, true, SolicitudDePrueba.Sedes.MAS_DE_TRES, true, null, null), UUID.randomUUID().toString());
+				null, true, true, SolicitudDePrueba.Sedes.MAS_DE_TRES, true, null, null, null, null), UUID.randomUUID().toString());
 		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM solicitud_de_prueba WHERE email = ?", Integer.class, otro))
 				.isEqualTo(1);
 
@@ -169,7 +169,7 @@ class ContratacionYPruebaIT {
 				.isInstanceOf(IllegalArgumentException.class);
 		assertThatThrownBy(() -> solicitudes.recibir(new SolicitudDePruebaService.Pedido("Ana", "Sintetica",
 				"nada-" + UUID.randomUUID().toString().substring(0, 8) + "@centro.test", null, "Sin servicio", null,
-				false, false, SolicitudDePrueba.Sedes.UNA, false, null, null), UUID.randomUUID().toString()))
+				false, false, SolicitudDePrueba.Sedes.UNA, false, null, null, null, null), UUID.randomUUID().toString()))
 				.as("sin ningun servicio")
 				.isInstanceOf(IllegalArgumentException.class);
 	}
@@ -241,6 +241,6 @@ class ContratacionYPruebaIT {
 
 	private static SolicitudDePruebaService.Pedido pedido(String email, String trampa) {
 		return new SolicitudDePruebaService.Pedido("Ana", "Sintetica", email, null, "Estudio Sintetico",
-				"Cordoba", false, true, SolicitudDePrueba.Sedes.UNA, false, null, trampa);
+				"Cordoba", false, true, SolicitudDePrueba.Sedes.UNA, false, null, trampa, null, null);
 	}
 }

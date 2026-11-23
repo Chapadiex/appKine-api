@@ -56,4 +56,4 @@ de esconder el centro.
 
 ## Números reservados
 
-Migración **V30** (V29 la tomó `wt-API-ACCIONES`), contrato **0.181.0**.
+Migración **V45**, contrato **0.191.0** (nació como V30 y 0.181.0; renumerada al integrar sobre planes, que dejó V44 y 0.190.0).

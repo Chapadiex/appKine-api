@@ -35,5 +35,11 @@ public record SolicitudDePruebaRequest(
 		@Size(max = 1000, message = "El comentario admite hasta 1000 caracteres") String comentario,
 		@Schema(description = "Campo que una persona deja vacio. Si llega con texto, el pedido se ignora "
 				+ "y la respuesta es la misma")
-		@Size(max = 200, message = "El sitio web admite hasta 200 caracteres") String sitioWeb) {
+		@Size(max = 200, message = "El sitio web admite hasta 200 caracteres") String sitioWeb,
+		@Schema(description = "Acepta los terminos y condiciones. Obligatorio en true: GET /api/v1/terms "
+				+ "da la version vigente")
+		Boolean aceptaTerminos,
+		@Schema(description = "Version de los terminos que se acepto, la versionVigente de GET "
+				+ "/api/v1/terms. Tiene que coincidir exacta", example = "2026-11-19")
+		@Size(max = 40, message = "La version de los terminos admite hasta 40 caracteres") String versionTerminos) {
 }

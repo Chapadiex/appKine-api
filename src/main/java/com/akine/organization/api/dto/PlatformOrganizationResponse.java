@@ -2,10 +2,12 @@ package com.akine.organization.api.dto;
 
 import com.akine.organization.domain.OrganizationListing;
 import com.akine.organization.domain.SituacionDeCobro;
+import com.akine.organization.spi.Servicio;
 import com.akine.organization.domain.SubscriptionStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Un centro en el listado de la administracion de plataforma.
@@ -31,10 +33,10 @@ public record PlatformOrganizationResponse(
 		@Schema(description = "Estado de la suscripcion", example = "ACTIVA")
 		SubscriptionStatus status,
 
-		@Schema(description = "Codigo del plan contratado", example = "BASICO")
+		@Schema(description = "Codigo del plan contratado", example = "BASE")
 		String planCode,
 
-		@Schema(description = "Nombre comercial del plan contratado", example = "Basico")
+		@Schema(description = "Nombre comercial del plan contratado", example = "Plan Base")
 		String planName,
 
 		@Schema(description = "Instante de alta de la organizacion", example = "2026-01-15T13:45:00Z")
@@ -44,6 +46,8 @@ public record PlatformOrganizationResponse(
 		Instant pruebaHasta,
 		@Schema(description = "Tiene el adicional de IA contratado", example = "false")
 		boolean ia,
+		@Schema(description = "Servicios contratados, en orden fijo", example = "[\"KINESIOLOGIA\", \"ACTIVIDADES\"]")
+		List<Servicio> servicios,
 		@Schema(description = "Hasta cuando esta pagada la suscripcion, instante UTC. Ausente = sin control "
 				+ "de cobro (el centro opera como siempre)", example = "2026-12-19T03:00:00Z")
 		Instant pagadoHasta,
@@ -71,6 +75,7 @@ public record PlatformOrganizationResponse(
 				listing.createdAt(),
 				listing.pruebaHasta(),
 				listing.ia(),
+				listing.servicios().stream().sorted().toList(),
 				listing.pagadoHasta(),
 				SituacionDeCobro.de(listing.pagadoHasta(), ahora),
 				SituacionDeCobro.cierreEl(listing.pagadoHasta()));

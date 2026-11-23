@@ -14,10 +14,12 @@ import java.util.List;
 public record ContratacionResponse(
 		@Schema(description = "Codigo del plan", example = "CRECIMIENTO")
 		String planCode,
-		@Schema(description = "Nombre del plan", example = "Crecimiento")
+		@Schema(description = "Nombre del plan", example = "Plan Intermedio")
 		String planNombre,
 		@Schema(description = "Tope de sedes del plan; ausente = sin tope", example = "3")
 		Integer maxSedes,
+		@Schema(description = "Tope de profesionales del plan (cuentas con rol PROFESIONAL); ausente = sin tope", example = "6")
+		Integer maxProfesionales,
 		@Schema(description = "Servicios contratados, al menos uno")
 		List<Servicio> servicios,
 		@Schema(description = "Adicionales contratados")
@@ -32,6 +34,9 @@ public record ContratacionResponse(
 		@Schema(description = "El centro lo dio de alta o lo ajusto la plataforma. Sin esto es un centro "
 				+ "autoregistrado o anterior al 18/11/2026, y tiene los dos servicios y la IA")
 		boolean definidaPorPlataforma,
+		@Schema(description = "El centro nacio del alta de la plataforma (en prueba gratis), no del "
+				+ "autoregistro. Es el que recibe la guia de primeros pasos aunque despues contrate")
+		boolean altaPorPlataforma,
 		@Schema(description = "Version de la suscripcion, para cambiar la contratacion", example = "0")
 		long version,
 		@Schema(description = "Hasta cuando esta pagada la suscripcion, instante UTC. Ausente = sin control "
@@ -48,10 +53,11 @@ public record ContratacionResponse(
 
 	public static ContratacionResponse from(ContratacionView view) {
 		return new ContratacionResponse(
-				view.planCode(), view.planNombre(), view.maxSedes(),
+				view.planCode(), view.planNombre(), view.maxSedes(), view.maxProfesionales(),
 				view.servicios().stream().sorted().toList(),
 				view.adicionales().stream().sorted().toList(),
 				view.estado(), view.pruebaHasta(), view.soloLectura(), view.definidaPorPlataforma(),
-				view.version(), view.pagadoHasta(), view.situacionDeCobro(), view.cierreEl());
+				view.altaPorPlataforma(), view.version(), view.pagadoHasta(), view.situacionDeCobro(),
+				view.cierreEl());
 	}
 }

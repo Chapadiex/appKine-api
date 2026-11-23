@@ -288,7 +288,7 @@ class ParticularEnObligacionIT {
 				                              practica_id, importe_total, importe_financiador,
 				                              coseguro, moneda, vigencia_desde, active, version,
 				                              created_at, updated_at)
-				VALUES (?, ?, ?, ?, 12000.00, 10500.00, 1500.00, 'ARS', '2020-01-01', true, 0,
+				VALUES (?, ?, ?, ?, 8500.00, 7000.00, 1500.00, 'ARS', '2020-01-01', true, 0,
 				        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 				""", org, sede, convenio, kine);
 

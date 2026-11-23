@@ -84,7 +84,7 @@ class OrganizationControllerTest {
 								{"name":"Centro Kinesico Belgrano",
 								 "slug":"centro-kinesico-belgrano",
 								 "timezone":"America/Argentina/Buenos_Aires",
-								 "planCode":"BASICO"}""")
+								 "planCode":"BASE"}""")
 						.with(ApiActors.platformAdmin(1L)))
 				.andExpect(status().isCreated())
 				.andExpect(header().string("Location", "/api/v1/organizations/5"))
@@ -97,7 +97,7 @@ class OrganizationControllerTest {
 				"Centro Kinesico Belgrano",
 				"centro-kinesico-belgrano",
 				"America/Argentina/Buenos_Aires",
-				"BASICO",
+				"BASE",
 				1L);
 	}
 
@@ -110,7 +110,7 @@ class OrganizationControllerTest {
 		mockMvc.perform(post("/api/v1/organizations")
 						.header("Idempotency-Key", IDEMPOTENCY_KEY)
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"name\":\"Centro\",\"planCode\":\"BASICO\"}")
+						.content("{\"name\":\"Centro\",\"planCode\":\"BASE\"}")
 						.with(ApiActors.miembro(7L)))
 				.andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.type").value("https://akine.app/problems/forbidden"));
@@ -124,7 +124,7 @@ class OrganizationControllerTest {
 		mockMvc.perform(post("/api/v1/organizations")
 						.header("Idempotency-Key", IDEMPOTENCY_KEY)
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"name\":\"Centro\",\"planCode\":\"BASICO\"}"))
+						.content("{\"name\":\"Centro\",\"planCode\":\"BASE\"}"))
 				.andExpect(status().isForbidden());
 
 		verify(authorizationGuard, never()).requirePlatformAdmin(anyBoolean());
@@ -135,7 +135,7 @@ class OrganizationControllerTest {
 	void alta_sin_idempotency_key_es_400() throws Exception {
 		mockMvc.perform(post("/api/v1/organizations")
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"name\":\"Centro\",\"planCode\":\"BASICO\"}")
+						.content("{\"name\":\"Centro\",\"planCode\":\"BASE\"}")
 						.with(ApiActors.platformAdmin(1L)))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.type").value("https://akine.app/problems/validation-error"))
@@ -149,7 +149,7 @@ class OrganizationControllerTest {
 		mockMvc.perform(post("/api/v1/organizations")
 						.header("Idempotency-Key", "   ")
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"name\":\"Centro\",\"planCode\":\"BASICO\"}")
+						.content("{\"name\":\"Centro\",\"planCode\":\"BASE\"}")
 						.with(ApiActors.platformAdmin(1L)))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.status").value(400));
@@ -180,7 +180,7 @@ class OrganizationControllerTest {
 						.header("Idempotency-Key", IDEMPOTENCY_KEY)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"name\":\"Centro\",\"slug\":\"" + slugLargo
-								+ "\",\"planCode\":\"BASICO\"}")
+								+ "\",\"planCode\":\"BASE\"}")
 						.with(ApiActors.platformAdmin(1L)))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.errors.slug").exists());
@@ -215,7 +215,7 @@ class OrganizationControllerTest {
 		mockMvc.perform(post("/api/v1/organizations")
 						.header("Idempotency-Key", IDEMPOTENCY_KEY)
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"name\":\"Centro\",\"planCode\":\"BASICO\"}")
+						.content("{\"name\":\"Centro\",\"planCode\":\"BASE\"}")
 						.with(ApiActors.platformAdmin(1L)))
 				.andExpect(status().isConflict())
 				.andExpect(content().string(org.hamcrest.Matchers.not(

@@ -60,13 +60,16 @@ public record ArancelEfectivoResponse(
 		@Schema(description = "Arancel aplicado", example = "901")
 		Long arancelId,
 
-		@Schema(description = "Lo que vale la practica bajo ese convenio", example = "12000.00")
+		@Schema(description = "Lo que paga en total la practica: financiador mas coseguro. Nulo "
+				+ "si no se paso la oferta, porque sin su precio no se calcula", example = "12000.00",
+				nullable = true)
 		BigDecimal importeTotal,
 
-		@Schema(description = "La parte que paga el financiador", example = "9600.00")
+		@Schema(description = "Lo que paga el financiador (B)", example = "9600.00")
 		BigDecimal importeFinanciador,
 
-		@Schema(description = "La parte que paga el paciente", example = "2400.00")
+		@Schema(description = "Lo que paga el paciente: precio de la oferta menos B, nunca "
+				+ "negativo. Nulo si no se paso la oferta", example = "2400.00", nullable = true)
 		BigDecimal coseguro,
 
 		@Schema(description = "ISO 4217", example = "ARS")

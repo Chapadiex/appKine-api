@@ -28,10 +28,10 @@ public record SubscriptionResponse(
 		@Schema(description = "Organizacion titular de la suscripcion", example = "1")
 		long organizationId,
 
-		@Schema(description = "Codigo del plan contratado", example = "BASICO")
+		@Schema(description = "Codigo del plan contratado", example = "BASE")
 		String planCode,
 
-		@Schema(description = "Nombre comercial del plan contratado", example = "Basico")
+		@Schema(description = "Nombre comercial del plan contratado", example = "Plan Base")
 		String planName,
 
 		@Schema(

@@ -17,10 +17,10 @@ import java.util.List;
 @Schema(description = "Plan del catalogo comercial con sus limites y funcionalidades")
 public record PlanResponse(
 
-		@Schema(description = "Codigo estable del plan, usado para contratarlo", example = "BASICO")
+		@Schema(description = "Codigo estable del plan, usado para contratarlo", example = "BASE")
 		String code,
 
-		@Schema(description = "Nombre comercial del plan", example = "Basico")
+		@Schema(description = "Nombre comercial del plan", example = "Plan Base")
 		String name,
 
 		@Schema(description = "Limites cuantitativos que impone el plan")
@@ -28,7 +28,7 @@ public record PlanResponse(
 
 		@Schema(description = "Funcionalidades habilitadas por el plan")
 		List<FeatureCode> features,
-		@Schema(description = "Si la plataforma lo ofrece hoy al dar de alta o cambiar la contratacion de un centro. Los planes anteriores al 18/11/2026 siguen vigentes para quien los tiene y no se ofrecen")
+		@Schema(description = "Si la plataforma lo ofrece hoy al dar de alta o cambiar la contratacion de un centro. Hoy los tres planes del catalogo (BASE, CRECIMIENTO y RED) se ofrecen; un plan que se retire queda en false y sigue vigente para quien lo tiene")
 		boolean ofrecido) {
 
 	public static PlanResponse from(PlanView view) {

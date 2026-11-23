@@ -52,9 +52,12 @@ public record CoberturaParaOfertaResponse(
 			@Schema(description = "Null si es el arancel general de la practica; el id de la oferta "
 					+ "si es el arancel especifico de la oferta (RF-M16-008)", example = "34")
 			Long ofertaId,
-			@Schema(example = "12000.00") BigDecimal importeTotal,
-			@Schema(example = "9600.00") BigDecimal importeFinanciador,
-			@Schema(example = "2400.00") BigDecimal coseguro,
+			@Schema(description = "Financiador mas coseguro. Nulo si la oferta no tiene precio",
+					example = "12000.00", nullable = true) BigDecimal importeTotal,
+			@Schema(description = "Lo que paga el financiador (B)", example = "9600.00")
+			BigDecimal importeFinanciador,
+			@Schema(description = "Precio de la oferta menos B, nunca negativo. Nulo si la oferta "
+					+ "no tiene precio", example = "2400.00", nullable = true) BigDecimal coseguro,
 			@Schema(example = "ARS") String moneda,
 			boolean requiereOrden,
 			boolean requiereAutorizacion,

@@ -30,10 +30,10 @@ public record SubscriptionTransitionResponse(
 		@Schema(description = "Estado resultante", example = "SUSPENDIDA")
 		SubscriptionStatus toStatus,
 
-		@Schema(description = "Codigo del plan previo. Ausente en la fila de alta", example = "BASICO")
+		@Schema(description = "Codigo del plan previo. Ausente en la fila de alta", example = "BASE")
 		String fromPlanCode,
 
-		@Schema(description = "Codigo del plan resultante", example = "PROFESIONAL")
+		@Schema(description = "Codigo del plan resultante", example = "RED")
 		String toPlanCode,
 
 		@Schema(

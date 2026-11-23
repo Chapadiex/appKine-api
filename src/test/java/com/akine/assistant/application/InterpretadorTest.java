@@ -47,6 +47,15 @@ class InterpretadorTest {
 	}
 
 	@Test
+	void como_se_hace_es_elegible_y_no_lleva_campos() {
+		Interpretacion i = conRespuesta(json("COMO_SE_HACE", "Juan", null, "HOY", null))
+				.interpretar("¿cómo abro la caja?", List.of());
+
+		assertThat(i.intencion()).isEqualTo(Intencion.COMO_SE_HACE);
+		assertThat(i.persona()).isNull();
+	}
+
+	@Test
 	void los_campos_que_la_intencion_no_usa_se_descartan() {
 		Interpretacion i = conRespuesta(json("AGENDA_DEL_DIA", "Juan", "yoga", "HOY", "ECONOMICO"))
 				.interpretar("agenda de hoy", List.of());

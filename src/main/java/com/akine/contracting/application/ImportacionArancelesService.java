@@ -176,10 +176,15 @@ public class ImportacionArancelesService {
 		// EL ORDEN DE ESTAS LINEAS ES LA GARANTIA. Ver la cabecera de ConvenioService: fila-lock en
 		// transaccion aparte, lock tomado ANTES de leer, y READ_COMMITTED para que la relectura vea
 		// lo que commiteo quien tuvo el lock antes.
-		BloqueoDeConvenios.tomar(locks, organizationId, consultorioId);
-
-		// El convenio se relee bajo el lock: su vigencia o su estado pudieron cambiar desde el
-		// preview, y la edicion de un convenio serializa sobre el mismo lock.
+		// El convenio del plan (V43) no es de ninguna sede: su lock es la fila del plan. Se lee el
+		// convenio para saber cual tomar y se relee bajo el lock, porque su vigencia o su estado
+		// pudieron cambiar desde el preview.
+		Convenio alcance = cargarConvenio(organizationId, consultorioId, convenioId);
+		if (alcance.esDelPlan()) {
+			BloqueoDeConvenios.tomarDelPlan(locks, organizationId, alcance.getPlanId());
+		} else {
+			BloqueoDeConvenios.tomar(locks, organizationId, consultorioId);
+		}
 		Convenio convenio = cargarConvenio(organizationId, consultorioId, convenioId);
 		exigirConvenioOperable(convenio);
 
@@ -303,21 +308,17 @@ public class ImportacionArancelesService {
 	 * el alta unitaria— y aca se suma lo que en el alta valida Bean Validation: los 2 decimales.
 	 */
 	private static ConvenioArancel construir(Contexto contexto, long practicaId, Fila fila) {
-		exigirDosDecimales(fila.importeTotal(), "El importe total");
-		exigirDosDecimales(fila.importeFinanciador(), "La parte del financiador");
-		exigirDosDecimales(fila.coseguro(), "El coseguro");
+		exigirDosDecimales(fila.importeFinanciador(), "Lo que paga el financiador");
 
 		ConvenioArancel candidato;
 		try {
 			candidato = new ConvenioArancel(
 					contexto.organizationId(),
-					contexto.consultorioId(),
+					contexto.convenio().getConsultorioId(),
 					contexto.convenio().getId(),
 					practicaId,
 					fila.ofertaId(),
-					fila.importeTotal(),
 					fila.importeFinanciador(),
-					fila.coseguro(),
 					contexto.convenio().getMoneda(),
 					fila.vigenciaDesde(),
 					fila.vigenciaHasta());

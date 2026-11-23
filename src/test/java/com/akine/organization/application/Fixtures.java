@@ -32,7 +32,7 @@ final class Fixtures {
 	static final long CONSULTORIO_ID = 20L;
 	static final long OTRO_CONSULTORIO_ID = 21L;
 	static final long ACCOUNT_ID = 30L;
-	static final long PLAN_BASICO_ID = 40L;
+	static final long PLAN_BASE_ID = 40L;
 	static final long PLAN_PRO_ID = 41L;
 	static final long SUBSCRIPTION_ID = 50L;
 	static final long MEMBERSHIP_ID = 60L;

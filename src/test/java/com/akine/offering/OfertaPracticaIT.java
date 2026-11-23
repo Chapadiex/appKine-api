@@ -285,7 +285,7 @@ class OfertaPracticaIT {
 				INSERT INTO subscription (organization_id, plan_id, status, started_at, active,
 				                          version, created_at, updated_at)
 				SELECT ?, id, 'ACTIVA', CURRENT_TIMESTAMP, true, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-				FROM plan WHERE code = 'BASICO'
+				FROM plan WHERE code = 'BASE'
 				""", f.organizationId());
 		OperatingActor admin = new OperatingActor(
 				f.actor().accountId(), false, f.organizationId(), f.consultorioId());

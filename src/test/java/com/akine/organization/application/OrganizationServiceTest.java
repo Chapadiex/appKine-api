@@ -32,7 +32,7 @@ import static com.akine.organization.application.Fixtures.ACCOUNT_ID;
 import static com.akine.organization.application.Fixtures.CONSULTORIO_ID;
 import static com.akine.organization.application.Fixtures.ORG_ID;
 import static com.akine.organization.application.Fixtures.OTRO_CONSULTORIO_ID;
-import static com.akine.organization.application.Fixtures.PLAN_BASICO_ID;
+import static com.akine.organization.application.Fixtures.PLAN_BASE_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -75,7 +75,7 @@ class OrganizationServiceTest {
 	@InjectMocks
 	private OrganizationService organizationService;
 
-	private final Plan planBasico = Fixtures.plan(PLAN_BASICO_ID, "BASICO");
+	private final Plan planBasico = Fixtures.plan(PLAN_BASE_ID, "BASE");
 
 	@Test
 	@DisplayName("El listado de plataforma escapa los comodines del cliente y sin texto busca todo")
@@ -116,7 +116,7 @@ class OrganizationServiceTest {
 		altaEnCurso();
 
 		OrganizationView view = organizationService.create(
-				"Centro Kine Norte", null, null, "BASICO", ACCOUNT_ID);
+				"Centro Kine Norte", null, null, "BASE", ACCOUNT_ID);
 
 		assertThat(view.id()).isEqualTo(ORG_ID);
 		assertThat(view.name()).isEqualTo("Centro Kine Norte");
@@ -136,7 +136,7 @@ class OrganizationServiceTest {
 		assertThat(historico.getValue().getFromStatus()).isNull();
 		assertThat(historico.getValue().getToStatus()).isEqualTo(SubscriptionStatus.ACTIVA);
 		assertThat(historico.getValue().getFromPlanId()).isNull();
-		assertThat(historico.getValue().getToPlanId()).isEqualTo(PLAN_BASICO_ID);
+		assertThat(historico.getValue().getToPlanId()).isEqualTo(PLAN_BASE_ID);
 	}
 
 	@Test
@@ -146,7 +146,7 @@ class OrganizationServiceTest {
 		altaEnCurso();
 
 		OrganizationView view =
-				organizationService.create("Centro Kine Norte", null, "  ", "BASICO", ACCOUNT_ID);
+				organizationService.create("Centro Kine Norte", null, "  ", "BASE", ACCOUNT_ID);
 
 		assertThat(view.timezone()).isEqualTo(OrganizationService.TIMEZONE_POR_DEFECTO);
 	}
@@ -158,7 +158,7 @@ class OrganizationServiceTest {
 
 		OrganizationView view = organizationService.create(
 				"Centro Kine Norte", "  Kinesiologia Nuñez  ", "America/Argentina/Cordoba",
-				"BASICO", ACCOUNT_ID);
+				"BASE", ACCOUNT_ID);
 
 		assertThat(view.slug()).isEqualTo("kinesiologia-nunez");
 		// Con slug explicito no se consulta la disponibilidad: quien decide es la restriccion.
@@ -170,7 +170,7 @@ class OrganizationServiceTest {
 	void el_alta_queda_auditada() {
 		altaEnCurso();
 
-		organizationService.create("Centro Kine Norte", null, null, "BASICO", ACCOUNT_ID);
+		organizationService.create("Centro Kine Norte", null, null, "BASE", ACCOUNT_ID);
 
 		ArgumentCaptor<AuditEntry> entrada = ArgumentCaptor.forClass(AuditEntry.class);
 		verify(auditTrail).record(entrada.capture());
@@ -183,7 +183,7 @@ class OrganizationServiceTest {
 		assertThat(evento.newState()).isEqualTo(SubscriptionStatus.ACTIVA.name());
 		assertThat(evento.details())
 				.containsEntry("slug", "centro-kine-norte")
-				.containsEntry("planCode", "BASICO")
+				.containsEntry("planCode", "BASE")
 				.containsEntry("timezone", OrganizationService.TIMEZONE_POR_DEFECTO);
 	}
 
@@ -212,7 +212,7 @@ class OrganizationServiceTest {
 		given(organizationRepository.findByIdAndActiveTrue(ORG_ID))
 				.willReturn(Optional.of(organization));
 		given(subscriptionRepository.findByOrganizationId(ORG_ID))
-				.willReturn(Optional.of(Fixtures.suscripcionActiva(PLAN_BASICO_ID)));
+				.willReturn(Optional.of(Fixtures.suscripcionActiva(PLAN_BASE_ID)));
 
 		OrganizationView view = organizationService.update(
 				ORG_ID, "Centro Kine Sur", "America/Argentina/Buenos_Aires", 0L, ACCOUNT_ID);
@@ -273,7 +273,7 @@ class OrganizationServiceTest {
 		given(organizationRepository.findByIdAndActiveTrue(ORG_ID))
 				.willReturn(Optional.of(Fixtures.organizacion()));
 		given(subscriptionRepository.findByOrganizationId(ORG_ID))
-				.willReturn(Optional.of(Fixtures.suscripcionActiva(PLAN_BASICO_ID)));
+				.willReturn(Optional.of(Fixtures.suscripcionActiva(PLAN_BASE_ID)));
 
 		organizationService.update(ORG_ID, null, null, 0L, ACCOUNT_ID);
 
@@ -300,7 +300,7 @@ class OrganizationServiceTest {
 				.willReturn(Optional.of(Fixtures.organizacion()));
 		given(subscriptionRepository.findByOrganizationId(ORG_ID))
 				.willReturn(Optional.of(
-						Fixtures.suscripcionEn(PLAN_BASICO_ID, SubscriptionStatus.SUSPENDIDA)));
+						Fixtures.suscripcionEn(PLAN_BASE_ID, SubscriptionStatus.SUSPENDIDA)));
 
 		OrganizationView view = organizationService.find(ORG_ID);
 
@@ -341,7 +341,7 @@ class OrganizationServiceTest {
 		organization.deactivate(Instant.now());
 		given(organizationRepository.findById(ORG_ID)).willReturn(Optional.of(organization));
 		given(subscriptionRepository.findByOrganizationId(ORG_ID))
-				.willReturn(Optional.of(Fixtures.suscripcionActiva(PLAN_BASICO_ID)));
+				.willReturn(Optional.of(Fixtures.suscripcionActiva(PLAN_BASE_ID)));
 
 		assertThat(organizationService.operationalStatus(ORG_ID))
 				.isEqualTo(OperationalStatus.BAJA);
@@ -354,7 +354,7 @@ class OrganizationServiceTest {
 				.willReturn(Optional.of(Fixtures.organizacion()));
 		given(subscriptionRepository.findByOrganizationId(ORG_ID))
 				.willReturn(Optional.of(
-						Fixtures.suscripcionEn(PLAN_BASICO_ID, SubscriptionStatus.CANCELADA)));
+						Fixtures.suscripcionEn(PLAN_BASE_ID, SubscriptionStatus.CANCELADA)));
 
 		assertThat(organizationService.operationalStatus(ORG_ID))
 				.isEqualTo(OperationalStatus.CANCELADA);

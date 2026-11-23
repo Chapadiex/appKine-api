@@ -91,6 +91,7 @@ public class PresentacionService {
 	private final AuditTrail auditTrail;
 	private final RespaldoDocumentalDirectory respaldos;
 	private final TransactionTemplate transaccionReadCommitted;
+	private final RenglonesLegibles renglones;
 
 	@SuppressWarnings("checkstyle:ParameterNumber")
 	public PresentacionService(
@@ -104,7 +105,8 @@ public class PresentacionService {
 			PresentacionAcceso acceso,
 			AuditTrail auditTrail,
 			RespaldoDocumentalDirectory respaldos,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			RenglonesLegibles renglones) {
 
 		this.presentaciones = presentaciones;
 		this.items = items;
@@ -116,6 +118,7 @@ public class PresentacionService {
 		this.acceso = acceso;
 		this.auditTrail = auditTrail;
 		this.respaldos = respaldos;
+		this.renglones = renglones;
 		this.transaccionReadCommitted = FilaLockPrevia.transaccionDeNegocio(
 				transactionManager, Isolation.READ_COMMITTED);
 	}
@@ -851,9 +854,10 @@ public class PresentacionService {
 			long organizationId, Presentacion presentacion, String financiadorNombre) {
 
 		return PresentacionView.de(presentacion, financiadorNombre,
-				items.findDeLaPresentacion(presentacion.getId()).stream()
-						.map(PresentacionItemView::de)
-						.toList());
+				renglones.completar(organizationId,
+						items.findDeLaPresentacion(presentacion.getId()).stream()
+								.map(PresentacionItemView::de)
+								.toList()));
 	}
 
 	private static int acotar(int limite) {

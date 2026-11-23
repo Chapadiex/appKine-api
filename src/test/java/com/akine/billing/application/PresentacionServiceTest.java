@@ -137,7 +137,11 @@ class PresentacionServiceTest {
 	void setUp() {
 		service = new PresentacionService(
 				presentaciones, items, obligaciones, cobros, numerador, numeradorIniciador, ocupacion,
-				acceso, auditTrail, respaldos, mock(PlatformTransactionManager.class));
+				acceso, auditTrail, respaldos, mock(PlatformTransactionManager.class),
+				new RenglonesLegibles(obligaciones,
+						mock(com.akine.person.spi.PacienteDirectory.class),
+						mock(com.akine.person.spi.DatosDeLiquidacionDirectory.class),
+						mock(com.akine.resource.spi.CatalogoDirectory.class)));
 
 		given(acceso.exigirSedeDelTenant(anyLong(), anyLong()))
 				.willReturn(new ConsultorioSnapshot(

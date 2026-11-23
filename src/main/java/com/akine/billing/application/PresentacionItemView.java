@@ -10,10 +10,11 @@ import java.time.LocalDate;
 /**
  * Una prestacion dentro del lote, tal como sale del backend.
  *
- * <p><b>PHI minima</b> (RNF-M21-001 y §32): viaja el {@code personaId} y el concepto congelado, y
- * <b>no</b> el nombre del paciente ni su documento. El lote que se le manda al financiador si los
- * lleva; el listado de la pantalla no los necesita, y exponerlos ahi seria filtrar el padron entero
- * a cualquiera que pueda ver una bandeja.
+ * <p><b>PHI.</b> El listado de lotes y la bandeja de elegibles no traen renglones. El
+ * <b>detalle</b> de un lote si trae, desde el paso 3 de obras sociales simples, lo que la obra
+ * social pide para liquidar: nombre, documento, afiliado, plan, practica y autorizacion
+ * ({@link RenglonesLegibles}). Ningun dato clinico. Se calculan al leer: en un renglon armado con
+ * {@link #de} vienen nulos.
  */
 public record PresentacionItemView(
 		long id,
@@ -28,7 +29,14 @@ public record PresentacionItemView(
 		LocalDate fechaPrestacion,
 		String concepto,
 		Instant incluidoEn,
-		long version) {
+		long version,
+		String pacienteNombre,
+		String pacienteDocumento,
+		String numeroAfiliado,
+		String planNombre,
+		String practicaCodigo,
+		String practicaNombre,
+		String autorizacionNumero) {
 
 	public static PresentacionItemView de(PresentacionItem item) {
 		return new PresentacionItemView(
@@ -44,6 +52,23 @@ public record PresentacionItemView(
 				item.getSnapshotFechaPrestacion(),
 				item.getSnapshotConcepto(),
 				item.getIncluidoEn(),
-				item.getVersion());
+				item.getVersion(),
+				null, null, null, null, null, null, null);
+	}
+
+	/** El mismo renglon con los datos que lo vuelven legible para la obra social. */
+	@SuppressWarnings("java:S107")
+	public PresentacionItemView conDatos(
+			String pacienteNombre,
+			String pacienteDocumento,
+			String numeroAfiliado,
+			String planNombre,
+			String practicaCodigo,
+			String practicaNombre,
+			String autorizacionNumero) {
+		return new PresentacionItemView(id, obligacionId, estado, importePresentado,
+				importeDebitado, motivoDebito, debitadoEn, personaId, sesionId, fechaPrestacion,
+				concepto, incluidoEn, version, pacienteNombre, pacienteDocumento, numeroAfiliado,
+				planNombre, practicaCodigo, practicaNombre, autorizacionNumero);
 	}
 }

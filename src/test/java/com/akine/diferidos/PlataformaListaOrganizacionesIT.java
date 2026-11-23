@@ -43,9 +43,11 @@ class PlataformaListaOrganizacionesIT extends BaseEscenarioDiferido {
 		assertThat(campos).as("datos minimos: nada de miembros, sedes, limites ni pacientes")
 				.contains("id", "name", "slug", "status", "planCode", "planName", "createdAt", "ia")
 				.isSubsetOf("id", "name", "slug", "status", "planCode", "planName", "createdAt",
-						"ia", "pruebaHasta", "pagadoHasta", "situacionDeCobro", "cierreEl");
+						"ia", "pruebaHasta", "servicios", "pagadoHasta", "situacionDeCobro", "cierreEl");
+		assertThat(fila.get("servicios").toString()).as("el alta self-service contrata los dos servicios")
+				.isEqualTo("[\"KINESIOLOGIA\",\"ACTIVIDADES\"]");
 		assertThat(fila.get("status").asString()).isEqualTo("ACTIVA");
-		assertThat(fila.get("planCode").asString()).isEqualTo("BASICO");
+		assertThat(fila.get("planCode").asString()).isEqualTo("BASE");
 
 		Respuesta suspension = post(
 				"/api/v1/organizations/" + centroB.organizationId() + "/subscription/transitions",

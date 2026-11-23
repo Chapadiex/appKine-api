@@ -83,8 +83,8 @@ class SubscriptionControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.id").value(50))
 				.andExpect(jsonPath("$.organizationId").value(1))
-				.andExpect(jsonPath("$.planCode").value("BASICO"))
-				.andExpect(jsonPath("$.planName").value("Basico"))
+				.andExpect(jsonPath("$.planCode").value("BASE"))
+				.andExpect(jsonPath("$.planName").value("Plan Base"))
 				.andExpect(jsonPath("$.status").value("ACTIVA"))
 				.andExpect(jsonPath("$.version").value(2))
 				.andExpect(jsonPath("$.startedAt").exists())
@@ -101,7 +101,7 @@ class SubscriptionControllerTest {
 	@DisplayName("Un limite ya superado viaja con exceeded=true: un downgrade avisa, no borra")
 	void un_limite_superado_viaja_como_excedido() throws Exception {
 		given(subscriptionService.find(1L)).willReturn(new SubscriptionView(
-				50L, 1L, "BASICO", "Basico", SubscriptionStatus.ACTIVA,
+				50L, 1L, "BASE", "Plan Base", SubscriptionStatus.ACTIVA,
 				Instant.parse("2026-01-15T13:45:00Z"), 0L,
 				List.of(new LimitUsageView(LimitCode.MAX_CONSULTORIOS, 1, 4)),
 				Set.of()));
@@ -274,11 +274,11 @@ class SubscriptionControllerTest {
 				List.of(
 						new SubscriptionTransitionView(
 								2L, SubscriptionStatus.ACTIVA, SubscriptionStatus.SUSPENDIDA,
-								"BASICO", "BASICO", "Falta de pago", 1L,
+								"BASE", "BASE", "Falta de pago", 1L,
 								Instant.parse("2026-03-01T10:00:00Z")),
 						new SubscriptionTransitionView(
 								1L, null, SubscriptionStatus.ACTIVA,
-								null, "BASICO", null, null,
+								null, "BASE", null, null,
 								Instant.parse("2026-01-15T13:45:00Z"))),
 				PageRequest.of(0, 20),
 				2);
@@ -291,7 +291,7 @@ class SubscriptionControllerTest {
 				.andExpect(jsonPath("$.content[0].id").value(2))
 				.andExpect(jsonPath("$.content[0].fromStatus").value("ACTIVA"))
 				.andExpect(jsonPath("$.content[0].toStatus").value("SUSPENDIDA"))
-				.andExpect(jsonPath("$.content[0].fromPlanCode").value("BASICO"))
+				.andExpect(jsonPath("$.content[0].fromPlanCode").value("BASE"))
 				.andExpect(jsonPath("$.content[0].reason").value("Falta de pago"))
 				.andExpect(jsonPath("$.content[0].actorAccountId").value(1))
 				.andExpect(jsonPath("$.content[1].fromStatus").doesNotExist())
@@ -342,7 +342,7 @@ class SubscriptionControllerTest {
 	@Test
 	@DisplayName("El cambio de plan devuelve la suscripcion nueva y los limites que ya se exceden")
 	void cambio_de_plan_devuelve_warnings_sin_rechazar() throws Exception {
-		given(subscriptionService.changePlan(eq(1L), eq("PROFESIONAL"), eq(2L), any()))
+		given(subscriptionService.changePlan(eq(1L), eq("RED"), eq(2L), any()))
 				.willReturn(new PlanChangeOutcome(
 						vista(SubscriptionStatus.ACTIVA, 3L),
 						List.of(new LimitUsageView(LimitCode.MAX_CONSULTORIOS, 1, 4)),
@@ -350,7 +350,7 @@ class SubscriptionControllerTest {
 
 		mockMvc.perform(post("/api/v1/organizations/1/subscription/plan-changes")
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"planCode\":\"PROFESIONAL\",\"expectedVersion\":2}")
+						.content("{\"planCode\":\"RED\",\"expectedVersion\":2}")
 						.with(ApiActors.platformAdmin(1L)))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.applied").value(true))
@@ -359,7 +359,7 @@ class SubscriptionControllerTest {
 				.andExpect(jsonPath("$.warnings[0].code").value("MAX_CONSULTORIOS"))
 				.andExpect(jsonPath("$.warnings[0].exceeded").value(true));
 
-		verify(subscriptionService).changePlan(1L, "PROFESIONAL", 2L, 1L);
+		verify(subscriptionService).changePlan(1L, "RED", 2L, 1L);
 	}
 
 	@Test
@@ -371,7 +371,7 @@ class SubscriptionControllerTest {
 
 		mockMvc.perform(post("/api/v1/organizations/1/subscription/plan-changes")
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"planCode\":\"BASICO\",\"expectedVersion\":2}")
+						.content("{\"planCode\":\"BASE\",\"expectedVersion\":2}")
 						.with(ApiActors.platformAdmin(1L)))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.applied").value(false))
@@ -398,7 +398,7 @@ class SubscriptionControllerTest {
 
 		mockMvc.perform(post("/api/v1/organizations/1/subscription/plan-changes")
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"planCode\":\"PROFESIONAL\",\"expectedVersion\":0}")
+						.content("{\"planCode\":\"RED\",\"expectedVersion\":0}")
 						.with(ApiActors.miembro(7L)))
 				.andExpect(status().isForbidden());
 
@@ -413,7 +413,7 @@ class SubscriptionControllerTest {
 
 		mockMvc.perform(post("/api/v1/organizations/1/subscription/plan-changes")
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"planCode\":\"PROFESIONAL\",\"expectedVersion\":0}")
+						.content("{\"planCode\":\"RED\",\"expectedVersion\":0}")
 						.with(ApiActors.platformAdmin(1L)))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.type").value(
@@ -430,7 +430,7 @@ class SubscriptionControllerTest {
 
 		mockMvc.perform(post("/api/v1/organizations/1/subscription/plan-changes")
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"planCode\":\"PROFESIONAL\",\"expectedVersion\":0}")
+						.content("{\"planCode\":\"RED\",\"expectedVersion\":0}")
 						.with(ApiActors.platformAdmin(1L)))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.type").value("https://akine.app/problems/concurrent-modification"));
@@ -455,7 +455,7 @@ class SubscriptionControllerTest {
 	void cambio_de_plan_con_version_negativa_es_400() throws Exception {
 		mockMvc.perform(post("/api/v1/organizations/1/subscription/plan-changes")
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"planCode\":\"PROFESIONAL\",\"expectedVersion\":-1}")
+						.content("{\"planCode\":\"RED\",\"expectedVersion\":-1}")
 						.with(ApiActors.platformAdmin(1L)))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.errors.expectedVersion").exists());
@@ -465,8 +465,8 @@ class SubscriptionControllerTest {
 		return new SubscriptionView(
 				50L,
 				1L,
-				"BASICO",
-				"Basico",
+				"BASE",
+				"Plan Base",
 				status,
 				Instant.parse("2026-01-15T13:45:00Z"),
 				version,

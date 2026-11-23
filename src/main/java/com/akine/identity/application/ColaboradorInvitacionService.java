@@ -25,6 +25,7 @@ import com.akine.organization.spi.ConsultorioSnapshot;
 import com.akine.organization.spi.InvitationMembershipCommand;
 import com.akine.organization.spi.MembershipProvisioning;
 import com.akine.organization.spi.OrganizationDirectory;
+import com.akine.organization.spi.ServiciosDelCentro;
 import com.akine.organization.spi.OrganizationSnapshot;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
@@ -124,6 +125,7 @@ public class ColaboradorInvitacionService {
 	private final IdentityClock clock;
 	private final TerminosService terminosService;
 	private final OfertaDirectory ofertaDirectory;
+	private final ServiciosDelCentro serviciosDelCentro;
 
 	@SuppressWarnings("java:S107")
 	public ColaboradorInvitacionService(
@@ -142,7 +144,8 @@ public class ColaboradorInvitacionService {
 			AuditTrail auditTrail,
 			IdentityClock clock,
 			TerminosService terminosService,
-			OfertaDirectory ofertaDirectory) {
+			OfertaDirectory ofertaDirectory,
+			ServiciosDelCentro serviciosDelCentro) {
 
 		this.invitacionRepository = invitacionRepository;
 		this.cuentaRepository = cuentaRepository;
@@ -160,6 +163,7 @@ public class ColaboradorInvitacionService {
 		this.clock = clock;
 		this.terminosService = terminosService;
 		this.ofertaDirectory = ofertaDirectory;
+		this.serviciosDelCentro = serviciosDelCentro;
 	}
 
 	// =================================================================================
@@ -447,7 +451,8 @@ public class ColaboradorInvitacionService {
 				invitacion.getEmailNormalizado(),
 				invitacion.getExpiraEn(),
 				requiereRegistro,
-				Optional.ofNullable(datosManualesDe(invitacion)).map(DatosAltaManual::perfil).orElse(null));
+				Optional.ofNullable(datosManualesDe(invitacion)).map(DatosAltaManual::perfil).orElse(null),
+				serviciosDelCentro.serviciosDe(invitacion.getOrganizationId()).stream().sorted().toList());
 	}
 
 	/**
@@ -676,6 +681,9 @@ public class ColaboradorInvitacionService {
 		Map<String, String> datos = new LinkedHashMap<>();
 		datos.put("organizacionNombre", nombreDeLaOrganizacion(invitacion.getOrganizationId()));
 		datos.put("invitadoPor", nombreDelInvitante(invitadaPorAccountId));
+		if (esAltaDelCentro(invitacion)) {
+			datos.put("altaDeCentro", "si");
+		}
 		notificationOutbox.validarDatosPlantilla(datos);
 
 		notificationOutbox.encolar(new NotificationOutboxPort.Notificacion(
@@ -685,6 +693,19 @@ public class ColaboradorInvitacionService {
 				datos,
 				linkBuilder.enlaceDe(TipoTokenVerificacion.INVITACION, tokenPlano),
 				"invitacion:" + invitacion.getId() + ":" + invitacion.getExpiraEn().toEpochMilli()));
+	}
+
+	/**
+	 * La invitacion del duenio de un centro recien dado de alta (19/11/2026): la emitio la
+	 * plataforma, cuyo administrador no es miembro del centro. A esa persona el correo le da la
+	 * bienvenida a su centro en vez de decirle que alguien la invito "a trabajar". Se mira el
+	 * autor original y no quien reenvia, asi el reenvio dice lo mismo.
+	 */
+	private boolean esAltaDelCentro(ColaboradorInvitacion invitacion) {
+		Long autor = invitacion.getInvitadaPorAccountId();
+		return "ORG_ADMIN".equals(invitacion.getRoleCode())
+				&& autor != null
+				&& !contextDirectory.hasActiveMembership(autor, invitacion.getOrganizationId());
 	}
 
 	private String nombreDeLaOrganizacion(long organizationId) {

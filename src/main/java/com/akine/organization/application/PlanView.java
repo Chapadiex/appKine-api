@@ -24,7 +24,7 @@ public record PlanView(
 		features = List.copyOf(features);
 	}
 
-	/** Un plan ofrecido (los anteriores al 18/11/2026 no lo son). */
+	/** Un plan ofrecido, que es el caso de los tres del catalogo. */
 	public PlanView(long id, String code, String name, List<PlanLimitView> limits,
 			List<FeatureCode> features) {
 		this(id, code, name, limits, features, true);

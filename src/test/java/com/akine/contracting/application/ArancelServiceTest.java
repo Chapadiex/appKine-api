@@ -201,11 +201,11 @@ class ArancelServiceTest {
 	}
 
 	@Test
-	@DisplayName("los importes que no cuadran se rechazan antes de tocar la base")
+	@DisplayName("un importe del financiador negativo se rechaza antes de tocar la base")
 	void importes_que_no_cuadran() {
 		assertThatThrownBy(() -> service.crear(delMostrador, SEDE_ID, CONVENIO_ID,
-				new ArancelAltaCommand(PRACTICA_ID, new BigDecimal("12000.00"),
-						new BigDecimal("9600.00"), new BigDecimal("2500.00"), ENERO, DICIEMBRE)))
+				new ArancelAltaCommand(PRACTICA_ID, null,
+						new BigDecimal("-1.00"), null, ENERO, DICIEMBRE)))
 				.isInstanceOf(IllegalArgumentException.class);
 
 		verify(aranceles, never()).saveAndFlush(any());
@@ -219,8 +219,8 @@ class ArancelServiceTest {
 		ArgumentCaptor<AuditEntry> entrada = ArgumentCaptor.forClass(AuditEntry.class);
 		verify(auditTrail).record(entrada.capture());
 		assertThat(entrada.getValue().details())
-				.containsEntry("importeTotal", "12000.00 ARS")
-				.containsEntry("coseguro", "2400.00")
+				.containsEntry("importeFinanciador", "9600.00 ARS")
+				.doesNotContainKey("coseguro")
 				.containsKey("vigencia");
 	}
 
@@ -237,8 +237,7 @@ class ArancelServiceTest {
 		ArgumentCaptor<AuditEntry> entrada = ArgumentCaptor.forClass(AuditEntry.class);
 		verify(auditTrail).record(entrada.capture());
 		assertThat(entrada.getValue().details())
-				.containsEntry("importeTotal", "12000.00 -> 13000.00")
-				.containsEntry("coseguro", "2400.00 -> 0");
+				.containsEntry("importeFinanciador", "9600.00 -> 13000.00");
 	}
 
 	// =================================================================================
@@ -358,7 +357,7 @@ class ArancelServiceTest {
 				delMostrador, SEDE_ID, FINANCIADOR_ID, PLAN_ID, PRACTICA_ID, MARZO);
 
 		assertThat(resolucion.estaResuelta()).isTrue();
-		assertThat(resolucion.arancel().importeTotal()).isEqualByComparingTo("12000.00");
+		assertThat(resolucion.arancel().importeFinanciador()).isEqualByComparingTo("9600.00");
 		assertThat(resolucion.arancel().convenioId()).isEqualTo(CONVENIO_ID);
 	}
 
@@ -528,8 +527,7 @@ class ArancelServiceTest {
 
 	private static ConvenioArancel arancelDeOferta(long id, LocalDate desde, LocalDate hasta) {
 		ConvenioArancel arancel = new ConvenioArancel(ORG_ID, SEDE_ID, CONVENIO_ID, PRACTICA_ID,
-				OFERTA_ID, new BigDecimal("12000.00"), new BigDecimal("9600.00"),
-				new BigDecimal("2400.00"), "ARS", desde, hasta);
+				OFERTA_ID, new BigDecimal("9600.00"), "ARS", desde, hasta);
 		ReflectionTestUtils.setField(arancel, "id", id);
 		return arancel;
 	}
@@ -557,8 +555,7 @@ class ArancelServiceTest {
 
 	private static ConvenioArancel arancel(long id, LocalDate desde, LocalDate hasta) {
 		ConvenioArancel arancel = new ConvenioArancel(ORG_ID, SEDE_ID, CONVENIO_ID, PRACTICA_ID,
-				new BigDecimal("12000.00"), new BigDecimal("9600.00"), new BigDecimal("2400.00"),
-				"ARS", desde, hasta);
+				new BigDecimal("9600.00"), "ARS", desde, hasta);
 		ReflectionTestUtils.setField(arancel, "id", id);
 		return arancel;
 	}

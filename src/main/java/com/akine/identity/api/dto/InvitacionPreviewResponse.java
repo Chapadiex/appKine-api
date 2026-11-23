@@ -2,9 +2,11 @@ package com.akine.identity.api.dto;
 
 import com.akine.identity.application.InvitacionPreview;
 import com.akine.identity.application.PerfilDeInvitacion;
+import com.akine.organization.spi.Servicio;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Una invitacion como la ve el invitado, antes de decidir.
@@ -33,7 +35,9 @@ public record InvitacionPreviewResponse(
 		@Schema(description = "Hasta cuando sirve el enlace") Instant expiraEn,
 		@Schema(description = "Si al aceptar hay que crear la cuenta") boolean requiereRegistro,
 		@Schema(description = "Datos precargados por quien invita; la persona puede corregirlos")
-		PerfilDeInvitacion perfil) {
+		PerfilDeInvitacion perfil,
+		@Schema(description = "Servicios que contrato el centro (KINESIOLOGIA, ACTIVIDADES). La pantalla elige con esto su ilustracion")
+		List<Servicio> servicios) {
 
 	public static InvitacionPreviewResponse de(InvitacionPreview preview) {
 		return new InvitacionPreviewResponse(
@@ -43,6 +47,7 @@ public record InvitacionPreviewResponse(
 				preview.email(),
 				preview.expiraEn(),
 				preview.requiereRegistro(),
-				preview.perfil());
+				preview.perfil(),
+				preview.servicios());
 	}
 }

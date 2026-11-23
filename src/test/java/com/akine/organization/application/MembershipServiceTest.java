@@ -133,7 +133,7 @@ class MembershipServiceTest {
 	@BeforeEach
 	void elTenantExisteYElPermisoAlcanza() {
 		given(subscriptionRepository.findByOrganizationIdForUpdate(ORG_ID))
-				.willReturn(Optional.of(Fixtures.suscripcionActiva(Fixtures.PLAN_BASICO_ID)));
+				.willReturn(Optional.of(Fixtures.suscripcionActiva(Fixtures.PLAN_BASE_ID)));
 		given(permissionGuard.requirePermission(any())).willReturn(
 				PermissionDecision.concedida(PermissionScope.ORGANIZACION.name(), false));
 		given(membershipRepository.save(any())).willAnswer(i -> i.getArgument(0));

@@ -59,7 +59,7 @@ public class Subscription extends TimestampedEntity {
 	private Instant pruebaHasta;
 
 	/**
-	 * Hasta cuando esta pagada la suscripcion (V30, 19/11/2026). {@code null} = sin control de
+	 * Hasta cuando esta pagada la suscripcion (V45, 19/11/2026). {@code null} = sin control de
 	 * cobro: el centro opera como siempre. Ver {@link SituacionDeCobro}.
 	 */
 	@Column(name = "pagado_hasta")

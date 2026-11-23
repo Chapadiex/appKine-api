@@ -51,6 +51,8 @@ public class TenantUsageCounter {
 					consultorioRepository.countByOrganizationIdAndActiveTrue(organizationId);
 			case MAX_MIEMBROS_ACTIVOS ->
 					membershipRepository.countByOrganizationIdAndActiveTrue(organizationId);
+			case MAX_PROFESIONALES ->
+					membershipRepository.contarProfesionalesActivos(organizationId);
 		};
 	}
 }

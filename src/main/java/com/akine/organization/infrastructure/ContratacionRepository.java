@@ -63,6 +63,14 @@ class ContratacionRepository implements ContratacionRepositoryPort {
 	}
 
 	@Override
+	public boolean nacioEnPrueba(long organizationId) {
+		return Boolean.TRUE.equals(jdbc.queryForObject(
+				"SELECT EXISTS (SELECT 1 FROM subscription_transition WHERE organization_id = ?"
+						+ " AND from_status IS NULL AND to_status = 'PRUEBA')",
+				Boolean.class, organizationId));
+	}
+
+	@Override
 	public void reemplazar(long organizationId, Set<Servicio> servicios, Set<Adicional> adicionales) {
 		jdbc.update("DELETE FROM subscription_servicio WHERE organization_id = ?", organizationId);
 		for (Servicio servicio : servicios) {
@@ -141,5 +149,28 @@ class ContratacionRepository implements ContratacionRepositoryPort {
 				},
 				organizationIds.toArray(Long[]::new), adicional.name());
 		return con;
+	}
+
+	@Override
+	public java.util.Map<Long, Set<Servicio>> serviciosDeVarios(java.util.Collection<Long> organizationIds) {
+		java.util.Map<Long, Set<Servicio>> porCentro = new java.util.HashMap<>();
+		if (organizationIds.isEmpty()) {
+			return porCentro;
+		}
+		jdbc.query("SELECT s.organization_id, s.contratacion_definida, ss.servicio FROM subscription s"
+						+ " LEFT JOIN subscription_servicio ss ON ss.organization_id = s.organization_id"
+						+ " WHERE s.organization_id = ANY (?) AND s.deleted_at IS NULL",
+				rs -> {
+					Set<Servicio> servicios = porCentro.computeIfAbsent(rs.getLong(1),
+							id -> EnumSet.noneOf(Servicio.class));
+					if (!rs.getBoolean(2)) {
+						servicios.addAll(EnumSet.allOf(Servicio.class));
+					} else if (rs.getString(3) != null) {
+						servicios.add(Servicio.valueOf(rs.getString(3)));
+					}
+				},
+				// El cast evita que el arreglo se reparta como varargs: es UN parametro, el de ANY (?).
+				(Object) organizationIds.toArray(Long[]::new));
+		return porCentro;
 	}
 }

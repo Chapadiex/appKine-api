@@ -25,19 +25,17 @@ import java.time.LocalDate;
 @Schema(description = "Cambios a aplicar sobre un arancel. Los campos nulos no se tocan")
 public record UpdateArancelRequest(
 
-		@Schema(description = "Lo que vale la practica bajo este convenio", example = "13000.00")
-		@DecimalMin(value = "0.00", message = "El importe total no puede ser negativo")
-		@Digits(integer = 10, fraction = 2, message = "Los importes admiten 2 decimales")
+		@Schema(description = "OBSOLETO desde 0.189.0: se ignora", example = "13000.00",
+				deprecated = true)
 		BigDecimal importeTotal,
 
-		@Schema(description = "La parte que paga el financiador", example = "10400.00")
-		@DecimalMin(value = "0.00", message = "La parte del financiador no puede ser negativa")
+		@Schema(description = "Lo que paga el financiador por la practica (B)", example = "10400.00")
+		@DecimalMin(value = "0.00", message = "Lo que paga el financiador no puede ser negativo")
 		@Digits(integer = 10, fraction = 2, message = "Los importes admiten 2 decimales")
 		BigDecimal importeFinanciador,
 
-		@Schema(description = "La parte que paga el paciente", example = "2600.00")
-		@DecimalMin(value = "0.00", message = "El coseguro no puede ser negativo")
-		@Digits(integer = 10, fraction = 2, message = "El coseguro admite 2 decimales")
+		@Schema(description = "OBSOLETO desde 0.189.0: se ignora", example = "2600.00",
+				deprecated = true)
 		BigDecimal coseguro,
 
 		@Schema(description = "Primer dia en que este importe se aplica", example = "2026-01-01")

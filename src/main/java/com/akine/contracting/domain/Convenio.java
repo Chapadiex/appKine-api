@@ -59,8 +59,11 @@ public class Convenio extends MarcaTemporal {
 	@Column(name = "organization_id", nullable = false, updatable = false)
 	private Long organizationId;
 
-	/** RN-M16-001. Inmutable: un convenio no se muda de sede. */
-	@Column(name = "consultorio_id", nullable = false, updatable = false)
+	/**
+	 * RN-M16-001. Inmutable: un convenio no se muda de sede. {@code null} es el convenio del plan
+	 * (V43): vale para todas las sedes, y el de una sede manda sobre el en esa sede.
+	 */
+	@Column(name = "consultorio_id", updatable = false)
 	private Long consultorioId;
 
 	@Column(name = "financiador_id", nullable = false, updatable = false)
@@ -128,7 +131,7 @@ public class Convenio extends MarcaTemporal {
 	@SuppressWarnings("java:S107")
 	public Convenio(
 			long organizationId,
-			long consultorioId,
+			Long consultorioId,
 			long financiadorId,
 			long planId,
 			String codigo,
@@ -215,6 +218,11 @@ public class Convenio extends MarcaTemporal {
 		}
 	}
 
+	/** Saca el tope de sesiones por mes: desde ahora el plan cubre sin limite. */
+	public void quitarLimiteSesionesMensual() {
+		this.limiteSesionesMensual = null;
+	}
+
 	/** Baja logica con motivo obligatorio. No hay reactivacion. */
 	public void deactivate(Instant occurredAt, String reason) {
 		this.active = false;
@@ -296,6 +304,11 @@ public class Convenio extends MarcaTemporal {
 
 	public Long getOrganizationId() {
 		return organizationId;
+	}
+
+	/** {@code true} si es el convenio del plan: no es de ninguna sede (V43). */
+	public boolean esDelPlan() {
+		return consultorioId == null;
 	}
 
 	public Long getConsultorioId() {

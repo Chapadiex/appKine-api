@@ -42,7 +42,19 @@ public final class EmailTemplates {
 					saludo + ",\n\nPara activar tu cuenta entra en este enlace:\n" + enlace
 							+ "\n\nEl enlace se usa una sola vez. Si no pediste esta cuenta, "
 							+ "ignora este mensaje." + FIRMA);
-			case INVITACION_COLABORADOR -> new EmailMessage(
+			case INVITACION_COLABORADOR -> "si".equals(payload.get("altaDeCentro"))
+					? new EmailMessage(
+							destinatario,
+							"Tu centro " + payload.getOrDefault("organizacionNombre", "")
+									+ " ya esta en AKINE",
+							saludo + ",\n\nTe damos la bienvenida a AKINE. Ya creamos "
+									+ payload.getOrDefault("organizacionNombre", "tu centro")
+									+ " y vas a ser quien lo administre.\n\n"
+									+ "Para crear tu cuenta entra en este enlace:\n" + enlace
+									+ "\n\nDespues inicia sesion y te vamos a guiar para "
+									+ "configurar tu sede.\n\nEl enlace se usa una sola vez."
+									+ FIRMA)
+					: new EmailMessage(
 					destinatario,
 					"Te invitaron a trabajar en " + payload.getOrDefault("organizacionNombre", "AKINE"),
 					saludo + ",\n\n"

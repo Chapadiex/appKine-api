@@ -29,7 +29,7 @@ import java.util.Optional;
 
 import static com.akine.organization.application.Fixtures.ACCOUNT_ID;
 import static com.akine.organization.application.Fixtures.ORG_ID;
-import static com.akine.organization.application.Fixtures.PLAN_BASICO_ID;
+import static com.akine.organization.application.Fixtures.PLAN_BASE_ID;
 import static com.akine.organization.application.Fixtures.PLAN_PRO_ID;
 import static com.akine.organization.application.Fixtures.SUBSCRIPTION_ID;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -104,10 +104,10 @@ class SubscriptionPlanChangeTest {
 	@Test
 	@DisplayName("Cambiar de plan persiste el plan nuevo, agrega historico y audita")
 	void cambiar_de_plan_persiste_y_audita() {
-		Subscription subscription = Fixtures.suscripcionActiva(PLAN_BASICO_ID);
+		Subscription subscription = Fixtures.suscripcionActiva(PLAN_BASE_ID);
 		tenantVigenteParaEscribirCon(subscription);
 		planContratable("PRO", PLAN_PRO_ID);
-		planLegible(PLAN_BASICO_ID, "BASICO");
+		planLegible(PLAN_BASE_ID, "BASE");
 		planLegible(PLAN_PRO_ID, "PRO");
 		given(planCatalogService.limitsOf(PLAN_PRO_ID)).willReturn(List.of());
 
@@ -127,7 +127,7 @@ class SubscriptionPlanChangeTest {
 		verify(transitionRepository).save(fila.capture());
 		assertThat(fila.getValue().getFromStatus()).isEqualTo(SubscriptionStatus.ACTIVA);
 		assertThat(fila.getValue().getToStatus()).isEqualTo(SubscriptionStatus.ACTIVA);
-		assertThat(fila.getValue().getFromPlanId()).isEqualTo(PLAN_BASICO_ID);
+		assertThat(fila.getValue().getFromPlanId()).isEqualTo(PLAN_BASE_ID);
 		assertThat(fila.getValue().getToPlanId()).isEqualTo(PLAN_PRO_ID);
 
 		ArgumentCaptor<AuditEntry> entrada = ArgumentCaptor.forClass(AuditEntry.class);
@@ -135,7 +135,7 @@ class SubscriptionPlanChangeTest {
 		assertThat(entrada.getValue().eventType())
 				.isEqualTo(AuditEvents.SUBSCRIPTION_PLAN_CHANGED);
 		assertThat(entrada.getValue().details())
-				.containsEntry("fromPlan", "BASICO")
+				.containsEntry("fromPlan", "BASE")
 				.containsEntry("toPlan", "PRO")
 				.containsEntry("limitesExcedidos", "0");
 	}
@@ -145,17 +145,17 @@ class SubscriptionPlanChangeTest {
 	void un_downgrade_excedido_avisa_pero_no_rechaza() {
 		Subscription subscription = Fixtures.suscripcionActiva(PLAN_PRO_ID);
 		tenantVigenteParaEscribirCon(subscription);
-		planContratable("BASICO", PLAN_BASICO_ID);
+		planContratable("BASE", PLAN_BASE_ID);
 		planLegible(PLAN_PRO_ID, "PRO");
-		planLegible(PLAN_BASICO_ID, "BASICO");
-		given(planCatalogService.limitsOf(PLAN_BASICO_ID)).willReturn(List.of(
+		planLegible(PLAN_BASE_ID, "BASE");
+		given(planCatalogService.limitsOf(PLAN_BASE_ID)).willReturn(List.of(
 				new PlanLimitView(LimitCode.MAX_CONSULTORIOS, 1),
 				new PlanLimitView(LimitCode.MAX_MIEMBROS_ACTIVOS, null)));
 		given(usageCounter.count(LimitCode.MAX_CONSULTORIOS, ORG_ID)).willReturn(4L);
 		given(usageCounter.count(LimitCode.MAX_MIEMBROS_ACTIVOS, ORG_ID)).willReturn(99L);
 
 		PlanChangeOutcome resultado =
-				subscriptionService.changePlan(ORG_ID, "BASICO", 0L, ACCOUNT_ID);
+				subscriptionService.changePlan(ORG_ID, "BASE", 0L, ACCOUNT_ID);
 
 		// RN-M01-004: el downgrade no borra, no desactiva y no marca invalido nada. El efecto
 		// es prospectivo y el cliente necesita saberlo para poder actuar.
@@ -171,14 +171,14 @@ class SubscriptionPlanChangeTest {
 	@Test
 	@DisplayName("Cambiar al plan que ya estaba contratado no genera historico ni auditoria")
 	void cambiar_al_mismo_plan_no_tiene_efecto() {
-		Subscription subscription = Fixtures.suscripcionActiva(PLAN_BASICO_ID);
+		Subscription subscription = Fixtures.suscripcionActiva(PLAN_BASE_ID);
 		tenantVigenteParaEscribirCon(subscription);
-		planContratable("BASICO", PLAN_BASICO_ID);
-		planLegible(PLAN_BASICO_ID, "BASICO");
-		given(planCatalogService.limitsOf(PLAN_BASICO_ID)).willReturn(List.of());
+		planContratable("BASE", PLAN_BASE_ID);
+		planLegible(PLAN_BASE_ID, "BASE");
+		given(planCatalogService.limitsOf(PLAN_BASE_ID)).willReturn(List.of());
 
 		PlanChangeOutcome resultado =
-				subscriptionService.changePlan(ORG_ID, "BASICO", 0L, ACCOUNT_ID);
+				subscriptionService.changePlan(ORG_ID, "BASE", 0L, ACCOUNT_ID);
 
 		assertThat(resultado.applied()).isFalse();
 		verify(subscriptionRepository, never()).save(any());
@@ -188,14 +188,14 @@ class SubscriptionPlanChangeTest {
 	@Test
 	@DisplayName("Cambiar de plan con una version desactualizada es conflicto y no persiste nada")
 	void version_vieja_es_conflicto() {
-		Subscription subscription = Fixtures.suscripcionActiva(PLAN_BASICO_ID);
+		Subscription subscription = Fixtures.suscripcionActiva(PLAN_BASE_ID);
 		tenantVigenteParaEscribirCon(subscription);
 		planContratable("PRO", PLAN_PRO_ID);
 
 		assertThatThrownBy(() -> subscriptionService.changePlan(ORG_ID, "PRO", 9L, ACCOUNT_ID))
 				.isInstanceOf(OptimisticLockingFailureException.class);
 
-		assertThat(subscription.getPlanId()).isEqualTo(PLAN_BASICO_ID);
+		assertThat(subscription.getPlanId()).isEqualTo(PLAN_BASE_ID);
 		verify(subscriptionRepository, never()).save(any());
 		verifyNoInteractions(transitionRepository, auditTrail);
 	}
@@ -204,10 +204,10 @@ class SubscriptionPlanChangeTest {
 	@DisplayName("Con la suscripcion suspendida no se puede cambiar de plan")
 	void suspendida_no_cambia_de_plan() {
 		Subscription subscription =
-				Fixtures.suscripcionEn(PLAN_BASICO_ID, SubscriptionStatus.SUSPENDIDA);
+				Fixtures.suscripcionEn(PLAN_BASE_ID, SubscriptionStatus.SUSPENDIDA);
 		tenantVigenteParaEscribirCon(subscription);
 		planContratable("PRO", PLAN_PRO_ID);
-		planLegible(PLAN_BASICO_ID, "BASICO");
+		planLegible(PLAN_BASE_ID, "BASE");
 
 		assertThatThrownBy(() -> subscriptionService.changePlan(ORG_ID, "PRO", 0L, ACCOUNT_ID))
 				.isInstanceOf(SubscriptionSuspendedException.class);
@@ -220,9 +220,9 @@ class SubscriptionPlanChangeTest {
 	@Test
 	@DisplayName("La lectura devuelve plan, consumo y las transiciones posibles desde el backend")
 	void la_lectura_devuelve_el_consumo_y_los_destinos_posibles() {
-		tenantVigenteCon(Fixtures.suscripcionActiva(PLAN_BASICO_ID));
-		planLegible(PLAN_BASICO_ID, "BASICO");
-		given(planCatalogService.limitsOf(PLAN_BASICO_ID)).willReturn(List.of(
+		tenantVigenteCon(Fixtures.suscripcionActiva(PLAN_BASE_ID));
+		planLegible(PLAN_BASE_ID, "BASE");
+		given(planCatalogService.limitsOf(PLAN_BASE_ID)).willReturn(List.of(
 				new PlanLimitView(LimitCode.MAX_CONSULTORIOS, 5)));
 		given(usageCounter.count(LimitCode.MAX_CONSULTORIOS, ORG_ID)).willReturn(3L);
 
@@ -230,8 +230,8 @@ class SubscriptionPlanChangeTest {
 
 		assertThat(view.id()).isEqualTo(SUBSCRIPTION_ID);
 		assertThat(view.organizationId()).isEqualTo(ORG_ID);
-		assertThat(view.planCode()).isEqualTo("BASICO");
-		assertThat(view.planName()).isEqualTo("Plan BASICO");
+		assertThat(view.planCode()).isEqualTo("BASE");
+		assertThat(view.planName()).isEqualTo("Plan BASE");
 		assertThat(view.status()).isEqualTo(SubscriptionStatus.ACTIVA);
 		assertThat(view.startedAt()).isNotNull();
 		assertThat(view.limits())
@@ -257,12 +257,12 @@ class SubscriptionPlanChangeTest {
 	@Test
 	@DisplayName("El historico proyecta cada fila con los codigos de plan, no con los ids")
 	void el_historico_proyecta_los_codigos_de_plan() {
-		tenantVigenteCon(Fixtures.suscripcionActiva(PLAN_BASICO_ID));
-		planLegible(PLAN_BASICO_ID, "BASICO");
+		tenantVigenteCon(Fixtures.suscripcionActiva(PLAN_BASE_ID));
+		planLegible(PLAN_BASE_ID, "BASE");
 		Instant momento = Instant.now();
 		SubscriptionTransition fila = Fixtures.conId(new SubscriptionTransition(
 				ORG_ID, SUBSCRIPTION_ID, null, SubscriptionStatus.ACTIVA,
-				null, PLAN_BASICO_ID, null, null, momento), 100L);
+				null, PLAN_BASE_ID, null, null, momento), 100L);
 		Pageable pagina = PageRequest.of(0, 20);
 		given(transitionRepository.findAllByOrganizationIdAndSubscriptionIdOrderByOccurredAtDesc(
 				ORG_ID, SUBSCRIPTION_ID, pagina))
@@ -272,6 +272,6 @@ class SubscriptionPlanChangeTest {
 				subscriptionService.history(ORG_ID, pagina);
 
 		assertThat(historico.getContent()).containsExactly(new SubscriptionTransitionView(
-				100L, null, SubscriptionStatus.ACTIVA, null, "BASICO", null, null, momento));
+				100L, null, SubscriptionStatus.ACTIVA, null, "BASE", null, null, momento));
 	}
 }
