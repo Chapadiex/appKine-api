@@ -49,7 +49,7 @@ Lo que el diseño implica y ninguna prueba unitaria cubre bien; cada línea tien
 
 ---
 
-### Tarea 1: Puertos del agente y proveedor de prueba
+### Task 1: Puertos del agente y proveedor de prueba
 
 **Archivos:**
 - Crear: `src/main/java/com/akine/platform/spi/modelo/agente/ProveedorDeAgente.java`,
@@ -101,7 +101,7 @@ palabra clave de la pregunta y devuelve los turnos en orden; sin guion devuelve 
 - [ ] `./mvnw -o -q test-compile` sin errores.
 - [ ] Commit: "feat(asistente): puertos del agente y proveedor de prueba".
 
-### Tarea 2: Proveedor Claude
+### Task 2: Proveedor Claude
 
 **Archivos:**
 - Modificar: `pom.xml` (dependencia `com.anthropic:anthropic-java`, última 3.x)
@@ -132,7 +132,7 @@ palabra clave de la pregunta y devuelve los turnos en orden; sin guion devuelve 
 - [ ] `./mvnw -o -q test-compile` sin errores.
 - [ ] Commit: "feat(asistente): proveedor Claude del agente".
 
-### Tarea 3: Proveedor compatible con OpenAI (OpenCode y Ollama)
+### Task 3: Proveedor compatible con OpenAI (OpenCode y Ollama)
 
 **Archivos:**
 - Crear: `src/main/java/com/akine/platform/infrastructure/modelo/agente/CompatibleOpenAiProveedor.java`
@@ -145,7 +145,7 @@ palabra clave de la pregunta y devuelve los turnos en orden; sin guion devuelve 
   y el reenvío arma el mensaje `tool` con el `tool_call_id`.
 - [ ] Commit: "feat(asistente): proveedor compatible con OpenAI para OpenCode y Ollama".
 
-### Tarea 4: El agente y el nuevo camino de consulta
+### Task 4: El agente y el nuevo camino de consulta
 
 **Archivos:**
 - Crear: `src/main/java/com/akine/assistant/application/AgenteDelAsistente.java`,
@@ -206,7 +206,7 @@ public class AgenteDelAsistente {
 - [ ] `./mvnw -o -q test-compile` sin errores.
 - [ ] Commit: "feat(asistente): agente con herramientas en lugar del clasificador".
 
-### Tarea 5: Herramientas existentes pasadas al agente
+### Task 5: Herramientas existentes pasadas al agente
 
 **Archivos:** modificar `scheduling/infrastructure/TurnosEnElAsistente.java`,
 `person/infrastructure/PersonasEnElAsistente.java`, `activity/infrastructure/ClasesEnElAsistente.java`,
@@ -235,7 +235,7 @@ advertencia "No encontré esa persona" (foco 4).
 - [ ] `./mvnw -o -q test-compile` sin errores.
 - [ ] Commit: "refactor(asistente): herramientas de lectura existentes como herramientas del agente".
 
-### Tarea 6: `practicas_aplicadas` (encounter)
+### Task 6: `practicas_aplicadas` (encounter)
 
 **Archivos:**
 - Modificar: `encounter/domain/port/TratamientoRepositoryPorts.java` + su implementación JPA (consulta
@@ -266,7 +266,7 @@ una de `practica` o `persona_id`.
   advertencia (foco 1).
 - [ ] Commit: "feat(asistente): practicas_aplicadas por práctica o por persona".
 
-### Tarea 7: `deudas_persona` y `arancel_vigente` con el cálculo del devengo (billing)
+### Task 7: `deudas_persona` y `arancel_vigente` con el cálculo del devengo (billing)
 
 **Archivos:**
 - Crear: `billing/application/CotizadorDeAtencion.java`
@@ -305,7 +305,7 @@ public record Cotizacion(long ofertaId, String ofertaNombre, BigDecimal precioPa
   el importe y el responsable de `cotizar` coinciden con la obligación devengada al cerrar la sesión (foco 5).
 - [ ] Commit: "feat(asistente): deudas y arancel vigente con el mismo cálculo del devengo".
 
-### Tarea 8: `casos_persona` (clinical) y `buscar_oferta` (offering)
+### Task 8: `casos_persona` (clinical) y `buscar_oferta` (offering)
 
 **Archivos:** crear `clinical/infrastructure/CasosEnElAsistente.java` y
 `offering/infrastructure/OfertasEnElAsistente.java`.
@@ -318,7 +318,7 @@ public record Cotizacion(long ofertaId, String ofertaNombre, BigDecimal precioPa
 - [ ] Las dos herramientas.
 - [ ] Commit: "feat(asistente): casos activos y búsqueda de ofertas".
 
-### Tarea 9: Fichas compuestas
+### Task 9: Fichas compuestas
 
 **Archivos:** crear `assistant/application/fichas/FichaPaciente.java`, `FichaPractica.java`,
 `AgendaDelDia.java` (cada una `HerramientaDelAgente`, reciben `CatalogoDeHerramientas` por `ObjectProvider`
@@ -336,7 +336,7 @@ Una parte denegada se omite y se agrega a `advertencias` como `omitida_por_permi
 - [ ] Test: `ficha_paciente` con `casos_persona` denegado devuelve el resto y la advertencia.
 - [ ] Commit: "feat(asistente): fichas de paciente, práctica y agenda".
 
-### Tarea 10: `consulta_sql` con el esquema completo
+### Task 10: `consulta_sql` con el esquema completo
 
 **Archivos:** crear `assistant/application/ConsultaSqlHerramienta.java`; mover a su paquete
 `ValidadorDeSql` y `JdbcLectorDeVistas` sin cambios; `prompt-sql.txt` y `prompt-sql-clinico.txt` pasan a
@@ -353,7 +353,7 @@ ser la **descripción** de la herramienta (se quitan las reglas de formato JSON 
 - [ ] Test: un actor `PROFESIONAL` no la recibe en `disponiblesPara` (foco 1).
 - [ ] Commit: "feat(asistente): consulta_sql como herramienta del agente".
 
-### Tarea 11: `proponer_accion`
+### Task 11: `proponer_accion`
 
 **Archivos:** modificar `AccionesDelAsistente.java` (nuevo `proponerPedido`), crear
 `assistant/application/ProponerAccionHerramienta.java`; borrar `InterpretadorDeAcciones.java`,
@@ -371,7 +371,7 @@ campos de `PedidoDeAccion` (`tipo`, `persona_id`, `clase`, `modo_asistencia`, `n
 - [ ] Refactor + herramienta; el agente corta el turno con `PROPUESTA`.
 - [ ] Commit: "refactor(asistente): las acciones se proponen como herramienta del agente".
 
-### Tarea 12: Configuración, perfil `ia`, estado del motor y contrato
+### Task 12: Configuración, perfil `ia`, estado del motor y contrato
 
 **Archivos:** `application.yml` (bloque `akine.asistente.agente`), `application-ia.yml`
 (`agente.proveedor: claude`, `agente.alternativo: compatible` con Ollama en `http://localhost:11434/v1`,
@@ -384,7 +384,7 @@ campos de `PedidoDeAccion` (`tipo`, `persona_id`, `clase`, `modo_asistencia`, `n
 - [ ] Revisar el diff del YAML: aditivo salvo `interpretacion` deprecada.
 - [ ] Commit: "feat(asistente): configuración del agente y contrato 0.193.0".
 
-### Tarea 13: Frontend (`appKine-web`)
+### Task 13: Frontend (`appKine-web`)
 
 **Archivos:** worktree `wt-WEB-AGENTE` desde `origin/main`, rama `akine-asistente-agente`;
 `npm run api:generate`; `src/environments/environment*.ts` (`contractVersion` 0.193.0);
@@ -399,7 +399,7 @@ campos de `PedidoDeAccion` (`tipo`, `persona_id`, `clase`, `modo_asistencia`, `n
 - [ ] `npx tsc -p tsconfig.app.json --noEmit` sin errores; capturas en claro y oscuro a 1440 y 375 px.
 - [ ] Commit: "feat(asistente): charla con el agente, formato y cómo lo resolví".
 
-### Tarea 14: Evaluación
+### Task 14: Evaluación
 
 **Archivos:** `docs/asistente/evaluacion/agente-preguntas.json` (≥ 120 preguntas en ≥ 30 grupos),
 `agente-preguntas-control.json` (≥ 30, sin usar para afinar), `sembrar-agente.mjs`, `evaluar-agente.mjs`,
