@@ -73,7 +73,16 @@ solo las pantallas que su rol le permite.
    Se abre una explicación corta.
 
 Desde el panel de **Ayuda** también podés buscar en todo el manual y ver el **glosario** de
-términos.
+términos. Tocá **Ayuda** de nuevo para cerrarlo.
+
+### Seguir una guía
+
+1. Tocá **Guía rápida**, al pie del menú lateral.
+2. Elegí qué querés aprender: **Conocer el menú**, **Dar un turno**, **Registrar un cobro**,
+   **Sumar un colaborador**, **Cargar una obra social** o **Publicar una actividad**.
+3. La guía te lleva a cada pantalla y marca dónde tocar. Avanzá con **Siguiente**.
+
+Sólo aparecen las guías de pantallas que tenés en el menú. **Otras guías** vuelve a la lista.
 
 ## Problemas comunes
 

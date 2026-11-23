@@ -1,22 +1,22 @@
 ---
 id: biblioteca
-titulo: Biblioteca
+titulo: Bibliografía de la IA
 grupo: Configuración
-rutas: ["/biblioteca", "/biblioteca/:libroId"]
+rutas: ["/biblioteca"]
 permisos: [biblioteca:manage]
 funcionIa: BIBLIOTECA
 relacionadas: [consultar-biblioteca, caso-clinico, organizacion]
-palabras: [libros, pdf, subir libro, material, bibliografía, indexar, procesar, reemplazar archivo, búsqueda]
+palabras: [biblioteca, libros, pdf, subir libro, material, bibliografía, indexar, procesar, reemplazar archivo, búsqueda]
 ---
 
 ## Para qué sirve
 
 Acá cargás los **libros en PDF** del centro. El sistema los lee, los divide en pedazos y los usa
-para responder en **Consultar biblioteca** y en las sugerencias de evolución, siempre citando de
+para responder en **Consultar bibliografía** y en las sugerencias de evolución, siempre citando de
 dónde sacó cada respuesta.
 
 > [!consejo]
-> Si la biblioteca no aparece en el menú, puede estar apagada. Se prende en **Organización →
+> Si la bibliografía no aparece en el menú, puede estar apagada. Se prende en **Organización →
 > Inteligencia artificial**.
 
 ## Tareas
@@ -25,8 +25,8 @@ dónde sacó cada respuesta.
 
 ![El panel Subir libro, con el archivo, el título, la declaración y el botón Subir marcados](captura:biblioteca/subir-libro)
 
-1. Entrá a :icono[configuracion]: **Configuración → Biblioteca** y tocá **Subir libro**.
-2. En **Archivo PDF**, elegí el archivo.
+1. Entrá a :icono[configuracion]: **Configuración → Bibliografía de la IA** y tocá **Subir libro**.
+2. Arrastrá el PDF al recuadro, o tocá el recuadro para elegirlo.
 3. Escribí el **Título**. Si querés, completá **Autores**, **Edición** y **Área**.
 4. Marcá **Declaro que el centro tiene derecho a usar este material**.
 5. Tocá **Subir**.
@@ -59,11 +59,12 @@ El libro anterior sigue disponible hasta que el nuevo termine de procesarse.
 
 ### Corregir los datos de un libro
 
-1. Tocá el título del libro o **Ver detalle**.
-2. Tocá **Editar datos**.
+1. Tocá el título del libro o la flecha de su fila: los datos se despliegan debajo, en la misma
+   fila.
+2. Tocá **Editar datos**, a la derecha.
 3. Cambiá **Título**, **Autores**, **Edición** o **Área** y tocá **Guardar**.
 
-En el detalle también ves cuántos pedazos se indexaron y cuáles quedaron afuera por sospechosos.
+Ahí mismo ves cuántos pedazos se indexaron y cuáles quedaron afuera por sospechosos.
 
 ## Qué significa cada estado
 
