@@ -109,7 +109,8 @@ class TratamientoServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new TratamientoService(sesiones, tratamientos, parametros, consultorios,
-				memberships, permissionGuard, catalogo, espacios, auditTrail);
+				memberships, permissionGuard, catalogo, espacios, auditTrail,
+				org.mockito.Mockito.mock(com.akine.organization.spi.PermissionEvaluator.class));
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(

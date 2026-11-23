@@ -18,8 +18,12 @@ import com.akine.encounter.domain.exception.SesionNotAccessibleException;
 import com.akine.encounter.domain.exception.TratamientoNoAccesibleException;
 import com.akine.encounter.domain.port.SesionRepositoryPort;
 import com.akine.encounter.domain.port.TratamientoRepositoryPorts.TratamientoParametroRepositoryPort;
+import com.akine.encounter.domain.port.TratamientoRepositoryPorts.PracticasAplicadas;
+import com.akine.encounter.domain.port.TratamientoRepositoryPorts.TratamientoAplicadoEnSede;
 import com.akine.encounter.domain.port.TratamientoRepositoryPorts.TratamientoRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.PermissionDecision;
+import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.ConsultorioMembershipDirectory;
 import com.akine.organization.spi.ConsultorioMembershipSnapshot;
 import com.akine.organization.spi.PermissionGuard;
@@ -39,6 +43,9 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -124,6 +131,7 @@ public class TratamientoService {
 	private final CatalogoDirectory catalogo;
 	private final EspacioDirectory espacios;
 	private final AuditTrail auditTrail;
+	private final PermissionEvaluator permissionEvaluator;
 
 	@SuppressWarnings("java:S107")
 	public TratamientoService(
@@ -135,7 +143,10 @@ public class TratamientoService {
 			PermissionGuard permissionGuard,
 			CatalogoDirectory catalogo,
 			EspacioDirectory espacios,
-			AuditTrail auditTrail) {
+			AuditTrail auditTrail,
+			PermissionEvaluator permissionEvaluator) {
+
+		this.permissionEvaluator = permissionEvaluator;
 
 		this.sesiones = sesiones;
 		this.tratamientos = tratamientos;
@@ -524,6 +535,84 @@ public class TratamientoService {
 		auditarLectura(actor, sesion, vistas.size());
 		return vistas;
 	}
+
+	/** El tope de filas de {@link #aplicados}; el total se informa igual. */
+	public static final int TOPE_APLICADOS = 50;
+
+	/** Lo que devuelve {@link #aplicados}: filas, total y si se recorto a los pacientes propios. */
+	public record Aplicados(List<TratamientoAplicadoEnSede> filas, long total, boolean soloPropios) {
+	}
+
+	/**
+	 * Practicas aplicadas en sesiones cerradas de la sede, por practica, por persona o por las dos
+	 * (asistente, {@code practicas_aplicadas}).
+	 *
+	 * <p>Exige {@code hc:read} en la sede: es contenido de la historia clinica. Si el permiso viene
+	 * recortado a la actividad propia, solo devuelve las sesiones que el actor atendio o los
+	 * tratamientos que aplico, y lo dice en {@code soloPropios} (mismo patron que
+	 * {@code ReporteService}). La lectura se audita aunque no devuelva filas.
+	 *
+	 * @param practicaIds vacio = todas
+	 * @param personaId   {@code null} = todas
+	 * @throws AccessDeniedException sin contexto o sin {@code hc:read}
+	 */
+	// Sin readOnly: audita en la misma transaccion, igual que listar (LecturaAuditadaIT).
+	@Transactional
+	public Aplicados aplicados(OperatingActor actor, long consultorioId, LocalDate desde,
+			LocalDate hastaExclusivo, ZoneId zona, Collection<Long> practicaIds, Long personaId) {
+
+		long organizationId = exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		PermissionDecision decision = permissionEvaluator.evaluate(new PermissionQuery(
+				actor.accountId(), HC_READ, organizationId, consultorioId, null, Instant.now()));
+		if (!decision.granted()) {
+			throw new AccessDeniedException("Permiso requerido: " + HC_READ);
+		}
+		Set<Long> propias = null;
+		if (decision.limitadaAActividadPropia()) {
+			propias = memberships.findByAccount(organizationId, actor.accountId()).stream()
+					.map(ConsultorioMembershipSnapshot::membershipId)
+					.collect(java.util.stream.Collectors.toUnmodifiableSet());
+			if (propias.isEmpty()) {
+				throw new AccessDeniedException(
+						"La cuenta no tiene un vinculo con la organizacion para limitar la consulta");
+			}
+		}
+
+		PracticasAplicadas resultado = tratamientos.aplicados(organizationId, consultorioId, desde,
+				hastaExclusivo, zona, practicaIds == null ? List.of() : practicaIds, personaId,
+				propias, TOPE_APLICADOS);
+
+		Map<String, String> detalle = new LinkedHashMap<>();
+		detalle.put("consulta", "practicas_aplicadas");
+		detalle.put("desde", desde.toString());
+		detalle.put("hastaExclusivo", hastaExclusivo.toString());
+		detalle.put("cantidad", String.valueOf(resultado.total()));
+		if (personaId != null) {
+			detalle.put("personaId", String.valueOf(personaId));
+		}
+		if (practicaIds != null && !practicaIds.isEmpty()) {
+			detalle.put("practicaIds", practicaIds.stream().sorted().map(String::valueOf)
+					.collect(java.util.stream.Collectors.joining(",")));
+		}
+		auditTrail.record(new AuditEntry(
+				organizationId,
+				consultorioId,
+				actor.accountId(),
+				AuditEvents.TRATAMIENTO_CONSULTADO,
+				AuditEvents.ENTITY_TRATAMIENTO,
+				null,
+				null,
+				null,
+				detalle,
+				null,
+				AuditEvents.correlationId(),
+				Instant.now()));
+
+		return new Aplicados(resultado.filas(), resultado.total(), propias != null);
+	}
+
+	private static final String HC_READ = "hc:read";
 
 	// =================================================================================
 	// Invariantes
