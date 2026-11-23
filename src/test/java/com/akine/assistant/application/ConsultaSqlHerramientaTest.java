@@ -25,7 +25,7 @@ class ConsultaSqlHerramientaTest {
 	private static final ActorDelAsistente PROFESIONAL = new ActorDelAsistente(11L, false, 7L, 3L, "PROFESIONAL");
 	private static final ActorDelAsistente ADMIN = new ActorDelAsistente(12L, false, 7L, 3L, "ORG_ADMIN");
 
-	private final LectorDeVistas lector = (sql, org, sede, limite) -> List.of(Map.of("pacientes", 4));
+	private final LectorDeVistas lector = (sql, org, sede, zona, limite) -> List.of(Map.of("pacientes", 4));
 	private final AuditoriaDelAsistente auditoria = new AuditoriaDelAsistente(e -> {
 	});
 	private final AsistenteAjustes ajustes = new AsistenteAjustes(true, Duration.ofSeconds(5), true);
@@ -76,7 +76,7 @@ class ConsultaSqlHerramientaTest {
 
 	@Test
 	void el_error_del_motor_vuelve_como_argumento_invalido() {
-		LectorDeVistas falla = (sql, org, sede, limite) -> {
+		LectorDeVistas falla = (sql, org, sede, zona, limite) -> {
 			throw new LectorDeVistas.ConsultaInvalidaException("column \"x\" does not exist", null);
 		};
 		var comun = new ConsultaSqlHerramienta(false, "comun", falla, auditoria, permisos("ORGANIZACION"), ajustes);

@@ -281,7 +281,7 @@ public class AgenteDelAsistente {
 			}
 			registradas.add(new LlamadaRegistrada(llamada.nombre(), entrada, resultado.sinPermiso(),
 					resultado.filas().size()));
-			if (llamada.nombre().startsWith(ConsultaSqlHerramienta.NOMBRE) && entrada.get("sql") instanceof String sql) {
+			if (!resultado.sinPermiso() && llamada.nombre().startsWith(ConsultaSqlHerramienta.NOMBRE) && entrada.get("sql") instanceof String sql) {
 				consulta = sql.strip();
 			}
 			advertencias.addAll(resultado.advertencias());
