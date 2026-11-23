@@ -32,17 +32,18 @@ actividad.
    tiene su práctica, se marca **Admite obra social** y la práctica se asocia sola.
 3. Revisá el **Nombre comercial** (es el que ve el paciente) y la **Duración**, y cargá el
    **Precio de la sesión**: lo que cobrás en particular.
-4. Tocá **Dar de alta**. Los otros dos pasos son opcionales: **Siguiente** los recorre.
+4. Tocá **Dar de alta**. Lo demás es opcional y casi siempre queda como viene del servicio.
 
-El alta tiene tres pasos: **Lo esencial**, **Cómo se atiende** y **Cobro y vigencia**. El servicio
-no se cambia después: otro servicio es otra actividad.
+El alta es un solo formulario con cuatro secciones: **Actividad**, **Cómo se atiende**, **Cobro** y
+**Vigencia**. El :icono[ayuda]: de cada sección explica sus campos. El servicio no se cambia
+después: otro servicio es otra actividad.
 
 - **Cómo se atiende**: **Modalidad** (viene marcada la del servicio), **Capacidad** (sólo se
   habilita en una grupal; una individual es de a una persona), si requiere profesional o box, y el
   caso y el registro clínico. **Como el servicio** toma el valor por defecto del servicio; no es
   apagar.
-- **Cobro y vigencia**: el **Esquema de cobro** (el "?" explica cada uno), la descripción y la
-  vigencia.
+- **Cobro**: el **Esquema de cobro** (el "?" explica cada uno).
+- **Vigencia**: desde y hasta cuándo se ofrece.
 
 > [!consejo]
 > **Vigente hasta** es exclusivo: ese día la actividad ya no se ofrece. Sin fecha de fin, no vence
