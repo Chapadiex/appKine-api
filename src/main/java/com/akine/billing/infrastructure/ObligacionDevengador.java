@@ -312,6 +312,11 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 						cierre.organizationId(), cierre.consultorioId(),
 						cobertura.referencia().financiadorId(), cobertura.referencia().planId(),
 						practicaId, cierre.ofertaId(), dia);
+				if (arancel.isPresent() && topeAlcanzado(cierre, arancel.get(), dia)) {
+					// Pasado el tope de sesiones del mes, el plan ya no cubre: se prueba la
+					// cobertura siguiente y, si ninguna cubre, la sesion va como particular.
+					continue;
+				}
 				if (arancel.isPresent()) {
 					boolean noHabilitada = !declaradas.isEmpty() && declaradas.stream()
 							.noneMatch(p -> p.practicaId() == practicaId);
@@ -334,6 +339,34 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 	 * {@code aplicables} (la principal primero). Si la elegida no aplica al cierre, la lista queda
 	 * igual y el devengo sigue como antes: nunca lanza (regla 3 de la cabecera).
 	 */
+	/**
+	 * {@code true} si el convenio tiene tope de sesiones por mes y la persona ya lo uso con ese
+	 * plan en el mes de la sesion (en la zona de la sede, en todas las sedes).
+	 *
+	 * <p>Lo que no hace: serializar dos cierres simultaneos de la misma persona en la ultima
+	 * sesion del tope. Es un caso raro —dos atenciones cerradas en el mismo instante— y el peor
+	 * resultado es una sesion de mas presentada, que la obra social debita.
+	 */
+	private boolean topeAlcanzado(SesionCerrada cierre, ArancelCongelado arancel, LocalDate dia) {
+		Integer tope = aranceles.topeDeSesionesMensual(cierre.organizationId(), arancel.convenioId());
+		if (tope == null || tope <= 0) {
+			return false;
+		}
+		ZoneId zona = zonaDeLaSede(cierre);
+		LocalDate primero = dia.withDayOfMonth(1);
+		long usadas = obligaciones.contarSesionesCubiertas(
+				cierre.organizationId(), cierre.personaId(), arancel.planId(),
+				primero.atStartOfDay(zona).toInstant(),
+				primero.plusMonths(1).atStartOfDay(zona).toInstant());
+		if (usadas < tope) {
+			return false;
+		}
+		log.info("Tope de sesiones del mes alcanzado: la sesion no se cubre por el plan. sesionId={} "
+						+ "personaId={} planId={} usadas={} tope={}",
+				cierre.sesionId(), cierre.personaId(), arancel.planId(), usadas, tope);
+		return true;
+	}
+
 	private static List<CoberturaAplicable> elegidaPrimero(
 			SesionCerrada cierre, List<CoberturaAplicable> aplicables) {
 		Long elegida = cierre.coberturaElegidaId();
@@ -378,14 +411,17 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 	 * corre el dia despues de las 21 h. Si la sede no resuelve se cae a UTC y se deja dicho.
 	 */
 	private LocalDate diaLocalDeLaSede(SesionCerrada cierre) {
-		ZoneId zona = consultorios.find(cierre.organizationId(), cierre.consultorioId())
+		return LocalDate.ofInstant(cierre.cerradaEn(), zonaDeLaSede(cierre));
+	}
+
+	private ZoneId zonaDeLaSede(SesionCerrada cierre) {
+		return consultorios.find(cierre.organizationId(), cierre.consultorioId())
 				.map(ZonaDeSede::de)
 				.orElseGet(() -> {
 					log.warn("Sede no resoluble al devengar: se usa UTC. sesionId={} "
 							+ "consultorioId={}", cierre.sesionId(), cierre.consultorioId());
 					return ZoneOffset.UTC;
 				});
-		return LocalDate.ofInstant(cierre.cerradaEn(), zona);
 	}
 
 	private static String nombre(SesionCerrada cierre) {

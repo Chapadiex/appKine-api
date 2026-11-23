@@ -47,9 +47,14 @@ public record UpdateConvenioRequest(
 		@Schema(description = "Si exige numero de credencial del paciente")
 		Boolean requiereCredencial,
 
-		@Schema(description = "Tope de sesiones por mes. Cero no es un valor valido", example = "20")
+		@Schema(description = "Tope de sesiones por mes y por paciente. Pasado el tope, la sesion "
+				+ "se cobra como particular. Cero no es un valor valido", example = "20")
 		@Min(value = 1, message = "El tope mensual tiene que ser mayor que cero")
 		Integer limiteSesionesMensual,
+
+		@Schema(description = "true quita el tope de sesiones por mes. Gana sobre "
+				+ "limiteSesionesMensual")
+		Boolean limpiarLimiteSesionesMensual,
 
 		@Schema(description = "Documentacion administrativa que el financiador exige")
 		@Size(max = 500, message = "La documentacion requerida no puede superar los 500 caracteres")

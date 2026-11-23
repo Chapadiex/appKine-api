@@ -194,6 +194,30 @@ class ObligacionDelFinanciadorIT {
 	// =================================================================================
 
 	@Test
+	@DisplayName("tope de sesiones del mes: la sesion que lo pasa se cobra como particular")
+	void pasado_el_tope_va_como_particular() {
+		Fixture f = crearFixture(true);
+		jdbc.update("UPDATE convenio SET limite_sesiones_mensual = 1 WHERE id = ?", f.convenio());
+
+		long primera = insertarSesion(f);
+		tratar(f, primera, f.kine());
+		cerrar(f, primera);
+		long segunda = insertarSesion(f);
+		tratar(f, segunda, f.kine());
+		cerrar(f, segunda);
+
+		assertThat(obligacionesDe(primera)).extracting(fila -> fila.get("concepto"))
+				.as("la primera del mes la cubre el plan")
+				.containsExactly("FINANCIADOR", "COSEGURO");
+		List<Map<String, Object>> deLaSegunda = obligacionesDe(segunda);
+		assertThat(deLaSegunda).extracting(fila -> fila.get("concepto"))
+				.as("la segunda pasa el tope de 1: va entera como particular")
+				.containsExactly("PARTICULAR");
+		assertThat((BigDecimal) deLaSegunda.get(0).get("importe_original"))
+				.isEqualByComparingTo("8500.00");
+	}
+
+	@Test
 	@DisplayName("re-disparo del cierre y del observador: siguen siendo dos filas")
 	void redisparo_idempotente() {
 		Fixture f = crearFixture(true);

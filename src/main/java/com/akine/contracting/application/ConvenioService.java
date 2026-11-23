@@ -354,6 +354,9 @@ public class ConvenioService {
 				command.limiteSesionesMensual(),
 				command.documentacionRequerida(),
 				command.observaciones());
+		if (command.limpiarLimiteSesionesMensual()) {
+			convenio.quitarLimiteSesionesMensual();
+		}
 
 		exigirSinSolapamiento(
 				organizationId, consultorioId, convenio.getFinanciadorId(), convenio.getPlanId(),

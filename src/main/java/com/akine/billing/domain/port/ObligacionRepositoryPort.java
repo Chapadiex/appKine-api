@@ -31,6 +31,15 @@ public interface ObligacionRepositoryPort {
 	List<Obligacion> findDeLaSesion(long sesionId);
 
 	/**
+	 * Cuantas sesiones distintas de la persona ya devengaron parte del financiador bajo ese plan
+	 * entre {@code desde} (incluido) y {@code hasta} (excluido). Es el contador del tope mensual
+	 * del convenio: cuenta en TODAS las sedes, porque el tope es del plan y no de la sede. Las
+	 * anuladas no cuentan.
+	 */
+	long contarSesionesCubiertas(
+			long organizationId, long personaId, long planId, Instant desde, Instant hasta);
+
+	/**
 	 * La obligacion viva devengada por la venta de ese pase (AKINE-08.06). Es la idempotencia de
 	 * RF-M18-009 del lado de {@code billing}: un reintento de la venta no devenga dos veces.
 	 */

@@ -218,6 +218,11 @@ public class Convenio extends MarcaTemporal {
 		}
 	}
 
+	/** Saca el tope de sesiones por mes: desde ahora el plan cubre sin limite. */
+	public void quitarLimiteSesionesMensual() {
+		this.limiteSesionesMensual = null;
+	}
+
 	/** Baja logica con motivo obligatorio. No hay reactivacion. */
 	public void deactivate(Instant occurredAt, String reason) {
 		this.active = false;

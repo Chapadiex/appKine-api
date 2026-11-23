@@ -6,7 +6,7 @@ rutas: ["/contratacion/convenios/:convenioId/aranceles", "/contratacion/convenio
 permisos: [convenio:read]
 servicio: KINESIOLOGIA
 relacionadas: [financiadores, catalogo-clinico, actividades-de-la-sede, presentaciones]
-palabras: [precios, cuánto paga la obra social, arancel, coseguro, obra social, prepaga, precio por práctica, convenio, importar aranceles, planilla, nomenclador]
+palabras: [precios, tope de sesiones, sesiones por mes, cuánto paga la obra social, arancel, coseguro, obra social, prepaga, precio por práctica, convenio, importar aranceles, planilla, nomenclador]
 ---
 
 ## Para qué sirve
@@ -36,6 +36,17 @@ actividad menos lo que paga la obra social, y nunca baja de cero.
 
 Para **subir un precio**, no lo edites: cerrale la vigencia al actual y cargá otro desde el día
 siguiente. **Editar** es para corregir un número mal escrito.
+
+### Poner un tope de sesiones por mes
+
+1. En los **Precios** del plan, tocá **Poner un tope** (o **Cambiar tope** si ya tiene uno).
+2. Completá **Sesiones por mes que cubre el plan**. Es por paciente y cuenta las sesiones de todas
+   las sedes.
+3. Tocá **Guardar**.
+
+Pasado el tope, la sesión se cobra entera como particular: el paciente paga el precio de la
+actividad y la obra social no la recibe en la liquidación. Al mes siguiente vuelve a cubrir. Para
+quitar el tope, dejá el campo vacío y guardá.
 
 ### Importar precios desde una planilla
 

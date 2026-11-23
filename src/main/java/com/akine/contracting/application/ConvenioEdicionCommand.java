@@ -27,5 +27,25 @@ public record ConvenioEdicionCommand(
 		Integer limiteSesionesMensual,
 		String documentacionRequerida,
 		String observaciones,
-		long expectedVersion) {
+		long expectedVersion,
+		boolean limpiarLimiteSesionesMensual) {
+
+	/** Sin quitar el tope: la forma de siempre. */
+	@SuppressWarnings("java:S107")
+	public ConvenioEdicionCommand(
+			String nombre,
+			ModalidadConvenio modalidad,
+			LocalDate vigenciaDesde,
+			LocalDate vigenciaHasta,
+			Boolean requiereOrden,
+			Boolean requiereAutorizacion,
+			Boolean requiereCredencial,
+			Integer limiteSesionesMensual,
+			String documentacionRequerida,
+			String observaciones,
+			long expectedVersion) {
+		this(nombre, modalidad, vigenciaDesde, vigenciaHasta, requiereOrden, requiereAutorizacion,
+				requiereCredencial, limiteSesionesMensual, documentacionRequerida, observaciones,
+				expectedVersion, false);
+	}
 }
