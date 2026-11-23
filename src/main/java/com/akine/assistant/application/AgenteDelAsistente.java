@@ -182,6 +182,7 @@ public class AgenteDelAsistente {
 		private final Set<String> advertencias = new LinkedHashSet<>();
 		private final Map<Long, String> etiquetas = new LinkedHashMap<>();
 		private String enlace;
+		private String consulta;
 		private int vueltas;
 		private long tokensEntrada;
 		private long tokensSalida;
@@ -280,6 +281,9 @@ public class AgenteDelAsistente {
 			}
 			registradas.add(new LlamadaRegistrada(llamada.nombre(), entrada, resultado.sinPermiso(),
 					resultado.filas().size()));
+			if (llamada.nombre().startsWith(ConsultaSqlHerramienta.NOMBRE) && entrada.get("sql") instanceof String sql) {
+				consulta = sql.strip();
+			}
 			advertencias.addAll(resultado.advertencias());
 			if (resultado.enlace() != null) {
 				enlace = resultado.enlace();
@@ -342,7 +346,7 @@ public class AgenteDelAsistente {
 
 		private RespuestaDelAsistente respuesta(String texto, Resultado resultado, List<OpcionDePersona> opciones) {
 			return new RespuestaDelAsistente(texto, Interpretacion.FUERA_DE_ALCANCE, List.of(), opciones, enlace,
-					List.copyOf(advertencias), resultado, null, null, registradas);
+					List.copyOf(advertencias), resultado, consulta, null, registradas);
 		}
 
 		private void sumar(UsoDelModelo uso) {
