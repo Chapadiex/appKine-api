@@ -2,6 +2,7 @@ package com.akine.assistant.application;
 
 import com.akine.assistant.application.RespuestaDelAsistente.OpcionDePersona;
 import com.akine.assistant.application.RespuestaDelAsistente.Resultado;
+import com.akine.assistant.domain.exception.ModeloNoDisponibleException;
 import com.akine.assistant.spi.ActorDelAsistente;
 import com.akine.assistant.spi.ClavesDeFila;
 import com.akine.assistant.spi.ContextoDeConsulta;
@@ -64,7 +65,8 @@ public class AgenteDelAsistente {
 	static final DefinicionDeHerramienta DEFINICION_ACLARACION = new DefinicionDeHerramienta(PEDIR_ACLARACION,
 			"Le pregunta algo al usuario y termina el turno. Usala solo si el contexto no alcanza para elegir "
 					+ "(por ejemplo, varias personas con el mismo nombre y nada que indique cual). En personaIds "
-					+ "van los ids de las candidatas que devolvio una herramienta en esta consulta, hasta 5.",
+					+ "van hasta 5 ids de candidatas que devolvio una herramienta en esta misma pregunta: llama "
+					+ "primero a buscar_persona; un id que no salio de una herramienta no se muestra.",
 			"""
 					{"type":"object","properties":{\
 					"pregunta":{"type":"string","description":"La pregunta para el usuario, corta"},\
@@ -201,8 +203,20 @@ public class AgenteDelAsistente {
 				if (restante.isNegative() || restante.isZero()) {
 					break;
 				}
-				TurnoDelAgente turno = conversacion.responder(
-						new PedidoAlAgente(system, List.copyOf(definiciones), List.copyOf(mensajes), restante));
+				TurnoDelAgente turno;
+				try {
+					turno = conversacion.responder(
+							new PedidoAlAgente(system, List.copyOf(definiciones), List.copyOf(mensajes), restante),
+							() -> Duration.between(clock.instant(), limite));
+				}
+				catch (ModeloNoDisponibleException e) {
+					if (vueltas == 0) {
+						throw e;
+					}
+					// Ya hay resultados de herramientas: se responde con lo que hay (diseno §5.1), no con 503.
+					log.warn("El modelo del agente no respondio en la vuelta {}; se corta con lo que hay", vueltas + 1);
+					break;
+				}
 				vueltas++;
 				sumar(turno.uso());
 				if (turno.texto() != null && !turno.texto().isBlank()) {
@@ -250,6 +264,13 @@ public class AgenteDelAsistente {
 			ResultadoDeHerramienta resultado;
 			try {
 				resultado = catalogo.ejecutar(llamada.nombre(), actor, entrada, ctx);
+			}
+			catch (IllegalArgumentException e) {
+				// Validacion propia de la herramienta (fecha mal escrita, campo faltante): el mensaje vuelve
+				// al modelo para que corrija la llamada.
+				registradas.add(new LlamadaRegistrada(llamada.nombre(), entrada, false, 0));
+				return error(llamada, e.getMessage() == null || e.getMessage().isBlank()
+						? "La entrada no es válida para esta herramienta." : e.getMessage());
 			}
 			catch (RuntimeException e) {
 				// Una herramienta que falla no tumba la consulta: el modelo se entera y lo dice.

@@ -7,6 +7,9 @@ import com.akine.platform.spi.modelo.agente.TurnoDelAgente;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
+import java.util.function.Supplier;
+
 /**
  * El proveedor principal del agente y, si lo hay, el alternativo que se usa cuando el principal no
  * responde (503, plazo vencido o sin key: todos llegan como
@@ -34,11 +37,20 @@ public record ProveedoresDelAgente(ProveedorDeAgente principal, ProveedorDeAgent
 		private Conversacion() {
 		}
 
-		/** @throws ModeloNoDisponibleException si no responde ninguno (503) */
+		/** Con un plazo fijo: igual que {@link #responder(PedidoAlAgente, Supplier)}. */
 		public TurnoDelAgente responder(PedidoAlAgente pedido) {
+			return responder(pedido, pedido::plazo);
+		}
+
+		/**
+		 * @param restante lo que queda del tope total; se vuelve a pedir antes de ir al alternativo, para
+		 *                 que el plazo que gasto el principal no se pague dos veces
+		 * @throws ModeloNoDisponibleException si no responde ninguno o ya no queda tiempo (503)
+		 */
+		public TurnoDelAgente responder(PedidoAlAgente pedido, Supplier<Duration> restante) {
 			if (!enAlternativo) {
 				try {
-					return principal.responder(pedido);
+					return principal.responder(conPlazo(pedido, restante.get()));
 				}
 				catch (com.akine.platform.spi.modelo.ModeloNoDisponibleException e) {
 					if (alternativo == null) {
@@ -51,12 +63,20 @@ public record ProveedoresDelAgente(ProveedorDeAgente principal, ProveedorDeAgent
 			if (alternativo == null) {
 				throw new ModeloNoDisponibleException();
 			}
+			Duration plazo = restante.get();
+			if (plazo.isNegative() || plazo.isZero()) {
+				throw new ModeloNoDisponibleException();
+			}
 			try {
-				return alternativo.responder(pedido);
+				return alternativo.responder(conPlazo(pedido, plazo));
 			}
 			catch (com.akine.platform.spi.modelo.ModeloNoDisponibleException e) {
 				throw new ModeloNoDisponibleException(e);
 			}
+		}
+
+		private static PedidoAlAgente conPlazo(PedidoAlAgente pedido, Duration plazo) {
+			return new PedidoAlAgente(pedido.system(), pedido.herramientas(), pedido.mensajes(), plazo);
 		}
 
 		/** El nombre del proveedor que respondio la ultima vuelta, para la auditoria. */

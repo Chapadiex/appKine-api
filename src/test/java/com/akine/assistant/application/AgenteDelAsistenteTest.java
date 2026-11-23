@@ -63,10 +63,88 @@ class AgenteDelAsistenteTest {
 		}
 	};
 
+	/** Rechaza la entrada como lo haria la validacion propia de una herramienta. */
+	private final HerramientaDelAgente agendaDelDia = new HerramientaDelAgente() {
+		@Override
+		public String nombre() {
+			return "agenda_del_dia";
+		}
+
+		@Override
+		public String descripcion() {
+			return "Turnos de la sede en una fecha";
+		}
+
+		@Override
+		public String esquemaEntrada() {
+			return "{\"type\":\"object\",\"properties\":{\"fecha\":{\"type\":\"string\"}},\"additionalProperties\":false}";
+		}
+
+		@Override
+		public ResultadoDeHerramienta ejecutar(ActorDelAsistente actor, Map<String, Object> entrada,
+				ContextoDeConsulta ctx) {
+			throw new IllegalArgumentException("La fecha tiene que ser YYYY-MM-DD o una palabra como \"hoy\".");
+		}
+	};
+
 	private AgenteDelAsistente agente(ProveedorDeAgente principal, ProveedorDeAgente alternativo) {
 		return new AgenteDelAsistente(new ProveedoresDelAgente(principal, alternativo),
-				new CatalogoDeHerramientas(List.of(buscarPersona)), new AuditoriaDelAsistente(auditados::add),
-				"SYSTEM", 8, Duration.ofSeconds(30), Clock.systemUTC());
+				new CatalogoDeHerramientas(List.of(buscarPersona, agendaDelDia)),
+				new AuditoriaDelAsistente(auditados::add), "SYSTEM", 8, Duration.ofSeconds(30), Clock.systemUTC());
+	}
+
+	/** Devuelve los turnos en orden y, cuando se acaban, deja de responder; guarda cada pedido. */
+	private static final class ModeloGrabado implements ProveedorDeAgente {
+
+		final List<com.akine.platform.spi.modelo.agente.PedidoAlAgente> pedidos = new ArrayList<>();
+		private final List<TurnoDelAgente> turnos;
+
+		ModeloGrabado(TurnoDelAgente... turnos) {
+			this.turnos = List.of(turnos);
+		}
+
+		@Override
+		public String nombre() {
+			return "grabado";
+		}
+
+		@Override
+		public TurnoDelAgente responder(com.akine.platform.spi.modelo.agente.PedidoAlAgente pedido) {
+			pedidos.add(pedido);
+			if (pedidos.size() > turnos.size()) {
+				throw new com.akine.platform.spi.modelo.ModeloNoDisponibleException();
+			}
+			return turnos.get(pedidos.size() - 1);
+		}
+	}
+
+	@Test
+	void si_el_modelo_se_cae_despues_de_buscar_responde_con_lo_que_hay_y_no_con_503() {
+		ModeloGrabado modelo = new ModeloGrabado(pide("buscar_persona", "{\"nombre\":\"Pérez\"}"));
+
+		RespuestaDelAsistente r = agente(modelo, null).responder(ACTOR, CTX, "vino Pérez?", List.of(), null);
+
+		assertThat(r.resultado()).isEqualTo(Resultado.RESPONDIDA);
+		assertThat(r.texto()).startsWith(AgenteDelAsistente.TOPE);
+		assertThat(r.advertencias()).contains(AgenteDelAsistente.AVISO_TOPE);
+		assertThat(r.herramientas()).extracting(LlamadaRegistrada::herramienta).containsExactly("buscar_persona");
+		assertThat(auditados.getFirst().details()).containsEntry("resultado", "RESPONDIDA");
+	}
+
+	@Test
+	void el_mensaje_de_validacion_de_una_herramienta_vuelve_al_modelo_para_que_corrija() {
+		ModeloGrabado modelo = new ModeloGrabado(pide("agenda_del_dia", "{\"fecha\":\"23 de noviembre\"}"),
+				final_("No pude leer la fecha."));
+
+		RespuestaDelAsistente r = agente(modelo, null).responder(ACTOR, CTX, "quienes vienen?", List.of(), null);
+
+		assertThat(r.texto()).isEqualTo("No pude leer la fecha.");
+		var ultimo = modelo.pedidos.get(1).mensajes().getLast();
+		assertThat(ultimo).isInstanceOfSatisfying(com.akine.platform.spi.modelo.agente.MensajeDelAgente.Resultados.class,
+				m -> assertThat(m.resultados()).singleElement().satisfies(res -> {
+					assertThat(res.error()).isTrue();
+					assertThat(res.contenidoJson()).contains("La fecha tiene que ser YYYY-MM-DD");
+				}));
 	}
 
 	private static TurnoDelAgente pide(String herramienta, String entrada) {
