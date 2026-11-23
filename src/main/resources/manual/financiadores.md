@@ -2,36 +2,40 @@
 id: financiadores
 titulo: Financiadores
 grupo: Contratación
-rutas: ["/contratacion/financiadores", "/contratacion/financiadores/catalogo", "/contratacion/financiadores/:financiadorId/planes"]
+rutas: ["/contratacion", "/contratacion/financiadores", "/contratacion/financiadores/catalogo", "/contratacion/financiadores/:financiadorId/planes"]
 permisos: [convenio:read]
 servicio: KINESIOLOGIA
-relacionadas: [convenios, arancel-efectivo, ficha-de-la-persona, presentaciones]
-palabras: [financiador, obra social, prepaga, ART, mutual, plan, plan de cobertura, CUIT, catálogo de financiadores, copago]
+relacionadas: [convenios, ficha-de-la-persona, presentaciones]
+palabras: [financiador, obra social, prepaga, ART, mutual, plan, plan de cobertura, CUIT, catálogo de financiadores, copago, precios del plan, cuánto paga la obra social]
 ---
 
 ## Para qué sirve
 
 Es la lista de **con quién trabaja tu organización**: obras sociales, prepagas, ART, mutuales y
-organismos. Cada financiador tiene **planes**, y contra un plan cada sede firma su **convenio**,
-que es el que define los precios.
+organismos. Cada financiador tiene **planes**, y cada plan tiene sus **precios**: lo que paga la
+obra social por cada práctica, en todas las sedes.
 
 > [!importante]
-> El orden es siempre el mismo: **financiador → plan → convenio de la sede → aranceles**. Sin un
-> plan cargado no se puede firmar ningún convenio.
+> El orden es siempre el mismo: **financiador → plan → precios**. Sin precios cargados, lo que se
+> atiende con ese plan se cobra como particular.
 
 ## Tareas
 
 ### Agregar un financiador desde el catálogo
 
-![El catálogo de financiadores, con el buscador y el botón Agregar al centro de la primera fila marcados](captura:financiadores/agregar-desde-catalogo)
+![El catálogo de financiadores, con el buscador y la casilla de la primera fila marcados](captura:financiadores/agregar-desde-catalogo)
 
 1. Entrá a :icono[contratacion]: **Contratación → Financiadores** y tocá **Agregar desde el
    catálogo**.
 2. Buscá por **Nombre, código o CUIT** y tocá **Buscar**.
-3. En la fila que corresponde, tocá **Agregar al centro**.
+3. Tocá la fila para ver sus planes en el panel de la derecha, y tocá **Agregar al centro**.
 
-Se crea una **copia propia** con sus planes activos. Desde ahí es del centro y se edita como
-cualquier otro; los cambios posteriores del catálogo no la modifican.
+Para agregar varios a la vez, marcá la casilla de cada fila y tocá **Agregar al centro (N)** en la
+barra que aparece arriba de la tabla.
+
+Se crea una **copia propia** con todos sus planes activos. Desde ahí es del centro y se edita como
+cualquier otro; los cambios posteriores del catálogo no la modifican. Los planes que el centro no
+trabaje se dan de baja después desde sus planes.
 
 ### Dar de alta una obra social o prepaga a mano
 
@@ -55,7 +59,8 @@ En **Más datos del financiador** podés cargar CUIT, email, teléfono y observa
 4. Si corresponde, cargá el **Copago (opcional)** y los requisitos.
 5. Tocá **Dar de alta**.
 
-Un plan es **lo que se elige**: la cobertura de un paciente apunta a un plan.
+Un plan es **lo que se elige**: la cobertura de un paciente apunta a un plan. Después, en la fila
+del plan, tocá **Precios** para cargar lo que paga la obra social por cada práctica.
 
 ### Dejar de ofrecer un plan
 
@@ -70,15 +75,15 @@ cosa: exige motivo y no tiene vuelta atrás.
 1. En la fila, tocá **Dar de baja**.
 2. Escribí el **Motivo de la baja** y confirmá.
 
-La baja **no cascadea**: sus planes, coberturas y convenios ya firmados siguen funcionando. Sólo
+La baja **no cascadea**: sus planes, coberturas y precios siguen funcionando. Sólo
 impide crear planes nuevos y elegirlo de nuevo. No hay reactivación.
 
 ## Qué significa cada estado
 
-- **Activo**: se puede usar en coberturas y convenios nuevos.
+- **Activo**: se puede usar en coberturas y precios nuevos.
 - **Dado de baja**: queda a la vista con su motivo, pero no admite planes ni selecciones nuevas.
-- **Ya agregado** (en el catálogo): el centro ya tiene su copia. Tocá **Ver la copia del centro**
-  para abrirla.
+- **En el centro** (en el catálogo): el centro ya tiene su copia. Tocá la fila y después **Ver sus
+  planes en el centro** para abrirla.
 
 Los planes muestran además su situación de vigencia: **Activo y vigente**, **Activo, todavía sin
 vigencia**, **Activo, vigencia terminada** o **Dado de baja**.

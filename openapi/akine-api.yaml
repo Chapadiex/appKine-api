@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.188.0
+  version: 0.189.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -17637,6 +17637,103 @@ paths:
       summary: "Editar un plan, o cerrar su vigencia"
       tags:
       - Financiadores y planes
+  /api/v1/financiadores/{financiadorId}/planes/{planId}/convenio:
+    get:
+      description: "El convenio sin sede del plan, que vale para todas las sedes:\
+        \ sus aranceles son lo que paga la obra social por cada practica. 404 si el\
+        \ plan todavia no tiene precios cargados. Exige convenio:read."
+      operationId: getConvenioDelPlan
+      parameters:
+      - description: Identificador del financiador
+        example: 10
+        in: path
+        name: financiadorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del plan
+        example: 30
+        in: path
+        name: planId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConvenioResponse"
+          description: El convenio del plan
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:read
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El plan no existe, no es de ese financiador o todavia no tiene\
+            \ precios"
+      summary: Ver el convenio del plan
+      tags:
+      - Convenios y aranceles
+    post:
+      description: "Devuelve el convenio del plan y lo crea si falta. Idempotente.\
+        \ Nace por prestacion, en la moneda del plan (pesos si no declara), con los\
+        \ requisitos del plan y sin fecha de fin: lo que tiene fechas es cada arancel.\
+        \ Exige convenio:manage sobre la sede del contexto."
+      operationId: asegurarConvenioDelPlan
+      parameters:
+      - description: Identificador del financiador
+        example: 10
+        in: path
+        name: financiadorId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del plan
+        example: 30
+        in: path
+        name: planId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConvenioResponse"
+          description: El convenio del plan
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin contexto de trabajo activo o sin convenio:manage
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El plan no existe o no es de ese financiador
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El financiador o el plan estan dados de baja
+      summary: Preparar el plan para cargarle precios
+      tags:
+      - Convenios y aranceles
   /api/v1/historias-clinicas/por-persona/{personaId}:
     get:
       description: |-
@@ -26200,7 +26297,7 @@ paths:
 
         NO AFIRMA QUE LA PRESTACION SEA FACTURABLE (RN-M08-004): dice si la documentacion administrativa esta presente, que es otra cosa.
 
-        limiteSesionesMensual viaja INFORMATIVO y sin veredicto: verificarlo exige contar sesiones ya atendidas, o sea el consumo que esta version no cablea.
+        limiteSesionesMensual viaja sin veredicto aca: lo aplica el cierre de la sesion, que pasada la cantidad del mes la cobra como particular.
 
         Exige consultorio en el contexto: el convenio que fija los requisitos es de la SEDE (RN-M16-001), asi que la misma cobertura del mismo paciente puede exigir cosas distintas en dos sedes de la misma organizacion.
       operationId: consultarElegibilidadAdministrativa
@@ -30303,8 +30400,11 @@ components:
           format: date
           description: "Ultimo dia de vigencia del CONVENIO, INCLUSIVE"
         coseguro:
-          type: number
-          description: La parte que paga el paciente
+          type:
+          - number
+          - "null"
+          description: "Lo que paga el paciente: precio de la oferta menos B, nunca\
+            \ negativo. Nulo si no se paso la oferta"
           example: 2400.0
         fecha:
           type: string
@@ -30313,11 +30413,14 @@ components:
           example: 2026-03-15
         importeFinanciador:
           type: number
-          description: La parte que paga el financiador
+          description: Lo que paga el financiador (B)
           example: 9600.0
         importeTotal:
-          type: number
-          description: Lo que vale la practica bajo ese convenio
+          type:
+          - number
+          - "null"
+          description: "Lo que paga en total la practica: financiador mas coseguro.\
+            \ Nulo si no se paso la oferta, porque sin su precio no se calcula"
           example: 12000.0
         limiteSesionesMensual:
           type: integer
@@ -30370,8 +30473,12 @@ components:
           description: Convenio al que pertenece. No cambia
           example: 140
         coseguro:
-          type: number
-          description: La parte que paga el paciente
+          type:
+          - number
+          - "null"
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: historico; nulo en los nuevos. El\
+            \ coseguro es precio de la oferta menos importeFinanciador"
           example: 2400.0
         deactivationReason:
           type: string
@@ -30394,11 +30501,15 @@ components:
           example: 901
         importeFinanciador:
           type: number
-          description: La parte que paga el financiador
+          description: Lo que paga el financiador por la practica (B)
           example: 9600.0
         importeTotal:
-          type: number
-          description: Lo que vale la practica bajo este convenio
+          type:
+          - number
+          - "null"
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: historico de aranceles anteriores;\
+            \ nulo en los nuevos"
           example: 12000.0
         moneda:
           type: string
@@ -33154,13 +33265,21 @@ components:
           description: Convenio del que salio
           example: 140
         coseguro:
-          type: number
+          type:
+          - number
+          - "null"
+          description: "Precio de la oferta menos B, nunca negativo. Nulo si la oferta\
+            \ no tiene precio"
           example: 2400.0
         importeFinanciador:
           type: number
+          description: Lo que paga el financiador (B)
           example: 9600.0
         importeTotal:
-          type: number
+          type:
+          - number
+          - "null"
+          description: Financiador mas coseguro. Nulo si la oferta no tiene precio
           example: 12000.0
         moneda:
           type: string
@@ -34226,9 +34345,12 @@ components:
           description: Clave estable dentro de la sede. No cambia
           example: OSDE-210-2026
         consultorioId:
-          type: integer
+          type:
+          - integer
+          - "null"
           format: int64
-          description: Sede a la que pertenece. No cambia nunca
+          description: "Sede a la que pertenece. No cambia nunca. Nulo en el convenio\
+            \ del plan, que vale para todas las sedes (V43)"
           example: 20
         deactivationReason:
           type: string
@@ -34648,23 +34770,21 @@ components:
       properties:
         coseguro:
           type: number
-          description: La parte que paga el paciente. Cero es valido y significa cobertura
-            total
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: se ignora. Ver importeTotal"
           example: 2400.0
-          minimum: 0.00
         importeFinanciador:
           type: number
-          description: "La parte que paga el financiador. Junto con el coseguro tiene\
-            \ que sumar EXACTAMENTE el importe total, o la peticion se rechaza con\
-            \ 400"
+          description: "Lo que paga el financiador por la practica (B). El paciente\
+            \ paga la diferencia con el precio de la oferta, nunca menos de cero"
           example: 9600.0
           minimum: 0.00
         importeTotal:
           type: number
-          description: Lo que vale la practica bajo este convenio. Cero es valido
-            y significa una practica sin cargo
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: se ignora. El coseguro se calcula\
+            \ al cerrar la sesion como precio de la oferta menos lo que paga el financiador"
           example: 12000.0
-          minimum: 0.00
         ofertaId:
           type: integer
           format: int64
@@ -34693,9 +34813,7 @@ components:
             \ fin previsto. Tiene que estar contenido en la vigencia del convenio"
           example: 2026-06-30
       required:
-      - coseguro
       - importeFinanciador
-      - importeTotal
       - practicaId
       - vigenciaDesde
     CreateAutorizacionRequest:
@@ -39158,16 +39276,17 @@ components:
           example: 25.01.01
         coseguro:
           type: number
-          description: La parte del paciente
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: se ignora"
           example: 2400.0
         importeFinanciador:
           type: number
-          description: La parte del financiador. Con el coseguro tiene que sumar EXACTAMENTE
-            el importe total
+          description: Lo que paga el financiador por la practica (B). Hasta 2 decimales
           example: 9600.0
         importeTotal:
           type: number
-          description: Lo que vale la practica bajo el convenio. Hasta 2 decimales
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: se ignora"
           example: 12000.0
         ofertaId:
           type: integer
@@ -44678,6 +44797,13 @@ components:
       description: "Deuda de financiador dentro de un lote. Incluirla **no le mueve\
         \ el saldo**: la obligacion se salda al conciliar."
       properties:
+        autorizacionNumero:
+          type:
+          - string
+          - "null"
+          description: Numero de la autorizacion que consumio la sesion; varias separadas
+            por coma
+          example: AUT-2026-0042
         concepto:
           type: string
           description: "Que se presto, al momento de devengar"
@@ -44724,14 +44850,50 @@ components:
           type: string
           description: Obligatorio al debitar
           example: Falta autorizacion previa
+        numeroAfiliado:
+          type:
+          - string
+          - "null"
+          description: Numero de afiliado de la cobertura con la que se atendio
+          example: AF-123456
         obligacionId:
           type: integer
           format: int64
           example: 9001
+        pacienteDocumento:
+          type:
+          - string
+          - "null"
+          description: Tipo y numero de documento. Solo en el detalle del lote
+          example: DNI 30111222
+        pacienteNombre:
+          type:
+          - string
+          - "null"
+          description: Apellido y nombre del paciente. Solo en el detalle del lote
+          example: "Perez, Ana"
         personaId:
           type: integer
           format: int64
           example: 128
+        planNombre:
+          type:
+          - string
+          - "null"
+          description: "Plan de la cobertura, como estaba al cargarla"
+          example: Plan 310
+        practicaCodigo:
+          type:
+          - string
+          - "null"
+          description: Codigo de la practica en el catalogo
+          example: KIN_SESION
+        practicaNombre:
+          type:
+          - string
+          - "null"
+          description: Nombre de la practica
+          example: Sesion de kinesiologia
         sesionId:
           type: integer
           format: int64
@@ -50095,9 +50257,9 @@ components:
       properties:
         coseguro:
           type: number
-          description: La parte que paga el paciente
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: se ignora"
           example: 2600.0
-          minimum: 0.00
         expectedVersion:
           type: integer
           format: int64
@@ -50106,14 +50268,14 @@ components:
           minimum: 0
         importeFinanciador:
           type: number
-          description: La parte que paga el financiador
+          description: Lo que paga el financiador por la practica (B)
           example: 10400.0
           minimum: 0.00
         importeTotal:
           type: number
-          description: Lo que vale la practica bajo este convenio
+          deprecated: true
+          description: "OBSOLETO desde 0.189.0: se ignora"
           example: 13000.0
-          minimum: 0.00
         vigenciaDesde:
           type: string
           format: date
@@ -50533,9 +50695,13 @@ components:
         limiteSesionesMensual:
           type: integer
           format: int32
-          description: Tope de sesiones por mes. Cero no es un valor valido
+          description: "Tope de sesiones por mes y por paciente. Pasado el tope, la\
+            \ sesion se cobra como particular. Cero no es un valor valido"
           example: 20
           minimum: 1
+        limpiarLimiteSesionesMensual:
+          type: boolean
+          description: true quita el tope de sesiones por mes. Gana sobre limiteSesionesMensual
         modalidad:
           type: string
           description: Como se pacto la prestacion

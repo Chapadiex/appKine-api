@@ -8,6 +8,7 @@ import com.akine.billing.domain.SnapshotDeConvenio;
 import com.akine.billing.domain.port.ObligacionRepositoryPort;
 import com.akine.contracting.spi.ArancelCongelado;
 import com.akine.contracting.spi.ArancelDirectory;
+import com.akine.contracting.spi.Coseguro;
 import com.akine.encounter.spi.CierreDeSesionObserver;
 import com.akine.encounter.spi.OfertaSinPrecioException;
 import com.akine.encounter.spi.PrecioParticularDelCierre;
@@ -50,7 +51,8 @@ import java.util.Set;
  *   4. practicas candidatas (DP-11)
  *   5. primera practica con cobertura aplicable (B-2) y arancel congelado
  *                                             -&gt; FINANCIADOR (importe_financiador)
- *                                                + COSEGURO  (coseguro), cada una si es &gt; 0
+ *                                                + COSEGURO  max(precio de la oferta - B, 0),
+ *                                                cada una si es &gt; 0 (V39)
  *   6. ninguna                                -&gt; PARTICULAR (precio de la oferta, como 07.01)
  * </pre>
  *
@@ -205,6 +207,14 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 
 	private void devengarPorConvenio(SesionCerrada cierre, Cubierta cubierta) {
 		ArancelCongelado arancel = cubierta.arancel();
+		// Obras sociales simples, paso 2: el coseguro es A - B, con A el precio de la oferta del
+		// dia del cierre. El total del snapshot es B + coseguro, asi las partes siguen sumando.
+		BigDecimal financiador = arancel.importeFinanciador();
+		BigDecimal coseguro = Coseguro.de(cierre.precioDeLaOferta(), financiador);
+		if (cierre.precioDeLaOferta() == null) {
+			log.warn("La oferta no tiene precio el dia del cierre: coseguro en cero. sesionId={} "
+					+ "ofertaId={}", cierre.sesionId(), cierre.ofertaId());
+		}
 		SnapshotDeConvenio snapshot = new SnapshotDeConvenio(
 				arancel.convenioId(),
 				arancel.convenioCodigo(),
@@ -213,9 +223,9 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 				arancel.arancelId(),
 				arancel.practicaId(),
 				cubierta.cobertura().coberturaId(),
-				arancel.importeTotal(),
-				arancel.importeFinanciador(),
-				arancel.coseguro(),
+				financiador.add(coseguro),
+				financiador,
+				coseguro,
 				arancel.requeriaOrden(),
 				arancel.requeriaAutorizacion(),
 				arancel.requeriaCredencial(),
@@ -224,9 +234,8 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 				arancel.capturadoEl());
 
 		if (snapshot.importeTotal().signum() == 0) {
-			// Total cero es una practica sin cargo bajo ese convenio (V43 lo admite): no hay deuda
-			// de nadie, y devengar una particular encima seria cobrarle al paciente lo que el
-			// convenio dice que no se cobra.
+			// A y B en cero: nadie debe nada, y devengar una particular encima seria cobrarle al
+			// paciente lo que el convenio dice que no se cobra.
 			log.info("Practica sin cargo bajo el convenio: no se devenga deuda. sesionId={} "
 					+ "convenioId={} arancelId={}", cierre.sesionId(), arancel.convenioId(),
 					arancel.arancelId());
@@ -295,22 +304,79 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 
 		LocalDate dia = diaLocalDeLaSede(cierre);
 		for (long practicaId : candidatas) {
-			List<CoberturaAplicable> aplicables = coberturas.aplicables(
+			List<CoberturaAplicable> aplicables = elegidaPrimero(cierre, coberturas.aplicables(
 					cierre.organizationId(), cierre.consultorioId(), cierre.personaId(), practicaId,
-					cierre.ofertaId(), dia);
+					cierre.ofertaId(), dia));
 			for (CoberturaAplicable cobertura : aplicables) {
 				Optional<ArancelCongelado> arancel = aranceles.congelar(
 						cierre.organizationId(), cierre.consultorioId(),
 						cobertura.referencia().financiadorId(), cobertura.referencia().planId(),
 						practicaId, cierre.ofertaId(), dia);
+				if (arancel.isPresent() && topeAlcanzado(cierre, arancel.get(), dia)) {
+					// Pasado el tope de sesiones del mes, el plan ya no cubre: se prueba la
+					// cobertura siguiente y, si ninguna cubre, la sesion va como particular.
+					continue;
+				}
 				if (arancel.isPresent()) {
 					boolean noHabilitada = !declaradas.isEmpty() && declaradas.stream()
 							.noneMatch(p -> p.practicaId() == practicaId);
+					if (cierre.coberturaElegidaId() != null
+							&& cobertura.coberturaId() != cierre.coberturaElegidaId()) {
+						log.warn("La cobertura elegida {} no aplica al cierre de la sesion {}: se "
+										+ "devenga por la cobertura {}",
+								cierre.coberturaElegidaId(), cierre.sesionId(),
+								cobertura.coberturaId());
+					}
 					return Optional.of(new Cubierta(cobertura, arancel.get(), noHabilitada));
 				}
 			}
 		}
 		return Optional.empty();
+	}
+
+	/**
+	 * La cobertura elegida en la recepcion o al reservar va primero; el resto conserva el orden de
+	 * {@code aplicables} (la principal primero). Si la elegida no aplica al cierre, la lista queda
+	 * igual y el devengo sigue como antes: nunca lanza (regla 3 de la cabecera).
+	 */
+	/**
+	 * {@code true} si el convenio tiene tope de sesiones por mes y la persona ya lo uso con ese
+	 * plan en el mes de la sesion (en la zona de la sede, en todas las sedes).
+	 *
+	 * <p>Lo que no hace: serializar dos cierres simultaneos de la misma persona en la ultima
+	 * sesion del tope. Es un caso raro —dos atenciones cerradas en el mismo instante— y el peor
+	 * resultado es una sesion de mas presentada, que la obra social debita.
+	 */
+	private boolean topeAlcanzado(SesionCerrada cierre, ArancelCongelado arancel, LocalDate dia) {
+		Integer tope = aranceles.topeDeSesionesMensual(cierre.organizationId(), arancel.convenioId());
+		if (tope == null || tope <= 0) {
+			return false;
+		}
+		ZoneId zona = zonaDeLaSede(cierre);
+		LocalDate primero = dia.withDayOfMonth(1);
+		long usadas = obligaciones.contarSesionesCubiertas(
+				cierre.organizationId(), cierre.personaId(), arancel.planId(),
+				primero.atStartOfDay(zona).toInstant(),
+				primero.plusMonths(1).atStartOfDay(zona).toInstant());
+		if (usadas < tope) {
+			return false;
+		}
+		log.info("Tope de sesiones del mes alcanzado: la sesion no se cubre por el plan. sesionId={} "
+						+ "personaId={} planId={} usadas={} tope={}",
+				cierre.sesionId(), cierre.personaId(), arancel.planId(), usadas, tope);
+		return true;
+	}
+
+	private static List<CoberturaAplicable> elegidaPrimero(
+			SesionCerrada cierre, List<CoberturaAplicable> aplicables) {
+		Long elegida = cierre.coberturaElegidaId();
+		if (elegida == null) {
+			return aplicables;
+		}
+		List<CoberturaAplicable> ordenadas = new ArrayList<>(aplicables.size());
+		aplicables.stream().filter(c -> c.coberturaId() == elegida).forEach(ordenadas::add);
+		aplicables.stream().filter(c -> c.coberturaId() != elegida).forEach(ordenadas::add);
+		return ordenadas;
 	}
 
 	/**
@@ -345,14 +411,17 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 	 * corre el dia despues de las 21 h. Si la sede no resuelve se cae a UTC y se deja dicho.
 	 */
 	private LocalDate diaLocalDeLaSede(SesionCerrada cierre) {
-		ZoneId zona = consultorios.find(cierre.organizationId(), cierre.consultorioId())
+		return LocalDate.ofInstant(cierre.cerradaEn(), zonaDeLaSede(cierre));
+	}
+
+	private ZoneId zonaDeLaSede(SesionCerrada cierre) {
+		return consultorios.find(cierre.organizationId(), cierre.consultorioId())
 				.map(ZonaDeSede::de)
 				.orElseGet(() -> {
 					log.warn("Sede no resoluble al devengar: se usa UTC. sesionId={} "
 							+ "consultorioId={}", cierre.sesionId(), cierre.consultorioId());
 					return ZoneOffset.UTC;
 				});
-		return LocalDate.ofInstant(cierre.cerradaEn(), zona);
 	}
 
 	private static String nombre(SesionCerrada cierre) {

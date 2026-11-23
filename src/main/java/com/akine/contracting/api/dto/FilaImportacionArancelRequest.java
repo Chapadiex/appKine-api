@@ -31,15 +31,16 @@ public record FilaImportacionArancelRequest(
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		Long ofertaId,
 
-		@Schema(description = "Lo que vale la practica bajo el convenio. Hasta 2 decimales",
-				example = "12000.00")
+		@Schema(description = "OBSOLETO desde 0.189.0: se ignora", example = "12000.00",
+				deprecated = true)
 		BigDecimal importeTotal,
 
-		@Schema(description = "La parte del financiador. Con el coseguro tiene que sumar "
-				+ "EXACTAMENTE el importe total", example = "9600.00")
+		@Schema(description = "Lo que paga el financiador por la practica (B). Hasta 2 decimales",
+				example = "9600.00")
 		BigDecimal importeFinanciador,
 
-		@Schema(description = "La parte del paciente", example = "2400.00")
+		@Schema(description = "OBSOLETO desde 0.189.0: se ignora", example = "2400.00",
+				deprecated = true)
 		BigDecimal coseguro,
 
 		@Schema(description = "Primer dia en que el importe se aplica", example = "2027-01-01")

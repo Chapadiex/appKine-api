@@ -65,6 +65,12 @@ public final class ConvenioFixtures {
 		return insertarPractica(escenario.organizationId(), especialidadId, sufijo);
 	}
 
+	/** Otra sede de la MISMA organizacion, para el convenio del plan (V43). */
+	public long otraSede(Escenario escenario) {
+		return insertarConsultorio(escenario.organizationId(),
+				"Sede " + UUID.randomUUID().toString().substring(0, 12));
+	}
+
 	public record Escenario(
 			long organizationId,
 			long consultorioId,

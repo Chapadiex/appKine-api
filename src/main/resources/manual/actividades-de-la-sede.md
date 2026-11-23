@@ -23,21 +23,26 @@ actividad.
 
 ### Publicar un servicio en la sede
 
-![El panel Nueva actividad de esta sede, con el servicio, el nombre comercial, la duración, la capacidad y el botón Dar de alta marcados](captura:actividades-de-la-sede/nueva-actividad)
+![El panel Nueva actividad de esta sede, con el servicio, el nombre comercial, la duración, el precio y el botón Dar de alta marcados](captura:actividades-de-la-sede/nueva-actividad)
 
 1. Entrá a :icono[servicios]: **Servicios y catálogo → Actividades de la sede** y tocá
    :icono[agregar]: **Publicar un servicio en la sede**.
-2. En **Servicio del catálogo**, elegí el servicio. La lista viene agrupada por categoría
-   (por ejemplo, **Kinesiología neurológica** o **Pilates y disciplinas relacionadas**). Después no
-   se cambia: otro servicio es otra actividad.
-3. Escribí el **Nombre comercial**. Es el que ve el paciente.
-4. Completá la **Duración (minutos)**.
-5. Completá la **Capacidad**: 1 para una actividad individual, más de 1 para una grupal.
-6. Tocá **Dar de alta**.
+2. En **Servicio del catálogo**, elegí el servicio. La lista viene agrupada por categoría (por
+   ejemplo, **Kinesiología neurológica** o **Pilates y disciplinas relacionadas**). Al elegirlo se completan el **Nombre comercial** y la **Duración (minutos)**, y si el servicio
+   tiene su práctica, se marca **Admite obra social** y la práctica se asocia sola.
+3. Revisá el **Nombre comercial** (es el que ve el paciente) y la **Duración**, y cargá el
+   **Precio de la sesión**: lo que cobrás en particular.
+4. Tocá **Dar de alta**. Los otros dos pasos son opcionales: **Siguiente** los recorre.
 
-En **Cobro** podés cargar el **Precio base (opcional)** con su **Moneda** (van juntos o ninguno),
-el **Esquema de cobro** y si **Admite obra social**. En **Más opciones** están la vigencia y el caso
-y registro clínico. **Heredar del servicio** toma el valor por defecto del servicio; no es apagar.
+El alta tiene tres pasos: **Lo esencial**, **Cómo se atiende** y **Cobro y vigencia**. El servicio
+no se cambia después: otro servicio es otra actividad.
+
+- **Cómo se atiende**: **Modalidad** (viene marcada la del servicio), **Capacidad** (sólo se
+  habilita en una grupal; una individual es de a una persona), si requiere profesional o box, y el
+  caso y el registro clínico. **Como el servicio** toma el valor por defecto del servicio; no es
+  apagar.
+- **Cobro y vigencia**: el **Esquema de cobro** (el "?" explica cada uno), la descripción y la
+  vigencia.
 
 > [!consejo]
 > **Vigente hasta** es exclusivo: ese día la actividad ya no se ofrece. Sin fecha de fin, no vence

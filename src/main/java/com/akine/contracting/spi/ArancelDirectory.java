@@ -118,4 +118,10 @@ public interface ArancelDirectory {
 			long practicaId,
 			Long ofertaId,
 			LocalDate fecha);
+
+	/**
+	 * El tope de sesiones por mes del convenio ({@code limite_sesiones_mensual}), o {@code null} si
+	 * no tiene. Lo usa el devengo: pasado el tope en el mes, la sesion se cobra como particular.
+	 */
+	Integer topeDeSesionesMensual(long organizationId, long convenioId);
 }

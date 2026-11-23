@@ -154,13 +154,43 @@ class ObligacionDevengadorTest {
 	}
 
 	@Test
-	@DisplayName("arancel total cero: practica sin cargo, ninguna deuda (ni particular)")
+	@DisplayName("A y B en cero: practica sin cargo, ninguna deuda (ni particular)")
 	void total_cero() {
 		cubre(KINE, "0.00", "0.00", "0.00");
 
-		devengador.alCerrar(cierre(Set.of(KINE), true));
+		devengador.alCerrar(new SesionCerrada(SESION, ORG, SEDE, PERSONA, OFERTA, 8, true, CERRADA,
+				99L, new BigDecimal("0.00"), "ARS", Set.of(KINE), null, true));
 
 		verify(obligaciones, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("V39: coseguro = precio de la oferta - B, aunque el arancel diga otra cosa")
+	void coseguro_es_precio_menos_financiador() {
+		// El total y el coseguro del arancel son historicos y no se usan.
+		cubre(KINE, "99999.00", "7000.00", "92999.00");
+
+		devengador.alCerrar(new SesionCerrada(SESION, ORG, SEDE, PERSONA, OFERTA, 8, true, CERRADA,
+				99L, new BigDecimal("10000.00"), "ARS", Set.of(KINE), null, true));
+
+		List<Obligacion> filas = guardadas(2);
+		assertThat(filas.get(0).getImporteOriginal()).isEqualByComparingTo("7000.00");
+		assertThat(filas.get(1).getImporteOriginal()).isEqualByComparingTo("3000.00");
+		assertThat(filas.get(0).getSnapshotDeConvenio().orElseThrow().importeTotal())
+				.isEqualByComparingTo("10000.00");
+	}
+
+	@Test
+	@DisplayName("V39: si B supera el precio, el paciente no paga nada y el financiador paga B")
+	void financiador_mayor_que_el_precio() {
+		cubre(KINE, "0.00", "15000.00", "0.00");
+
+		devengador.alCerrar(new SesionCerrada(SESION, ORG, SEDE, PERSONA, OFERTA, 8, true, CERRADA,
+				99L, new BigDecimal("10000.00"), "ARS", Set.of(KINE), null, true));
+
+		Obligacion financiador = guardadas(1).get(0);
+		assertThat(financiador.getConcepto()).isEqualTo(ConceptoObligacion.FINANCIADOR);
+		assertThat(financiador.getImporteOriginal()).isEqualByComparingTo("15000.00");
 	}
 
 	@Test
@@ -174,7 +204,7 @@ class ObligacionDevengadorTest {
 		Obligacion particular = guardadas(1).get(0);
 		assertThat(particular.getConcepto()).isEqualTo(ConceptoObligacion.PARTICULAR);
 		assertThat(particular.getResponsable()).isEqualTo(Responsable.PACIENTE);
-		assertThat(particular.getImporteOriginal()).isEqualByComparingTo("8500.00");
+		assertThat(particular.getImporteOriginal()).isEqualByComparingTo("12000.00");
 		assertThat(particular.getSnapshotDeConvenio()).isEmpty();
 	}
 
@@ -221,7 +251,7 @@ class ObligacionDevengadorTest {
 		cubre(KINE, "12000.00", "10500.00", "1500.00");
 
 		devengador.alCerrar(new SesionCerrada(SESION, ORG, SEDE, PERSONA, OFERTA, 8, true, CERRADA,
-				99L, null, null, Set.of(KINE), 55L, true, null, false, 640L));
+				99L, new BigDecimal("12000.00"), "ARS", Set.of(KINE), 55L, true, null, false, 640L));
 
 		assertThat(guardadas(2)).extracting(Obligacion::getConcepto)
 				.containsExactly(ConceptoObligacion.FINANCIADOR, ConceptoObligacion.COSEGURO);
@@ -233,10 +263,39 @@ class ObligacionDevengadorTest {
 		cubre(KINE, "12000.00", "10500.00", "1500.00");
 
 		devengador.alCerrar(new SesionCerrada(SESION, ORG, SEDE, PERSONA, OFERTA, 8, true, CERRADA,
-				99L, new BigDecimal("8500.00"), "ARS", Set.of(KINE), null, true, 600L, false));
+				99L, new BigDecimal("12000.00"), "ARS", Set.of(KINE), null, true, 600L, false));
 
 		assertThat(guardadas(2)).extracting(Obligacion::getConcepto)
 				.containsExactly(ConceptoObligacion.FINANCIADOR, ConceptoObligacion.COSEGURO);
+	}
+
+	@Test
+	@DisplayName("la cobertura elegida en recepcion manda aunque no sea la principal")
+	void la_cobertura_elegida_manda_sobre_la_principal() {
+		long secundaria = 311L;
+		long otroFinanciador = 32L;
+		long otroPlan = 5L;
+		cubre(KINE, "12000.00", "10500.00", "1500.00");
+		CoberturaAplicable deLaSecundaria = new CoberturaAplicable(secundaria, false,
+				new ReferenciaCongelada(otroFinanciador, "Otra obra social", otroPlan, "Plan 2"),
+				aplicable().resolucion(), false, LocalDate.of(2026, 1, 1));
+		given(coberturas.aplicables(ORG, SEDE, PERSONA, KINE, OFERTA, DIA_LOCAL))
+				.willReturn(List.of(aplicable(), deLaSecundaria));
+		given(aranceles.congelar(ORG, SEDE, otroFinanciador, otroPlan, KINE, OFERTA, DIA_LOCAL))
+				.willReturn(Optional.of(new ArancelCongelado(13L, "CONV-2", "Convenio sintetico 2",
+						"POR_PRESTACION", otroFinanciador, otroPlan, KINE, 78L,
+						new BigDecimal("12000.00"), new BigDecimal("9000.00"),
+						new BigDecimal("3000.00"), "ARS", false, false, false, DIA_LOCAL, CERRADA)));
+
+		devengador.alCerrar(new SesionCerrada(SESION, ORG, SEDE, PERSONA, OFERTA, 8, true, CERRADA,
+				99L, new BigDecimal("12000.00"), "ARS", Set.of(KINE), null, true, 600L, false, null,
+				secundaria));
+
+		Obligacion financiador = guardadas(2).get(0);
+		assertThat(financiador.getFinanciadorId()).isEqualTo(otroFinanciador);
+		assertThat(financiador.getImporteOriginal()).isEqualByComparingTo("9000.00");
+		assertThat(financiador.getSnapshotDeConvenio().orElseThrow().coberturaId())
+				.isEqualTo(secundaria);
 	}
 
 	@Test
@@ -418,7 +477,7 @@ class ObligacionDevengadorTest {
 
 	private SesionCerrada cierre(Set<Long> practicasRealizadas, boolean admiteObraSocial) {
 		return new SesionCerrada(SESION, ORG, SEDE, PERSONA, OFERTA, 8, true, CERRADA, 99L,
-				new BigDecimal("8500.00"), "ARS", practicasRealizadas, null, admiteObraSocial);
+				new BigDecimal("12000.00"), "ARS", practicasRealizadas, null, admiteObraSocial);
 	}
 
 	private List<Obligacion> guardadas(int cuantas) {

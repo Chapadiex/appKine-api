@@ -64,13 +64,43 @@ public record PresentacionItemResponse(
 		Instant incluidoEn,
 
 		@Schema(description = "Version para el control optimista", example = "0")
-		long version) {
+		long version,
+
+		@Schema(description = "Apellido y nombre del paciente. Solo en el detalle del lote",
+				example = "Perez, Ana", nullable = true)
+		String pacienteNombre,
+
+		@Schema(description = "Tipo y numero de documento. Solo en el detalle del lote",
+				example = "DNI 30111222", nullable = true)
+		String pacienteDocumento,
+
+		@Schema(description = "Numero de afiliado de la cobertura con la que se atendio",
+				example = "AF-123456", nullable = true)
+		String numeroAfiliado,
+
+		@Schema(description = "Plan de la cobertura, como estaba al cargarla", example = "Plan 310",
+				nullable = true)
+		String planNombre,
+
+		@Schema(description = "Codigo de la practica en el catalogo", example = "KIN_SESION",
+				nullable = true)
+		String practicaCodigo,
+
+		@Schema(description = "Nombre de la practica", example = "Sesion de kinesiologia",
+				nullable = true)
+		String practicaNombre,
+
+		@Schema(description = "Numero de la autorizacion que consumio la sesion; varias separadas "
+				+ "por coma", example = "AUT-2026-0042", nullable = true)
+		String autorizacionNumero) {
 
 	public static PresentacionItemResponse de(PresentacionItemView vista) {
 		return new PresentacionItemResponse(
 				vista.id(), vista.obligacionId(), vista.estado().name(), vista.importePresentado(),
 				vista.importeDebitado(), vista.motivoDebito(), vista.debitadoEn(),
 				vista.personaId(), vista.sesionId(), vista.fechaPrestacion(), vista.concepto(),
-				vista.incluidoEn(), vista.version());
+				vista.incluidoEn(), vista.version(), vista.pacienteNombre(),
+				vista.pacienteDocumento(), vista.numeroAfiliado(), vista.planNombre(),
+				vista.practicaCodigo(), vista.practicaNombre(), vista.autorizacionNumero());
 	}
 }

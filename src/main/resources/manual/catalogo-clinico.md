@@ -4,7 +4,7 @@ titulo: Catálogo clínico
 grupo: Servicios y catálogo
 rutas: ["/catalogo", "/catalogo/:tipo", "/catalogo/mediciones", "/catalogo/nomencladores/:nomencladorId/vigencias"]
 permisos: [catalogo:read]
-relacionadas: [actividades-de-la-sede, convenios, arancel-efectivo, caso-clinico, atencion]
+relacionadas: [actividades-de-la-sede, convenios, caso-clinico, atencion]
 palabras: [especialidad, práctica, nomenclador, código, vigencia, medida, medición, examen físico, sentido de mejora, catálogo clínico]
 ---
 

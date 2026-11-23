@@ -29,7 +29,7 @@ import java.util.List;
  * @param requisitos             lo que el convenio exige y su veredicto, uno por uno
  * @param convenioId             convenio VIVO que se aplico, o {@code null}
  * @param convenioNombre         nombre del convenio aplicado, o {@code null}
- * @param limiteSesionesMensual  tope mensual pactado. INFORMATIVO: nadie lo verifica todavia
+ * @param limiteSesionesMensual  tope mensual pactado. Lo aplica el devengo al cerrar la sesion, no esta consulta
  */
 public record ElegibilidadAdministrativa(
 		LocalDate fecha,
