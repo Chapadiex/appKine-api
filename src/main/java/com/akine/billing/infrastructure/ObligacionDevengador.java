@@ -1,6 +1,8 @@
 package com.akine.billing.infrastructure;
 
 import com.akine.billing.application.AuditoriaDeObligacion;
+import com.akine.billing.application.CotizadorDeAtencion;
+import com.akine.billing.application.CotizadorDeAtencion.Cubierta;
 import com.akine.billing.domain.ConceptoObligacion;
 import com.akine.billing.domain.Obligacion;
 import com.akine.billing.domain.Responsable;
@@ -13,24 +15,20 @@ import com.akine.encounter.spi.CierreDeSesionObserver;
 import com.akine.encounter.spi.OfertaSinPrecioException;
 import com.akine.encounter.spi.PrecioParticularDelCierre;
 import com.akine.encounter.spi.SesionCerrada;
-import com.akine.offering.spi.PracticaDeOferta;
 import com.akine.offering.spi.PracticasDeOfertaDirectory;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.ZonaDeSede;
-import com.akine.person.spi.CoberturaAplicable;
 import com.akine.person.spi.CoberturasAplicablesDirectory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * Convierte el cierre de una atencion en la deuda que le corresponde (RF-M18-001, RF-M18-002,
@@ -89,12 +87,31 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 	private static final Logger log = LoggerFactory.getLogger(ObligacionDevengador.class);
 
 	private final ObligacionRepositoryPort obligaciones;
-	private final CoberturasAplicablesDirectory coberturas;
 	private final ArancelDirectory aranceles;
-	private final PracticasDeOfertaDirectory practicasDeOferta;
 	private final ConsultorioDirectory consultorios;
 	private final AuditoriaDeObligacion auditoria;
+	private final CotizadorDeAtencion cotizador;
 
+	@Autowired
+	public ObligacionDevengador(
+			ObligacionRepositoryPort obligaciones,
+			ArancelDirectory aranceles,
+			ConsultorioDirectory consultorios,
+			AuditoriaDeObligacion auditoria,
+			CotizadorDeAtencion cotizador) {
+
+		this.obligaciones = obligaciones;
+		this.aranceles = aranceles;
+		this.consultorios = consultorios;
+		this.auditoria = auditoria;
+		this.cotizador = cotizador;
+	}
+
+	/**
+	 * La forma anterior a la extraccion del cotizador, para los tests que arman el devengo con
+	 * dobles: el cotizador se construye con las mismas dependencias (sin ofertas: el devengo no
+	 * cotiza).
+	 */
 	public ObligacionDevengador(
 			ObligacionRepositoryPort obligaciones,
 			CoberturasAplicablesDirectory coberturas,
@@ -103,12 +120,8 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 			ConsultorioDirectory consultorios,
 			AuditoriaDeObligacion auditoria) {
 
-		this.obligaciones = obligaciones;
-		this.coberturas = coberturas;
-		this.aranceles = aranceles;
-		this.practicasDeOferta = practicasDeOferta;
-		this.consultorios = consultorios;
-		this.auditoria = auditoria;
+		this(obligaciones, aranceles, consultorios, auditoria, new CotizadorDeAtencion(
+				obligaciones, coberturas, aranceles, practicasDeOferta, consultorios, null));
 	}
 
 	@Override
@@ -284,125 +297,38 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 	}
 
 	// =================================================================================
-	// Que practica y que cobertura
+	// Que practica y que cobertura: la regla vive en CotizadorDeAtencion
 	// =================================================================================
 
 	/**
-	 * La primera practica candidata con una cobertura aplicable y un arancel que se pueda congelar.
+	 * La primera practica candidata con una cobertura aplicable y un arancel que se pueda congelar,
+	 * sin el tope del mes alcanzado. La regla —candidatas de DP-11, la elegida primero, el tope— es
+	 * {@link CotizadorDeAtencion#resolver}, la misma con la que el asistente cotiza; el congelado
+	 * es de este bean, que es quien guarda la copia.
 	 *
 	 * <p>{@code aplicables} es una lectura viva y {@code congelar} otra: si entre las dos alguien
 	 * da de baja el arancel, {@code congelar} devuelve vacio y se prueba la siguiente. En el peor
 	 * caso se cae a particular. Nunca se lanza: ver la regla 3 de la cabecera.
 	 */
 	private Optional<Cubierta> cubierta(SesionCerrada cierre) {
-		List<PracticaDeOferta> declaradas = practicasDeOferta.practicasHabilitadas(
-				cierre.organizationId(), cierre.consultorioId(), cierre.ofertaId());
-		List<Long> candidatas = candidatas(cierre, declaradas);
-		if (candidatas.isEmpty()) {
-			return Optional.empty();
-		}
-
 		LocalDate dia = diaLocalDeLaSede(cierre);
-		for (long practicaId : candidatas) {
-			List<CoberturaAplicable> aplicables = elegidaPrimero(cierre, coberturas.aplicables(
-					cierre.organizationId(), cierre.consultorioId(), cierre.personaId(), practicaId,
-					cierre.ofertaId(), dia));
-			for (CoberturaAplicable cobertura : aplicables) {
-				Optional<ArancelCongelado> arancel = aranceles.congelar(
+		Optional<Cubierta> cubierta = cotizador.resolver(
+				cierre.organizationId(), cierre.consultorioId(), cierre.personaId(), cierre.ofertaId(),
+				cierre.practicasRealizadas(), cierre.coberturaElegidaId(), dia,
+				(cobertura, practicaId) -> aranceles.congelar(
 						cierre.organizationId(), cierre.consultorioId(),
 						cobertura.referencia().financiadorId(), cobertura.referencia().planId(),
-						practicaId, cierre.ofertaId(), dia);
-				if (arancel.isPresent() && topeAlcanzado(cierre, arancel.get(), dia)) {
-					// Pasado el tope de sesiones del mes, el plan ya no cubre: se prueba la
-					// cobertura siguiente y, si ninguna cubre, la sesion va como particular.
-					continue;
-				}
-				if (arancel.isPresent()) {
-					boolean noHabilitada = !declaradas.isEmpty() && declaradas.stream()
-							.noneMatch(p -> p.practicaId() == practicaId);
-					if (cierre.coberturaElegidaId() != null
-							&& cobertura.coberturaId() != cierre.coberturaElegidaId()) {
-						log.warn("La cobertura elegida {} no aplica al cierre de la sesion {}: se "
-										+ "devenga por la cobertura {}",
-								cierre.coberturaElegidaId(), cierre.sesionId(),
-								cobertura.coberturaId());
-					}
-					return Optional.of(new Cubierta(cobertura, arancel.get(), noHabilitada));
-				}
+						practicaId, cierre.ofertaId(), dia))
+				.cubierta();
+		cubierta.ifPresent(c -> {
+			if (cierre.coberturaElegidaId() != null
+					&& c.cobertura().coberturaId() != cierre.coberturaElegidaId()) {
+				log.warn("La cobertura elegida {} no aplica al cierre de la sesion {}: se devenga por "
+								+ "la cobertura {}",
+						cierre.coberturaElegidaId(), cierre.sesionId(), c.cobertura().coberturaId());
 			}
-		}
-		return Optional.empty();
-	}
-
-	/**
-	 * La cobertura elegida en la recepcion o al reservar va primero; el resto conserva el orden de
-	 * {@code aplicables} (la principal primero). Si la elegida no aplica al cierre, la lista queda
-	 * igual y el devengo sigue como antes: nunca lanza (regla 3 de la cabecera).
-	 */
-	/**
-	 * {@code true} si el convenio tiene tope de sesiones por mes y la persona ya lo uso con ese
-	 * plan en el mes de la sesion (en la zona de la sede, en todas las sedes).
-	 *
-	 * <p>Lo que no hace: serializar dos cierres simultaneos de la misma persona en la ultima
-	 * sesion del tope. Es un caso raro —dos atenciones cerradas en el mismo instante— y el peor
-	 * resultado es una sesion de mas presentada, que la obra social debita.
-	 */
-	private boolean topeAlcanzado(SesionCerrada cierre, ArancelCongelado arancel, LocalDate dia) {
-		Integer tope = aranceles.topeDeSesionesMensual(cierre.organizationId(), arancel.convenioId());
-		if (tope == null || tope <= 0) {
-			return false;
-		}
-		ZoneId zona = zonaDeLaSede(cierre);
-		LocalDate primero = dia.withDayOfMonth(1);
-		long usadas = obligaciones.contarSesionesCubiertas(
-				cierre.organizationId(), cierre.personaId(), arancel.planId(),
-				primero.atStartOfDay(zona).toInstant(),
-				primero.plusMonths(1).atStartOfDay(zona).toInstant());
-		if (usadas < tope) {
-			return false;
-		}
-		log.info("Tope de sesiones del mes alcanzado: la sesion no se cubre por el plan. sesionId={} "
-						+ "personaId={} planId={} usadas={} tope={}",
-				cierre.sesionId(), cierre.personaId(), arancel.planId(), usadas, tope);
-		return true;
-	}
-
-	private static List<CoberturaAplicable> elegidaPrimero(
-			SesionCerrada cierre, List<CoberturaAplicable> aplicables) {
-		Long elegida = cierre.coberturaElegidaId();
-		if (elegida == null) {
-			return aplicables;
-		}
-		List<CoberturaAplicable> ordenadas = new ArrayList<>(aplicables.size());
-		aplicables.stream().filter(c -> c.coberturaId() == elegida).forEach(ordenadas::add);
-		aplicables.stream().filter(c -> c.coberturaId() != elegida).forEach(ordenadas::add);
-		return ordenadas;
-	}
-
-	/**
-	 * DP-11: manda la practica realizada; la principal de la oferta solo si la sesion cerro sin
-	 * tratamientos.
-	 *
-	 * <p>Con tratamientos, la principal va primero si esta entre las realizadas y el resto por id
-	 * ascendente: el orden es determinista para que el mismo hecho elija siempre lo mismo.
-	 */
-	static List<Long> candidatas(SesionCerrada cierre, List<PracticaDeOferta> declaradas) {
-		Optional<Long> principal = declaradas.stream()
-				.filter(PracticaDeOferta::principal)
-				.map(PracticaDeOferta::practicaId)
-				.findFirst();
-
-		Set<Long> realizadas = cierre.practicasRealizadas();
-		if (realizadas.isEmpty()) {
-			return principal.map(List::of).orElse(List.of());
-		}
-
-		List<Long> orden = new ArrayList<>(realizadas.stream().sorted().toList());
-		principal.filter(realizadas::contains).ifPresent(p -> {
-			orden.remove(p);
-			orden.addFirst(p);
 		});
-		return orden;
+		return cubierta;
 	}
 
 	/**
@@ -426,10 +352,5 @@ public class ObligacionDevengador implements CierreDeSesionObserver, PrecioParti
 
 	private static String nombre(SesionCerrada cierre) {
 		return "Sesion " + cierre.numeroSesion();
-	}
-
-	/** La cobertura que se aplico, su arancel congelado y la alerta de DP-11. */
-	private record Cubierta(
-			CoberturaAplicable cobertura, ArancelCongelado arancel, boolean alertaPracticaNoHabilitada) {
 	}
 }

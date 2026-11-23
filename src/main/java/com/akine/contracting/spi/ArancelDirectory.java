@@ -1,6 +1,7 @@
 package com.akine.contracting.spi;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -124,4 +125,11 @@ public interface ArancelDirectory {
 	 * no tiene. Lo usa el devengo: pasado el tope en el mes, la sesion se cobra como particular.
 	 */
 	Integer topeDeSesionesMensual(long organizationId, long convenioId);
+
+	/**
+	 * Los convenios activos que alcanzan a la sede —los propios y los del plan (V43)—, sin mirar
+	 * vigencia por fechas: el importe del dia lo resuelve {@link #resolver}. Para listar y explicar,
+	 * no para decidir. Los de la sede primero, despues por nombre.
+	 */
+	List<ConvenioDeLaSede> conveniosActivos(long organizationId, long consultorioId);
 }

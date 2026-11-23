@@ -85,4 +85,17 @@ public interface ConvenioRepository extends JpaRepository<Convenio, Long>, Conve
 	Optional<Convenio> findDelPlan(
 			@Param("organizationId") Long organizationId,
 			@Param("planId") Long planId);
+
+	/** Los convenios activos de la sede y los del plan (sin sede), los de la sede primero. */
+	@Query("""
+			SELECT c FROM Convenio c
+			 WHERE c.organizationId = :organizationId
+			   AND (c.consultorioId = :consultorioId OR c.consultorioId IS NULL)
+			   AND c.active = true
+			 ORDER BY CASE WHEN c.consultorioId IS NULL THEN 1 ELSE 0 END ASC,
+			          c.nombre ASC, c.id ASC
+			""")
+	List<Convenio> findActivosDeLaSede(
+			@Param("organizationId") Long organizationId,
+			@Param("consultorioId") Long consultorioId);
 }
