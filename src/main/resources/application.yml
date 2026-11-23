@@ -283,6 +283,23 @@ akine:
     acciones:
       enabled: ${AKINE_ASISTENTE_ACCIONES_ENABLED:false}
       vigencia-minutos: ${AKINE_ASISTENTE_ACCIONES_VIGENCIA_MINUTOS:15}
+    # Agente con herramientas (docs/diseno/AKINE-asistente-agente.md). Sin key de Anthropic el
+    # proveedor claude no responde y se usa el alternativo, si hay.
+    agente:
+      # claude | compatible | prueba
+      proveedor: ${AKINE_ASISTENTE_AGENTE_PROVEEDOR:claude}
+      alternativo: ${AKINE_ASISTENTE_AGENTE_ALTERNATIVO:}
+      effort: ${AKINE_ASISTENTE_AGENTE_EFFORT:medium}
+      max-vueltas: ${AKINE_ASISTENTE_AGENTE_MAX_VUELTAS:8}
+      plazo-total-segundos: ${AKINE_ASISTENTE_AGENTE_PLAZO_SEGUNDOS:30}
+      claude:
+        api-key: ${AKINE_ANTHROPIC_API_KEY:}
+        modelo: ${AKINE_ASISTENTE_AGENTE_CLAUDE_MODELO:claude-opus-5-5}
+        max-tokens: ${AKINE_ASISTENTE_AGENTE_CLAUDE_MAX_TOKENS:16000}
+      compatible:
+        url: ${AKINE_ASISTENTE_AGENTE_COMPATIBLE_URL:}
+        modelo: ${AKINE_ASISTENTE_AGENTE_COMPATIBLE_MODELO:}
+        api-key: ${AKINE_ASISTENTE_AGENTE_COMPATIBLE_API_KEY:}
 
   # Dictado por voz (docs/diseno/AKINE-dictado-por-voz.md). Apagado por defecto: toda llamada
   # responde 409 dictado-deshabilitado. Transcribe con un Whisper local (servicio whisper del
