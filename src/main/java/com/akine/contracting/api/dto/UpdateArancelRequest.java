@@ -25,7 +25,7 @@ import java.time.LocalDate;
 @Schema(description = "Cambios a aplicar sobre un arancel. Los campos nulos no se tocan")
 public record UpdateArancelRequest(
 
-		@Schema(description = "OBSOLETO desde 0.185.0: se ignora", example = "13000.00",
+		@Schema(description = "OBSOLETO desde 0.189.0: se ignora", example = "13000.00",
 				deprecated = true)
 		BigDecimal importeTotal,
 
@@ -34,7 +34,7 @@ public record UpdateArancelRequest(
 		@Digits(integer = 10, fraction = 2, message = "Los importes admiten 2 decimales")
 		BigDecimal importeFinanciador,
 
-		@Schema(description = "OBSOLETO desde 0.185.0: se ignora", example = "2600.00",
+		@Schema(description = "OBSOLETO desde 0.189.0: se ignora", example = "2600.00",
 				deprecated = true)
 		BigDecimal coseguro,
 

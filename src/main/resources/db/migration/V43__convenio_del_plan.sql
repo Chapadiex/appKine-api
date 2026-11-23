@@ -1,4 +1,4 @@
--- V37 — El precio de la obra social vive en el plan (22/11/2026).
+-- V43 — El precio de la obra social vive en el plan (22/11/2026).
 --
 -- Hasta aca el convenio era de una SEDE (RN-M16-001): para que una obra social pagara algo habia
 -- que cargar el financiador, el plan y despues firmar un convenio por sede con sus aranceles. El
@@ -23,5 +23,5 @@ CREATE UNIQUE INDEX uk_convenio_del_plan_activo
     ON convenio (organization_id, plan_id)
     WHERE consultorio_id IS NULL AND active = true;
 
-COMMENT ON COLUMN convenio.consultorio_id IS 'Sede del convenio. NULL = convenio del plan: vale para todas las sedes de la organizacion (V37). Un convenio de una sede manda sobre el del plan en esa sede';
-COMMENT ON COLUMN convenio_arancel.consultorio_id IS 'COPIA de convenio.consultorio_id. NULL cuando el arancel es del convenio del plan (V37)';
+COMMENT ON COLUMN convenio.consultorio_id IS 'Sede del convenio. NULL = convenio del plan: vale para todas las sedes de la organizacion (V43). Un convenio de una sede manda sobre el del plan en esa sede';
+COMMENT ON COLUMN convenio_arancel.consultorio_id IS 'COPIA de convenio.consultorio_id. NULL cuando el arancel es del convenio del plan (V43)';

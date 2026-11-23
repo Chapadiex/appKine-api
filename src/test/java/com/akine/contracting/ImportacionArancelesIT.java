@@ -73,7 +73,7 @@ class ImportacionArancelesIT {
 		List<Fila> lote = List.of(
 				fila(escenario.practicaId(), "12000.00", ENERO, JUNIO_30),
 				fila(otraPracticaId, "9000.00", ENERO, DICIEMBRE),
-				// Lo que paga la obra social en negativo: la unica fila mala. (Desde V33 solo se guarda
+				// Lo que paga la obra social en negativo: la unica fila mala. (Desde V39 solo se guarda
 				// ese importe, asi que un total y un coseguro que no suman ya no son un error.)
 				new Fila(escenario.practicaId(), null, null, null,
 						new BigDecimal("-90.00"), null, JULIO, DICIEMBRE));

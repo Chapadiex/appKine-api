@@ -33,7 +33,7 @@ import static com.akine.contracting.ConvenioFixtures.enParalelo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * El convenio del plan (V37): lo que paga la obra social se carga una vez en el plan y vale en
+ * El convenio del plan (V43): lo que paga la obra social se carga una vez en el plan y vale en
  * todas las sedes; un convenio propio de una sede manda sobre el en esa sede.
  *
  * <p>Contra la base real porque lo que decide son la consulta con {@code consultorio_id IS NULL},

@@ -22,7 +22,7 @@ final class BloqueoDeConvenios {
 	}
 
 	/**
-	 * El lock del convenio del plan (V37): la fila del plan, que siempre existe. No necesita la
+	 * El lock del convenio del plan (V43): la fila del plan, que siempre existe. No necesita la
 	 * creacion previa de {@code convenio_lock}.
 	 */
 	static void tomarDelPlan(ConvenioLockRepositoryPort locks, long organizationId, long planId) {

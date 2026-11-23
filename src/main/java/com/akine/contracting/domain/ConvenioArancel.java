@@ -16,12 +16,12 @@ import java.util.Locale;
 /**
  * Lo que vale una practica bajo un convenio, durante un periodo (M16, RF-M16-004).
  *
- * <h2>Un solo importe: lo que paga el financiador (V33)</h2>
+ * <h2>Un solo importe: lo que paga el financiador (V39)</h2>
  *
  * <p>El arancel guarda {@code importeFinanciador} (B). El coseguro <b>no se carga</b>: se calcula
  * al cerrar la sesion como {@code max(A - B, 0)}, con A el precio de la oferta ese dia
  * ({@code contracting.spi.Coseguro}). {@code importeTotal} y {@code coseguro} quedan como
- * historicos de los aranceles cargados antes de V33: esta clase los pone en {@code null} en todo
+ * historicos de los aranceles cargados antes de V39: esta clase los pone en {@code null} en todo
  * alta y en toda edicion del importe, y nadie los usa para calcular.
  *
  * <p><b>No hay porcentaje de cobertura a proposito:</b> un porcentaje obliga a multiplicar y
@@ -57,7 +57,7 @@ public class ConvenioArancel extends MarcaTemporal {
 	@Column(name = "organization_id", nullable = false, updatable = false)
 	private Long organizationId;
 
-	/** Copia de la sede del convenio. {@code null} si es del convenio del plan (V37). */
+	/** Copia de la sede del convenio. {@code null} si es del convenio del plan (V43). */
 	@Column(name = "consultorio_id", updatable = false)
 	private Long consultorioId;
 
@@ -76,7 +76,7 @@ public class ConvenioArancel extends MarcaTemporal {
 	@Column(name = "oferta_id", updatable = false)
 	private Long ofertaId;
 
-	/** Historico, anterior a V33. {@code null} en los aranceles nuevos. */
+	/** Historico, anterior a V39. {@code null} en los aranceles nuevos. */
 	@Column(name = "importe_total", precision = 12, scale = 2)
 	private BigDecimal importeTotal;
 
@@ -84,7 +84,7 @@ public class ConvenioArancel extends MarcaTemporal {
 	@Column(name = "importe_financiador", nullable = false, precision = 12, scale = 2)
 	private BigDecimal importeFinanciador;
 
-	/** Historico, anterior a V33. {@code null} en los aranceles nuevos. */
+	/** Historico, anterior a V39. {@code null} en los aranceles nuevos. */
 	@Column(name = "coseguro", precision = 12, scale = 2)
 	private BigDecimal coseguro;
 
@@ -208,7 +208,7 @@ public class ConvenioArancel extends MarcaTemporal {
 	// =================================================================================
 
 	/**
-	 * Fija B y borra los historicos: un total o un coseguro anteriores a V33 que sobrevivieran a
+	 * Fija B y borra los historicos: un total o un coseguro anteriores a V39 que sobrevivieran a
 	 * un cambio de B describirian un arancel que ya no existe.
 	 */
 	private void aplicarImporte(BigDecimal financiador) {

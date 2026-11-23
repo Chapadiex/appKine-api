@@ -193,9 +193,9 @@ class ConvenioYArancelMigrationIT {
 	}
 
 	@Test
-	@DisplayName("V33: el arancel se guarda solo con lo que paga el financiador")
+	@DisplayName("V39: el arancel se guarda solo con lo que paga el financiador")
 	void el_arancel_guarda_solo_el_financiador() {
-		// V33 borro ck_arancel_partes_suman_total: el total y el coseguro son historicos y el
+		// V39 borro ck_arancel_partes_suman_total: el total y el coseguro son historicos y el
 		// coseguro se calcula al cerrar la sesion (precio de la oferta - B).
 		Escenario escenario = fixtures.crear();
 		long convenioId = insertarConvenio(escenario, "A", "2026-01-01", "2026-12-31");

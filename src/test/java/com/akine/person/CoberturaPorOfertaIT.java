@@ -107,7 +107,7 @@ class CoberturaPorOfertaIT {
 		assertThat(r.aplicables()).singleElement().satisfies(a -> {
 			assertThat(a.coberturaId()).isEqualTo(f.cobertura());
 			assertThat(a.practicaId()).isEqualTo(f.fono());
-			assertThat(a.arancel().importeTotal()).as("A 8500 = B 8000 + coseguro 500 (V33)").isEqualByComparingTo("8500.00");
+			assertThat(a.arancel().importeTotal()).as("A 8500 = B 8000 + coseguro 500 (V39)").isEqualByComparingTo("8500.00");
 			assertThat(a.practicas()).extracting(CoberturaParaOferta.Practica::practicaId)
 					.containsExactly(f.kine(), f.fono());
 			assertThat(a.practicas().getFirst().motivo()).isEqualTo(Motivo.SIN_ARANCEL_VIGENTE);

@@ -62,6 +62,14 @@ class ContratacionRepository implements ContratacionRepositoryPort {
 	}
 
 	@Override
+	public boolean nacioEnPrueba(long organizationId) {
+		return Boolean.TRUE.equals(jdbc.queryForObject(
+				"SELECT EXISTS (SELECT 1 FROM subscription_transition WHERE organization_id = ?"
+						+ " AND from_status IS NULL AND to_status = 'PRUEBA')",
+				Boolean.class, organizationId));
+	}
+
+	@Override
 	public void reemplazar(long organizationId, Set<Servicio> servicios, Set<Adicional> adicionales) {
 		jdbc.update("DELETE FROM subscription_servicio WHERE organization_id = ?", organizationId);
 		for (Servicio servicio : servicios) {

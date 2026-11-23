@@ -61,7 +61,7 @@ public class Convenio extends MarcaTemporal {
 
 	/**
 	 * RN-M16-001. Inmutable: un convenio no se muda de sede. {@code null} es el convenio del plan
-	 * (V37): vale para todas las sedes, y el de una sede manda sobre el en esa sede.
+	 * (V43): vale para todas las sedes, y el de una sede manda sobre el en esa sede.
 	 */
 	@Column(name = "consultorio_id", updatable = false)
 	private Long consultorioId;
@@ -306,7 +306,7 @@ public class Convenio extends MarcaTemporal {
 		return organizationId;
 	}
 
-	/** {@code true} si es el convenio del plan: no es de ninguna sede (V37). */
+	/** {@code true} si es el convenio del plan: no es de ninguna sede (V43). */
 	public boolean esDelPlan() {
 		return consultorioId == null;
 	}

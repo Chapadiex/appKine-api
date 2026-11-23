@@ -75,7 +75,7 @@ public final class ConvenioRepositoryPorts {
 				Long organizationId, Long consultorioId, Long financiadorId, Long planId);
 
 		/**
-		 * El convenio del plan (V37): el que no es de ninguna sede y vale para todas. Como mucho
+		 * El convenio del plan (V43): el que no es de ninguna sede y vale para todas. Como mucho
 		 * hay uno activo por plan ({@code uk_convenio_del_plan_activo}).
 		 */
 		Optional<Convenio> findDelPlan(Long organizationId, Long planId);
@@ -140,7 +140,7 @@ public final class ConvenioRepositoryPorts {
 
 		/**
 		 * Toma la fila del plan con {@code FOR UPDATE}: es el lock de las escrituras del convenio
-		 * del plan (V37), que no es de ninguna sede y por eso no tiene fila en
+		 * del plan (V43), que no es de ninguna sede y por eso no tiene fila en
 		 * {@code convenio_lock}. Vacio si el plan no existe en el tenant.
 		 */
 		Optional<Long> lockDelPlan(long organizationId, long planId);

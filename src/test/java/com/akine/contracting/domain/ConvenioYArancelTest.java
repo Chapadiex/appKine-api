@@ -171,7 +171,7 @@ class ConvenioYArancelTest {
 	class DelArancel {
 
 		@Test
-		@DisplayName("V33: el arancel guarda solo lo que paga el financiador; cero vale")
+		@DisplayName("V39: el arancel guarda solo lo que paga el financiador; cero vale")
 		void guarda_solo_el_financiador() {
 			ConvenioArancel arancel = arancel("9600.00");
 

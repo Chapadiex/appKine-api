@@ -165,7 +165,7 @@ class ObligacionDevengadorTest {
 	}
 
 	@Test
-	@DisplayName("V33: coseguro = precio de la oferta - B, aunque el arancel diga otra cosa")
+	@DisplayName("V39: coseguro = precio de la oferta - B, aunque el arancel diga otra cosa")
 	void coseguro_es_precio_menos_financiador() {
 		// El total y el coseguro del arancel son historicos y no se usan.
 		cubre(KINE, "99999.00", "7000.00", "92999.00");
@@ -181,7 +181,7 @@ class ObligacionDevengadorTest {
 	}
 
 	@Test
-	@DisplayName("V33: si B supera el precio, el paciente no paga nada y el financiador paga B")
+	@DisplayName("V39: si B supera el precio, el paciente no paga nada y el financiador paga B")
 	void financiador_mayor_que_el_precio() {
 		cubre(KINE, "0.00", "15000.00", "0.00");
 

@@ -114,6 +114,14 @@ public class Servicio extends MarcaTemporal {
 	private boolean generaRegistroClinicoDefault;
 
 	/**
+	 * Agrupador del catalogo ("Kinesiologia neurologica", "Yoga y disciplinas orientales"). Solo
+	 * ordena el selector: no decide ningun comportamiento. Lo carga el catalogo precargado (V38);
+	 * un servicio propio no lo tiene, salvo la copia de un global, que lo hereda.
+	 */
+	@Column(name = "categoria", length = 80)
+	private String categoria;
+
+	/**
 	 * Servicio GLOBAL que esta copia personaliza para su organizacion, o null. La copia vale para
 	 * todas las sedes de la organizacion: el servicio es un concepto de la organizacion, la sede
 	 * solo lo publica como oferta.
@@ -201,6 +209,7 @@ public class Servicio extends MarcaTemporal {
 				global.requiereCasoClinicoDefault,
 				global.generaRegistroClinicoDefault);
 		copia.personalizaServicioId = global.id;
+		copia.categoria = global.categoria;
 		return copia;
 	}
 
@@ -317,6 +326,10 @@ public class Servicio extends MarcaTemporal {
 
 	public boolean isGeneraRegistroClinicoDefault() {
 		return generaRegistroClinicoDefault;
+	}
+
+	public String getCategoria() {
+		return categoria;
 	}
 
 	public boolean isActive() {

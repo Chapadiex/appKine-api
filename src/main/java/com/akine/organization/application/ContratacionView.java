@@ -16,6 +16,8 @@ import java.util.Set;
  * @param maxSedes    tope de sedes del plan; {@code null} = sin tope
  * @param definidaPorPlataforma el centro lo dio de alta (o lo ajusto) la plataforma; si no, es un
  *                    centro autoregistrado o anterior al 18/11/2026 y tiene todo
+ * @param altaPorPlataforma el centro nacio del alta de la plataforma (en prueba), no del
+ *                    autoregistro; es el que recibe la guia de primeros pasos
  */
 public record ContratacionView(
 		long organizationId,
@@ -28,6 +30,7 @@ public record ContratacionView(
 		Instant pruebaHasta,
 		boolean soloLectura,
 		boolean definidaPorPlataforma,
+		boolean altaPorPlataforma,
 		long version) {
 
 	public ContratacionView {

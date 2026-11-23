@@ -12,7 +12,7 @@ import java.util.Optional;
 /**
  * Persistencia de {@code convenio} (M16).
  *
- * <p><b>Convenio del plan (V37).</b> Un convenio con {@code consultorioId} nulo vale para todas
+ * <p><b>Convenio del plan (V43).</b> Un convenio con {@code consultorioId} nulo vale para todas
  * las sedes. Las consultas por sede lo incluyen, y {@link #findActivosPorAlcance} lo ordena DESPUES
  * de los de la sede: si la sede tiene un convenio vigente propio, manda ese.
  *

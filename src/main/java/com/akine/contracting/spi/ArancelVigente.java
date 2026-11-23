@@ -23,7 +23,7 @@ import java.time.LocalDate;
  * convenio salio? Por eso viajan el convenio, su codigo y las dos vigencias que intervinieron —la
  * del convenio y la del arancel—, que juntas son la derivacion completa.
  *
- * <h2>Importes (V33)</h2>
+ * <h2>Importes (V39)</h2>
  *
  * <p>{@code importeFinanciador} (B) es lo que el arancel guarda. {@code importeTotal} y
  * {@code coseguro} salen de la resolucion sin precio: son los historicos del arancel, o

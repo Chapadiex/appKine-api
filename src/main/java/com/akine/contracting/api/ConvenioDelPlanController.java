@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * El convenio del plan (V37): lo que paga la obra social se carga en el plan, para todas las sedes.
+ * El convenio del plan (V43): lo que paga la obra social se carga en el plan, para todas las sedes.
  *
  * <p>Es un convenio sin sede. Sus aranceles se administran con las mismas operaciones de siempre
  * ({@code /consultorios/{consultorioId}/convenios/{convenioId}/aranceles}), desde cualquier sede de

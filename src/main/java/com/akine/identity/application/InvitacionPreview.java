@@ -1,6 +1,9 @@
 package com.akine.identity.application;
 
+import com.akine.organization.spi.Servicio;
+
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Una invitacion como la ve <b>el invitado</b>, antes de decidir (RF-M05-002).
@@ -30,9 +33,17 @@ public record InvitacionPreview(
 		String email,
 		Instant expiraEn,
 		boolean requiereRegistro,
-		PerfilDeInvitacion perfil) {
+		PerfilDeInvitacion perfil,
+		List<Servicio> servicios) {
+	public InvitacionPreview(String organizacionNombre, String consultorioNombre, String roleCode,
+			String email, Instant expiraEn, boolean requiereRegistro, PerfilDeInvitacion perfil) {
+		this(organizacionNombre, consultorioNombre, roleCode, email, expiraEn, requiereRegistro, perfil,
+				List.of());
+	}
+
 	public InvitacionPreview(String organizacionNombre, String consultorioNombre, String roleCode,
 			String email, Instant expiraEn, boolean requiereRegistro) {
-		this(organizacionNombre, consultorioNombre, roleCode, email, expiraEn, requiereRegistro, null);
+		this(organizacionNombre, consultorioNombre, roleCode, email, expiraEn, requiereRegistro, null,
+				List.of());
 	}
 }

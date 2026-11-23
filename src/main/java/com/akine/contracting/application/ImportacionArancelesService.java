@@ -176,7 +176,7 @@ public class ImportacionArancelesService {
 		// EL ORDEN DE ESTAS LINEAS ES LA GARANTIA. Ver la cabecera de ConvenioService: fila-lock en
 		// transaccion aparte, lock tomado ANTES de leer, y READ_COMMITTED para que la relectura vea
 		// lo que commiteo quien tuvo el lock antes.
-		// El convenio del plan (V37) no es de ninguna sede: su lock es la fila del plan. Se lee el
+		// El convenio del plan (V43) no es de ninguna sede: su lock es la fila del plan. Se lee el
 		// convenio para saber cual tomar y se relee bajo el lock, porque su vigencia o su estado
 		// pudieron cambiar desde el preview.
 		Convenio alcance = cargarConvenio(organizationId, consultorioId, convenioId);

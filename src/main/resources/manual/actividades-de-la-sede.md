@@ -27,9 +27,8 @@ actividad.
 
 1. Entrá a :icono[servicios]: **Servicios y catálogo → Actividades de la sede** y tocá
    :icono[agregar]: **Publicar un servicio en la sede**.
-2. En **Servicio del catálogo**, elegí el servicio. El catálogo ya trae los servicios más comunes
-   (kinesiología, fisioterapia, fonoaudiología, psicología, nutrición, terapia ocupacional). Al
-   elegirlo se completan el **Nombre comercial** y la **Duración (minutos)**, y si el servicio
+2. En **Servicio del catálogo**, elegí el servicio. La lista viene agrupada por categoría (por
+   ejemplo, **Kinesiología neurológica** o **Pilates y disciplinas relacionadas**). Al elegirlo se completan el **Nombre comercial** y la **Duración (minutos)**, y si el servicio
    tiene su práctica, se marca **Admite obra social** y la práctica se asocia sola.
 3. Revisá el **Nombre comercial** (es el que ve el paciente) y la **Duración**, y cargá el
    **Precio de la sesión**: lo que cobrás en particular.

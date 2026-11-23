@@ -97,7 +97,7 @@ import java.util.Optional;
 public class ConvenioService {
 
 	/**
-	 * Desde cuando vale el convenio del plan (V37). Lo que tiene fechas es cada arancel, que tiene
+	 * Desde cuando vale el convenio del plan (V43). Lo que tiene fechas es cada arancel, que tiene
 	 * que caber en la vigencia de su convenio: el del plan no pone limite.
 	 */
 	static final LocalDate DESDE_SIEMPRE = LocalDate.of(2000, 1, 1);
@@ -443,7 +443,7 @@ public class ConvenioService {
 			Long excluirId) {
 
 		convenios.findActivosPorAlcance(organizationId, consultorioId, financiadorId, planId).stream()
-				// El convenio del plan (V37) no compite con los de la sede: los de la sede mandan
+				// El convenio del plan (V43) no compite con los de la sede: los de la sede mandan
 				// sobre el. Solo se solapan dos convenios de la misma sede.
 				.filter(existente -> !existente.esDelPlan())
 				.filter(existente -> !existente.getId().equals(excluirId))
@@ -458,13 +458,13 @@ public class ConvenioService {
 	}
 
 	// =================================================================================
-	// El convenio del plan (V37)
+	// El convenio del plan (V43)
 	// =================================================================================
 
 	/**
 	 * El convenio del plan, o vacio si el plan todavia no tiene precios cargados.
 	 *
-	 * <p>Es el convenio sin sede que vale para todas (V37): lo que se carga en el plan es cuanto
+	 * <p>Es el convenio sin sede que vale para todas (V43): lo que se carga en el plan es cuanto
 	 * paga la obra social por practica, y eso son los aranceles de este convenio.
 	 */
 	@Transactional(readOnly = true)

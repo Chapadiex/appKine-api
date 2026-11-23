@@ -242,7 +242,7 @@ public class ArancelService {
 		if (!resolucion.estaResuelta()) {
 			return resolucion;
 		}
-		// V33: con oferta se conoce A y se muestra el coseguro (A − B); sin oferta viaja nulo.
+		// V39: con oferta se conoce A y se muestra el coseguro (A − B); sin oferta viaja nulo.
 		BigDecimal precioA = ofertaId == null ? null
 				: ofertas.precioVigenteEl(organizationId, consultorioId, ofertaId, contra)
 						.map(PrecioDeOferta::precioBase).orElse(null);
@@ -502,7 +502,7 @@ public class ArancelService {
 
 	/**
 	 * El lock de las escrituras de aranceles de ESE convenio: la fila de {@code convenio_lock} de
-	 * su sede o, si es el convenio del plan (V37), la fila del plan.
+	 * su sede o, si es el convenio del plan (V43), la fila del plan.
 	 */
 	private void bloquearAlcance(long organizationId, Convenio convenio) {
 		if (convenio.esDelPlan()) {

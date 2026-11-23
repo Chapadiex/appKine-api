@@ -59,7 +59,7 @@ public interface ConvenioLockRepository
 	 * carrera en una sola sentencia atomica, sin excepcion y sin lectura previa. Es especifico de
 	 * MySQL, que es la base fijada por DP-09.
 	 */
-	/** Ver el puerto: la fila del plan hace de lock del convenio del plan (V37). */
+	/** Ver el puerto: la fila del plan hace de lock del convenio del plan (V43). */
 	@Query(value = """
 			SELECT id FROM plan_cobertura
 			 WHERE organization_id = :organizationId

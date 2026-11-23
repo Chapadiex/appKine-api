@@ -73,6 +73,12 @@ public class ContratacionService implements PruebasGratis, ServiciosDelCentro {
 		return tieneServicio(organizationId, servicio);
 	}
 
+	@Override
+	@Transactional(readOnly = true)
+	public Set<Servicio> serviciosDe(long organizationId) {
+		return contratacionRepository.serviciosDe(organizationId);
+	}
+
 	/** De los centros dados, los que tienen la IA (una consulta para la pagina del listado). */
 	@Transactional(readOnly = true)
 	public Set<Long> conIa(java.util.Collection<Long> organizationIds) {
@@ -160,7 +166,8 @@ public class ContratacionService implements PruebasGratis, ServiciosDelCentro {
 				contratacionRepository.serviciosDe(organizationId),
 				contratacionRepository.adicionalesDe(organizationId),
 				subscription.getStatus(), subscription.getPruebaHasta(), soloLectura,
-				contratacionRepository.definida(organizationId), subscription.getVersion());
+				contratacionRepository.definida(organizationId),
+				contratacionRepository.nacioEnPrueba(organizationId), subscription.getVersion());
 	}
 
 	@Override

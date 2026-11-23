@@ -52,7 +52,7 @@ import java.util.Set;
  *   5. primera practica con cobertura aplicable (B-2) y arancel congelado
  *                                             -&gt; FINANCIADOR (importe_financiador)
  *                                                + COSEGURO  max(precio de la oferta - B, 0),
- *                                                cada una si es &gt; 0 (V33)
+ *                                                cada una si es &gt; 0 (V39)
  *   6. ninguna                                -&gt; PARTICULAR (precio de la oferta, como 07.01)
  * </pre>
  *

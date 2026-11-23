@@ -1,6 +1,6 @@
 -- Catálogo global de servicios, segunda parte: actividades grupales y de bienestar (yoga, pilates,
 -- gimnasia, etc.) y tratamientos individuales que no son prácticas de obra social (RPG, drenaje,
--- masaje). Complementa a V35, que cargó un servicio por cada práctica.
+-- masaje). Complementa a V41, que cargó un servicio por cada práctica.
 --
 -- No llevan código de práctica: no se facturan a una obra social por defecto. Cada centro les pone
 -- precio en su actividad y, si alguna obra social se la reconoce, le asocia la práctica a mano.

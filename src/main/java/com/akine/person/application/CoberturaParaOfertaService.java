@@ -180,7 +180,7 @@ public class CoberturaParaOfertaService {
 				.toList();
 	}
 
-	/** El coseguro de cada arancel se calcula contra el precio del dia (A − B, V33). */
+	/** El coseguro de cada arancel se calcula contra el precio del dia (A − B, V39). */
 	private static Practica practica(
 			PracticaDeOferta p, ResolucionDeArancel resolucion, BigDecimal precioA) {
 		return resolucion.estaResuelta()

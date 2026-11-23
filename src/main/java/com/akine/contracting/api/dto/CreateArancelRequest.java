@@ -30,7 +30,7 @@ public record CreateArancelRequest(
 		Long practicaId,
 
 		@Schema(
-				description = "OBSOLETO desde 0.185.0: se ignora. El coseguro se calcula al cerrar "
+				description = "OBSOLETO desde 0.189.0: se ignora. El coseguro se calcula al cerrar "
 						+ "la sesion como precio de la oferta menos lo que paga el financiador",
 				example = "12000.00", deprecated = true,
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
@@ -47,7 +47,7 @@ public record CreateArancelRequest(
 		BigDecimal importeFinanciador,
 
 		@Schema(
-				description = "OBSOLETO desde 0.185.0: se ignora. Ver importeTotal",
+				description = "OBSOLETO desde 0.189.0: se ignora. Ver importeTotal",
 				example = "2400.00", deprecated = true,
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		BigDecimal coseguro,

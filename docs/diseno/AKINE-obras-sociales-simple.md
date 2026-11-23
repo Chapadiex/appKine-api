@@ -87,13 +87,13 @@ snapshot_importe_total = B + coseguro          (= max(A, B); mantiene ck_obligac
   especial de "total cero", porque el total ya no se carga.
 - El snapshot de la obligación sigue igual: total, financiador y coseguro **del día**, congelados.
 
-**Migración `V33`** (reservada: `V29` acciones, `V30` cobro, `V31` planes, `V32` términos):
+**Migración `V39`** (nació como `V33`; esta rama va de `V39` a `V43`, encima de la `V38` del catálogo precargado):
 - se borra `ck_arancel_partes_suman_total`;
 - `importe_total` y `coseguro` de `convenio_arancel` pasan a admitir `NULL`, quedan como **históricos** y
   nadie los lee para calcular;
 - los aranceles existentes conservan sus valores, pero el devengo ya no los usa.
 
-**Contrato `0.185.0`** (sobre el `0.184.0` de `akine-api-correo-duenio`; renumerar al rebasear):
+**Contrato `0.189.0`** (encima del `0.188.0` del catálogo precargado de `main`):
 - en el alta, la edición y la importación de aranceles, `importeTotal` y `coseguro` pasan a ser
   **opcionales y se ignoran** (`deprecated`). Un cliente viejo que los manda no se rompe;
 - en las respuestas (`Arancel`, `ArancelEfectivo`, cobertura aplicable), `importeTotal` y `coseguro`
@@ -143,7 +143,7 @@ autorización.
     de esa sesión, sin revertir.
 - El CSV suma esas columnas y, al final, un **resumen por paciente**: nombre, documento,
   afiliado, plan, cantidad de sesiones, fechas e importe presentado.
-- Contrato: campos **opcionales nuevos** en `PresentacionItem` (cambio aditivo, minor 0.186.0).
+- Contrato: campos **opcionales nuevos** en `PresentacionItem` (cambio aditivo, minor 0.189.0).
 
 **PHI.** El CSV de 07.04 salió con PHI mínima a propósito. Este paso la amplía porque la obra social
 la exige para liquidar. Sigue igual de restringida: `cobro:register` y la sede del lote. No se agrega

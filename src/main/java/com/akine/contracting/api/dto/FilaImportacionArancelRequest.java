@@ -31,7 +31,7 @@ public record FilaImportacionArancelRequest(
 				requiredMode = Schema.RequiredMode.NOT_REQUIRED)
 		Long ofertaId,
 
-		@Schema(description = "OBSOLETO desde 0.185.0: se ignora", example = "12000.00",
+		@Schema(description = "OBSOLETO desde 0.189.0: se ignora", example = "12000.00",
 				deprecated = true)
 		BigDecimal importeTotal,
 
@@ -39,7 +39,7 @@ public record FilaImportacionArancelRequest(
 				example = "9600.00")
 		BigDecimal importeFinanciador,
 
-		@Schema(description = "OBSOLETO desde 0.185.0: se ignora", example = "2400.00",
+		@Schema(description = "OBSOLETO desde 0.189.0: se ignora", example = "2400.00",
 				deprecated = true)
 		BigDecimal coseguro,
 

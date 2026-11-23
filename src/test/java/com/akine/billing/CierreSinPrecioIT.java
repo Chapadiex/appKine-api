@@ -103,7 +103,7 @@ class CierreSinPrecioIT {
 	}
 
 	@Test
-	@DisplayName("control: con cobertura y oferta sin precio cierra igual: solo el financiador (sin A no hay coseguro, V33)")
+	@DisplayName("control: con cobertura y oferta sin precio cierra igual: solo el financiador (sin A no hay coseguro, V39)")
 	void con_cobertura_no_hace_falta_precio() {
 		Fixture f = crearFixture();
 		long autorizacion = autorizar(f);

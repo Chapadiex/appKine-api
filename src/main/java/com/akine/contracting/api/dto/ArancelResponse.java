@@ -20,14 +20,14 @@ public record ArancelResponse(
 		@Schema(description = "Practica arancelada. No cambia", example = "412")
 		long practicaId,
 
-		@Schema(description = "OBSOLETO desde 0.185.0: historico de aranceles anteriores; nulo en "
+		@Schema(description = "OBSOLETO desde 0.189.0: historico de aranceles anteriores; nulo en "
 				+ "los nuevos", example = "12000.00", deprecated = true, nullable = true)
 		BigDecimal importeTotal,
 
 		@Schema(description = "Lo que paga el financiador por la practica (B)", example = "9600.00")
 		BigDecimal importeFinanciador,
 
-		@Schema(description = "OBSOLETO desde 0.185.0: historico; nulo en los nuevos. El coseguro "
+		@Schema(description = "OBSOLETO desde 0.189.0: historico; nulo en los nuevos. El coseguro "
 				+ "es precio de la oferta menos importeFinanciador", example = "2400.00",
 				deprecated = true, nullable = true)
 		BigDecimal coseguro,

@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.187.0
+  version: 0.189.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -30477,7 +30477,7 @@ components:
           - number
           - "null"
           deprecated: true
-          description: "OBSOLETO desde 0.185.0: historico; nulo en los nuevos. El\
+          description: "OBSOLETO desde 0.189.0: historico; nulo en los nuevos. El\
             \ coseguro es precio de la oferta menos importeFinanciador"
           example: 2400.0
         deactivationReason:
@@ -30508,7 +30508,7 @@ components:
           - number
           - "null"
           deprecated: true
-          description: "OBSOLETO desde 0.185.0: historico de aranceles anteriores;\
+          description: "OBSOLETO desde 0.189.0: historico de aranceles anteriores;\
             \ nulo en los nuevos"
           example: 12000.0
         moneda:
@@ -34216,6 +34216,11 @@ components:
             type: string
             enum:
             - IA
+        altaPorPlataforma:
+          type: boolean
+          description: "El centro nacio del alta de la plataforma (en prueba gratis),\
+            \ no del autoregistro. Es el que recibe la guia de primeros pasos aunque\
+            \ despues contrate"
         definidaPorPlataforma:
           type: boolean
           description: "El centro lo dio de alta o lo ajusto la plataforma. Sin esto\
@@ -34345,7 +34350,7 @@ components:
           - "null"
           format: int64
           description: "Sede a la que pertenece. No cambia nunca. Nulo en el convenio\
-            \ del plan, que vale para todas las sedes (V37)"
+            \ del plan, que vale para todas las sedes (V43)"
           example: 20
         deactivationReason:
           type: string
@@ -34766,7 +34771,7 @@ components:
         coseguro:
           type: number
           deprecated: true
-          description: "OBSOLETO desde 0.185.0: se ignora. Ver importeTotal"
+          description: "OBSOLETO desde 0.189.0: se ignora. Ver importeTotal"
           example: 2400.0
         importeFinanciador:
           type: number
@@ -34777,7 +34782,7 @@ components:
         importeTotal:
           type: number
           deprecated: true
-          description: "OBSOLETO desde 0.185.0: se ignora. El coseguro se calcula\
+          description: "OBSOLETO desde 0.189.0: se ignora. El coseguro se calcula\
             \ al cerrar la sesion como precio de la oferta menos lo que paga el financiador"
           example: 12000.0
         ofertaId:
@@ -39272,7 +39277,7 @@ components:
         coseguro:
           type: number
           deprecated: true
-          description: "OBSOLETO desde 0.185.0: se ignora"
+          description: "OBSOLETO desde 0.189.0: se ignora"
           example: 2400.0
         importeFinanciador:
           type: number
@@ -39281,7 +39286,7 @@ components:
         importeTotal:
           type: number
           deprecated: true
-          description: "OBSOLETO desde 0.185.0: se ignora"
+          description: "OBSOLETO desde 0.189.0: se ignora"
           example: 12000.0
         ofertaId:
           type: integer
@@ -40705,6 +40710,15 @@ components:
         roleCode:
           type: string
           example: PROFESIONAL
+        servicios:
+          type: array
+          description: "Servicios que contrato el centro (KINESIOLOGIA, ACTIVIDADES).\
+            \ La pantalla elige con esto su ilustracion"
+          items:
+            type: string
+            enum:
+            - KINESIOLOGIA
+            - ACTIVIDADES
     InvitacionResponse:
       type: object
       description: Invitacion emitida por la organizacion
@@ -48289,6 +48303,14 @@ components:
           - GLOBAL
           - ORGANIZACION
           example: GLOBAL
+        categoria:
+          type:
+          - string
+          - "null"
+          description: "Categoria del catalogo con la que se agrupa el servicio en\
+            \ los selectores. Solo ordena: no decide ningun comportamiento. Null en\
+            \ los servicios propios creados desde cero"
+          example: Kinesiologia neurologica
         codigo:
           type: string
           description: "Clave estable con la que las ofertas lo referencian. No cambia\
@@ -50236,7 +50258,7 @@ components:
         coseguro:
           type: number
           deprecated: true
-          description: "OBSOLETO desde 0.185.0: se ignora"
+          description: "OBSOLETO desde 0.189.0: se ignora"
           example: 2600.0
         expectedVersion:
           type: integer
@@ -50252,7 +50274,7 @@ components:
         importeTotal:
           type: number
           deprecated: true
-          description: "OBSOLETO desde 0.185.0: se ignora"
+          description: "OBSOLETO desde 0.189.0: se ignora"
           example: 13000.0
         vigenciaDesde:
           type: string

@@ -9,6 +9,6 @@ ALTER TABLE convenio_arancel DROP CONSTRAINT ck_arancel_partes_suman_total;
 ALTER TABLE convenio_arancel ALTER COLUMN importe_total DROP NOT NULL;
 ALTER TABLE convenio_arancel ALTER COLUMN coseguro DROP NOT NULL;
 
-COMMENT ON COLUMN convenio_arancel.importe_total IS 'Histórico (antes de V33). No se usa: el total sale de A y B al cerrar la sesión.';
-COMMENT ON COLUMN convenio_arancel.coseguro IS 'Histórico (antes de V33). No se usa: el coseguro es max(A - B, 0) al cerrar la sesión.';
+COMMENT ON COLUMN convenio_arancel.importe_total IS 'Histórico (antes de V39). No se usa: el total sale de A y B al cerrar la sesión.';
+COMMENT ON COLUMN convenio_arancel.coseguro IS 'Histórico (antes de V39). No se usa: el coseguro es max(A - B, 0) al cerrar la sesión.';
 COMMENT ON COLUMN convenio_arancel.importe_financiador IS 'B: lo que paga el financiador por la práctica.';

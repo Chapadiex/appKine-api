@@ -42,7 +42,7 @@ class ResolutorDeArancelTest {
 
 		assertThat(resolucion.estaResuelta()).isTrue();
 		assertThat(resolucion.arancel().importeFinanciador()).isEqualByComparingTo("9600.00");
-		assertThat(resolucion.arancel().coseguro()).as("sin precio no hay coseguro (V33)").isNull();
+		assertThat(resolucion.arancel().coseguro()).as("sin precio no hay coseguro (V39)").isNull();
 		assertThat(resolucion.arancel().moneda()).isEqualTo("ARS");
 
 		// La derivacion: sin esto, un numero inesperado no se puede explicar.
