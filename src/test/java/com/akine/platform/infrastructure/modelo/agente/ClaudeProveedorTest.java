@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.akine.platform.spi.modelo.ModeloNoDisponibleException;
 import com.akine.platform.spi.modelo.agente.DefinicionDeHerramienta;
+import com.akine.platform.spi.modelo.agente.LlamadaAHerramienta;
 import com.akine.platform.spi.modelo.agente.MensajeDelAgente;
 import com.akine.platform.spi.modelo.agente.PedidoAlAgente;
 import com.akine.platform.spi.modelo.agente.ResultadoDeLlamada;
@@ -29,6 +30,11 @@ class ClaudeProveedorTest {
 			{"type":"object","properties":{"fecha":{"type":"string"}},"required":["fecha"],
 			 "additionalProperties":false}""";
 
+	/** Con una propiedad opcional: no admite strict. */
+	private static final String ESQUEMA_CON_OPCIONAL = """
+			{"type":"object","properties":{"nombre":{"type":"string"},"dni":{"type":"string"}},
+			 "required":["nombre"],"additionalProperties":false}""";
+
 	/** Un turno del modelo con pensamiento y una llamada, como lo devolveria la API. */
 	private static final String RESPUESTA_CON_LLAMADA = """
 			{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-5-5",
@@ -46,7 +52,7 @@ class ClaudeProveedorTest {
 		var turnoAnterior = new TurnoDelAgente("Miro la agenda.", List.of(), anterior, null);
 		var pedido = new PedidoAlAgente("Sos el asistente.",
 				List.of(new DefinicionDeHerramienta("turnos_del_dia", "Turnos de un dia", ESQUEMA),
-						new DefinicionDeHerramienta("buscar_paciente", "Busca", ESQUEMA)),
+						new DefinicionDeHerramienta("buscar_paciente", "Busca", ESQUEMA_CON_OPCIONAL)),
 				List.of(new MensajeDelAgente.DelUsuario("Turnos de hoy?"),
 						new MensajeDelAgente.DelModelo(turnoAnterior),
 						new MensajeDelAgente.Resultados(List.of(new ResultadoDeLlamada("toolu_1", "{\"total\":3}", false)))),
@@ -64,6 +70,8 @@ class ClaudeProveedorTest {
 		assertThat(cuerpo.path("output_config").path("effort").asText()).isEqualTo("high");
 		assertThat(cuerpo.has("temperature")).isFalse();
 		assertThat(cuerpo.has("tool_choice")).isFalse();
+		// Cacheo automatico del historial: system + ultima herramienta + este = 3 breakpoints.
+		assertThat(cuerpo.path("cache_control").path("type").asText()).isEqualTo("ephemeral");
 
 		var system = params.system().orElseThrow().asBetaTextBlockParams();
 		assertThat(system).singleElement().satisfies(s -> {
@@ -73,7 +81,8 @@ class ClaudeProveedorTest {
 
 		List<BetaTool> tools = params.tools().orElseThrow().stream().map(t -> t.betaTool().orElseThrow()).toList();
 		assertThat(tools).extracting(BetaTool::name).containsExactly("buscar_paciente", "turnos_del_dia");
-		assertThat(tools).allSatisfy(t -> assertThat(t.strict()).contains(true));
+		assertThat(tools.get(0).strict()).contains(false);
+		assertThat(tools.get(1).strict()).contains(true);
 		assertThat(tools.get(0).cacheControl()).isEmpty();
 		assertThat(tools.get(1).cacheControl()).isPresent();
 		assertThat(tools.get(1).inputSchema().required()).contains(List.of("fecha"));
@@ -123,6 +132,8 @@ class ClaudeProveedorTest {
 
 		assertThat(turno.texto()).isEqualTo(ClaudeProveedor.TEXTO_RECHAZO);
 		assertThat(turno.terminado()).isTrue();
+		// No se reenvia el contenido rechazado ni su tool_use sin tool_result.
+		assertThat(turno.crudo()).isNull();
 	}
 
 	@Test
@@ -134,6 +145,38 @@ class ClaudeProveedorTest {
 
 		assertThat(turno.texto()).startsWith("Miro la agenda.").endsWith(ClaudeProveedor.ADVERTENCIA_CORTADA);
 		assertThat(turno.terminado()).isTrue();
+		assertThat(turno.crudo()).isNull();
+
+		// Reenviado en la vuelta siguiente: solo el texto, ningun tool_use huerfano.
+		var pedido = new PedidoAlAgente("s", List.of(), List.of(new MensajeDelAgente.DelUsuario("hola"),
+				new MensajeDelAgente.DelModelo(turno), new MensajeDelAgente.DelUsuario("y?")), Duration.ofSeconds(5));
+		JsonNode asistente = cuerpo(new ClaudeProveedor(PROPS, null).parametros(pedido)).path("messages").get(1);
+		assertThat(asistente.path("content")).singleElement()
+				.satisfies(b -> assertThat(b.path("type").asText()).isEqualTo("text"));
+	}
+
+	@Test
+	void sinCrudoRearmaElTurnoConTextoYLlamadas() throws Exception {
+		var turno = new TurnoDelAgente("Busco.",
+				List.of(new LlamadaAHerramienta("call_9", "turnos_del_dia", "{\"fecha\":\"2026-11-23\"}")), null, null);
+		var pedido = new PedidoAlAgente("s", List.of(), List.of(new MensajeDelAgente.DelUsuario("hola"),
+				new MensajeDelAgente.DelModelo(turno),
+				new MensajeDelAgente.Resultados(List.of(new ResultadoDeLlamada("call_9", "{}", false)))),
+				Duration.ofSeconds(5));
+
+		JsonNode contenido = cuerpo(new ClaudeProveedor(PROPS, null).parametros(pedido))
+				.path("messages").get(1).path("content");
+
+		assertThat(contenido.get(0).path("text").asText()).isEqualTo("Busco.");
+		assertThat(contenido.get(1).path("type").asText()).isEqualTo("tool_use");
+		assertThat(contenido.get(1).path("id").asText()).isEqualTo("call_9");
+		assertThat(contenido.get(1).path("input").path("fecha").asText()).isEqualTo("2026-11-23");
+	}
+
+	@Test
+	void unEffortInvalidoFallaAlArrancar() {
+		assertThatThrownBy(() -> new AgenteProperties("claude", "", "altisimo", 8, 30, null, null))
+				.isInstanceOf(IllegalArgumentException.class);
 	}
 
 	@Test
@@ -143,6 +186,10 @@ class ClaudeProveedorTest {
 
 		assertThatThrownBy(() -> new ClaudeProveedor(PROPS).responder(pedido))
 				.isInstanceOf(ModeloNoDisponibleException.class);
+	}
+
+	private static JsonNode cuerpo(MessageCreateParams params) throws Exception {
+		return ObjectMappers.jsonMapper().readTree(ObjectMappers.jsonMapper().writeValueAsString(params._body()));
 	}
 
 	private static BetaMessage mensaje(String json) throws Exception {

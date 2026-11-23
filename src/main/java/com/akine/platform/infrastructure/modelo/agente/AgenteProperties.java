@@ -1,5 +1,7 @@
 package com.akine.platform.infrastructure.modelo.agente;
 
+import java.util.Locale;
+import java.util.Set;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
@@ -22,7 +24,16 @@ public record AgenteProperties(
 		@DefaultValue Claude claude,
 		@DefaultValue Compatible compatible) {
 
+	/** Valores de {@code output_config.effort} que acepta la API. */
+	public static final Set<String> EFFORTS = Set.of("low", "medium", "high", "xhigh", "max");
+
 	public AgenteProperties {
+		effort = effort == null || effort.isBlank() ? "medium" : effort.strip().toLowerCase(Locale.ROOT);
+		if (!EFFORTS.contains(effort)) {
+			// Falla al arrancar: un typo no debe llegar a la API como 400 en cada pregunta.
+			throw new IllegalArgumentException("akine.asistente.agente.effort invalido: '" + effort
+					+ "'. Valores: low, medium, high, xhigh, max.");
+		}
 		alternativo = alternativo == null ? "" : alternativo;
 		claude = claude == null ? new Claude(null, null, 16000) : claude;
 		compatible = compatible == null ? new Compatible(null, null, null) : compatible;

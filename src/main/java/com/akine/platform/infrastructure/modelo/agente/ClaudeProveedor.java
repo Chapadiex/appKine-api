@@ -30,6 +30,7 @@ import com.anthropic.models.beta.messages.BetaThinkingConfigAdaptive;
 import com.anthropic.models.beta.messages.BetaTool;
 import com.anthropic.models.beta.messages.BetaToolResultBlockParam;
 import com.anthropic.models.beta.messages.BetaToolUseBlock;
+import com.anthropic.models.beta.messages.BetaToolUseBlockParam;
 import com.anthropic.models.beta.messages.BetaUsage;
 import com.anthropic.models.beta.messages.MessageCreateParams;
 import com.anthropic.services.blocking.beta.MessageService;
@@ -37,8 +38,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +60,7 @@ public class ClaudeProveedor implements ProveedorDeAgente, AutoCloseable {
 
 	static final String BETA_FALLBACK = "server-side-fallback-2026-07-01";
 	static final String TEXTO_RECHAZO = "No puedo responder eso.";
+	static final String SIN_TEXTO = "(sin texto)";
 	static final String ADVERTENCIA_CORTADA =
 			"(La respuesta quedo incompleta: se alcanzo el largo maximo de la respuesta.)";
 
@@ -135,7 +139,10 @@ public class ClaudeProveedor implements ProveedorDeAgente, AutoCloseable {
 						.effort(BetaOutputConfig.Effort.of(properties.effort()))
 						.build())
 				.addBeta(BETA_FALLBACK)
-				.fallbacks(BetaFallbacksParam.ofDefault());
+				.fallbacks(BetaFallbacksParam.ofDefault())
+				// Cacheo automatico: el ultimo bloque cacheable de los mensajes, para que el historial
+				// del bucle tambien se lea de cache. Con system y la ultima herramienta son 3 de 4.
+				.cacheControl(BetaCacheControlEphemeral.builder().build());
 		if (pedido.system() != null && !pedido.system().isBlank()) {
 			b.system(MessageCreateParams.System.ofBetaTextBlockParams(List.of(BetaTextBlockParam.builder()
 					.text(pedido.system())
@@ -168,15 +175,21 @@ public class ClaudeProveedor implements ProveedorDeAgente, AutoCloseable {
 		}
 		UsoDelModelo uso = uso(respuesta.usage());
 		BetaStopReason motivo = respuesta.stopReason().orElse(null);
+		// Rechazo y respuesta cortada: crudo null, asi delModelo reenvia solo el texto. Reenviar el
+		// mensaje original mandaria tool_use sin su tool_result (400) o el contenido rechazado.
 		if (BetaStopReason.REFUSAL.equals(motivo)) {
-			return new TurnoDelAgente(TEXTO_RECHAZO, List.of(), respuesta, uso);
+			return new TurnoDelAgente(TEXTO_RECHAZO, List.of(), null, uso);
 		}
 		if (BetaStopReason.MAX_TOKENS.equals(motivo)) {
 			// La ultima llamada puede haber quedado con la entrada cortada: no se ejecuta ninguna.
 			log.warn("Claude corto la respuesta por max_tokens ({} tokens de salida)", uso.salida());
 			String parcial = texto.toString().strip();
 			return new TurnoDelAgente(parcial.isEmpty() ? ADVERTENCIA_CORTADA : parcial + "\n\n" + ADVERTENCIA_CORTADA,
-					List.of(), respuesta, uso);
+					List.of(), null, uso);
+		}
+		if (BetaStopReason.PAUSE_TURN.equals(motivo)) {
+			// Solo lo emiten las herramientas del servidor, que no se usan: se toma como fin de turno.
+			log.warn("Claude devolvio pause_turn sin herramientas del servidor; se toma como end_turn");
 		}
 		return new TurnoDelAgente(texto.toString(), llamadas, respuesta, uso);
 	}
@@ -214,11 +227,30 @@ public class ClaudeProveedor implements ProveedorDeAgente, AutoCloseable {
 				.name(d.nombre())
 				.description(d.descripcion())
 				.inputSchema(schema.build())
-				.strict(true);
+				.strict(admiteStrict(esquema));
 		if (ultima) {
 			tool.cacheControl(BetaCacheControlEphemeral.builder().build());
 		}
 		return tool.build();
+	}
+
+	/**
+	 * {@code strict} exige {@code additionalProperties:false} y todas las propiedades en {@code required};
+	 * un esquema con opcionales va sin strict.
+	 */
+	static boolean admiteStrict(Map<String, Object> esquema) {
+		if (!Boolean.FALSE.equals(esquema.get("additionalProperties"))) {
+			return false;
+		}
+		Object props = esquema.get("properties");
+		Set<String> requeridos = new HashSet<>();
+		if (esquema.get("required") instanceof List<?> lista) {
+			lista.forEach(v -> requeridos.add(String.valueOf(v)));
+		}
+		if (!(props instanceof Map<?, ?> mapa)) {
+			return true;
+		}
+		return mapa.keySet().stream().allMatch(k -> requeridos.contains(String.valueOf(k)));
 	}
 
 	private static BetaMessageParam mensaje(MensajeDelAgente m) {
@@ -230,15 +262,33 @@ public class ClaudeProveedor implements ProveedorDeAgente, AutoCloseable {
 		};
 	}
 
-	/** Reenvia el contenido original (con pensamiento y firma); sin crudo, solo el texto. */
+	/**
+	 * Reenvia el {@link BetaMessage} original (con pensamiento y firma) solo si lo produjo este proveedor.
+	 * Sin crudo, o con el de otro proveedor (tras un cambio de proveedor), se rearma desde
+	 * {@code texto} y {@code llamadas}, para que cada tool_result siga teniendo su tool_use.
+	 */
 	private static BetaMessageParam delModelo(TurnoDelAgente turno) {
 		if (turno.crudo() instanceof BetaMessage original) {
 			return original.toParam();
 		}
-		if (turno.crudo() instanceof BetaMessageParam param) {
-			return param;
+		List<BetaContentBlockParam> bloques = new ArrayList<>();
+		if (turno.texto() != null && !turno.texto().isBlank()) {
+			bloques.add(BetaContentBlockParam.ofText(turno.texto()));
 		}
-		return BetaMessageParam.ofAssistant(turno.texto() == null ? "" : turno.texto());
+		for (LlamadaAHerramienta l : turno.llamadas()) {
+			BetaToolUseBlockParam.Input.Builder entrada = BetaToolUseBlockParam.Input.builder();
+			objeto(l.entradaJson()).forEach((k, v) -> entrada.putAdditionalProperty(k, JsonValue.from(v)));
+			bloques.add(BetaContentBlockParam.ofToolUse(BetaToolUseBlockParam.builder()
+					.id(l.id())
+					.name(l.nombre())
+					.input(entrada.build())
+					.build()));
+		}
+		if (bloques.isEmpty()) {
+			// La API rechaza un turno del asistente vacio.
+			bloques.add(BetaContentBlockParam.ofText(SIN_TEXTO));
+		}
+		return BetaMessageParam.ofAssistantOfContentBlockParams(bloques);
 	}
 
 	private static BetaContentBlockParam resultado(ResultadoDeLlamada r) {
