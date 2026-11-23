@@ -21,6 +21,12 @@ public final class PermissionCodes {
 	 */
 	public static final String DICTADO_USE = "dictado:use";
 
+	/**
+	 * Proponer y confirmar acciones desde el asistente (docs/diseno/AKINE-asistente-acciones.md). Los
+	 * cuatro roles de personal, por base. Solo la puerta: cada accion exige el permiso de su servicio.
+	 */
+	public static final String ASISTENTE_ACCIONES = "asistente:acciones";
+
 	private PermissionCodes() {
 	}
 }

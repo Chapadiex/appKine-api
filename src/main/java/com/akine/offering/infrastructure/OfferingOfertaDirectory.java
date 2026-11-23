@@ -183,6 +183,16 @@ public class OfferingOfertaDirectory implements OfertaDirectory {
 				.flatMap(oferta -> EsquemaDeCobro.de(oferta.getEsquemaCobro()));
 	}
 
+	@Override
+	public List<OfertaSnapshot> activasDeLaSede(long organizationId, long consultorioId) {
+		return ofertas
+				.findAllByOrganizationIdAndConsultorioIdAndActiveOrderByNombreComercialAsc(
+						organizationId, consultorioId, true)
+				.stream()
+				.map(oferta -> proyectar(oferta))
+				.toList();
+	}
+
 	private static List<HabilitacionSnapshot> proyectar(List<? extends Habilitacion> habilitaciones) {
 		return habilitaciones.stream()
 				.map(h -> new HabilitacionSnapshot(

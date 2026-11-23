@@ -11,7 +11,14 @@ import java.util.Objects;
  * @param sql     consultas libres sobre {@code asistente_sql} ({@code akine.asistente.sql.enabled}),
  *                apagadas por defecto
  */
-public record AsistenteAjustes(boolean enabled, Duration plazo, boolean sql) {
+public record AsistenteAjustes(boolean enabled, Duration plazo, boolean sql, boolean acciones,
+		Duration vigenciaDeAccion) {
+
+	/** Sin acciones. */
+	public AsistenteAjustes(boolean enabled, Duration plazo, boolean sql) {
+		this(enabled, plazo, sql, false, Duration.ofMinutes(15));
+	}
+
 
 	/** Sin consultas libres. */
 	public AsistenteAjustes(boolean enabled, Duration plazo) {

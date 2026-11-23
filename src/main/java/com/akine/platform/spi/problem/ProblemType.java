@@ -1470,6 +1470,12 @@ public enum ProblemType {
 	/** El asistente de datos esta apagado por configuracion (409). */
 	ASISTENTE_DESHABILITADO("asistente-deshabilitado"),
 
+	/** Las acciones del asistente estan apagadas por configuracion o por el centro (409). */
+	ACCIONES_DESHABILITADAS("acciones-deshabilitadas"),
+
+	/** La accion propuesta vencio, se descarto o la esta confirmando otro pedido (409). */
+	ACCION_NO_VIGENTE("accion-no-vigente"),
+
 	// --- Dictado por voz (docs/diseno/AKINE-dictado-por-voz.md) -------------------------------
 
 	/** El dictado por voz esta apagado por configuracion (409). */

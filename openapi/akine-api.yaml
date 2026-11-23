@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.191.0
+  version: 0.192.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -2762,6 +2762,136 @@ paths:
       summary: Resolver el arancel efectivo de una practica para una fecha
       tags:
       - Convenios y aranceles
+  /api/v1/consultorios/{consultorioId}/asistente/acciones/{accionId}/confirmacion:
+    post:
+      description: |-
+        Graba la accion con lo que quedo en la tarjeta. Requiere `asistente:acciones`, el interruptor `akine.asistente.acciones.enabled` y, ademas, el permiso de la operacion que se graba (`asistencia:manage`, `cobro:register`, `sesion:register`, `turno:manage` o `paciente:manage`): sin ese permiso responde 200 con `estado` RECHAZADA.
+
+        Solo la confirma la cuenta que la pidio, en la misma sede, antes de que venza. **Confirmar dos veces no graba de nuevo:** la segunda responde CONFIRMADA con el mismo `enlace` y un `texto` que lo dice. Un rechazo del negocio (la caja esta cerrada, la ficha cambio) vuelve con `estado` RECHAZADA y la propuesta sigue abierta para corregirla y reintentar.
+      operationId: confirmarAccionDelAsistente
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: accionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmarAccion"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeAccion"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ResultadoDeAccion"
+          description: Como termino
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`validation-error`: la tarjeta no trae exactamente un bloque,\
+            \ o no es la de la propuesta (otro tipo u otra persona)"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `asistente:acciones` o sin contexto de trabajo activo
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`not-found`: la accion no existe o es de otra cuenta, sede\
+            \ u organizacion"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`accion-no-vigente`: vencio, se descarto o la esta confirmando\
+            \ otro pedido. `acciones-deshabilitadas`: el interruptor esta apagado"
+      summary: Confirmar una accion propuesta por el asistente
+      tags:
+      - Asistente
+  /api/v1/consultorios/{consultorioId}/asistente/acciones/{accionId}/descarte:
+    post:
+      description: No graba nada. Descartar una accion que ya no esta propuesta no
+        hace nada. Requiere `asistente:acciones`.
+      operationId: descartarAccionDelAsistente
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - in: path
+        name: accionId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "204":
+          description: Descartada
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `asistente:acciones` o sin contexto de trabajo activo
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`not-found`: la accion no existe o es de otra cuenta, sede\
+            \ u organizacion"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`acciones-deshabilitadas`: el interruptor esta apagado"
+      summary: Descartar una accion propuesta por el asistente
+      tags:
+      - Asistente
   /api/v1/consultorios/{consultorioId}/asistente/consultas:
     post:
       description: |-
@@ -2770,6 +2900,8 @@ paths:
         Un modelo de lenguaje local **solo interpreta** la pregunta; el texto se arma con plantillas a partir de los datos, y ningun dato de la sede llega al modelo. Cada respuesta corre con los permisos del usuario: lo que no puede ver en pantalla vuelve con `resultado` SIN_PERMISO, con 200.
 
         Si no esta claro de que persona se habla, `resultado` es ACLARACION y `opciones` trae hasta cinco: el cliente reenvia la misma pregunta con el `personaId` elegido. El servidor no guarda la conversacion: `historial` lleva las preguntas anteriores con la `interpretacion` que devolvio cada una.
+
+        Con `akine.asistente.acciones.enabled` y `asistente:acciones`, una frase que cuenta o pide algo ("vinieron todos menos Maria", "Juan pago 15.000 en efectivo") no se responde: `resultado` es PROPUESTA y `accion` trae una tarjeta para revisar. **Nada se graba** hasta `confirmarAccionDelAsistente`.
       operationId: consultarAsistente
       parameters:
       - in: path
@@ -2802,7 +2934,7 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "`validation-error`: pregunta vacia o mas larga que 300 caracteres,\
+          description: "`validation-error`: pregunta vacia o mas larga que 600 caracteres,\
             \ o historial mal formado"
         "403":
           content:
@@ -29299,6 +29431,58 @@ components:
           type: string
           description: Esquema de autorizacion
           example: Bearer
+    AccionPropuesta:
+      type: object
+      description: Una accion que el asistente propone y graba solo al confirmar
+      properties:
+        asistencia:
+          $ref: "#/components/schemas/TarjetaDeAsistencia"
+        atencion:
+          $ref: "#/components/schemas/TarjetaDeAtencion"
+        avisos:
+          type: array
+          description: Lo que hay que saber; se puede confirmar igual
+          items:
+            type: string
+        bloqueos:
+          type: array
+          description: "Por que no se puede confirmar. Con alguno, la confirmacion\
+            \ se rechaza"
+          items:
+            type: string
+        id:
+          type: integer
+          format: int64
+          description: Con lo que se confirma o se descarta
+        llegada:
+          $ref: "#/components/schemas/TarjetaDeLlegada"
+        paciente:
+          $ref: "#/components/schemas/TarjetaDePaciente"
+        pago:
+          $ref: "#/components/schemas/TarjetaDePago"
+        tipo:
+          type: string
+          enum:
+          - ASISTENCIA_CLASE
+          - PAGO
+          - ATENCION
+          - LLEGADA
+          - PACIENTE_ALTA
+          - PACIENTE_EDICION
+        titulo:
+          type: string
+          example: Pago de Juan Pérez
+        venceEn:
+          type: string
+          format: date-time
+          description: Hasta cuando se puede confirmar
+      required:
+      - avisos
+      - bloqueos
+      - id
+      - tipo
+      - titulo
+      - venceEn
     AccountResponse:
       type: object
       description: Cuenta despues de la transicion administrativa
@@ -33171,6 +33355,23 @@ components:
           format: int64
         titulo:
           type: string
+    ClaseEnTarjeta:
+      type: object
+      properties:
+        claseId:
+          type: integer
+          format: int64
+        estado:
+          type: string
+        inicio:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemDeAsistencia"
+        titulo:
+          type: string
     ClaseExcluidaDeHonorarios:
       type: object
       description: Una clase dictada que no entra en el borrador
@@ -33815,6 +34016,21 @@ components:
       required:
       - activa
       - version
+    ConfirmarAccion:
+      type: object
+      description: "La tarjeta de la accion tal como quedo. Exactamente un bloque,\
+        \ el del tipo de la accion; los campos de solo lectura se ignoran"
+      properties:
+        asistencia:
+          $ref: "#/components/schemas/TarjetaDeAsistencia"
+        atencion:
+          $ref: "#/components/schemas/TarjetaDeAtencion"
+        llegada:
+          $ref: "#/components/schemas/TarjetaDeLlegada"
+        paciente:
+          $ref: "#/components/schemas/TarjetaDePaciente"
+        pago:
+          $ref: "#/components/schemas/TarjetaDePago"
     ConfirmarLiquidacionDeHonorariosRequest:
       type: object
       description: "Confirma el borrador que se miro. claseIds e importeTotal son\
@@ -33972,7 +34188,7 @@ components:
         pregunta:
           type: string
           example: ¿Juan vino esta semana?
-          maxLength: 300
+          maxLength: 600
           minLength: 0
         rutaActual:
           type: string
@@ -36529,6 +36745,22 @@ components:
           type: boolean
           description: Falso si la persona todavia no tiene historia clinica
           example: true
+    DatosDePersona:
+      type: object
+      properties:
+        apellido:
+          type: string
+        documento:
+          type: string
+        email:
+          type: string
+        fechaNacimiento:
+          type: string
+          format: date
+        nombre:
+          type: string
+        telefono:
+          type: string
     DatosDeclaradosResponse:
       type: object
       description: "Lo que el paciente declaro en su historia (DP-47). Solo trae datos\
@@ -40471,6 +40703,21 @@ components:
       required:
       - importe
       - obligacionId
+    ImputacionEnTarjeta:
+      type: object
+      properties:
+        concepto:
+          type: string
+        fecha:
+          type: string
+          format: date
+        importe:
+          type: number
+        obligacionId:
+          type: integer
+          format: int64
+        saldo:
+          type: number
     ImputarSaldoAFavor:
       type: object
       description: "Aplica parte del saldo a favor (anticipo) de un cobro a una deuda.\
@@ -40966,6 +41213,18 @@ components:
           minLength: 0
       required:
       - token
+    ItemDeAsistencia:
+      type: object
+      properties:
+        inscripcionId:
+          type: integer
+          format: int64
+        nombre:
+          type: string
+        resultado:
+          type: string
+        yaRegistrado:
+          type: string
     ItemDeAtencionGrupal:
       type: object
       description: "O trae la atencion, o trae el error de ese participante"
@@ -42979,6 +43238,14 @@ components:
       required:
       - etiqueta
       - personaId
+    OpcionDeTarjeta:
+      type: object
+      properties:
+        etiqueta:
+          type: string
+        id:
+          type: integer
+          format: int64
     OperativoDeTurno:
       type: object
       description: "Lo que la agenda muestra de un turno ademas de la reserva. PHI\
@@ -45549,6 +45816,8 @@ components:
       - https://akine.app/problems/consulta-ocupada
       - https://akine.app/problems/asistente-no-disponible
       - https://akine.app/problems/asistente-deshabilitado
+      - https://akine.app/problems/acciones-deshabilitadas
+      - https://akine.app/problems/accion-no-vigente
       - https://akine.app/problems/dictado-deshabilitado
       - https://akine.app/problems/dictado-no-disponible
       - https://akine.app/problems/generacion-en-curso
@@ -47580,6 +47849,11 @@ components:
       type: object
       description: La respuesta del asistente de datos
       properties:
+        accion:
+          $ref: "#/components/schemas/AccionPropuesta"
+          description: "Con `resultado` PROPUESTA: la accion que se propone, para\
+            \ revisarla y confirmarla con `confirmarAccionDelAsistente`. Nada se grabo\
+            \ todavia; null en las consultas"
         advertencias:
           type: array
           items:
@@ -47620,6 +47894,7 @@ components:
           - PERSONA_NO_ENCONTRADA
           - SIN_PERMISO
           - FUERA_DE_ALCANCE
+          - PROPUESTA
         texto:
           type: string
           description: "La respuesta en texto, armada con una plantilla a partir de\
@@ -47630,6 +47905,33 @@ components:
       - interpretacion
       - opciones
       - resultado
+      - texto
+    ResultadoDeAccion:
+      type: object
+      description: Como termino la confirmacion de una accion del asistente
+      properties:
+        detalles:
+          type: array
+          description: Lo que no salio como se pidio (items de un lote que fallaron)
+          items:
+            type: string
+        enlace:
+          type: string
+          description: Ruta del frontend donde ver lo grabado
+          example: /pacientes/123
+        estado:
+          type: string
+          description: "RECHAZADA: no se grabo nada y la propuesta sigue abierta para\
+            \ corregirla"
+          enum:
+          - CONFIRMADA
+          - RECHAZADA
+        texto:
+          type: string
+          example: Registré el cobro de $ 15.000 a Juan Pérez.
+      required:
+      - detalles
+      - estado
       - texto
     ResultadoDeAnulacionDePase:
       type: object
@@ -49583,6 +49885,113 @@ components:
       required:
       - expectedVersion
       - motivo
+    TarjetaDeAsistencia:
+      type: object
+      properties:
+        claseId:
+          type: integer
+          format: int64
+        clases:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClaseEnTarjeta"
+    TarjetaDeAtencion:
+      type: object
+      properties:
+        casoId:
+          type: integer
+          format: int64
+        casos:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpcionDeTarjeta"
+        cerrar:
+          type: boolean
+        nombre:
+          type: string
+        nota:
+          type: string
+        ofertaId:
+          type: integer
+          format: int64
+        ofertas:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpcionDeTarjeta"
+        personaId:
+          type: integer
+          format: int64
+        tratamientos:
+          type: array
+          items:
+            $ref: "#/components/schemas/TratamientoEnTarjeta"
+        tratamientosPrevios:
+          type: integer
+          format: int32
+        turnoId:
+          type: integer
+          format: int64
+        turnos:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpcionDeTarjeta"
+    TarjetaDeLlegada:
+      type: object
+      properties:
+        hora:
+          type: string
+          format: date-time
+        nombre:
+          type: string
+        personaId:
+          type: integer
+          format: int64
+        turnoId:
+          type: integer
+          format: int64
+    TarjetaDePaciente:
+      type: object
+      properties:
+        anterior:
+          $ref: "#/components/schemas/DatosDePersona"
+        confirmaPosibleDuplicado:
+          type: boolean
+        datos:
+          $ref: "#/components/schemas/DatosDePersona"
+        personaId:
+          type: integer
+          format: int64
+        posiblesDuplicados:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpcionDeTarjeta"
+        tipoDocumento:
+          type: string
+        version:
+          type: integer
+          format: int64
+    TarjetaDePago:
+      type: object
+      properties:
+        anticipo:
+          type: number
+        cajaAbierta:
+          type: boolean
+        imputaciones:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImputacionEnTarjeta"
+        medio:
+          type: string
+        moneda:
+          type: string
+        nombre:
+          type: string
+        personaId:
+          type: integer
+          format: int64
+        total:
+          type: number
     TermsResponse:
       type: object
       description: Terminos y condiciones vigentes para el alta de cuentas
@@ -49898,6 +50307,16 @@ components:
         zona:
           type: string
           example: Lumbar
+    TratamientoEnTarjeta:
+      type: object
+      properties:
+        nombre:
+          type: string
+        practicaId:
+          type: integer
+          format: int64
+        texto:
+          type: string
     TratamientoEnVersion:
       type: object
       description: Un tratamiento realizado tal como estaba en una version de la sesion

@@ -7,6 +7,8 @@ import com.akine.scheduling.spi.TurnoDirectory;
 import com.akine.scheduling.spi.TurnoSnapshot;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 /** Adaptador de {@link TurnoDirectory}. Traduccion de forma y nada mas. */
@@ -54,6 +56,16 @@ public class SchedulingTurnoDirectory implements TurnoDirectory {
 	public Optional<TurnoSnapshot> find(long organizationId, long consultorioId, long turnoId) {
 		return turnos.findByIdInScope(organizationId, consultorioId, turnoId)
 				.map(SchedulingTurnoDirectory::proyectar);
+	}
+
+	/** Reusa la consulta de la recepcion del dia: la sede y la ventana en el WHERE, la persona aca. */
+	@Override
+	public List<TurnoSnapshot> deLaPersonaEnVentana(
+			long organizationId, long consultorioId, long personaId, Instant desde, Instant hasta) {
+		return turnos.findDeLaSedeEnVentana(organizationId, consultorioId, desde, hasta).stream()
+				.filter(turno -> turno.getPersonaId() == personaId)
+				.map(SchedulingTurnoDirectory::proyectar)
+				.toList();
 	}
 
 	@Override
