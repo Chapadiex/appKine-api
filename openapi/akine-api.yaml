@@ -34238,7 +34238,8 @@ components:
         maxProfesionales:
           type: integer
           format: int32
-          description: Tope de profesionales del plan (cuentas con rol PROFESIONAL); ausente = sin tope
+          description: Tope de profesionales del plan (cuentas con rol PROFESIONAL);
+            ausente = sin tope
           example: 6
         maxSedes:
           type: integer
