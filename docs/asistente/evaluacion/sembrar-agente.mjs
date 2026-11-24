@@ -1,7 +1,10 @@
 // Siembra fija del set de evaluación del agente (AKINE-asistente-agente.md §9), por la API real y
 // sobre una base vacía (o una organización nueva: los correos llevan un sufijo por corrida).
 //
-//   AKINE_PLATAFORMA_EMAIL=... AKINE_PLATAFORMA_PASSWORD=... node sembrar-agente.mjs [--base-url URL] [--dry-run]
+//   AKINE_EVAL_PASSWORD=... AKINE_PLATAFORMA_EMAIL=... AKINE_PLATAFORMA_PASSWORD=... \
+//     node sembrar-agente.mjs [--base-url URL] [--dry-run] [--forzar-remoto]
+//
+// Sólo corre contra un backend local (localhost, 127.0.0.1, [::1], *.localhost, *.test) salvo --forzar-remoto.
 //
 // Lo que deja (los nombres y montos son los que espera agente-preguntas.json):
 //   - Organización "Centro Evaluación Agente" con dos sedes: Sede Centro (la del alta) y Sede Norte.
@@ -41,6 +44,34 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+
+// Sólo contra un backend local: la siembra crea cuentas y la evaluación manda datos al proveedor del
+// modelo. Otro host exige --forzar-remoto. (Mismo helper en sembrar-agente.mjs y evaluar-agente.mjs.)
+function exigirBackendLocal(base, forzar) {
+  let host;
+  try {
+    host = new URL(base).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  } catch {
+    console.error(`--base-url inválida: ${base}`);
+    process.exit(1);
+  }
+  const local = ['localhost', '127.0.0.1', '::1'].includes(host) || host.endsWith('.localhost') || host.endsWith('.test');
+  if (!local && !forzar) {
+    console.error(`Rechazado: ${base} no es un backend local (localhost, 127.0.0.1, [::1], *.localhost o *.test). ` +
+      'Este script crea cuentas y datos sintéticos y, al evaluar, manda resultados al proveedor del modelo. ' +
+      'Si de verdad es un entorno de prueba, repetir con --forzar-remoto.');
+    process.exit(1);
+  }
+}
+
+function exigirEnv(...nombres) {
+  const faltan = nombres.filter((n) => !process.env[n]);
+  if (faltan.length) {
+    console.error(`Faltan variables de entorno: ${faltan.join(', ')} (ver agente-resultados.md, "Cómo se corre")`);
+    process.exit(1);
+  }
+}
+
 const dir = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(`--${n}`);
@@ -50,12 +81,13 @@ const valor = (n, d) => {
 };
 
 const BASE = valor('base-url', process.env.AKINE_API ?? 'http://localhost:8080').replace(/\/+$/, '');
+exigirBackendLocal(BASE, flag('forzar-remoto'));
 const MAILPIT = (process.env.AKINE_MAILPIT ?? 'http://localhost:8025').replace(/\/+$/, '');
-// Contraseña de las cuentas sintéticas de la siembra (base local de prueba). Se puede cambiar por env.
-const PASSWORD = process.env.AKINE_EVAL_PASSWORD ?? 'evaluacion-del-agente-2026-larga';
+// Contraseña de las cuentas sintéticas de la siembra: sólo por entorno (exigida antes de llamar a nada).
+const PASSWORD = process.env.AKINE_EVAL_PASSWORD;
 const TERMINOS = process.env.AKINE_TERMINOS_VERSION ?? '2026-11-19';
-const PLATAFORMA_EMAIL = process.env.AKINE_PLATAFORMA_EMAIL ?? 'plataforma.e2e@ejemplo.test';
-const PLATAFORMA_PASSWORD = process.env.AKINE_PLATAFORMA_PASSWORD ?? 'una-contrasena-larga-y-unica-2026';
+const PLATAFORMA_EMAIL = process.env.AKINE_PLATAFORMA_EMAIL;
+const PLATAFORMA_PASSWORD = process.env.AKINE_PLATAFORMA_PASSWORD;
 const SUFIJO = process.env.AKINE_EVAL_SUFIJO ?? new Date().toISOString().replace(/\D/g, '').slice(2, 12);
 const ESTADO = valor('estado', join(dir, '.estado', 'agente-siembra.json'));
 
@@ -128,6 +160,8 @@ if (flag('dry-run')) {
   TURNOS.forEach((t) => console.log(`  ${t.prof.padEnd(5)} ${t.sede.padEnd(6)} ${t.oferta.padEnd(9)} ${t.paciente.padEnd(15)} ${t.resultado} ${(t.practicas ?? []).join('+')}`));
   process.exit(0);
 }
+
+exigirEnv('AKINE_EVAL_PASSWORD', 'AKINE_PLATAFORMA_EMAIL', 'AKINE_PLATAFORMA_PASSWORD');
 
 // ---------------------------------------------------------------------------------------------
 // HTTP

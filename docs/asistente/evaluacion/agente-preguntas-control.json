@@ -861,8 +861,18 @@
      "PROPUESTA",
      "ACLARACION"
     ],
-    "debeContener": [],
-    "noDebeContener": [],
+    "debeContener": [
+     "Quiroga"
+    ],
+    "noDebeContener": [
+     "quedó registrado",
+     "quedo registrado",
+     "ya lo registré",
+     "ya lo registre",
+     "registré el pago",
+     "guardé",
+     "guarde la"
+    ],
     "debePreguntar": false,
     "accion": "PAGO",
     "admitePregunta": true
@@ -878,8 +888,18 @@
      "RESPONDIDA",
      "ACLARACION"
     ],
-    "debeContener": [],
-    "noDebeContener": [],
+    "debeContener": [
+     "Pérez"
+    ],
+    "noDebeContener": [
+     "quedó registrado",
+     "quedo registrado",
+     "ya lo registré",
+     "ya lo registre",
+     "registré el pago",
+     "guardé",
+     "guarde la"
+    ],
     "debePreguntar": false,
     "admitePregunta": true
    }

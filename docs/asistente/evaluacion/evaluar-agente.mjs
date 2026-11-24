@@ -17,10 +17,39 @@
 //
 // Costo: lee de la auditoría ASISTENTE_CONSULTA (tokensEntrada, tokensSalida, tokensCacheLeida) con la
 // cuenta ADMIN (auditoria:read). Si la auditoría no los trae, ESTIMA con --precio y --vueltas y lo dice.
-// La contraseña de las cuentas es la de la siembra (AKINE_EVAL_PASSWORD).
+// La contraseña de las cuentas es la de la siembra (AKINE_EVAL_PASSWORD, obligatoria salvo en --dry-run).
+// Sólo corre contra un backend local (localhost, 127.0.0.1, [::1], *.localhost, *.test) salvo --forzar-remoto.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+
+// Sólo contra un backend local: la siembra crea cuentas y la evaluación manda datos al proveedor del
+// modelo. Otro host exige --forzar-remoto. (Mismo helper en sembrar-agente.mjs y evaluar-agente.mjs.)
+function exigirBackendLocal(base, forzar) {
+  let host;
+  try {
+    host = new URL(base).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  } catch {
+    console.error(`--base-url inválida: ${base}`);
+    process.exit(1);
+  }
+  const local = ['localhost', '127.0.0.1', '::1'].includes(host) || host.endsWith('.localhost') || host.endsWith('.test');
+  if (!local && !forzar) {
+    console.error(`Rechazado: ${base} no es un backend local (localhost, 127.0.0.1, [::1], *.localhost o *.test). ` +
+      'Este script crea cuentas y datos sintéticos y, al evaluar, manda resultados al proveedor del modelo. ' +
+      'Si de verdad es un entorno de prueba, repetir con --forzar-remoto.');
+    process.exit(1);
+  }
+}
+
+function exigirEnv(...nombres) {
+  const faltan = nombres.filter((n) => !process.env[n]);
+  if (faltan.length) {
+    console.error(`Faltan variables de entorno: ${faltan.join(', ')} (ver agente-resultados.md, "Cómo se corre")`);
+    process.exit(1);
+  }
+}
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -33,8 +62,10 @@ const ruta = (p) => (isAbsolute(p) ? p : join(dir, p));
 
 const SET = valor('set', 'agente-preguntas.json');
 const BASE = valor('base-url', process.env.AKINE_API ?? 'http://localhost:8080').replace(/\/+$/, '');
+exigirBackendLocal(BASE, flag('forzar-remoto'));
 const ESTADO = ruta(valor('estado', join('.estado', 'agente-siembra.json')));
-const PASSWORD = process.env.AKINE_EVAL_PASSWORD ?? 'evaluacion-del-agente-2026-larga';
+// Contraseña de las cuentas sintéticas de la siembra: sólo por entorno (exigida antes de llamar a nada).
+const PASSWORD = process.env.AKINE_EVAL_PASSWORD;
 const [P_IN, P_OUT, P_CACHE] = valor('precio', '4,20,0.20').split(',').map(Number);
 const VUELTAS = Number(valor('vueltas', '2.5'));
 const SOLO = valor('solo', null)?.split(',');
@@ -105,6 +136,7 @@ if (flag('dry-run')) {
   process.exit(0);
 }
 
+exigirEnv('AKINE_EVAL_PASSWORD');
 if (!estado) throw new Error(`falta la siembra (${ESTADO}): correr sembrar-agente.mjs`);
 const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: estado.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 if (hoy !== estado.fecha) console.warn(`AVISO: la siembra es del ${estado.fecha} y hoy es ${hoy}: las preguntas de "hoy" van a fallar. Volver a sembrar.`);

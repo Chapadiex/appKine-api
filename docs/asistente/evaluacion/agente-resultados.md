@@ -32,14 +32,24 @@ Cada pregunta: `{id, grupo, pregunta, actor, historial?, personaId?, requiere?, 
    node evaluar-agente.mjs --dry-run                       # plan y costo estimado
    node evaluar-agente.mjs --dry-run --set agente-preguntas-control.json
    ```
-3. Sembrar (tarda ~15 min: los turnos de hoy duran un minuto y hay que esperar a que empiecen para
+3. Variables de entorno obligatorias (no hay valores por defecto; sin ellas los scripts cortan con
+   un mensaje, salvo en `--dry-run`):
+   - `AKINE_EVAL_PASSWORD`: contraseña de las cuentas sintéticas que crea la siembra (la misma para
+     sembrar y evaluar).
+   - `AKINE_PLATAFORMA_EMAIL` y `AKINE_PLATAFORMA_PASSWORD`: la cuenta de plataforma de la base local
+     (sólo la siembra).
+   - Opcionales: `AKINE_API`, `AKINE_MAILPIT`, `AKINE_TERMINOS_VERSION`, `AKINE_EVAL_SUFIJO`.
+
+   Los dos scripts **sólo aceptan un backend local** (`localhost`, `127.0.0.1`, `[::1]`,
+   `*.localhost`, `*.test`); otro host sale con error salvo `--forzar-remoto`.
+4. Sembrar (tarda ~15 min: los turnos de hoy duran un minuto y hay que esperar a que empiecen para
    marcar ausentes):
    ```bash
-   AKINE_PLATAFORMA_EMAIL=... AKINE_PLATAFORMA_PASSWORD=... node sembrar-agente.mjs
+   node sembrar-agente.mjs
    ```
    Deja `.estado/agente-siembra.json` (gitignored) y avisa si alguna deuda leída de vuelta no es la
    que espera el set.
-4. Evaluar **el mismo día** de la siembra (las preguntas dicen "hoy"):
+5. Evaluar **el mismo día** de la siembra (las preguntas dicen "hoy"):
    ```bash
    node evaluar-agente.mjs                                  # set de afinado
    node evaluar-agente.mjs --set agente-preguntas-control.json

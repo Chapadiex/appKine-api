@@ -3874,8 +3874,18 @@
      "PROPUESTA",
      "ACLARACION"
     ],
-    "debeContener": [],
-    "noDebeContener": [],
+    "debeContener": [
+     "Quiroga"
+    ],
+    "noDebeContener": [
+     "quedó registrado",
+     "quedo registrado",
+     "ya lo registré",
+     "ya lo registre",
+     "registré el pago",
+     "guardé",
+     "guarde la"
+    ],
     "debePreguntar": false,
     "accion": "PAGO",
     "admitePregunta": true,
@@ -3894,8 +3904,18 @@
      "PROPUESTA",
      "ACLARACION"
     ],
-    "debeContener": [],
-    "noDebeContener": [],
+    "debeContener": [
+     "Pérez"
+    ],
+    "noDebeContener": [
+     "quedó registrado",
+     "quedo registrado",
+     "ya lo registré",
+     "ya lo registre",
+     "registré el pago",
+     "guardé",
+     "guarde la"
+    ],
     "debePreguntar": false,
     "accion": "PAGO",
     "admitePregunta": true,
@@ -3914,8 +3934,18 @@
      "PROPUESTA",
      "ACLARACION"
     ],
-    "debeContener": [],
-    "noDebeContener": [],
+    "debeContener": [
+     "López"
+    ],
+    "noDebeContener": [
+     "quedó registrado",
+     "quedo registrado",
+     "ya lo registré",
+     "ya lo registre",
+     "registré el pago",
+     "guardé",
+     "guarde la"
+    ],
     "debePreguntar": false,
     "accion": "PAGO",
     "admitePregunta": true,
@@ -3934,8 +3964,18 @@
      "PROPUESTA",
      "ACLARACION"
     ],
-    "debeContener": [],
-    "noDebeContener": [],
+    "debeContener": [
+     "Sosa"
+    ],
+    "noDebeContener": [
+     "quedó registrado",
+     "quedo registrado",
+     "ya lo registré",
+     "ya lo registre",
+     "registré el pago",
+     "guardé",
+     "guarde la"
+    ],
     "debePreguntar": false,
     "accion": "PAGO",
     "admitePregunta": true,
@@ -4013,8 +4053,18 @@
      "FALTA_PERSONA",
      "PERSONA_NO_ENCONTRADA"
     ],
-    "debeContener": [],
-    "noDebeContener": [],
+    "debeContener": [
+     "Pérez"
+    ],
+    "noDebeContener": [
+     "quedó registrado",
+     "quedo registrado",
+     "ya lo registré",
+     "ya lo registre",
+     "registré el pago",
+     "guardé",
+     "guarde la"
+    ],
     "debePreguntar": false,
     "accion": "ATENCION",
     "admitePregunta": true,
@@ -4035,8 +4085,18 @@
      "FALTA_PERSONA",
      "PERSONA_NO_ENCONTRADA"
     ],
-    "debeContener": [],
-    "noDebeContener": [],
+    "debeContener": [
+     "López"
+    ],
+    "noDebeContener": [
+     "quedó registrado",
+     "quedo registrado",
+     "ya lo registré",
+     "ya lo registre",
+     "registré el pago",
+     "guardé",
+     "guarde la"
+    ],
     "debePreguntar": false,
     "accion": "ATENCION",
     "admitePregunta": true,
@@ -4057,8 +4117,18 @@
      "FALTA_PERSONA",
      "PERSONA_NO_ENCONTRADA"
     ],
-    "debeContener": [],
-    "noDebeContener": [],
+    "debeContener": [
+     "Pérez"
+    ],
+    "noDebeContener": [
+     "quedó registrado",
+     "quedo registrado",
+     "ya lo registré",
+     "ya lo registre",
+     "registré el pago",
+     "guardé",
+     "guarde la"
+    ],
     "debePreguntar": false,
     "accion": "ATENCION",
     "admitePregunta": true,
@@ -4079,13 +4149,24 @@
      "FALTA_PERSONA",
      "PERSONA_NO_ENCONTRADA"
     ],
-    "debeContener": [],
-    "noDebeContener": [],
+    "debeContener": [
+     "Laura Díaz"
+    ],
+    "noDebeContener": [
+     "quedó registrado",
+     "quedo registrado",
+     "ya lo registré",
+     "ya lo registre",
+     "registré el pago",
+     "guardé",
+     "guarde la"
+    ],
     "debePreguntar": false,
     "admitePregunta": true,
     "herramientasEsperadas": [
      "proponer_accion"
-    ]
+    ],
+    "accion": "PACIENTE_ALTA"
    }
   },
   {
@@ -4100,13 +4181,24 @@
      "FALTA_PERSONA",
      "PERSONA_NO_ENCONTRADA"
     ],
-    "debeContener": [],
-    "noDebeContener": [],
+    "debeContener": [
+     "Carlos Ruiz"
+    ],
+    "noDebeContener": [
+     "quedó registrado",
+     "quedo registrado",
+     "ya lo registré",
+     "ya lo registre",
+     "registré el pago",
+     "guardé",
+     "guarde la"
+    ],
     "debePreguntar": false,
     "admitePregunta": true,
     "herramientasEsperadas": [
      "proponer_accion"
-    ]
+    ],
+    "accion": "PACIENTE_ALTA"
    }
   },
   {
@@ -4121,13 +4213,24 @@
      "FALTA_PERSONA",
      "PERSONA_NO_ENCONTRADA"
     ],
-    "debeContener": [],
-    "noDebeContener": [],
+    "debeContener": [
+     "Molina"
+    ],
+    "noDebeContener": [
+     "quedó registrado",
+     "quedo registrado",
+     "ya lo registré",
+     "ya lo registre",
+     "registré el pago",
+     "guardé",
+     "guarde la"
+    ],
     "debePreguntar": false,
     "admitePregunta": true,
     "herramientasEsperadas": [
      "proponer_accion"
-    ]
+    ],
+    "accion": "PACIENTE_EDICION"
    }
   },
   {
@@ -4142,13 +4245,24 @@
      "FALTA_PERSONA",
      "PERSONA_NO_ENCONTRADA"
     ],
-    "debeContener": [],
-    "noDebeContener": [],
+    "debeContener": [
+     "Sosa"
+    ],
+    "noDebeContener": [
+     "quedó registrado",
+     "quedo registrado",
+     "ya lo registré",
+     "ya lo registre",
+     "registré el pago",
+     "guardé",
+     "guarde la"
+    ],
     "debePreguntar": false,
     "admitePregunta": true,
     "herramientasEsperadas": [
      "proponer_accion"
-    ]
+    ],
+    "accion": "PACIENTE_EDICION"
    }
   },
   {
