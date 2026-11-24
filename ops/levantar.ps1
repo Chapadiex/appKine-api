@@ -84,6 +84,16 @@ if (-not $SinIa) {
 		if ($LASTEXITCODE -ne 0) { throw "No se pudo bajar $Modelo" }
 	}
 
+	# El agente habla con Ollama por su API compatible con OpenAI, que no acepta num_ctx y usa 4096
+	# tokens: con las herramientas y el esquema SQL el pedido pasa los 7.000 y Ollama responde 400. Se
+	# crea una variante con 16k de contexto (application-ia.yml la usa como proveedor alternativo).
+	$variante = "$($Modelo)-16k"
+	if (-not ($tags.models | Where-Object { $_.name -eq "$variante" -or $_.name -eq "$($variante):latest" })) {
+		Escribir-Paso "Creando $variante para el agente"
+		& docker exec akine-ollama sh -c "printf 'FROM $Modelo\nPARAMETER num_ctx 16384\n' > /tmp/Modelfile-agente && ollama create $variante -f /tmp/Modelfile-agente"
+		if ($LASTEXITCODE -ne 0) { Write-Warning "No se pudo crear ${variante}: el agente sin key de Anthropic no va a responder" }
+	}
+
 	# 4. Precarga: deja el modelo en memoria para que la primera pregunta no pague la carga
 	Escribir-Paso "Precargando $Modelo"
 	# Mismo num_ctx que las llamadas reales (OpcionesGeneracion.NUM_CTX_POR_DEFECTO): con otro, Ollama recarga el modelo en la primera pregunta.

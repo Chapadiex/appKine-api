@@ -24,7 +24,7 @@ akine:
       alternativo: ${AKINE_ASISTENTE_AGENTE_ALTERNATIVO:compatible}
       compatible:
         url: ${AKINE_ASISTENTE_AGENTE_COMPATIBLE_URL:http://localhost:11434/v1}
-        modelo: ${AKINE_ASISTENTE_AGENTE_COMPATIBLE_MODELO:qwen3:4b-instruct}
+        modelo: ${AKINE_ASISTENTE_AGENTE_COMPATIBLE_MODELO:qwen3:4b-instruct-16k}
   evolucion:
     enabled: ${AKINE_EVOLUCION_ENABLED:true}
     sugerencias:
