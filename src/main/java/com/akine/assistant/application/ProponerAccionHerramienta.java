@@ -14,9 +14,10 @@ import com.akine.assistant.spi.TipoDeAccion;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionQuery;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.time.Instant;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.Arrays;
@@ -55,9 +56,17 @@ public class ProponerAccionHerramienta implements HerramientaDelAgente {
 	private final AccionesDelAsistente acciones;
 	/** Por proveedor: el catalogo contiene esta misma herramienta. */
 	private final ObjectProvider<CatalogoDeHerramientas> catalogo;
+	private final Clock clock;
 
+	@Autowired
 	ProponerAccionHerramienta(AsistenteAjustes ajustes, PermissionEvaluator permisos, AccionesDelAsistente acciones,
 			ObjectProvider<CatalogoDeHerramientas> catalogo) {
+		this(ajustes, permisos, acciones, catalogo, Clock.systemUTC());
+	}
+
+	ProponerAccionHerramienta(AsistenteAjustes ajustes, PermissionEvaluator permisos, AccionesDelAsistente acciones,
+			ObjectProvider<CatalogoDeHerramientas> catalogo, Clock clock) {
+		this.clock = clock;
 		this.ajustes = ajustes;
 		this.permisos = permisos;
 		this.acciones = acciones;
@@ -109,7 +118,7 @@ public class ProponerAccionHerramienta implements HerramientaDelAgente {
 	public boolean disponiblePara(ActorDelAsistente actor) {
 		return ajustes.acciones() && permisos.evaluate(new PermissionQuery(actor.accountId(),
 				PermissionCodes.ASISTENTE_ACCIONES, actor.organizationId(), actor.consultorioId(), null,
-				Instant.now())).granted();
+				clock.instant())).granted();
 	}
 
 	/** No se ejecuta como lectura: el agente la intercepta y llama a {@link #proponer}. */

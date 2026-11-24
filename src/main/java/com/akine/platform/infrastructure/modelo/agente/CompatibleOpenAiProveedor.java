@@ -12,6 +12,7 @@ import com.akine.platform.spi.modelo.agente.UsoDelModelo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import tools.jackson.core.JacksonException;
@@ -21,6 +22,8 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -40,11 +43,46 @@ public class CompatibleOpenAiProveedor implements ProveedorDeAgente {
 	private final RestClient http;
 	private final String modelo;
 	private final String apiKey;
+	/** Con el cliente propio, cada pedido lleva su plazo de lectura; nulo con un builder ajeno (tests). */
+	private final HttpClient cliente;
+	private final Duration plazoPorDefecto;
 
+	/** Con un builder ya armado (lo usan los tests con {@code MockRestServiceServer}): sin plazo por pedido. */
 	public CompatibleOpenAiProveedor(RestClient.Builder builder, String url, String modelo, String apiKey) {
 		this.http = builder.baseUrl(url.replaceAll("/+$", "")).build();
 		this.modelo = modelo;
 		this.apiKey = apiKey;
+		this.cliente = null;
+		this.plazoPorDefecto = null;
+	}
+
+	/**
+	 * Con un cliente HTTP propio: el plazo de lectura de cada pedido es {@code PedidoAlAgente.plazo()} (lo que le
+	 * queda al bucle del agente) o, si no viene, {@code plazoPorDefecto}.
+	 */
+	public CompatibleOpenAiProveedor(HttpClient cliente, String url, String modelo, String apiKey,
+			Duration plazoPorDefecto) {
+		this.cliente = cliente;
+		this.plazoPorDefecto = plazoPorDefecto;
+		this.http = RestClient.builder().requestFactory(fabrica(plazoPorDefecto))
+				.baseUrl(url.replaceAll("/+$", "")).build();
+		this.modelo = modelo;
+		this.apiKey = apiKey;
+	}
+
+	private JdkClientHttpRequestFactory fabrica(Duration plazo) {
+		JdkClientHttpRequestFactory fabrica = new JdkClientHttpRequestFactory(cliente);
+		fabrica.setReadTimeout(plazo);
+		return fabrica;
+	}
+
+	/** El cliente con el plazo de este pedido; la conexion (el {@link HttpClient}) se comparte. */
+	private RestClient clientePara(PedidoAlAgente pedido) {
+		if (cliente == null || pedido.plazo() == null || pedido.plazo().equals(plazoPorDefecto)) {
+			return http;
+		}
+		Duration plazo = pedido.plazo().isNegative() || pedido.plazo().isZero() ? Duration.ofMillis(1) : pedido.plazo();
+		return http.mutate().requestFactory(fabrica(plazo)).build();
 	}
 
 	@Override
@@ -57,7 +95,7 @@ public class CompatibleOpenAiProveedor implements ProveedorDeAgente {
 		String cuerpo = json.writeValueAsString(armar(pedido));
 		String respuesta;
 		try {
-			RestClient.RequestBodySpec spec = http.post().uri("/chat/completions")
+			RestClient.RequestBodySpec spec = clientePara(pedido).post().uri("/chat/completions")
 					.contentType(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_JSON);
 			if (apiKey != null && !apiKey.isBlank()) {
 				spec = spec.header("Authorization", "Bearer " + apiKey);

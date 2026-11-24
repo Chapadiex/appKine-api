@@ -7,6 +7,7 @@ import com.akine.organization.api.dto.UpdateFuncionesIaRequest;
 import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.application.FuncionesIaService;
 import com.akine.platform.spi.modelo.MotorDeModelos;
+import com.akine.platform.spi.modelo.agente.ConfiguracionDelAgente;
 import com.akine.platform.spi.tenant.TenantContextHolder;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -47,16 +48,19 @@ public class FuncionesIaController {
 
 	private final FuncionesIaService funcionesIaService;
 	private final MotorDeModelos motor;
+	private final ConfiguracionDelAgente configuracionDelAgente;
 	private final AuthorizationGuard authorizationGuard;
 	private final TenantContextHolder tenantContextHolder;
 
 	public FuncionesIaController(
 			FuncionesIaService funcionesIaService,
 			MotorDeModelos motor,
+			ConfiguracionDelAgente configuracionDelAgente,
 			AuthorizationGuard authorizationGuard,
 			TenantContextHolder tenantContextHolder) {
 		this.funcionesIaService = funcionesIaService;
 		this.motor = motor;
+		this.configuracionDelAgente = configuracionDelAgente;
 		this.authorizationGuard = authorizationGuard;
 		this.tenantContextHolder = tenantContextHolder;
 	}
@@ -128,7 +132,8 @@ public class FuncionesIaController {
 			operationId = "getEstadoDelMotorDeIa",
 			summary = "Estado del servidor de modelos",
 			description = "Si Ollama responde, que modelo usa cada funcion, si esta descargado y cargado, y si "
-					+ "corre en GPU o en CPU. Siempre 200: un servidor caido viaja con alcanzable=false. "
+					+ "corre en GPU o en CPU, y que proveedor usa el asistente (sin la key, solo si hay una). Siempre 200: "
+					+ "un servidor caido viaja con alcanzable=false. "
 					+ "Requiere tenant:update.")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Estado del motor",
@@ -143,7 +148,7 @@ public class FuncionesIaController {
 	public ResponseEntity<EstadoDelMotorResponse> motor(
 			@Parameter(description = "Identificador de la organizacion", example = "1") @PathVariable long orgId) {
 		exigirEditor(orgId);
-		return ResponseEntity.ok(EstadoDelMotorResponse.from(motor.estado(PLAZO_ESTADO)));
+		return ResponseEntity.ok(EstadoDelMotorResponse.from(motor.estado(PLAZO_ESTADO), configuracionDelAgente));
 	}
 
 	@PostMapping("/motor/precarga")
@@ -166,7 +171,7 @@ public class FuncionesIaController {
 	public ResponseEntity<EstadoDelMotorResponse> precargar(
 			@Parameter(description = "Identificador de la organizacion", example = "1") @PathVariable long orgId) {
 		exigirEditor(orgId);
-		return ResponseEntity.ok(EstadoDelMotorResponse.from(motor.precargar(PLAZO_CARGA)));
+		return ResponseEntity.ok(EstadoDelMotorResponse.from(motor.precargar(PLAZO_CARGA), configuracionDelAgente));
 	}
 
 	@PostMapping("/motor/prueba")

@@ -1,6 +1,6 @@
-// Mide el recorrido COMPLETO (EsPregunta + modelo + ControlDeAccion + resolucion) contra un backend
-// levantado con las acciones prendidas, pasando cada frase de un set por POST /asistente/consultas.
-// evaluar-acciones.mjs mide solo el modelo; este mide lo que ve la persona.
+// Mide el recorrido COMPLETO (el agente con sus herramientas y proponer_accion, mas la resolucion de la
+// tarjeta) contra un backend levantado con las acciones prendidas, pasando cada frase de un set por
+// POST /asistente/consultas: mide lo que ve la persona.
 //
 //   AKINE_EMAIL=... AKINE_PASSWORD=... node evaluar-acciones-en-vivo.mjs [url] [CASOS=acciones.json]
 //

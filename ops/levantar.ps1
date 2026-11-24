@@ -105,11 +105,17 @@ if (-not $SinIa) {
 		Write-Warning "No esta el modelo de embeddings en $onnx. La biblioteca queda apagada en este arranque."
 		$apagarBiblioteca = $true
 	}
+
+	# 6. Key de Anthropic para el agente del asistente (proveedor claude en el perfil ia). Se hereda por
+	# el entorno; nunca se muestra.
+	if (-not $env:AKINE_ANTHROPIC_API_KEY) {
+		Write-Warning 'Falta AKINE_ANTHROPIC_API_KEY: el asistente responde con el alternativo (Ollama, compatible), mas lento y menos preciso.'
+	}
 }
 
 if ($SinBackend) { Escribir-Paso 'Infraestructura lista. Backend: ./mvnw spring-boot:run "-Dspring-boot.run.profiles=local,ia"'; return }
 
-# 6. Backend
+# 7. Backend
 $perfiles = if ($SinIa) { 'local' } else { 'local,ia' }
 Escribir-Paso "Backend con perfiles $perfiles"
 # La biblioteca se apaga solo para este backend: la variable se restaura al salir, para que un

@@ -12,6 +12,19 @@
 akine:
   asistente:
     enabled: ${AKINE_ASISTENTE_ENABLED:true}
+    # Consultas libres en SQL y acciones con confirmacion: ademas exigen asistente:sql y asistente:acciones.
+    sql:
+      enabled: ${AKINE_ASISTENTE_SQL_ENABLED:true}
+    acciones:
+      enabled: ${AKINE_ASISTENTE_ACCIONES_ENABLED:true}
+    # El agente responde con Claude (key en AKINE_ANTHROPIC_API_KEY; ops/levantar.ps1 avisa si falta) y, si
+    # no responde, con el Ollama del compose por su API compatible con OpenAI.
+    agente:
+      proveedor: ${AKINE_ASISTENTE_AGENTE_PROVEEDOR:claude}
+      alternativo: ${AKINE_ASISTENTE_AGENTE_ALTERNATIVO:compatible}
+      compatible:
+        url: ${AKINE_ASISTENTE_AGENTE_COMPATIBLE_URL:http://localhost:11434/v1}
+        modelo: ${AKINE_ASISTENTE_AGENTE_COMPATIBLE_MODELO:qwen3:4b-instruct}
   evolucion:
     enabled: ${AKINE_EVOLUCION_ENABLED:true}
     sugerencias:

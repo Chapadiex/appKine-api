@@ -20,8 +20,10 @@ pregunta no entra en ninguna, el modelo escribe un `SELECT`.
    modelo como `error: true` dentro del mismo bucle del agente, que reintenta (sin el tope de uno de antes).
    El mensaje del motor sale **sin los valores citados** (entre comillas simples o dobles queda `…`) y con el
    SQLState: un cast fallido no puede mostrar el valor de otro centro.
-6. `JdbcLectorDeVistas` la ejecuta, con el `TimeZone` de la transacción en la zona de la sede (la sesión es UTC; sin eso `CURRENT_DATE` se corre un día), y las vistas son `security_barrier` (`V47`) para que el filtro de organización y sede corra antes que cualquier predicado del modelo. La respuesta trae el `SELECT` en
-   La respuesta trae el `SELECT` en `consulta` (contrato 0.173.0), y la pantalla lo muestra en "Ver la consulta".
+6. `JdbcLectorDeVistas` la ejecuta, con el `TimeZone` de la transacción en la zona de la sede (la sesión es
+   UTC; sin eso `CURRENT_DATE` se corre un día), y las vistas son `security_barrier` (`V47`) para que el
+   filtro de organización y sede corra antes que cualquier predicado del modelo. La respuesta trae el
+   `SELECT` en `consulta` (contrato 0.173.0), y la pantalla lo muestra en "Ver la consulta".
 
 ## 2. Las tres barreras
 

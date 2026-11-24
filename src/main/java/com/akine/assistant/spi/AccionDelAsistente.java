@@ -2,7 +2,7 @@ package com.akine.assistant.spi;
 
 /**
  * Una accion que el asistente propone y, confirmada, graba. La implementa el modulo dueño del dato en
- * su {@code infrastructure}, igual que {@link HerramientaDelAsistente}: {@code assistant} no importa a
+ * su {@code infrastructure}, igual que {@link HerramientaDelAgente}: {@code assistant} no importa a
  * nadie.
  *
  * <p><b>Ninguna implementacion abre una transaccion que envuelva a los servicios</b>: varios de

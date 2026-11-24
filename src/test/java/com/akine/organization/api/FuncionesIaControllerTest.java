@@ -6,6 +6,7 @@ import com.akine.organization.application.FuncionesIaView;
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
 import com.akine.organization.spi.FuncionIa;
 import com.akine.platform.spi.modelo.MotorDeModelos;
+import com.akine.platform.spi.modelo.agente.ConfiguracionDelAgente;
 import com.akine.platform.spi.tenant.TenantContextHolder;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,9 @@ class FuncionesIaControllerTest {
 
 	@MockitoBean
 	private MotorDeModelos motor;
+
+	@MockitoBean
+	private ConfiguracionDelAgente configuracionDelAgente;
 
 	@MockitoBean
 	private AuthorizationGuard authorizationGuard;

@@ -97,7 +97,7 @@ public final class ConsultaSqlHerramienta implements HerramientaDelAgente {
 		List<Map<String, Object>> filas;
 		try {
 			filas = lector.leer(sql, actor.organizationId(), actor.consultorioId(),
-					ctx == null || ctx.zona() == null ? java.time.ZoneOffset.UTC : ctx.zona(), MAX_FILAS + 1);
+					ctx == null || ctx.zona() == null ? java.time.ZoneId.of("UTC") : ctx.zona(), MAX_FILAS + 1);
 		}
 		catch (ConsultaInvalidaException e) {
 			throw new IllegalArgumentException("El motor rechazo la consulta: " + e.getMessage());
