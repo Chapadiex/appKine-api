@@ -20,7 +20,7 @@ public record RespuestaAsistenteResponse(
 		String resultado,
 		@ArraySchema(arraySchema = @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
 				description = "Los datos detras del texto, una fila por elemento. Las claves dependen de la "
-						+ "intencion; los instantes van en ISO-8601"),
+						+ "herramienta; los instantes van en ISO-8601"),
 				schema = @Schema(type = "object", additionalProperties = Schema.AdditionalPropertiesValue.TRUE))
 		List<Map<String, Object>> filas,
 		@ArraySchema(arraySchema = @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
@@ -29,8 +29,8 @@ public record RespuestaAsistenteResponse(
 		@Schema(description = "Ruta del frontend donde ver el detalle", example = "/pacientes/123") String enlace,
 		@ArraySchema(arraySchema = @Schema(requiredMode = Schema.RequiredMode.REQUIRED))
 		List<String> advertencias,
-		@Schema(description = "El SELECT que respondio una consulta libre (la pregunta no entraba en ninguna "
-				+ "intencion y el usuario tiene asistente:sql); null en las demas",
+		@Schema(description = "El ultimo SELECT que corrio la herramienta de consulta en SQL para "
+				+ "responder (requiere asistente:sql); null si no se uso",
 				example = "SELECT count(*) AS pacientes FROM personas WHERE es_paciente AND activa")
 		String consulta,
 		@Schema(description = "Con `resultado` PROPUESTA: la accion que se propone, para revisarla y confirmarla "
@@ -53,9 +53,8 @@ public record RespuestaAsistenteResponse(
 	@Schema(name = "LlamadaDeHerramientaDelAsistente", description = "Una herramienta que llamo el asistente")
 	public record LlamadaDeHerramientaResponse(
 			@Schema(requiredMode = Schema.RequiredMode.REQUIRED, example = "buscar_persona") String herramienta,
-			@Schema(requiredMode = Schema.RequiredMode.REQUIRED, type = "object",
-					additionalProperties = Schema.AdditionalPropertiesValue.TRUE,
-					description = "La entrada que le paso el modelo") Map<String, Object> entrada,
+			@Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "La entrada que le paso el modelo")
+			Map<String, Object> entrada,
 			@Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "El servicio rechazo al usuario")
 			boolean sinPermiso,
 			@Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "Cuantas filas devolvio") int filas) {
