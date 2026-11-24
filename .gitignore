@@ -63,3 +63,6 @@ tmp/
 # Almacenamiento local por defecto de akine.person.adjuntos.base-dir. Son binarios de
 # desarrollo -y, en una maquina de QA, documentos de personas sinteticas-: no se versionan.
 var/
+
+# Siembra y resultados locales del set de evaluacion del agente (ids, correos de prueba)
+docs/asistente/evaluacion/.estado/
