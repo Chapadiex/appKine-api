@@ -18,7 +18,7 @@
 //     (particular $15.000, prácticas TENS y Magnetoterapia, sin obra social). En Norte: Kinesiología
 //     ($20.000). Las ofertas duran UN minuto: es la forma de tener hoy turnos ya pasados sin tocar la base
 //     (ausente sólo se marca sobre un turno empezado; ver flujo-unico-de-turnos.spec.ts en appKine-web).
-//   - Obra Social del Sur, Plan 300: precio en el plan (convenio sin sede) $12.000 por kinesiología →
+//   - Obra Social del Sur, Plan 300: precio en el plan (convenio sin sede) $12.000 por kinesiología (y por TENS y magnetoterapia, que el devengo cotiza por la práctica realizada) →
 //     coseguro $6.000, tope de 2 sesiones por mes (la tercera pasa a particular).
 //   - 12 pacientes; hoy en Sede Centro:
 //       Juan Pérez (OSDS)      vino, TENS (Lucía)                       debe $6.000 (coseguro)
@@ -145,7 +145,7 @@ const PLAN = [
   '2. Plataforma: plan RED + adicional IA para el centro; el centro prende el asistente',
   '3. Sede Norte; memberships (2 PROFESIONAL Centro, 1 PROFESIONAL Norte, 1 ADMINISTRATIVO Centro); disponibilidad 00:00-23:45',
   '4. Ofertas de 1 minuto: Kinesiología $18.000 y Fisioterapia $15.000 (Centro), Kinesiología $20.000 (Norte)',
-  '5. Obra Social del Sur / Plan 300: precio en el plan $12.000 por kinesiología, tope 2 sesiones/mes',
+  '5. Obra Social del Sur / Plan 300: precio en el plan $12.000 por kinesiología, TENS y magneto, tope 2 sesiones/mes',
   `6. ${Object.keys(PACIENTES).length} pacientes + Ramiro Ajeno en Centro Ajeno; coberturas de Juan Pérez y María López`,
   `7. ${TURNOS.length} turnos de hoy desde dentro de 2 minutos; esperar a que empiecen (~${TURNOS.length} min)`,
   '8. Sesiones cerradas con TENS / magnetoterapia, ausencias, una cancelación',
@@ -335,7 +335,7 @@ if (plataforma) {
 const ia = await admin.exigir('GET', `/api/v1/organizations/${org}/ia`);
 await admin.exigir('PUT', `/api/v1/organizations/${org}/ia`, { asistente: true, biblioteca: false, evolucion: false, sugerencias: false, version: ia.version });
 
-const norteCreada = await admin.exigir('POST', `/api/v1/organizations/${org}/consultorios`, { name: 'Sede Norte', timezone: zona });
+const norteCreada = (await admin.pedir('POST', `/api/v1/organizations/${org}/consultorios`, { name: 'Sede Norte', timezone: zona }, { cabeceras: { 'Idempotency-Key': randomUUID() } })).json;
 const norte = norteCreada.id;
 estado.sedes.norte = { id: norte, nombre: 'Sede Norte' };
 log(`Sede Norte ${norte}`);
@@ -374,12 +374,19 @@ for (const [clave, p] of Object.entries(profesionales)) {
 const servicios = await admin.exigir('GET', '/api/v1/servicios');
 const servicio = (codigo) => (servicios.find((s) => s.codigo === codigo) ?? servicios[0]).id;
 const practicas = {};
-for (const codigo of ['KIN_SESION', 'FIS_TENS', 'FIS_MAGNETOTERAPIA']) {
-  const r = await admin.exigir('GET', `/api/v1/catalogos/practicas?q=${codigo}`);
-  const lista = Array.isArray(r) ? r : r.content;
-  const p = lista.find((x) => x.codigo === codigo);
-  if (!p) throw new Error(`la práctica global ${codigo} no existe (V38)`);
-  practicas[codigo] = p.id;
+// La magnetoterapia del catálogo global de prácticas es FIS_MAGNETO (V13); FIS_MAGNETOTERAPIA es el código
+// del catálogo precargado de conceptos (V38) y puede no existir como práctica.
+const CODIGOS = { KIN_SESION: ['KIN_SESION'], FIS_TENS: ['FIS_TENS'], FIS_MAGNETOTERAPIA: ['FIS_MAGNETO', 'FIS_MAGNETOTERAPIA'] };
+for (const [clave, codigos] of Object.entries(CODIGOS)) {
+  for (const codigo of codigos) {
+    const r = await admin.exigir('GET', `/api/v1/catalogos/practicas?q=${codigo}&size=100`);
+    const p = (Array.isArray(r) ? r : r.content).find((x) => x.codigo === codigo);
+    if (p) {
+      practicas[clave] = p.id;
+      break;
+    }
+  }
+  if (!practicas[clave]) throw new Error(`no existe la práctica global ${codigos.join(' / ')}`);
 }
 
 async function oferta(api, sede, { nombre, servicioCodigo, precio, obraSocial, profes, practicasIds }) {
@@ -415,7 +422,12 @@ if (convenioDelPlan) {
     financiadorId: fin.id, planId: plan.id, codigo: `CV${SUFIJO}`.slice(0, 20), nombre: 'Convenio Obra Social del Sur', modalidad: 'POR_PRESTACION', vigenciaDesde: hoy, moneda: 'ARS',
   });
 }
-await admin.exigir('POST', `/api/v1/consultorios/${centro}/convenios/${convenio.id}/aranceles`, { practicaId: practicas.KIN_SESION, importeFinanciador: 12000, vigenciaDesde: hoy });
+// El devengo cotiza por la práctica REALIZADA: una sesión de Kinesiología con TENS o magnetoterapia
+// registrados busca el arancel de esa práctica, y sin él la sesión sale particular (verificado contra el
+// backend: Juan Pérez quedaba debiendo 18.000). Por eso el plan paga lo mismo por las tres prácticas.
+for (const clave of ['KIN_SESION', 'FIS_TENS', 'FIS_MAGNETOTERAPIA']) {
+  await admin.exigir('POST', `/api/v1/consultorios/${centro}/convenios/${convenio.id}/aranceles`, { practicaId: practicas[clave], importeFinanciador: 12000, vigenciaDesde: hoy });
+}
 const leido = await admin.exigir('GET', `/api/v1/consultorios/${centro}/convenios/${convenio.id}`);
 await admin.exigir('PUT', `/api/v1/consultorios/${centro}/convenios/${convenio.id}`, { expectedVersion: leido.version, limiteSesionesMensual: 2 });
 estado.obraSocial = { financiadorId: fin.id, planId: plan.id, convenioId: convenio.id, convenioDelPlan, paga: 12000, coseguro: 6000, tope: 2 };

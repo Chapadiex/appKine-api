@@ -2469,7 +2469,7 @@
   {
    "id": "AG099",
    "grupo": "arancel-sin-dato",
-   "pregunta": "¿cuánto paga la Obra Social del Sur por magnetoterapia?",
+   "pregunta": "¿cuánto paga la Obra Social del Sur por ondas de choque?",
    "actor": "ADMIN",
    "esperado": {
     "resultado": "RESPONDIDA",
