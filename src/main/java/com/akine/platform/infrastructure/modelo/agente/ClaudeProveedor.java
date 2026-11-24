@@ -109,16 +109,25 @@ public class ClaudeProveedor implements ProveedorDeAgente, AutoCloseable {
 			respuesta = mensajes.create(params, opciones);
 		} catch (AnthropicServiceException e) {
 			int status = e.statusCode();
-			if (status == 408 || status == 429 || status >= 500) {
+			if (pasaAlAlternativo(status)) {
 				throw new ModeloNoDisponibleException(e);
 			}
-			// 400/401/403/404...: un error de configuracion o del pedido, no una caida. El mensaje del
-			// SDK trae el cuerpo del error de la API, nunca la key.
+			// 400 y demas 4xx: un error del pedido, no una caida. El mensaje del SDK trae el cuerpo del
+			// error de la API, nunca la key.
 			throw new IllegalStateException("Claude rechazo el pedido (" + status + "): " + e.getMessage(), e);
 		} catch (AnthropicIoException | AnthropicRetryableException e) {
 			throw new ModeloNoDisponibleException(e);
 		}
 		return turnoDe(respuesta);
+	}
+
+	/**
+	 * Los estados con los que Claude no va a responder esta consulta y el agente pasa al alternativo:
+	 * plazo (408), cupo (429), caida (5xx) y tambien key revocada o sin permiso (401, 403) o modelo
+	 * inexistente (404), que no se arreglan reintentando. El 400 queda como error del pedido.
+	 */
+	static boolean pasaAlAlternativo(int status) {
+		return status == 401 || status == 403 || status == 404 || status == 408 || status == 429 || status >= 500;
 	}
 
 	@Override

@@ -12,7 +12,7 @@ import java.util.function.Supplier;
 
 /**
  * El proveedor principal del agente y, si lo hay, el alternativo que se usa cuando el principal no
- * responde (503, plazo vencido o sin key: todos llegan como
+ * responde (503, plazo vencido, sin key, key revocada o modelo inexistente: todos llegan como
  * {@link com.akine.platform.spi.modelo.ModeloNoDisponibleException}).
  *
  * <p>Una conversacion que paso al alternativo se queda en el: {@link Conversacion} lo recuerda, asi el

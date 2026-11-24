@@ -342,6 +342,102 @@ class AgenteDelAsistenteTest {
 				.containsExactly("Pérez, Juan · DNI ***456", "Pérez, Juana");
 	}
 
+	@Test
+	void la_respuesta_lleva_las_filas_de_como_se_hace_para_el_chip_del_manual() {
+		Map<String, Object> pasaje = Map.of("ficha", "caja", "titulo", "Caja", "pasaje", "Para abrir la caja...");
+		HerramientaDelAgente comoSeHace = new HerramientaDelAgente() {
+			@Override
+			public String nombre() {
+				return AgenteDelAsistente.COMO_SE_HACE;
+			}
+
+			@Override
+			public String descripcion() {
+				return "Pasajes del manual";
+			}
+
+			@Override
+			public String esquemaEntrada() {
+				return "{\"type\":\"object\"}";
+			}
+
+			@Override
+			public ResultadoDeHerramienta ejecutar(ActorDelAsistente actor, Map<String, Object> entrada,
+					ContextoDeConsulta ctx) {
+				return new ResultadoDeHerramienta(List.of(pasaje), List.of(), "/caja", false);
+			}
+		};
+		ModeloGrabado modelo = new ModeloGrabado(
+				pide(AgenteDelAsistente.COMO_SE_HACE, "{\"pregunta\":\"abrir la caja\"}"),
+				// Una herramienta de datos despues: el manual sigue mandando en las filas.
+				pide("buscar_persona", "{\"nombre\":\"Pérez\"}"),
+				final_("Se abre desde Caja."));
+		AgenteDelAsistente agente = new AgenteDelAsistente(new ProveedoresDelAgente(modelo, null),
+				new CatalogoDeHerramientas(List.of(comoSeHace, buscarPersona)), new AuditoriaDelAsistente(auditados::add),
+				"SYSTEM", 8, Duration.ofSeconds(30), Clock.systemUTC());
+
+		RespuestaDelAsistente r = agente.responder(ACTOR, CTX, "cómo abro la caja?", List.of(), null);
+
+		assertThat(r.texto()).isEqualTo("Se abre desde Caja.");
+		assertThat(r.filas()).containsExactly(pasaje);
+	}
+
+	@Test
+	void la_respuesta_lleva_las_filas_de_la_ultima_herramienta_de_datos() {
+		ModeloGrabado modelo = new ModeloGrabado(pide("buscar_persona", "{\"nombre\":\"Pérez\"}"),
+				final_("Hay dos Pérez."));
+
+		RespuestaDelAsistente r = agente(modelo, null).responder(ACTOR, CTX, "quién es Pérez?", List.of(), null);
+
+		assertThat(r.filas()).hasSize(2);
+		assertThat(r.filas().getFirst()).containsEntry(ClavesDeFila.NOMBRE, "Pérez, Juan");
+	}
+
+	@Test
+	void si_el_proveedor_rechaza_el_pedido_despues_de_buscar_responde_con_lo_que_hay() {
+		AtomicInteger vueltas = new AtomicInteger();
+		ProveedorDeAgente rechaza = new ProveedorDeAgente() {
+			@Override
+			public String nombre() {
+				return "claude";
+			}
+
+			@Override
+			public TurnoDelAgente responder(com.akine.platform.spi.modelo.agente.PedidoAlAgente pedido) {
+				if (vueltas.getAndIncrement() == 0) {
+					return pide("buscar_persona", "{\"nombre\":\"Pérez\"}");
+				}
+				throw new IllegalStateException("Claude rechazo el pedido (400)");
+			}
+		};
+
+		RespuestaDelAsistente r = agente(rechaza, null).responder(ACTOR, CTX, "vino Pérez?", List.of(), null);
+
+		assertThat(r.resultado()).isEqualTo(Resultado.RESPONDIDA);
+		assertThat(r.texto()).startsWith(AgenteDelAsistente.TOPE);
+		assertThat(r.advertencias()).contains(AgenteDelAsistente.AVISO_TOPE);
+		assertThat(r.filas()).hasSize(2);
+	}
+
+	@Test
+	void si_el_proveedor_rechaza_la_primera_vuelta_el_error_sube() {
+		ProveedorDeAgente rechaza = new ProveedorDeAgente() {
+			@Override
+			public String nombre() {
+				return "claude";
+			}
+
+			@Override
+			public TurnoDelAgente responder(com.akine.platform.spi.modelo.agente.PedidoAlAgente pedido) {
+				throw new IllegalStateException("Claude rechazo el pedido (400)");
+			}
+		};
+
+		assertThatThrownBy(() -> agente(rechaza, null).responder(ACTOR, CTX, "hola", List.of(), null))
+				.isInstanceOf(IllegalStateException.class);
+		assertThat(auditados.getFirst().details()).containsEntry("resultado", "ERROR");
+	}
+
 	private static ProveedorDeAgente caido() {
 		return new ProveedorDeAgente() {
 			@Override

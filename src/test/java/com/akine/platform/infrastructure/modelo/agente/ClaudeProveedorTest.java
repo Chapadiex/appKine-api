@@ -188,6 +188,12 @@ class ClaudeProveedorTest {
 				.isInstanceOf(ModeloNoDisponibleException.class);
 	}
 
+	@Test
+	void laKeyRevocadaElModeloInexistenteYLasCaidasPasanAlAlternativoPeroUn400No() {
+		assertThat(List.of(401, 403, 404, 408, 429, 500, 529)).allMatch(ClaudeProveedor::pasaAlAlternativo);
+		assertThat(List.of(400, 413, 422)).noneMatch(ClaudeProveedor::pasaAlAlternativo);
+	}
+
 	private static JsonNode cuerpo(MessageCreateParams params) throws Exception {
 		return ObjectMappers.jsonMapper().readTree(ObjectMappers.jsonMapper().writeValueAsString(params._body()));
 	}

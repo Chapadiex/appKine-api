@@ -56,6 +56,8 @@ public class AgenteDelAsistente {
 	private static final Logger log = LoggerFactory.getLogger(AgenteDelAsistente.class);
 
 	static final String PEDIR_ACLARACION = "pedir_aclaracion";
+	/** La herramienta del manual: sus filas llevan la ficha que el frontend muestra como chip. */
+	static final String COMO_SE_HACE = "como_se_hace";
 	/** La clave del id de persona en las filas de las herramientas del agente. */
 	static final String PERSONA_ID = "persona_id";
 	static final int MAX_OPCIONES = 5;
@@ -186,6 +188,10 @@ public class AgenteDelAsistente {
 		private final Set<String> advertencias = new LinkedHashSet<>();
 		private final Map<Long, String> etiquetas = new LinkedHashMap<>();
 		private String enlace;
+		/** Las filas de la ultima herramienta de datos que respondio, para "Ver los datos". */
+		private List<Map<String, Object>> filasDeDatos = List.of();
+		/** Las del ultimo {@code como_se_hace}: mandan sobre las demas, porque llevan la ficha del manual. */
+		private List<Map<String, Object>> filasDelManual;
 		private String consulta;
 		private int vueltas;
 		private long tokensEntrada;
@@ -221,6 +227,15 @@ public class AgenteDelAsistente {
 					}
 					// Ya hay resultados de herramientas: se responde con lo que hay (diseno §5.1), no con 503.
 					log.warn("El modelo del agente no respondio en la vuelta {}; se corta con lo que hay", vueltas + 1);
+					break;
+				}
+				catch (RuntimeException e) {
+					if (vueltas == 0) {
+						throw e;
+					}
+					// Un rechazo del proveedor (un 400, por ejemplo) despues de leer datos: tampoco es un 500.
+					log.warn("El proveedor del agente fallo en la vuelta {} ({}); se corta con lo que hay", vueltas + 1,
+							e.getClass().getSimpleName());
 					break;
 				}
 				vueltas++;
@@ -306,6 +321,16 @@ public class AgenteDelAsistente {
 				enlace = resultado.enlace();
 			}
 			recordarPersonas(resultado.filas());
+			if (!resultado.sinPermiso()) {
+				List<Map<String, Object>> filas = resultado.filas().size() > MAX_FILAS
+						? resultado.filas().subList(0, MAX_FILAS) : resultado.filas();
+				if (COMO_SE_HACE.equals(llamada.nombre())) {
+					filasDelManual = filas;
+				}
+				else {
+					filasDeDatos = filas;
+				}
+			}
 			return new ResultadoDeLlamada(llamada.id(), serializar(resultado), false);
 		}
 
@@ -414,7 +439,8 @@ public class AgenteDelAsistente {
 		}
 
 		private RespuestaDelAsistente respuesta(String texto, Resultado resultado, List<OpcionDePersona> opciones) {
-			return new RespuestaDelAsistente(texto, Interpretacion.FUERA_DE_ALCANCE, List.of(), opciones, enlace,
+			return new RespuestaDelAsistente(texto, Interpretacion.FUERA_DE_ALCANCE,
+					filasDelManual != null ? filasDelManual : filasDeDatos, opciones, enlace,
 					List.copyOf(advertencias), resultado, consulta, null, registradas);
 		}
 
