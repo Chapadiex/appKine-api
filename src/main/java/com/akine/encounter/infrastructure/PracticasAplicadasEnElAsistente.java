@@ -88,6 +88,9 @@ class PracticasAplicadasEnElAsistente implements HerramientaDelAgente {
 				Periodo.ultimosDias(ctx.hoy(), 30));
 
 		List<String> advertencias = new ArrayList<>();
+		boolean porDefecto = entrada.get("desde") == null && entrada.get("hasta") == null;
+		advertencias.add("Período consultado: " + (porDefecto ? "últimos 30 días, " : "") + "del " + periodo.desde()
+				+ " al " + periodo.hasta() + ". Decilo en la respuesta.");
 		if (personaId != null && personas.find(actor.organizationId(), personaId).isEmpty()) {
 			return new ResultadoDeHerramienta(List.of(), List.of(SIN_PERSONA), null, false);
 		}

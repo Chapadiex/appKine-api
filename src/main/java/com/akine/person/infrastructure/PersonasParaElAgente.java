@@ -11,6 +11,7 @@ import com.akine.person.application.PersonaEstadoFiltro;
 import com.akine.person.application.PersonaPagina;
 import com.akine.person.application.PersonaService;
 import com.akine.person.application.PersonaView;
+import com.akine.platform.spi.listado.TextoDeBusqueda;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -60,12 +61,32 @@ class PersonasParaElAgente implements HerramientaDelAgente {
 				actor.organizationId(), actor.consultorioId());
 		PersonaPagina pagina = personas.buscar(operador,
 				new PersonaBusqueda(texto, PersonaEstadoFiltro.ACTIVO, null), 0, MAXIMO);
-		List<Map<String, Object>> filas = pagina.contenido().stream().map(PersonasParaElAgente::fila).toList();
-		List<String> advertencias = pagina.total() > filas.size()
-				? List.of("Hay " + pagina.total() + " resultados; muestro los primeros " + filas.size()
+		List<PersonaView> encontradas = pagina.contenido();
+		long total = pagina.total();
+		String[] palabras = TextoDeBusqueda.plegar(texto).trim().split("\\s+");
+		if (encontradas.isEmpty() && palabras.length > 1) {
+			// "Juan Perez" no coincide con ningun campo entero: se busca por la palabra mas larga y se
+			// quedan las personas cuyo nombre completo contiene todas las palabras.
+			String ancla = java.util.Arrays.stream(palabras).max(java.util.Comparator.comparingInt(String::length))
+					.orElseThrow();
+			encontradas = personas.buscar(operador, new PersonaBusqueda(ancla, PersonaEstadoFiltro.ACTIVO, null), 0,
+					MAXIMO * 5).contenido().stream()
+					.filter(p -> contieneTodas(p, palabras))
+					.limit(MAXIMO)
+					.toList();
+			total = encontradas.size();
+		}
+		List<Map<String, Object>> filas = encontradas.stream().map(PersonasParaElAgente::fila).toList();
+		List<String> advertencias = total > filas.size()
+				? List.of("Hay " + total + " resultados; muestro los primeros " + filas.size()
 						+ ". Afiná la búsqueda.")
 				: List.of();
 		return new ResultadoDeHerramienta(filas, advertencias, null, false);
+	}
+
+	private static boolean contieneTodas(PersonaView persona, String[] palabras) {
+		String completo = TextoDeBusqueda.plegar(persona.nombre() + " " + persona.apellido());
+		return java.util.Arrays.stream(palabras).allMatch(completo::contains);
 	}
 
 	private static Map<String, Object> fila(PersonaView persona) {

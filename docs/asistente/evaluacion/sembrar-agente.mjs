@@ -349,6 +349,22 @@ const profesionales = {
 };
 await miembro('administrativo', 'ADMINISTRATIVO', centro);
 
+// El ORG_ADMIN no tiene hc:read por defecto (matriz "No por defecto"): sin él, las preguntas clínicas del
+// administrador dan sin permiso, que es correcto pero no es lo que mide el set. Se le otorga como en un
+// centro real (AKINE-asistente-sql.md §5b).
+{
+  const lista = await admin.exigir('GET', `/api/v1/organizations/${org}/memberships?size=100`);
+  const vinculos = Array.isArray(lista) ? lista : (lista.content ?? lista.contenido ?? lista.items ?? []);
+  const propio = vinculos.find((m) => (m.roleCode ?? m.role) === 'ORG_ADMIN');
+  if (!propio) {
+    avisar('no encontré el vínculo ORG_ADMIN: el administrador queda sin hc:read');
+  } else {
+    const r = await admin.pedir('POST', `/api/v1/organizations/${org}/memberships/${propio.id ?? propio.membershipId}/grants`,
+      { permissionCode: 'hc:read', reason: 'Siembra de la evaluación del agente: lectura clínica del administrador' }, { permitir: [409] });
+    log(r.status === 409 ? 'hc:read del administrador ya estaba' : 'hc:read otorgado al administrador');
+  }
+}
+
 const adminNorte = await new Sesion(correo('admin')).ingresar({ organizationId: org, consultorioId: norte });
 const comoAdmin = (sede) => (sede === norte ? adminNorte : admin);
 
