@@ -30,8 +30,8 @@ class ZonaDeSedeTest {
 	@Test
 	@DisplayName("una zona invalida o en blanco cae a UTC sin fallar")
 	void zona_invalida_cae_a_utc() {
-		assertThat(ZonaDeSede.de(sede("Marte/Olympus"))).isEqualTo(ZoneOffset.UTC);
-		assertThat(ZonaDeSede.de(sede(" "))).isEqualTo(ZoneOffset.UTC);
+		assertThat(ZonaDeSede.de(sede("Marte/Olympus"))).isEqualTo(ZonaDeSede.UTC);
+		assertThat(ZonaDeSede.de(sede(" "))).isEqualTo(ZonaDeSede.UTC);
 	}
 
 	@Test

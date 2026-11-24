@@ -98,6 +98,20 @@ class CompatibleOpenAiProveedorTest {
 	}
 
 	@Test
+	void unTurnoCortadoPorLongitudNoEjecutaLlamadasYAvisa() {
+		servidor.expect(requestTo("http://modelo/v1/chat/completions")).andRespond(withSuccess(
+				"{\"choices\":[{\"finish_reason\":\"length\",\"message\":{\"role\":\"assistant\",\"content\":\"Hay\","
+						+ "\"tool_calls\":[{\"id\":\"c3\",\"function\":{\"name\":\"contar\",\"arguments\":\"{\\\"x\\\":\"}}]}}]}",
+				MediaType.APPLICATION_JSON));
+		TurnoDelAgente turno = proveedor.responder(pedido(List.of(new MensajeDelAgente.DelUsuario("hola"))));
+
+		assertThat(turno.llamadas()).isEmpty();
+		assertThat(turno.crudo()).isNull();
+		assertThat(turno.terminado()).isTrue();
+		assertThat(turno.texto()).startsWith("Hay").endsWith(ClaudeProveedor.ADVERTENCIA_CORTADA);
+	}
+
+	@Test
 	void un5xxEsModeloNoDisponible() {
 		servidor.expect(requestTo("http://modelo/v1/chat/completions"))
 				.andRespond(withStatus(HttpStatus.BAD_GATEWAY));

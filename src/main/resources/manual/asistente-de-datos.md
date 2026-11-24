@@ -21,6 +21,9 @@ También podés contarle algo que pasó, como «Juan pagó 15.000 en efectivo»,
 > confirmes**: antes te muestra una tarjeta con lo que entendió. La charla no se guarda: se pierde al
 > salir o al cambiar de sede.
 
+Para responderte, el asistente le manda los datos que lee a un servicio de inteligencia artificial
+externo, el que eligió tu centro.
+
 ## Tareas
 
 ### Hacer una pregunta

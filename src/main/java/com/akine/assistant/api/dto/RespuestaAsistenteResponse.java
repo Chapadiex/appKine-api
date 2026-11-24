@@ -38,7 +38,8 @@ public record RespuestaAsistenteResponse(
 		AccionPropuestaResponse accion,
 		@ArraySchema(arraySchema = @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
 				description = "Las herramientas que llamo el asistente para responder, en orden, con su entrada: "
-						+ "para mostrar como lo resolvio. Vacia en las acciones"))
+						+ "para mostrar como lo resolvio. Tambien en las propuestas de accion, que terminan con la llamada "
+						+ "a proponer_accion"))
 		List<LlamadaDeHerramientaResponse> herramientas) {
 
 	public static RespuestaAsistenteResponse de(RespuestaDelAsistente r) {

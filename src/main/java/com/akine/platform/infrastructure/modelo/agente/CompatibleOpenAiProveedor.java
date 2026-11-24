@@ -190,6 +190,15 @@ public class CompatibleOpenAiProveedor implements ProveedorDeAgente {
 					usage.path("completion_tokens").asLong(0), 0);
 			JsonNode contenido = mensaje.path("content");
 			String texto = contenido.isString() ? contenido.asString() : "";
+			if ("length".equals(raiz.path("choices").path(0).path("finish_reason").asString(""))) {
+				// Turno cortado por el tope de tokens: la ultima llamada puede traer los argumentos a medias,
+				// asi que no se ejecuta ninguna, y sin crudo para no reenviar tool_calls sin su resultado.
+				// Igual que el max_tokens de Claude.
+				log.warn("El proveedor compatible corto la respuesta por longitud ({} tokens de salida)", uso.salida());
+				String parcial = texto.strip();
+				return new TurnoDelAgente(parcial.isEmpty() ? ClaudeProveedor.ADVERTENCIA_CORTADA
+						: parcial + "\n\n" + ClaudeProveedor.ADVERTENCIA_CORTADA, List.of(), null, uso);
+			}
 			return new TurnoDelAgente(texto, llamadas, mensaje, uso);
 		}
 		catch (JacksonException | NullPointerException e) {

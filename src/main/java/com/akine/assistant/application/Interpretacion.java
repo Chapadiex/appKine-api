@@ -12,7 +12,7 @@ import java.util.Objects;
  * @param persona el nombre tal como lo escribio el usuario, sin titulos; para
  *                {@link Intencion#ASISTENCIA_PERSONA} y {@link Intencion#SESION_DE_PERSONA}
  * @param clase   el nombre de la actividad en minusculas; para {@link Intencion#ASISTENTES_CLASE}
- * @param periodo un valor del vocabulario de {@link ResolutorDePeriodo}, o {@code null}
+ * @param periodo el periodo que interpretaba el clasificador (deprecado desde el agente), o {@code null}
  * @param reporte {@code ECONOMICO}, {@code TURNOS} o {@code CLASES}; para {@link Intencion#REPORTE}
  */
 public record Interpretacion(Intencion intencion, String persona, String clase, String periodo, String reporte) {

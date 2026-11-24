@@ -7,10 +7,10 @@ pregunta no entra en ninguna, el modelo escribe un `SELECT`.
 
 ## 1. Flujo
 
-1. El interpretador clasifica la pregunta como siempre.
-2. Va al SQL si: la intención es `FUERA_DE_ALCANCE` y la pregunta no pide crear, borrar ni cambiar nada
-   (`pideCambio`), **o** la intención es `REPORTE` pero la pregunta pide un detalle que ningún reporte da
-   (ranking, "quién", listado, pacientes: `pideDetalle`).
+1. Hasta el agente, el interpretador clasificaba la pregunta e iba al SQL con `FUERA_DE_ALCANCE` o con un
+   `REPORTE` que pedía un detalle. **Desde el agente ese clasificador no existe:** el modelo elige la
+   herramienta, y el SQL es una más (paso 4).
+2. (Sin uso desde el agente.)
 3. Además hacen falta el interruptor `akine.asistente.sql.enabled` (apagado por defecto) y el permiso
    `asistente:sql` en la sede (por base sólo `ORG_ADMIN` y `CONSULTORIO_ADMIN`).
 4. Desde el agente (`AKINE-asistente-agente.md`), `consulta_sql` y `consulta_sql_clinica` son herramientas del

@@ -7,7 +7,6 @@ import java.time.Clock;
 import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 
 /**
  * "Hoy" en la sede: la unica zona con sentido para una regla local (AKINE-02.01).
@@ -30,6 +29,12 @@ public final class ZonaDeSede {
 
 	private static final Logger log = LoggerFactory.getLogger(ZonaDeSede.class);
 
+	/**
+	 * UTC como region ("UTC") y no como offset ("Z"): la zona viaja a {@code set_config('TimeZone', ...)} de
+	 * PostgreSQL y al contexto del asistente, y "Z" no es un nombre de zona que PostgreSQL acepte.
+	 */
+	public static final ZoneId UTC = ZoneId.of("UTC");
+
 	private ZonaDeSede() {
 		// Utilidad.
 	}
@@ -38,14 +43,14 @@ public final class ZonaDeSede {
 	public static ZoneId de(ConsultorioSnapshot sede) {
 		String zona = sede.timezone();
 		if (zona == null || zona.isBlank()) {
-			return ZoneOffset.UTC;
+			return UTC;
 		}
 		try {
 			return ZoneId.of(zona);
 		} catch (DateTimeException invalida) {
 			log.warn("Sede con zona horaria invalida, se usa UTC: consultorioId={} timezone={}",
 					sede.id(), zona);
-			return ZoneOffset.UTC;
+			return UTC;
 		}
 	}
 
@@ -53,7 +58,7 @@ public final class ZonaDeSede {
 	public static ZoneId de(ConsultorioDirectory consultorios, long organizationId, long consultorioId) {
 		return consultorios.find(organizationId, consultorioId)
 				.map(ZonaDeSede::de)
-				.orElse(ZoneOffset.UTC);
+				.orElse(UTC);
 	}
 
 	/** El dia de hoy en la sede, segun {@code clock}. */

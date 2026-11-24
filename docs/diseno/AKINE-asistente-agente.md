@@ -272,3 +272,32 @@ Las deja abiertas este diseño; se toman en el plan con un dato:
 - El formato exacto de "dónde se carga" en `ficha_practica` (ruta del frontend).
 - Migración: sólo si hace falta una vista nueva para las fichas o para documentar columnas
   (`COMMENT ON`). Reservar **V47** y contrato **0.193.0** al empezar.
+
+## 12. Cómo quedó
+
+Lo que la implementación hizo distinto de este diseño, para que nadie lo lea como pendiente:
+
+- **Las herramientas de una vuelta corren en orden, no en paralelo.** Los servicios de los módulos leen el
+  contexto de tenant de un `ThreadLocal` (`TenantContextHolder`) que sólo publica el filtro: en otro hilo
+  no estaría. Los resultados vuelven juntos en un solo mensaje.
+- **Ollama entra por el proveedor compatible con OpenAI** (`CompatibleOpenAiProveedor`, `/v1/chat/completions`):
+  no hay un `OllamaProveedor` propio. Un 401, 403 o 404 de Claude (key revocada, modelo inexistente) pasa al
+  alternativo igual que una caída; el 400 sigue siendo un error del pedido. Si el proveedor falla después de
+  que las herramientas leyeron datos, se responde con lo que hay y el aviso de tope, no con 500.
+- **El SQL son dos herramientas**, `consulta_sql` y `consulta_sql_clinica`, con el esquema de las vistas
+  documentado de forma estática en su descripción (`prompt-sql.txt`, `prompt-sql-clinico.txt`). La clínica
+  pide `asistente:sql` y `hc:read` sin recorte.
+- **La auditoría registra herramientas, vueltas, proveedor y tokens** (entrada, salida, caché), nunca la
+  pregunta ni las entradas. Las lecturas clínicas se auditan donde ocurren: en los módulos y en la
+  herramienta de SQL clínico. **No se guardan "ids leídos".**
+- **`Periodo` en el `spi`** reemplaza a `ResolutorDePeriodo`, que se borró junto con `RangoDeDias` y
+  `Plantillas`. `Interpretacion` queda sólo para el DTO deprecado.
+- **La entrada de una herramienta es un `Map`**, no un record tipado por herramienta.
+- **Las reglas de `ControlDeAccion` se sacaron**: decide el modelo y confirma la persona en la tarjeta. Los
+  sets adversariales se vuelven a correr en la evaluación.
+- **Sin streaming**: la respuesta llega entera.
+- **`effort` por defecto `medium`.**
+- **`V47`** pone `security_barrier` en las vistas, y cada consulta SQL fija el `TimeZone` de la transacción
+  en la zona de la sede (UTC como región, `"UTC"`, nunca `"Z"`).
+- **La respuesta lleva las filas** de la última herramienta de datos (o del último `como_se_hace`, que trae
+  la ficha del manual), hasta 50, para "Ver los datos" y el chip del manual.

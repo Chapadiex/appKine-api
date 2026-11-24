@@ -45,11 +45,29 @@ public class AgenteConfig {
 		ProveedorDeAgente elegido = buscar(disponibles, principal);
 		ProveedorDeAgente respaldo = alternativo == null || alternativo.isBlank() || alternativo.equals(principal)
 				? null : buscar(disponibles, alternativo);
+		avisarSiNoExiste("proveedor", principal, elegido, disponibles);
+		if (respaldo == null && alternativo != null && !alternativo.equals(principal)) {
+			avisarSiNoExiste("alternativo", alternativo, null, disponibles);
+		}
 		if (elegido == null) {
 			log.info("No hay proveedor del agente '{}'; alternativo: {}", principal,
 					respaldo == null ? "ninguno" : respaldo.nombre());
 		}
 		return new ProveedoresDelAgente(elegido, respaldo);
+	}
+
+	/**
+	 * Un nombre mal escrito no impide arrancar, pero tampoco puede pasar callado: con proveedores
+	 * registrados y ninguno con ese nombre, WARN con los que hay. Sin ninguno (asistente apagado) no
+	 * hay nada que avisar.
+	 */
+	private static void avisarSiNoExiste(String propiedad, String nombre, ProveedorDeAgente encontrado,
+			List<ProveedorDeAgente> disponibles) {
+		if (encontrado != null || nombre == null || nombre.isBlank() || disponibles.isEmpty()) {
+			return;
+		}
+		log.warn("akine.asistente.agente.{}='{}' no coincide con ningun proveedor; disponibles: {}", propiedad,
+				nombre.strip(), disponibles.stream().map(ProveedorDeAgente::nombre).toList());
 	}
 
 	static ProveedorDeAgente buscar(List<ProveedorDeAgente> disponibles, String nombre) {
