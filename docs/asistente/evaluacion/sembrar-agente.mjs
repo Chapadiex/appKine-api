@@ -274,7 +274,11 @@ async function tokenDePlataforma() {
     await http('POST', '/api/v1/auth/activate', { cuerpo: { token, password: PLATAFORMA_PASSWORD } });
     r = await login();
   }
-  return r.ok ? r.json.accessToken : null;
+  if (!r.ok) return null;
+  const token = r.json.accessToken;
+  // La cuenta del bootstrap nace sin aceptar los términos vigentes: sin esto todo da 403 terminos-pendientes.
+  await http('POST', '/api/v1/me/terminos', { token, cuerpo: { versionTerminos: TERMINOS }, permitir: [400, 409] });
+  return token;
 }
 
 // ---------------------------------------------------------------------------------------------
