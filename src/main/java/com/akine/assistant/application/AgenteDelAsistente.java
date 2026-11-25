@@ -496,7 +496,7 @@ public class AgenteDelAsistente {
 		List<String> avisos = new ArrayList<>(resultado.advertencias());
 		if (filas.size() > MAX_FILAS) {
 			avisos.add("Hay " + filas.size() + " filas y se muestran las primeras " + MAX_FILAS
-					+ ": decilo y sugerí acotar la pregunta.");
+					+ ". Acotá la pregunta para ver el resto.");
 			filas = filas.subList(0, MAX_FILAS);
 		}
 		cuerpo.put("filas", filas);
@@ -505,7 +505,7 @@ public class AgenteDelAsistente {
 		cuerpo.put("sin_permiso", resultado.sinPermiso());
 		if (resultado.sinPermiso()) {
 			// Un modelo chico lee "filas vacías" como "no hay datos" y lo dice así: el motivo va en palabras.
-			avisos.add("El usuario no tiene permiso para ver este dato. Decíselo así, sin inventar otro motivo.");
+			avisos.add("No tenés permiso para ver este dato.");
 		}
 		return json.writeValueAsString(cuerpo);
 	}
