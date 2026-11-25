@@ -18,7 +18,20 @@ Cada pregunta: `{id, grupo, pregunta, actor, historial?, personaId?, requiere?, 
 `esperado = {resultado, debeContener, noDebeContener, herramientasEsperadas?, debePreguntar, admitePregunta?, accion?}`.
 `resultado` puede ser una lista de admitidos; en `debeContener` un arreglo es "alguno de";
 `{{juanPerez}}` en `personaIds`/`personaId` es el id que dejó la siembra. Los actores son
-`ADMIN` (ORG_ADMIN), `PROFESIONAL_PROPIO` (PROFESIONAL, alcance propio) y `ADMINISTRATIVO`.
+`ADMIN` (ORG_ADMIN), `PROFESIONAL_PROPIO` (PROFESIONAL; ve la sede entera, ver abajo) y `ADMINISTRATIVO`.
+
+### Alcance del profesional
+
+El actor `PROFESIONAL_PROPIO` **no tiene alcance propio de lectura**. `RolePermissions` le da
+`turno:read` y `hc:read` con alcance `CONSULTORIO` (ve la agenda y la historia clínica de toda la sede);
+`ACTIVIDAD_PROPIA` sólo recorta lo que **opera** (`turno:manage`, `agenda:*`) y `reporte:read`. La API no
+permite angostarlo por membership: los grants sólo agregan permisos (`AssignGrantRequest` no lleva
+alcance) y el alta de membership no tiene campo de alcance. Por eso la siembra crea una membership
+`PROFESIONAL` común y los grupos `asistencia-faltaron-hoy-profesional` y
+`tratamientos-profesional-propio` (AG020–AG023, AG053–AG055, CT009) esperan **todos los pacientes de la
+sede** —Torres, Quiroga, Olmos, Benítez— y ya no los excluyen. Valentina Ruiz, de la Sede Norte, sigue
+excluida. Si el producto decide que el profesional lea sólo lo suyo, es un cambio de la matriz de
+permisos, no de la siembra.
 
 ## Cómo se corre
 

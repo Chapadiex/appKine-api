@@ -10,7 +10,8 @@
 //   - Organización "Centro Evaluación Agente" con dos sedes: Sede Centro (la del alta) y Sede Norte.
 //     Plan Plus (RED) con el adicional IA, puesto por la plataforma, y el asistente prendido en el centro.
 //   - Cuentas: Laura Ferreyra (ORG_ADMIN, actor ADMIN), Lucía Ferrari y Diego Paz (PROFESIONAL en Centro;
-//     Lucía es el actor PROFESIONAL_PROPIO: el rol PROFESIONAL opera con alcance propio), Sofía Ibarra
+//     Lucía es el actor PROFESIONAL_PROPIO: el rol PROFESIONAL lee turnos e HC de toda la sede y opera
+//     solo lo suyo; ver agente-resultados.md, "Alcance del profesional"), Sofía Ibarra
 //     (PROFESIONAL en Norte) y Carla Ríos (ADMINISTRATIVO en Centro, actor ADMINISTRATIVO).
 //   - Otra organización, "Centro Ajeno", con la persona Ramiro Ajeno (DNI 40999111): sirve para
 //     verificar que nada cruza de tenant.

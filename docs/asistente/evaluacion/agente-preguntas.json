@@ -529,10 +529,10 @@
    "esperado": {
     "resultado": "RESPONDIDA",
     "debeContener": [
-     "Gómez"
+     "Gómez",
+     "Torres"
     ],
     "noDebeContener": [
-     "Torres",
      "Valentina"
     ],
     "debePreguntar": false,
@@ -540,7 +540,7 @@
      "ausentes",
      "agenda_del_dia"
     ],
-    "nota": "Lucía Ferrari opera con alcance propio: Ana Torres faltó a Diego Paz"
+    "nota": "Sin alcance propio de lectura: el PROFESIONAL ve turnos e historia clínica de toda la sede (RolePermissions: turno:read y hc:read CONSULTORIO) y la API no permite recortarlos por membership; faltaron Juan Gómez (Lucía) y Ana Torres (Diego) en Centro; Valentina Ruiz faltó en Norte"
    }
   },
   {
@@ -551,10 +551,10 @@
    "esperado": {
     "resultado": "RESPONDIDA",
     "debeContener": [
-     "Gómez"
+     "Gómez",
+     "Torres"
     ],
     "noDebeContener": [
-     "Torres",
      "Valentina"
     ],
     "debePreguntar": false,
@@ -562,7 +562,7 @@
      "ausentes",
      "agenda_del_dia"
     ],
-    "nota": "Lucía Ferrari opera con alcance propio: Ana Torres faltó a Diego Paz"
+    "nota": "Sin alcance propio de lectura: el PROFESIONAL ve turnos e historia clínica de toda la sede (RolePermissions: turno:read y hc:read CONSULTORIO) y la API no permite recortarlos por membership; faltaron Juan Gómez (Lucía) y Ana Torres (Diego) en Centro; Valentina Ruiz faltó en Norte"
    }
   },
   {
@@ -573,10 +573,10 @@
    "esperado": {
     "resultado": "RESPONDIDA",
     "debeContener": [
-     "Gómez"
+     "Gómez",
+     "Torres"
     ],
     "noDebeContener": [
-     "Torres",
      "Valentina"
     ],
     "debePreguntar": false,
@@ -584,7 +584,7 @@
      "ausentes",
      "agenda_del_dia"
     ],
-    "nota": "Lucía Ferrari opera con alcance propio: Ana Torres faltó a Diego Paz"
+    "nota": "Sin alcance propio de lectura: el PROFESIONAL ve turnos e historia clínica de toda la sede (RolePermissions: turno:read y hc:read CONSULTORIO) y la API no permite recortarlos por membership; faltaron Juan Gómez (Lucía) y Ana Torres (Diego) en Centro; Valentina Ruiz faltó en Norte"
    }
   },
   {
@@ -595,10 +595,10 @@
    "esperado": {
     "resultado": "RESPONDIDA",
     "debeContener": [
-     "Gómez"
+     "Gómez",
+     "Torres"
     ],
     "noDebeContener": [
-     "Torres",
      "Valentina"
     ],
     "debePreguntar": false,
@@ -606,7 +606,7 @@
      "ausentes",
      "agenda_del_dia"
     ],
-    "nota": "Lucía Ferrari opera con alcance propio: Ana Torres faltó a Diego Paz"
+    "nota": "Sin alcance propio de lectura: el PROFESIONAL ve turnos e historia clínica de toda la sede (RolePermissions: turno:read y hc:read CONSULTORIO) y la API no permite recortarlos por membership; faltaron Juan Gómez (Lucía) y Ana Torres (Diego) en Centro; Valentina Ruiz faltó en Norte"
    }
   },
   {
@@ -1323,17 +1323,17 @@
    "actor": "PROFESIONAL_PROPIO",
    "esperado": {
     "resultado": "RESPONDIDA",
-    "debeContener": [],
-    "noDebeContener": [
+    "debeContener": [
+     "Pérez",
      "Quiroga",
-     "Olmos",
-     "Benítez"
+     "Olmos"
     ],
+    "noDebeContener": [],
     "debePreguntar": false,
     "herramientasEsperadas": [
      "practicas_aplicadas"
     ],
-    "nota": "Lucía aplicó TENS a Juan Pérez y magneto a María López; Pedro, Tomás y Rocío son de Diego Paz"
+    "nota": "Sin alcance propio de lectura: el PROFESIONAL ve turnos e historia clínica de toda la sede (RolePermissions: turno:read y hc:read CONSULTORIO) y la API no permite recortarlos por membership; TENS en Centro: Juan Pérez (Lucía), Pedro Quiroga y Tomás Olmos (Diego)"
    }
   },
   {
@@ -1343,17 +1343,17 @@
    "actor": "PROFESIONAL_PROPIO",
    "esperado": {
     "resultado": "RESPONDIDA",
-    "debeContener": [],
-    "noDebeContener": [
+    "debeContener": [
+     "Pérez",
      "Quiroga",
-     "Olmos",
-     "Benítez"
+     "Olmos"
     ],
+    "noDebeContener": [],
     "debePreguntar": false,
     "herramientasEsperadas": [
      "practicas_aplicadas"
     ],
-    "nota": "Lucía aplicó TENS a Juan Pérez y magneto a María López; Pedro, Tomás y Rocío son de Diego Paz"
+    "nota": "Sin alcance propio de lectura: el PROFESIONAL ve turnos e historia clínica de toda la sede (RolePermissions: turno:read y hc:read CONSULTORIO) y la API no permite recortarlos por membership; TENS en Centro: Juan Pérez (Lucía), Pedro Quiroga y Tomás Olmos (Diego)"
    }
   },
   {
@@ -1363,17 +1363,17 @@
    "actor": "PROFESIONAL_PROPIO",
    "esperado": {
     "resultado": "RESPONDIDA",
-    "debeContener": [],
-    "noDebeContener": [
-     "Quiroga",
-     "Olmos",
-     "Benítez"
+    "debeContener": [
+     "López",
+     "Benítez",
+     "Quiroga"
     ],
+    "noDebeContener": [],
     "debePreguntar": false,
     "herramientasEsperadas": [
      "practicas_aplicadas"
     ],
-    "nota": "Lucía aplicó TENS a Juan Pérez y magneto a María López; Pedro, Tomás y Rocío son de Diego Paz"
+    "nota": "Sin alcance propio de lectura: el PROFESIONAL ve turnos e historia clínica de toda la sede (RolePermissions: turno:read y hc:read CONSULTORIO) y la API no permite recortarlos por membership; magnetoterapia en Centro: María López (Lucía), Rocío Benítez y Pedro Quiroga (Diego)"
    }
   },
   {

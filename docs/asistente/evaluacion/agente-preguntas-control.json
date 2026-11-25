@@ -195,13 +195,14 @@
    "esperado": {
     "resultado": "RESPONDIDA",
     "debeContener": [
-     "Gómez"
+     "Gómez",
+     "Torres"
     ],
     "noDebeContener": [
-     "Torres",
      "Valentina"
     ],
-    "debePreguntar": false
+    "debePreguntar": false,
+    "nota": "Sin alcance propio de lectura: el PROFESIONAL ve turnos e historia clínica de toda la sede (RolePermissions: turno:read y hc:read CONSULTORIO) y la API no permite recortarlos por membership; faltaron Juan Gómez (Lucía) y Ana Torres (Diego) en Centro; Valentina Ruiz faltó en Norte"
    }
   },
   {
