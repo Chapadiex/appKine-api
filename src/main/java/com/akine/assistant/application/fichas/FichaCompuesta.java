@@ -70,6 +70,11 @@ abstract class FichaCompuesta implements HerramientaDelAgente {
 			advertencias.addAll(avisos);
 		}
 
+		/** Una advertencia de la ficha misma, no de una de sus partes. */
+		void advertir(String aviso) {
+			advertencias.add(aviso);
+		}
+
 		ResultadoDeHerramienta resultado() {
 			if (intentadas > 0 && denegadas == intentadas) {
 				return ResultadoDeHerramienta.denegado();

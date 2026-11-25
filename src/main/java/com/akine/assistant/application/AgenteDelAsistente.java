@@ -114,8 +114,10 @@ public class AgenteDelAsistente {
 	 * @throws com.akine.assistant.domain.exception.ModeloNoDisponibleException si no responde ningun
 	 *         proveedor (503)
 	 */
-	public RespuestaDelAsistente responder(ActorDelAsistente actor, ContextoDeConsulta ctx, String nombreSede,
+	public RespuestaDelAsistente responder(ActorDelAsistente actor, ContextoDeConsulta contexto, String nombreSede,
 			String pregunta, List<TurnoPrevio> historial, Long personaElegida) {
+		// La pregunta viaja en el contexto para las herramientas que la necesitan textual.
+		ContextoDeConsulta ctx = contexto.conPregunta(pregunta);
 		Corrida corrida = new Corrida(actor, ctx, pregunta);
 		try {
 			RespuestaDelAsistente respuesta = corrida.correr(

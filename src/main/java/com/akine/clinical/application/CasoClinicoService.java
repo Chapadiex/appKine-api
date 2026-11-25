@@ -43,6 +43,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -549,6 +550,38 @@ public class CasoClinicoService {
 				PermissionCodes.HC_READ, historia.getPersonaId(), justificacion,
 				"Listar casos clinicos");
 
+		return listarCon(actor, acceso, historia, soloActivos);
+	}
+
+	/**
+	 * Los casos de una persona, buscando su historia <b>despues</b> de autorizar.
+	 *
+	 * <p>Es la puerta del asistente, que llega con el id de la persona y no con el de la historia.
+	 * El orden importa: si la historia se buscara primero, quien no tiene {@code hc:read} recibiria
+	 * "no existe" para una persona sin historia y un rechazo para una con historia, y esa diferencia
+	 * dice que paciente tiene registro clinico. Autorizando antes, el rechazo es igual para las dos.
+	 *
+	 * @return vacio si la persona no tiene historia clinica vigente en la organizacion
+	 * @throws AccessDeniedException sin contexto o sin {@code hc:read}, exista o no la historia
+	 */
+	@Transactional
+	public Optional<List<CasoClinicoView>> listarDePersona(
+			OperatingActor actor,
+			long personaId,
+			boolean soloActivos,
+			String justificacion) {
+
+		long organizationId = organizacionDe(actor);
+		AccesoClinico acceso = AutorizacionClinica.exigir(permissionGuard, relaciones, supportAccessAuditor, actor,
+				PermissionCodes.HC_READ, personaId, justificacion,
+				"Listar casos clinicos");
+		return historias.buscarVigentePorPersona(organizationId, personaId)
+				.map(historia -> listarCon(actor, acceso, historia, soloActivos));
+	}
+
+	private List<CasoClinicoView> listarCon(
+			OperatingActor actor, AccesoClinico acceso, HistoriaClinica historia, boolean soloActivos) {
+		long organizationId = historia.getOrganizationId();
 		Instant ahora = Instant.now();
 		auditTrail.record(entrada(AuditEvents.CASO_CLINICO_ACCESSED,
 				AuditEvents.ENTITY_HISTORIA_CLINICA, historia.getId(), actor, acceso, null, null,

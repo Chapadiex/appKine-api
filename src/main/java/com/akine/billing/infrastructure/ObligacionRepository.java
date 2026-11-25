@@ -161,7 +161,7 @@ public interface ObligacionRepository
 			   AND o.estado <> com.akine.billing.domain.EstadoObligacion.ANULADA
 			   AND o.saldo > 0
 			 GROUP BY o.personaId, o.moneda
-			 ORDER BY SUM(o.saldo) DESC, o.personaId
+			 ORDER BY o.moneda, SUM(o.saldo) DESC, o.personaId
 			""")
 	List<com.akine.billing.domain.port.DeudorDelPaciente> findDeudoresDelPaciente(
 			@Param("organizationId") long organizationId);

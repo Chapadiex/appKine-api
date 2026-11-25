@@ -8,8 +8,6 @@ import com.akine.assistant.spi.ResultadoDeHerramienta;
 import com.akine.clinical.application.CasoClinicoService;
 import com.akine.clinical.application.CasoClinicoView;
 import com.akine.clinical.application.OperatingActor;
-import com.akine.clinical.spi.HistoriaClinicaDirectory;
-import com.akine.clinical.spi.HistoriaClinicaSnapshot;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -19,7 +17,7 @@ import java.util.Optional;
 
 /**
  * {@code casos_persona}: los casos clinicos activos de una persona. Es lectura clinica: la hace
- * {@link CasoClinicoService#listar}, que exige {@code hc:read}, aplica la regla de justificacion y la
+ * {@link CasoClinicoService#listarDePersona}, que exige {@code hc:read}, aplica la regla de justificacion y la
  * audita (DP-03). No devuelve diagnostico ni objetivos: solo numero, oferta, estado y fecha de apertura.
  */
 @Component
@@ -29,11 +27,9 @@ class CasosEnElAsistente implements HerramientaDelAgente {
 	private static final int TOPE = 50;
 
 	private final CasoClinicoService casos;
-	private final HistoriaClinicaDirectory historias;
 
-	CasosEnElAsistente(CasoClinicoService casos, HistoriaClinicaDirectory historias) {
+	CasosEnElAsistente(CasoClinicoService casos) {
 		this.casos = casos;
-		this.historias = historias;
 	}
 
 	@Override
@@ -64,13 +60,16 @@ class CasosEnElAsistente implements HerramientaDelAgente {
 		if (actor.organizationId() == null) {
 			return ResultadoDeHerramienta.denegado();
 		}
-		Optional<HistoriaClinicaSnapshot> historia = historias.find(actor.organizationId(), personaId);
-		if (historia.isEmpty()) {
-			return new ResultadoDeHerramienta(List.of(), List.of("No encontré esa persona"), null, false);
-		}
 		OperatingActor operador = new OperatingActor(actor.accountId(), actor.platformAdmin(),
 				actor.organizationId(), actor.consultorioId());
-		List<CasoClinicoView> vistas = casos.listar(operador, historia.get().id(), true, JUSTIFICACION);
+		// Autoriza ANTES de buscar la historia: sin hc:read el rechazo es el mismo tenga o no
+		// historia la persona, y no se filtra quien tiene registro clinico.
+		Optional<List<CasoClinicoView>> encontrados =
+				casos.listarDePersona(operador, personaId, true, JUSTIFICACION);
+		if (encontrados.isEmpty()) {
+			return new ResultadoDeHerramienta(List.of(), List.of("No encontré esa persona"), null, false);
+		}
+		List<CasoClinicoView> vistas = encontrados.get();
 		List<String> avisos = vistas.size() > TOPE
 				? List.of("Hay " + vistas.size() + " resultados; muestro los primeros " + TOPE)
 				: List.of();

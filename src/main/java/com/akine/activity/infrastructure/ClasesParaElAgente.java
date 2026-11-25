@@ -79,7 +79,7 @@ class ClasesParaElAgente implements HerramientaDelAgente {
 				periodo.desdeInstante(ctx.zona()), periodo.hastaInstante(ctx.zona()));
 		List<ClaseView> candidatas = actividad == null
 				? delPeriodo.stream().sorted(Comparator.comparing(ClaseView::inicio)).toList()
-				: elegir(delPeriodo, actividad, actividad, Instant.now());
+				: elegir(delPeriodo, actividad, ctx.pregunta() == null ? actividad : ctx.pregunta(), Instant.now());
 		List<String> advertencias = new ArrayList<>();
 		List<Map<String, Object>> filas = new ArrayList<>();
 		if (candidatas.size() <= MAX_CLASES) {

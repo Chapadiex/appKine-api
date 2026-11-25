@@ -28,6 +28,9 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * {@code deudas_persona}: la cuenta corriente de una persona para el agente. Lee con
@@ -35,7 +38,8 @@ import java.util.Map;
  * {@code cobro:register} en la sede; sin el, la {@link AccessDeniedException} sigue hasta el
  * catalogo del agente.
  *
- * <p>La primera fila es el resumen (deuda abierta, saldo a favor y neto); despues una fila por deuda
+ * <p>Las primeras filas son el resumen, una por moneda (deuda abierta, saldo a favor y neto: nunca se
+ * suman importes de monedas distintas); despues una fila por deuda
  * abierta, la mas vieja primero. La parte del financiador no aparece: {@code findDeLaPersona} ya la
  * excluye, porque no la debe el paciente. Mismo criterio de suma que el resumen de la persona
  * ({@link EconomiaEnElResumenDePersona}): una anulada no suma.
@@ -69,8 +73,9 @@ class DeudasEnElAsistente implements HerramientaDelAgente {
 		return "Deudas abiertas de una persona (lo que debe el paciente: particular y coseguros) y su saldo "
 				+ "a favor, con los totales en la primera fila. No muestra lo que debe la obra social ni el "
 				+ "detalle de los cobros. Con persona_id, la cuenta de esa persona; sin persona_id lista quiénes "
-				+ "deben (\"¿quiénes nos deben?\"): una fila por persona con el total adeudado y cuántas "
-				+ "deudas tiene, el que más debe primero.";
+				+ "deben (\"¿quiénes nos deben?\"): una fila por persona y moneda con el total adeudado y "
+				+ "cuántas deudas tiene, el que más debe primero dentro de cada moneda. Los importes de "
+				+ "distintas monedas nunca se suman.";
 	}
 
 	@Override
@@ -109,25 +114,39 @@ class DeudasEnElAsistente implements HerramientaDelAgente {
 				.filter(o -> o.saldo() != null && o.saldo().signum() > 0)
 				.sorted(Comparator.comparing(ObligacionView::devengadaEn).thenComparing(ObligacionView::id))
 				.toList();
-		BigDecimal saldoAFavor = cobros.deLaPersona(operador, actor.consultorioId(), personaId).stream()
+		// Los importes no se suman entre monedas: un total por moneda, tanto de la deuda como del
+		// saldo a favor, y el neto sólo dentro de la misma moneda.
+		Map<String, BigDecimal> saldoAFavorPorMoneda = new TreeMap<>();
+		cobros.deLaPersona(operador, actor.consultorioId(), personaId).stream()
 				.filter(c -> CobroView.VIGENTE.equals(c.estado()))
-				.map(CobroView::saldoAFavor)
-				.filter(s -> s != null)
-				.reduce(BigDecimal.ZERO, BigDecimal::add);
-
-		BigDecimal deuda = abiertas.stream().map(ObligacionView::saldo).reduce(BigDecimal.ZERO, BigDecimal::add);
-		String moneda = abiertas.isEmpty() ? MONEDA_POR_DEFECTO : abiertas.getFirst().moneda();
+				.filter(c -> c.saldoAFavor() != null && c.saldoAFavor().signum() > 0)
+				.forEach(c -> saldoAFavorPorMoneda.merge(monedaDe(c.moneda()), c.saldoAFavor(), BigDecimal::add));
+		Map<String, BigDecimal> deudaPorMoneda = new TreeMap<>();
+		Map<String, Integer> deudasPorMoneda = new TreeMap<>();
+		for (ObligacionView o : abiertas) {
+			deudaPorMoneda.merge(monedaDe(o.moneda()), o.saldo(), BigDecimal::add);
+			deudasPorMoneda.merge(monedaDe(o.moneda()), 1, Integer::sum);
+		}
+		Set<String> monedas = new TreeSet<>(deudaPorMoneda.keySet());
+		monedas.addAll(saldoAFavorPorMoneda.keySet());
+		if (monedas.isEmpty()) {
+			monedas.add(MONEDA_POR_DEFECTO);
+		}
 
 		List<Map<String, Object>> filas = new ArrayList<>();
-		Map<String, Object> resumen = new LinkedHashMap<>();
-		resumen.put("fila", "TOTAL");
-		resumen.put("persona_id", personaId);
-		resumen.put("deuda_abierta", deuda);
-		resumen.put("deudas_abiertas", abiertas.size());
-		resumen.put("saldo_a_favor", saldoAFavor);
-		resumen.put("neto_a_pagar", deuda.subtract(saldoAFavor).max(BigDecimal.ZERO));
-		resumen.put("moneda", moneda);
-		filas.add(resumen);
+		for (String moneda : monedas) {
+			BigDecimal deuda = deudaPorMoneda.getOrDefault(moneda, BigDecimal.ZERO);
+			BigDecimal saldoAFavor = saldoAFavorPorMoneda.getOrDefault(moneda, BigDecimal.ZERO);
+			Map<String, Object> resumen = new LinkedHashMap<>();
+			resumen.put("fila", "TOTAL");
+			resumen.put("persona_id", personaId);
+			resumen.put("deuda_abierta", deuda);
+			resumen.put("deudas_abiertas", deudasPorMoneda.getOrDefault(moneda, 0));
+			resumen.put("saldo_a_favor", saldoAFavor);
+			resumen.put("neto_a_pagar", deuda.subtract(saldoAFavor).max(BigDecimal.ZERO));
+			resumen.put("moneda", moneda);
+			filas.add(resumen);
+		}
 
 		for (ObligacionView o : abiertas.stream().limit(TOPE).toList()) {
 			Map<String, Object> fila = new LinkedHashMap<>();
@@ -147,6 +166,9 @@ class DeudasEnElAsistente implements HerramientaDelAgente {
 		}
 
 		List<String> advertencias = new ArrayList<>();
+		if (monedas.size() > 1) {
+			advertencias.add("Hay importes en más de una moneda: los totales van por moneda y no se suman entre sí.");
+		}
 		if (abiertas.size() > TOPE) {
 			advertencias.add("Hay " + abiertas.size() + " resultados; muestro los primeros " + TOPE);
 		}
@@ -167,7 +189,7 @@ class DeudasEnElAsistente implements HerramientaDelAgente {
 		List<DeudorDelPaciente> deudores = obligaciones.deudoresDelPaciente(operador, actor.consultorioId());
 		List<DeudorDelPaciente> mostrados = deudores.stream().limit(TOPE).toList();
 		Map<Long, PacienteSnapshot> padron = pacientes.findAll(actor.organizationId(),
-				mostrados.stream().map(DeudorDelPaciente::personaId).toList());
+				mostrados.stream().map(DeudorDelPaciente::personaId).distinct().toList());
 		List<Map<String, Object>> filas = new ArrayList<>();
 		for (DeudorDelPaciente d : mostrados) {
 			PacienteSnapshot persona = padron.get(d.personaId());
@@ -186,6 +208,13 @@ class DeudasEnElAsistente implements HerramientaDelAgente {
 		else if (deudores.size() > TOPE) {
 			advertencias.add("Hay " + deudores.size() + " resultados; muestro los primeros " + TOPE);
 		}
+		if (mostrados.stream().map(DeudorDelPaciente::moneda).distinct().count() > 1) {
+			advertencias.add("Hay deudas en más de una moneda: una fila por persona y moneda, sin sumar entre monedas.");
+		}
 		return new ResultadoDeHerramienta(filas, advertencias, null, false);
+	}
+
+	private static String monedaDe(String moneda) {
+		return moneda == null || moneda.isBlank() ? MONEDA_POR_DEFECTO : moneda;
 	}
 }

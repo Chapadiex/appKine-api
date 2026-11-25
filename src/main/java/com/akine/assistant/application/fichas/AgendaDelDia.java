@@ -18,6 +18,11 @@ import java.util.TreeMap;
 @Component
 class AgendaDelDia extends FichaCompuesta {
 
+	/** El tope de filas de la herramienta {@code turnos}; llegar a el es lista cortada. */
+	static final int TOPE_DE_TURNOS = 50;
+	static final String TOTALES_PARCIALES =
+			"Hay más de 50 turnos: los totales por estado no se muestran completos.";
+
 	AgendaDelDia(ObjectProvider<CatalogoDeHerramientas> catalogo) {
 		super(catalogo);
 	}
@@ -46,7 +51,12 @@ class AgendaDelDia extends FichaCompuesta {
 		Partes partes = partes(actor, ctx);
 		ResultadoDeHerramienta turnos = partes.llamar("turnos",
 				Map.of("desde", dia.desde().toString(), "hasta", dia.desde().toString()));
-		if (turnos != null) {
+		if (turnos != null && truncado(turnos)) {
+			// Con la lista cortada en el tope, contar sus filas daria totales parciales presentados
+			// como completos: se omiten y se dice por que.
+			partes.advertir(TOTALES_PARCIALES);
+		}
+		else if (turnos != null) {
 			Map<String, Integer> porEstado = new TreeMap<>();
 			for (Map<String, Object> fila : turnos.filas()) {
 				porEstado.merge(String.valueOf(fila.get("estado")), 1, Integer::sum);
@@ -61,5 +71,12 @@ class AgendaDelDia extends FichaCompuesta {
 			partes.agregar("totales_por_estado", totales, List.of());
 		}
 		return partes.resultado();
+	}
+
+	private static boolean truncado(ResultadoDeHerramienta turnos) {
+		// La herramienta corta en el tope y lo avisa con "muestro los primeros"; exactamente 50 turnos
+		// sin ese aviso es la lista entera.
+		return turnos.filas().size() > TOPE_DE_TURNOS
+				|| turnos.advertencias().stream().anyMatch(a -> a.contains("muestro los primeros"));
 	}
 }
