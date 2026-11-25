@@ -3,7 +3,9 @@ package com.akine.assistant.application;
 import com.akine.assistant.application.RespuestaDelAsistente.Resultado;
 import com.akine.assistant.domain.AsistenteAjustes;
 import com.akine.assistant.domain.PermissionCodes;
+import com.akine.assistant.application.RespuestaDelAsistente.OpcionDePersona;
 import com.akine.assistant.spi.ActorDelAsistente;
+import com.akine.assistant.spi.ClavesDeFila;
 import com.akine.assistant.spi.ContextoDeConsulta;
 import com.akine.assistant.spi.DatosDePersona;
 import com.akine.assistant.spi.EntradaDeHerramienta;
@@ -20,6 +22,7 @@ import org.springframework.stereotype.Component;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -45,6 +48,9 @@ public class ProponerAccionHerramienta implements HerramientaDelAgente {
 
 	static final String NOMBRE = "proponer_accion";
 	static final String DATOS_PERSONA = "datos_persona";
+	static final String BUSCAR_PERSONA = "buscar_persona";
+	/** Como {@code pedir_aclaracion}: las opciones que se ofrecen cuando el nombre coincide con varias. */
+	static final int MAX_OPCIONES = 5;
 	static final Set<String> MEDIOS = Set.of("EFECTIVO", "TRANSFERENCIA", "TARJETA_DEBITO", "TARJETA_CREDITO");
 	static final Set<String> MODOS = Set.of(PedidoDeAccion.TODOS_MENOS, PedidoDeAccion.SOLO);
 	/** {@code LLEGADA} no se ofrece: la decide el permiso de quien habla. */
@@ -86,7 +92,9 @@ public class ProponerAccionHerramienta implements HerramientaDelAgente {
 				+ "un cambio de sus datos de contacto. Nunca para una pregunta (\"¿pagó Juan?\", \"¿vino María?\"): "
 				+ "eso se responde con las otras herramientas. No graba nada: el usuario revisa la tarjeta y "
 				+ "confirma, y recién ahí se registra. Termina el turno. Para pago, atención y cambio de datos "
-				+ "necesita persona_id (llamá antes a buscar_persona; si hay varias, pedir_aclaracion). Poné solo "
+				+ "necesita la persona: pasá persona_id si ya lo tenés (de buscar_persona) o, si no, persona con "
+				+ "el nombre o documento tal como lo dijo el usuario; si coincide con varias, se le pregunta "
+				+ "cuál. Poné solo "
 				+ "lo que el usuario dijo: lo que falta queda vacío y el usuario lo completa en la tarjeta.";
 	}
 
@@ -99,6 +107,8 @@ public class ProponerAccionHerramienta implements HerramientaDelAgente {
 				una clase de hoy; PAGO: un cobro a un paciente; ATENCION: la sesion de hoy de un paciente; \
 				PACIENTE_ALTA: una persona nueva; PACIENTE_EDICION: un cambio en sus datos"},\
 				"persona_id":{"type":"integer","description":"De buscar_persona; para PAGO, ATENCION y PACIENTE_EDICION"},\
+				"persona":{"type":"string","description":"Nombre o documento dicho, si no tenés persona_id; \
+				se busca en el padrón"},\
 				"clase":{"type":"string","description":"Nombre de la actividad de la clase (ASISTENCIA_CLASE)"},\
 				"modo_asistencia":{"type":"string","enum":["TODOS_MENOS","SOLO"],"description":"TODOS_MENOS: \
 				vinieron todos menos los nombrados; SOLO: vinieron solo los nombrados"},\
@@ -138,6 +148,29 @@ public class ProponerAccionHerramienta implements HerramientaDelAgente {
 			Map<String, Object> entrada) {
 		TipoDeAccion tipo = tipo(EntradaDeHerramienta.texto(entrada, "tipo"));
 		Long personaId = EntradaDeHerramienta.id(entrada, "persona_id");
+		String personaTexto = EntradaDeHerramienta.texto(entrada, "persona");
+		if (personaId == null && personaTexto != null && AccionesDelAsistente.usaPersona(tipo)) {
+			ResultadoDeHerramienta encontradas = buscarPersona(actor, personaTexto, ctx);
+			if (encontradas != null) {
+				if (encontradas.sinPermiso()) {
+					return new RespuestaDelAsistente(AccionesDelAsistente.SIN_PERMISO,
+							Interpretacion.FUERA_DE_ALCANCE, List.of(), List.of(), null, List.of(),
+							Resultado.SIN_PERMISO);
+				}
+				List<OpcionDePersona> candidatas = candidatas(encontradas.filas());
+				if (candidatas.isEmpty()) {
+					throw new IllegalArgumentException("No encontré a '" + personaTexto + "' en el padrón");
+				}
+				if (candidatas.size() > 1) {
+					// Como pedir_aclaracion: el usuario elige y el cliente reenvia la frase con el personaId.
+					return new RespuestaDelAsistente("Hay más de una persona que coincide con '" + personaTexto
+							+ "'. ¿Cuál es?", Interpretacion.FUERA_DE_ALCANCE, List.of(),
+							candidatas.subList(0, Math.min(MAX_OPCIONES, candidatas.size())), null, List.of(),
+							Resultado.ACLARACION);
+				}
+				personaId = candidatas.getFirst().personaId();
+			}
+		}
 		String personaNombre = null;
 		if (personaId != null && AccionesDelAsistente.usaPersona(tipo)) {
 			ResultadoDeHerramienta persona = datosDePersona(actor, personaId, ctx);
@@ -171,6 +204,31 @@ public class ProponerAccionHerramienta implements HerramientaDelAgente {
 			return null;
 		}
 		return herramientas.ejecutar(DATOS_PERSONA, actor, Map.of("persona_id", personaId), ctx);
+	}
+
+	private ResultadoDeHerramienta buscarPersona(ActorDelAsistente actor, String texto, ContextoDeConsulta ctx) {
+		CatalogoDeHerramientas herramientas = catalogo.getIfAvailable();
+		if (herramientas == null || !herramientas.existe(BUSCAR_PERSONA)) {
+			return null;
+		}
+		return herramientas.ejecutar(BUSCAR_PERSONA, actor, Map.of("texto", texto), ctx);
+	}
+
+	/** Las filas de {@code buscar_persona} como opciones, sin repetir; acepta {@code persona_id} y {@code personaId}. */
+	private static List<OpcionDePersona> candidatas(List<Map<String, Object>> filas) {
+		List<OpcionDePersona> opciones = new ArrayList<>();
+		for (Map<String, Object> fila : filas) {
+			Object id = fila.get("persona_id") != null ? fila.get("persona_id") : fila.get(ClavesDeFila.PERSONA_ID);
+			if (!(id instanceof Number n) || opciones.stream().anyMatch(o -> o.personaId() == n.longValue())) {
+				continue;
+			}
+			Object nombre = fila.get(ClavesDeFila.NOMBRE);
+			Object documento = fila.get(ClavesDeFila.DOCUMENTO);
+			opciones.add(new OpcionDePersona(n.longValue(),
+					(nombre == null ? "Persona " + n.longValue() : String.valueOf(nombre))
+							+ (documento == null ? "" : " · " + documento)));
+		}
+		return opciones;
 	}
 
 	private static TipoDeAccion tipo(String valor) {
