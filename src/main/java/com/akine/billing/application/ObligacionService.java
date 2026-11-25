@@ -5,6 +5,7 @@ import com.akine.billing.domain.PermissionCodes;
 import com.akine.billing.domain.exception.ConsultorioNoAccesibleException;
 import com.akine.billing.domain.exception.ObligacionDeVentaException;
 import com.akine.billing.domain.exception.ObligacionNotAccessibleException;
+import com.akine.billing.domain.port.DeudorDelPaciente;
 import com.akine.billing.domain.port.ObligacionRepositoryPort;
 import com.akine.organization.spi.ConsultorioDirectory;
 import com.akine.organization.spi.PermissionGuard;
@@ -77,6 +78,19 @@ public class ObligacionService {
 		return obligaciones.findDeLaPersona(organizationId, personaId).stream()
 				.map(ObligacionView::de)
 				.toList();
+	}
+
+	/**
+	 * Quienes deben como pacientes en la organizacion, el que mas debe primero. Mismo alcance y
+	 * permiso que {@link #deLaPersona}: organizacion, con {@code cobro:register} en la sede.
+	 */
+	@Transactional(readOnly = true)
+	public List<DeudorDelPaciente> deudoresDelPaciente(OperatingActor actor,
+			long consultorioId) {
+		long organizationId = exigirContexto(actor);
+		exigirSedeDelTenant(organizationId, consultorioId);
+		exigirGestion(actor, organizationId, consultorioId);
+		return obligaciones.findDeudoresDelPaciente(organizationId);
 	}
 
 	@Transactional(readOnly = true)

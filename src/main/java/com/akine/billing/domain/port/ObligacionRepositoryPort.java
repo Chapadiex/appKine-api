@@ -82,6 +82,14 @@ public interface ObligacionRepositoryPort {
 	List<Obligacion> findDeLaPersona(long organizationId, long personaId);
 
 	/**
+	 * Quienes deben como pacientes en la organizacion, el que mas debe primero: una fila por persona
+	 * (y moneda) con la suma de sus deudas abiertas. Mismo criterio que {@link #findDeLaPersona}
+	 * —sin la parte del financiador ni las dadas de baja— y, como la cuenta corriente, sin las
+	 * anuladas ni las saldadas. Solo lectura; la usa el asistente.
+	 */
+	List<DeudorDelPaciente> findDeudoresDelPaciente(long organizationId);
+
+	/**
 	 * Las prestaciones que se le pueden reclamar a un financiador en un periodo (RF-M21-001).
 	 *
 	 * <p>Filtra por {@code responsable = FINANCIADOR}, saldo positivo, estado cobrable y que no

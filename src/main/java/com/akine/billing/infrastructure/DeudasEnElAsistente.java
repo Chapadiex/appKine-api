@@ -12,9 +12,11 @@ import com.akine.billing.application.ObligacionView;
 import com.akine.billing.application.OperatingActor;
 import com.akine.billing.domain.EstadoObligacion;
 import com.akine.billing.domain.PermissionCodes;
+import com.akine.billing.domain.port.DeudorDelPaciente;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import com.akine.person.spi.PacienteDirectory;
+import com.akine.person.spi.PacienteSnapshot;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
 
@@ -66,7 +68,9 @@ class DeudasEnElAsistente implements HerramientaDelAgente {
 	public String descripcion() {
 		return "Deudas abiertas de una persona (lo que debe el paciente: particular y coseguros) y su saldo "
 				+ "a favor, con los totales en la primera fila. No muestra lo que debe la obra social ni el "
-				+ "detalle de los cobros. Necesita persona_id.";
+				+ "detalle de los cobros. Con persona_id, la cuenta de esa persona; sin persona_id lista quiénes "
+				+ "deben (\"¿quiénes nos deben?\"): una fila por persona con el total adeudado y cuántas "
+				+ "deudas tiene, el que más debe primero.";
 	}
 
 	@Override
@@ -74,9 +78,8 @@ class DeudasEnElAsistente implements HerramientaDelAgente {
 		return """
 				{"type":"object","additionalProperties":false,
 				 "properties":{
-				  "persona_id":{"type":"integer","description":"Id de la persona (sale de buscar_persona)"}
-				 },
-				 "required":["persona_id"]}""";
+				  "persona_id":{"type":"integer","description":"Id de la persona (sale de buscar_persona); sin él, la lista de quiénes deben"}
+				 }}""";
 	}
 
 	@Override
@@ -84,11 +87,11 @@ class DeudasEnElAsistente implements HerramientaDelAgente {
 			ActorDelAsistente actor, Map<String, Object> entrada, ContextoDeConsulta ctx) {
 
 		Long personaId = EntradaDeHerramienta.id(entrada, "persona_id");
-		if (personaId == null) {
-			throw new IllegalArgumentException("Falta 'persona_id': buscá primero a la persona");
-		}
 		if (actor.organizationId() == null || actor.consultorioId() == null) {
 			throw new AccessDeniedException("La consulta requiere una sede activa");
+		}
+		if (personaId == null) {
+			return deudores(actor);
 		}
 		// El permiso va antes de buscar a la persona: sin cobro:register la respuesta es "sin
 		// permiso" exista o no el id, y no se confirma quien esta en el padron.
@@ -152,5 +155,37 @@ class DeudasEnElAsistente implements HerramientaDelAgente {
 		}
 		return new ResultadoDeHerramienta(filas, advertencias,
 				"/pacientes/" + personaId + "/cuenta-corriente", false);
+	}
+
+	/**
+	 * Sin persona: quienes deben en la organizacion, el que mas debe primero. El permiso lo exige
+	 * {@link ObligacionService#deudoresDelPaciente}; el nombre sale del padron del mismo tenant.
+	 */
+	private ResultadoDeHerramienta deudores(ActorDelAsistente actor) {
+		OperatingActor operador = new OperatingActor(actor.accountId(), actor.platformAdmin(),
+				actor.organizationId(), actor.consultorioId());
+		List<DeudorDelPaciente> deudores = obligaciones.deudoresDelPaciente(operador, actor.consultorioId());
+		List<DeudorDelPaciente> mostrados = deudores.stream().limit(TOPE).toList();
+		Map<Long, PacienteSnapshot> padron = pacientes.findAll(actor.organizationId(),
+				mostrados.stream().map(DeudorDelPaciente::personaId).toList());
+		List<Map<String, Object>> filas = new ArrayList<>();
+		for (DeudorDelPaciente d : mostrados) {
+			PacienteSnapshot persona = padron.get(d.personaId());
+			Map<String, Object> fila = new LinkedHashMap<>();
+			fila.put("persona_id", d.personaId());
+			fila.put("nombre", persona == null ? null : persona.nombreCompleto());
+			fila.put("total_adeudado", d.totalAdeudado());
+			fila.put("deudas_abiertas", d.deudas());
+			fila.put("moneda", d.moneda());
+			filas.add(fila);
+		}
+		List<String> advertencias = new ArrayList<>();
+		if (deudores.isEmpty()) {
+			advertencias.add("Nadie tiene deudas abiertas como paciente.");
+		}
+		else if (deudores.size() > TOPE) {
+			advertencias.add("Hay " + deudores.size() + " resultados; muestro los primeros " + TOPE);
+		}
+		return new ResultadoDeHerramienta(filas, advertencias, null, false);
 	}
 }

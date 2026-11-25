@@ -149,6 +149,23 @@ public interface ObligacionRepository
 			@Param("organizationId") long organizationId,
 			@Param("personaId") long personaId);
 
+	@Override
+	@Query("""
+			SELECT new com.akine.billing.domain.port.DeudorDelPaciente(
+			       o.personaId, SUM(o.saldo), COUNT(o), o.moneda)
+			  FROM Obligacion o
+			 WHERE o.organizationId = :organizationId
+			   AND o.personaId IS NOT NULL
+			   AND o.responsable = com.akine.billing.domain.Responsable.PACIENTE
+			   AND o.deletedAt IS NULL
+			   AND o.estado <> com.akine.billing.domain.EstadoObligacion.ANULADA
+			   AND o.saldo > 0
+			 GROUP BY o.personaId, o.moneda
+			 ORDER BY SUM(o.saldo) DESC, o.personaId
+			""")
+	List<com.akine.billing.domain.port.DeudorDelPaciente> findDeudoresDelPaciente(
+			@Param("organizationId") long organizationId);
+
 	/**
 	 * RF-M21-001. Nativo por la paginacion con {@code LIMIT/OFFSET} y por el {@code NOT EXISTS},
 	 * que es lo que deja afuera las que ya estan vivas en otro lote sin volver a consultar fila por
