@@ -53,6 +53,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -103,6 +104,9 @@ class TratamientoServiceTest {
 
 	private TratamientoService service;
 
+	private final com.akine.organization.spi.PermissionEvaluator permissionEvaluator =
+			org.mockito.Mockito.mock(com.akine.organization.spi.PermissionEvaluator.class);
+
 	private final OperatingActor actor =
 			new OperatingActor(CUENTA_PROPIA, false, ORG_ID, CONSULTORIO_ID);
 
@@ -110,7 +114,7 @@ class TratamientoServiceTest {
 	void setUp() {
 		service = new TratamientoService(sesiones, tratamientos, parametros, consultorios,
 				memberships, permissionGuard, catalogo, espacios, auditTrail,
-				org.mockito.Mockito.mock(com.akine.organization.spi.PermissionEvaluator.class));
+				permissionEvaluator);
 
 		given(consultorios.find(ORG_ID, CONSULTORIO_ID)).willReturn(Optional.of(
 				new ConsultorioSnapshot(
@@ -658,5 +662,62 @@ class TratamientoServiceTest {
 			ReflectionTestUtils.setField(guardado, "id", TRATAMIENTO_ID);
 		}
 		return guardado;
+	}
+
+	// =================================================================================
+	// Practicas aplicadas (asistente)
+	// =================================================================================
+
+	private static final java.time.LocalDate DESDE = java.time.LocalDate.of(2026, 11, 1);
+	private static final java.time.LocalDate HASTA = java.time.LocalDate.of(2026, 12, 1);
+	private static final java.time.ZoneId ZONA = java.time.ZoneId.of("America/Argentina/Cordoba");
+
+	@org.junit.jupiter.api.Test
+	@org.junit.jupiter.api.DisplayName("aplicados con hc:read entero no recorta y audita la consulta")
+	void aplicados_sin_recorte_audita() {
+		given(permissionEvaluator.evaluate(any())).willReturn(
+				com.akine.organization.spi.PermissionDecision.concedida("CONSULTORIO", false));
+		given(tratamientos.aplicados(eq(ORG_ID), eq(CONSULTORIO_ID), eq(DESDE), eq(HASTA), eq(ZONA),
+				eq(List.of(PRACTICA_ID)), eq(20L), eq(null), eq(TratamientoService.TOPE_APLICADOS)))
+				.willReturn(new com.akine.encounter.domain.port.TratamientoRepositoryPorts.PracticasAplicadas(
+						List.of(), 3));
+
+		TratamientoService.Aplicados r = service.aplicados(actor, CONSULTORIO_ID, DESDE, HASTA, ZONA,
+				List.of(PRACTICA_ID), 20L);
+
+		assertThat(r.total()).isEqualTo(3);
+		assertThat(r.soloPropios()).isFalse();
+		verify(auditTrail).record(any());
+	}
+
+	@org.junit.jupiter.api.Test
+	@org.junit.jupiter.api.DisplayName("aplicados limitado a la actividad propia recorta a las memberships del actor")
+	void aplicados_limitado_recorta() {
+		given(permissionEvaluator.evaluate(any())).willReturn(com.akine.organization.spi.PermissionDecision
+				.concedida(com.akine.organization.spi.PermissionDecision.ALCANCE_ACTIVIDAD_PROPIA, false));
+		given(tratamientos.aplicados(eq(ORG_ID), eq(CONSULTORIO_ID), any(), any(), any(), eq(List.of()), eq(null),
+				eq(java.util.Set.of(MEMBERSHIP_PROPIA)), anyInt()))
+				.willReturn(new com.akine.encounter.domain.port.TratamientoRepositoryPorts.PracticasAplicadas(
+						List.of(), 0));
+
+		assertThat(service.aplicados(actor, CONSULTORIO_ID, DESDE, HASTA, ZONA, null, null).soloPropios())
+				.isTrue();
+	}
+
+	@org.junit.jupiter.api.Test
+	@org.junit.jupiter.api.DisplayName("aplicados sin hc:read, o limitado sin vinculo, rechaza sin leer")
+	void aplicados_rechaza() {
+		given(permissionEvaluator.evaluate(any())).willReturn(com.akine.organization.spi.PermissionDecision
+				.rechazada(com.akine.organization.spi.DenialKind.NO_CONTEXT));
+		assertThatThrownBy(() -> service.aplicados(actor, CONSULTORIO_ID, DESDE, HASTA, ZONA, List.of(), null))
+				.isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+
+		given(permissionEvaluator.evaluate(any())).willReturn(com.akine.organization.spi.PermissionDecision
+				.concedida(com.akine.organization.spi.PermissionDecision.ALCANCE_ACTIVIDAD_PROPIA, false));
+		given(memberships.findByAccount(ORG_ID, CUENTA_PROPIA)).willReturn(List.of());
+		assertThatThrownBy(() -> service.aplicados(actor, CONSULTORIO_ID, DESDE, HASTA, ZONA, List.of(), null))
+				.isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+		verify(tratamientos, never()).aplicados(anyLong(), anyLong(), any(), any(), any(), any(), any(), any(),
+				anyInt());
 	}
 }
