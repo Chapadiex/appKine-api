@@ -1,6 +1,6 @@
 ---
 id: consultar-biblioteca
-titulo: Consultar biblioteca
+titulo: Consultar bibliografía
 grupo: Atención
 rutas: ["/consulta"]
 permisos: [biblioteca:consultar]
@@ -24,7 +24,7 @@ solo con esa bibliografía y cita de dónde sacó cada respuesta.
 
 ![La consulta a la biblioteca, con el campo de la pregunta y el botón Enviar marcados](captura:consultar-biblioteca/preguntar)
 
-1. Entrá a :icono[operacion]: **Atención → Consultar biblioteca** y escribí tu pregunta abajo.
+1. Entrá a :icono[operacion]: **Atención → Consultar bibliografía** y escribí tu pregunta abajo.
 2. Tocá **Enviar**, o apretá Enter.
 
 Mientras trabaja muestra **Buscando en la biblioteca…** y después **Redactando…**. Si la pregunta

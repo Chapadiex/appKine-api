@@ -43,7 +43,8 @@ Si tu centro tiene el dictado activado, tocá :icono[microfono]: para dictar la 
 - Si hay varias personas con ese nombre, elegí la correcta en los botones que aparecen.
 - **Ver cómo lo resolví** muestra qué datos buscó el asistente para armar la respuesta.
 - **Ver los datos** despliega la tabla con la que se armó la respuesta.
-- **Ver el detalle** te lleva a la pantalla donde está ese dato.
+- Los botones del pie de la respuesta dicen adónde llevan, por ejemplo **Abrir la ficha del
+  paciente** o **Abrir la caja**.
 
 Para empezar otra conversación, tocá **Nueva charla** arriba a la derecha.
 
