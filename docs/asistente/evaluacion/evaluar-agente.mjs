@@ -159,7 +159,9 @@ async function http(metodo, r, { token, cuerpo } = {}) {
 
 const sesiones = {};
 async function sesion(actor) {
-  if (sesiones[actor]) return sesiones[actor];
+  // El access token vence a los pocos minutos y la corrida dura más de una hora: se renueva cada
+  // 4 minutos (sin esto, todo lo que sigue al vencimiento da 401 y la medición no sirve).
+  if (sesiones[actor] && Date.now() - sesiones[actor].creada < 4 * 60 * 1000) return sesiones[actor];
   const cuenta = estado.cuentas[actor];
   if (!cuenta) throw new Error(`la siembra no tiene cuenta para ${actor}`);
   const pre = (await http('POST', '/api/v1/auth/login', { cuerpo: { email: cuenta.email, password: PASSWORD } })).accessToken;
@@ -168,7 +170,7 @@ async function sesion(actor) {
     ?? contextos.find((x) => x.organizationId === estado.organizationId);
   const { accessToken } = await http('POST', '/api/v1/auth/context', { token: pre, cuerpo: { organizationId: estado.organizationId, consultorioId: cuenta.consultorioId ?? c.consultorioId } });
   const me = await http('GET', '/api/v1/me', { token: accessToken });
-  sesiones[actor] = { token: accessToken, accountId: me.accountId, consultorioId: cuenta.consultorioId ?? c.consultorioId };
+  sesiones[actor] = { creada: Date.now(), token: accessToken, accountId: me.accountId, consultorioId: cuenta.consultorioId ?? c.consultorioId };
   return sesiones[actor];
 }
 
