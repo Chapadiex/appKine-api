@@ -503,6 +503,10 @@ public class AgenteDelAsistente {
 		cuerpo.put("advertencias", avisos);
 		cuerpo.put("enlace", resultado.enlace());
 		cuerpo.put("sin_permiso", resultado.sinPermiso());
+		if (resultado.sinPermiso()) {
+			// Un modelo chico lee "filas vacías" como "no hay datos" y lo dice así: el motivo va en palabras.
+			avisos.add("El usuario no tiene permiso para ver este dato. Decíselo así, sin inventar otro motivo.");
+		}
 		return json.writeValueAsString(cuerpo);
 	}
 }

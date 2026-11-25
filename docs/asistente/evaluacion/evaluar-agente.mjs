@@ -208,7 +208,9 @@ const sustituir = (v) => (typeof v === 'string' ? v.replace(/\{\{(\w+)\}\}/g, (_
 function puntuar(p, r) {
   const e = p.esperado;
   const admitidos = Array.isArray(e.resultado) ? e.resultado : [e.resultado];
-  const visible = normalizar([r.texto, ...(r.opciones ?? []).map((o) => o.etiqueta)].join(' \n '));
+  // Lo que ve el usuario: el texto, las opciones y, en una PROPUESTA, la tarjeta (ahí van el nombre y el monto).
+  const tarjeta = r.accion ? JSON.stringify([r.accion.titulo, r.accion.tarjeta]) : '';
+  const visible = normalizar([r.texto, ...(r.opciones ?? []).map((o) => o.etiqueta), tarjeta].join(' \n '));
   const todo = normalizar([visible, JSON.stringify(r.filas ?? [])].join(' \n '));
   const fallas = [];
   if (!admitidos.includes(r.resultado)) fallas.push(`resultado ${r.resultado}, se esperaba ${admitidos.join('|')}`);
