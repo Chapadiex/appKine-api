@@ -31,6 +31,8 @@ abstract class TurnosParaElAgente implements HerramientaDelAgente {
 	static final int TOPE = 50;
 	static final List<String> ESTADOS = List.of("RESERVADO", "CONFIRMADO", "PRESENTE", "EN_ATENCION", "ATENDIDO",
 			"AUSENTE", "RETIRADO", "CANCELADO");
+	/** {@code vinieron}: quien llego, este o no atendido todavia. */
+	static final Set<String> VINIERON = Set.of("PRESENTE", "EN_ATENCION", "ATENDIDO");
 	static final String NO_ENCONTRADA = "No encontré esa persona";
 	static final String ENLACE = "/agenda/recepcion";
 
@@ -43,12 +45,16 @@ abstract class TurnosParaElAgente implements HerramientaDelAgente {
 	}
 
 	ResultadoDeHerramienta leer(ActorDelAsistente actor, Periodo periodo, Long personaId, String estado) {
+		return leer(actor, periodo, personaId, estado == null ? Set.of() : Set.of(estado));
+	}
+
+	ResultadoDeHerramienta leer(ActorDelAsistente actor, Periodo periodo, Long personaId, Set<String> estados) {
 		if (personaId != null && pacientes.find(actor.organizationId(), personaId).isEmpty()) {
 			return new ResultadoDeHerramienta(List.of(), List.of(NO_ENCONTRADA), ENLACE, false);
 		}
 		OperatingActor operador = new OperatingActor(actor.accountId(), actor.platformAdmin(),
 				actor.organizationId(), actor.consultorioId(), actor.roleCode());
-		FiltroDeTurnos filtro = FiltroDeTurnos.de(estado == null ? Set.of() : Set.of(estado), personaId);
+		FiltroDeTurnos filtro = FiltroDeTurnos.de(estados, personaId);
 		// delRango toma [desde, hasta).
 		List<TurnoDeCalendarioView> turnos = recepcion.delRango(operador, actor.consultorioId(), periodo.desde(),
 				periodo.hastaExclusivo(), null, null, true, filtro).turnos().stream()
@@ -97,6 +103,8 @@ abstract class TurnosParaElAgente implements HerramientaDelAgente {
 		public String descripcion() {
 			return "Lista los turnos de la sede activa en un periodo (por defecto hoy), con su estado operativo, "
 					+ "paciente, servicio y profesional; opcionalmente de una persona (persona_id) o en un estado. "
+					+ "Para \"¿quiénes vinieron?\" o \"¿a quiénes se atendió?\" usá vinieron=true (PRESENTE, "
+					+ "EN_ATENCION y ATENDIDO) o estado=ATENDIDO; para quienes faltaron, la herramienta ausentes. "
 					+ "Un turno no prueba que hubo prestacion y no incluye atenciones sin turno. No da datos clinicos.";
 		}
 
@@ -108,7 +116,9 @@ abstract class TurnosParaElAgente implements HerramientaDelAgente {
 					+ "\"hasta\":" + fecha("Ultimo dia del periodo, inclusive") + ","
 					+ "\"estado\":{\"type\":\"string\",\"enum\":[\"RESERVADO\",\"CONFIRMADO\",\"PRESENTE\","
 					+ "\"EN_ATENCION\",\"ATENDIDO\",\"AUSENTE\",\"RETIRADO\",\"CANCELADO\"],"
-					+ "\"description\":\"Filtra por estado operativo\"}}}";
+					+ "\"description\":\"Filtra por estado operativo\"},"
+					+ "\"vinieron\":{\"type\":\"boolean\",\"description\":\"true: solo los que llegaron "
+					+ "(PRESENTE, EN_ATENCION o ATENDIDO); no se combina con estado\"}}}";
 		}
 
 		@Override
@@ -124,7 +134,14 @@ abstract class TurnosParaElAgente implements HerramientaDelAgente {
 							+ String.join(", ", ESTADOS));
 				}
 			}
-			return leer(actor, periodo, EntradaDeHerramienta.id(entrada, "persona_id"), estado);
+			Long personaId = EntradaDeHerramienta.id(entrada, "persona_id");
+			if (Boolean.TRUE.equals(entrada.get("vinieron"))) {
+				if (estado != null) {
+					throw new IllegalArgumentException("Usá vinieron o estado, no los dos");
+				}
+				return leer(actor, periodo, personaId, VINIERON);
+			}
+			return leer(actor, periodo, personaId, estado);
 		}
 	}
 
@@ -142,8 +159,9 @@ abstract class TurnosParaElAgente implements HerramientaDelAgente {
 
 		@Override
 		public String descripcion() {
-			return "Lista quienes no vinieron (turnos AUSENTE) de la sede activa en una fecha (por defecto hoy). "
-					+ "No incluye cancelados ni retirados.";
+			return "Lista SOLO quienes faltaron (turnos AUSENTE) de la sede activa en una fecha (por defecto hoy). "
+					+ "No incluye cancelados ni retirados. No sirve para saber quiénes vinieron o fueron "
+					+ "atendidos: para eso usá turnos con vinieron=true.";
 		}
 
 		@Override
