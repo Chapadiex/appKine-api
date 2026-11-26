@@ -19,7 +19,9 @@ public record PanelDePlataformaResponse(
 		@Schema(description = "Ultimos pedidos de prueba recibidos")
 		List<PedidoRecienteResponse> ultimosPedidos,
 		@Schema(description = "Ultimos cambios de estado o de plan de una suscripcion")
-		List<CambioDeSuscripcionResponse> ultimosCambios) {
+		List<CambioDeSuscripcionResponse> ultimosCambios,
+		@Schema(description = "Pedidos de cambio de plan sin resolver", example = "1")
+		long cambiosDePlanPendientes) {
 
 	public static PanelDePlataformaResponse from(PanelDePlataforma panel) {
 		PanelDePlataforma.Centros c = panel.centros();
@@ -40,7 +42,8 @@ public record PanelDePlataformaResponse(
 				panel.ultimosCambios().stream()
 						.map(m -> new CambioDeSuscripcionResponse(m.organizationId(), m.nombre(), m.desde(),
 								m.hacia(), m.cuando()))
-						.toList());
+						.toList(),
+				panel.cambiosDePlanPendientes());
 	}
 
 	@Schema(description = "Centros vigentes por estado de su suscripcion")

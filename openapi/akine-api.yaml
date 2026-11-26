@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.195.0
+  version: 0.196.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -143,6 +143,8 @@ tags:
   name: Inscripciones
 - description: Jornadas de caja y movimientos monetarios reales (M20)
   name: Caja
+- description: El centro pide otro plan; la plataforma aprueba o rechaza
+  name: Pedidos de cambio de plan
 - description: Catalogo global de servicios y como cada sede los presta (M27)
   name: Servicios y ofertas
 - description: "Alta, edicion y baja de las sedes de una organizacion"
@@ -24127,6 +24129,158 @@ paths:
       summary: Suscripcion vigente del tenant
       tags:
       - Suscripciones
+  /api/v1/organizations/{orgId}/subscription/pedido-de-cambio:
+    get:
+      description: En cualquier estado; 204 si el centro nunca pidio. Requiere tenant:update.
+      operationId: verPedidoDeCambioDePlan
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoDeCambioDePlanResponse"
+          description: El ultimo pedido
+        "204":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoDeCambioDePlanResponse"
+          description: El centro nunca pidio un cambio
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El actor no es ORG_ADMIN de la organizacion
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o es de otro tenant"
+      summary: Ultimo pedido de cambio de plan del centro
+      tags:
+      - Pedidos de cambio de plan
+    post:
+      description: "El centro pide una contratacion completa (plan, servicios y adicionales)\
+        \ para subir o bajar. Queda PENDIENTE hasta que la plataforma la apruebe o\
+        \ la rechace. Requiere tenant:update. Igual a lo contratado: 400 pedido-sin-cambios.\
+        \ Ya hay uno pendiente: 409 pedido-de-plan-pendiente."
+      operationId: pedirCambioDePlan
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PedidoDeCambioDePlanRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoDeCambioDePlanResponse"
+          description: Pedido guardado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Sin servicios, un campo invalido, o igual a lo contratado"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El actor no es ORG_ADMIN de la organizacion
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La organizacion o el plan no existen, o el plan no se ofrece"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya hay un pedido esperando respuesta
+      summary: Pedir un cambio de plan
+      tags:
+      - Pedidos de cambio de plan
+  /api/v1/organizations/{orgId}/subscription/pedido-de-cambio/{id}/cancelar:
+    post:
+      description: "Solo mientras esta PENDIENTE. Requiere tenant:update. Ya resuelto\
+        \ o version vieja: 409 concurrent-modification."
+      operationId: cancelarPedidoDeCambioDePlan
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - description: Identificador del pedido
+        example: 1
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionDePedidoRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoDeCambioDePlanResponse"
+          description: Pedido cancelado
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El actor no es ORG_ADMIN de la organizacion
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No existe o es de otro centro
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya resuelto o version vieja
+      summary: Cancelar el pedido de cambio de plan
+      tags:
+      - Pedidos de cambio de plan
   /api/v1/organizations/{orgId}/subscription/plan-changes:
     post:
       description: |-
@@ -28568,6 +28722,170 @@ paths:
       summary: Conceder acceso de soporte sobre una organizacion
       tags:
       - Plataforma
+  /api/v1/platform/pedidos-de-cambio-de-plan:
+    get:
+      description: "Los mas nuevos primero, filtrables por estado y por nombre del\
+        \ centro. Trae ademas el total de pendientes. Reservado a la administracion\
+        \ de plataforma. El tamano de pagina se acota a 100."
+      operationId: listarPedidosDeCambioDePlan
+      parameters:
+      - description: "Estado; sin el, todos"
+        example: PENDIENTE
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          enum:
+          - PENDIENTE
+          - APROBADO
+          - RECHAZADO
+          - CANCELADO
+      - description: Texto a buscar en el nombre del centro
+        example: movimiento
+        in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - description: "Pagina, base cero"
+        example: 0
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - description: Elementos por pagina
+        example: 10
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoDeCambioDePlanPageResponse"
+          description: Pagina de pedidos
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Reservado a la administracion de plataforma
+      summary: Bandeja de pedidos de cambio de plan
+      tags:
+      - Pedidos de cambio de plan
+  /api/v1/platform/pedidos-de-cambio-de-plan/{id}/aprobar:
+    post:
+      description: "Aplica la contratacion pedida, como updateContratacionDeCentro,\
+        \ sin pasar una prueba a ACTIVA. Bajar de plan no borra nada: solo rechaza\
+        \ las altas que excedan el tope nuevo. Reservado a la administracion de plataforma.\
+        \ Ya resuelto o version vieja: 409 concurrent-modification."
+      operationId: aprobarPedidoDeCambioDePlan
+      parameters:
+      - description: Identificador del pedido
+        example: 1
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionDePedidoRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoDeCambioDePlanResponse"
+          description: Pedido aprobado y contratacion aplicada
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Reservado a la administracion de plataforma
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "El pedido no existe, o el plan ya no se ofrece"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "Ya resuelto, version vieja, o suscripcion cancelada"
+      summary: Aprobar un pedido de cambio de plan
+      tags:
+      - Pedidos de cambio de plan
+  /api/v1/platform/pedidos-de-cambio-de-plan/{id}/rechazar:
+    post:
+      description: "Con motivo, que ve el centro. No cambia la contratacion. Reservado\
+        \ a la administracion de plataforma. Ya resuelto o version vieja: 409 concurrent-modification."
+      operationId: rechazarPedidoDeCambioDePlan
+      parameters:
+      - description: Identificador del pedido
+        example: 1
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RechazarPedidoDePlanRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoDeCambioDePlanResponse"
+          description: Pedido rechazado
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta el motivo
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Reservado a la administracion de plataforma
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No existe
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Ya resuelto o version vieja
+      summary: Rechazar un pedido de cambio de plan
+      tags:
+      - Pedidos de cambio de plan
   /api/v1/platform/resumen:
     get:
       description: "Centros por estado de su suscripcion (activos, en prueba, por\
@@ -43834,6 +44152,11 @@ components:
       description: "Estado general de la plataforma: lo que necesita atencion y lo\
         \ ultimo que paso"
       properties:
+        cambiosDePlanPendientes:
+          type: integer
+          format: int64
+          description: Pedidos de cambio de plan sin resolver
+          example: 1
         centros:
           $ref: "#/components/schemas/CentrosDelPanelResponse"
           description: Centros vigentes por estado de su suscripcion
@@ -44219,6 +44542,155 @@ components:
           minLength: 0
       required:
       - email
+    PedidoDeCambioDePlanPageResponse:
+      type: object
+      description: Pagina de pedidos de cambio de plan
+      properties:
+        content:
+          type: array
+          description: "Pedidos de esta pagina, los mas nuevos primero"
+          items:
+            $ref: "#/components/schemas/PedidoDeCambioDePlanResponse"
+        page:
+          type: integer
+          format: int32
+          description: "Numero de pagina, base cero"
+          example: 0
+        pendientes:
+          type: integer
+          format: int64
+          description: "Pedidos pendientes en total, sin filtro: el numero de la bandeja"
+          example: 2
+        size:
+          type: integer
+          format: int32
+          description: Elementos por pagina
+          example: 10
+        totalElements:
+          type: integer
+          format: int64
+          description: Total que cumple el filtro
+          example: 4
+        totalPages:
+          type: integer
+          format: int32
+          description: Total de paginas
+          example: 1
+    PedidoDeCambioDePlanRequest:
+      type: object
+      description: "Contratacion que el centro pide: plan, servicios y adicionales,\
+        \ completa"
+      properties:
+        adicionales:
+          type: array
+          description: Adicionales; vacio = ninguno
+          items:
+            type: string
+            enum:
+            - IA
+        comentario:
+          type: string
+          description: Comentario para la plataforma
+          example: Empezamos con clases de yoga
+          maxLength: 500
+          minLength: 0
+        planCode:
+          type: string
+          description: Codigo de un plan ofrecido
+          example: CRECIMIENTO
+          minLength: 1
+        servicios:
+          type: array
+          description: "Servicios, al menos uno"
+          items:
+            type: string
+            enum:
+            - KINESIOLOGIA
+            - ACTIVIDADES
+          minItems: 1
+      required:
+      - adicionales
+      - planCode
+      - servicios
+    PedidoDeCambioDePlanResponse:
+      type: object
+      description: "Pedido de cambio de plan de un centro, con la contratacion que\
+        \ tenia al pedir"
+      properties:
+        adicionales:
+          type: array
+          items:
+            type: string
+            enum:
+            - IA
+        adicionalesAnteriores:
+          type: array
+          items:
+            type: string
+            enum:
+            - IA
+        comentario:
+          type: string
+        estado:
+          type: string
+          enum:
+          - PENDIENTE
+          - APROBADO
+          - RECHAZADO
+          - CANCELADO
+        id:
+          type: integer
+          format: int64
+        motivoRechazo:
+          type: string
+          description: "Motivo, si se rechazo"
+        organizationId:
+          type: integer
+          format: int64
+        organizationNombre:
+          type: string
+          description: Nombre del centro
+        pedidoEn:
+          type: string
+          format: date-time
+          description: Cuando se pidio
+        planCode:
+          type: string
+          description: Plan pedido
+          example: CRECIMIENTO
+        planCodeAnterior:
+          type: string
+          description: Plan que tenia al pedir
+          example: BASE
+        planNombre:
+          type: string
+          description: Nombre del plan pedido
+          example: Plan Intermedio
+        planNombreAnterior:
+          type: string
+          description: Nombre del plan que tenia al pedir
+          example: Plan Base
+        resueltoEn:
+          type: string
+          format: date-time
+          description: Cuando se resolvio
+        servicios:
+          type: array
+          items:
+            type: string
+            enum:
+            - KINESIOLOGIA
+            - ACTIVIDADES
+        serviciosAnteriores:
+          type: array
+          items:
+            type: string
+            enum:
+            - KINESIOLOGIA
+            - ACTIVIDADES
+        version:
+          type: integer
+          format: int64
     PedidoRecienteResponse:
       type: object
       description: Un pedido de prueba recibido hace poco
@@ -45761,6 +46233,8 @@ components:
       - https://akine.app/problems/invalid-subscription-transition
       - https://akine.app/problems/plan-limit-exceeded
       - https://akine.app/problems/feature-not-available
+      - https://akine.app/problems/pedido-de-plan-pendiente
+      - https://akine.app/problems/pedido-sin-cambios
       - https://akine.app/problems/subscription-suspended
       - https://akine.app/problems/idempotency-key-conflict
       - https://akine.app/problems/concurrent-modification
@@ -46543,6 +47017,24 @@ components:
           format: int64
           description: Version para el control optimista de las transiciones
           example: 2
+    RechazarPedidoDePlanRequest:
+      type: object
+      description: Rechazo de un pedido de cambio de plan
+      properties:
+        motivo:
+          type: string
+          description: Por que se rechaza; lo ve el centro
+          example: El plan Plus requiere convenio anual
+          maxLength: 500
+          minLength: 0
+        version:
+          type: integer
+          format: int64
+          description: Version leida
+          example: 0
+      required:
+      - motivo
+      - version
     ReclasificarAdjuntoClinicoRequest:
       type: object
       description: Reclasificacion de un adjunto clinico. Solo cambia como esta descripto
@@ -52606,6 +53098,17 @@ components:
             \ periodo siguiente, con su obligacion, cuando este se acerque a su fin.\
             \ Ausente o false: no se renueva. En un pack es 400"
           example: false
+    VersionDePedidoRequest:
+      type: object
+      description: Version leida del pedido de cambio de plan
+      properties:
+        version:
+          type: integer
+          format: int64
+          description: Version leida
+          example: 0
+      required:
+      - version
     VersionResponse:
       type: object
       description: Identidad tecnica del backend y version del contrato OpenAPI publicado

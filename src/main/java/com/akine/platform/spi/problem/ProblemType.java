@@ -94,6 +94,10 @@ public enum ProblemType {
 	PLAN_LIMIT_EXCEEDED("plan-limit-exceeded"),
 	/** El plan contratado no incluye la funcionalidad pedida. */
 	FEATURE_NOT_AVAILABLE("feature-not-available"),
+	/** El centro ya tiene un pedido de cambio de plan esperando respuesta (409, 25/11/2026). */
+	PEDIDO_DE_PLAN_PENDIENTE("pedido-de-plan-pendiente"),
+	/** El pedido de cambio de plan es igual a lo contratado (400). */
+	PEDIDO_SIN_CAMBIOS("pedido-sin-cambios"),
 	/** La suscripcion no esta ACTIVA y la operacion la exige. */
 	SUBSCRIPTION_SUSPENDED("subscription-suspended"),
 	/** La misma clave de idempotencia se reuso con un cuerpo distinto. */

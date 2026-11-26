@@ -44,7 +44,7 @@ class PanelDePlataformaControllerTest {
 				List.of(new PanelDePlataforma.PruebaQueTermina(7, "Centro Norte", CUANDO)),
 				List.of(new PanelDePlataforma.CentroReciente(7, "Centro Norte", "PRUEBA", CUANDO)),
 				List.of(new PanelDePlataforma.PedidoReciente(5, "Estudio Pilates", "Ana Gomez", "PENDIENTE", CUANDO)),
-				List.of(new PanelDePlataforma.CambioDeSuscripcion(7, "Centro Norte", "PRUEBA", "ACTIVA", CUANDO))));
+				List.of(new PanelDePlataforma.CambioDeSuscripcion(7, "Centro Norte", "PRUEBA", "ACTIVA", CUANDO)), 1));
 
 		mockMvc.perform(get("/api/v1/platform/resumen").with(ApiActors.platformAdmin(1L)))
 				.andExpect(status().isOk())

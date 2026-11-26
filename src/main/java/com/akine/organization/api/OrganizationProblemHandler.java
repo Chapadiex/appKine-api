@@ -31,6 +31,9 @@ import com.akine.organization.domain.exception.OrganizationNotFoundException;
 import com.akine.organization.domain.exception.OrganizationSlugTakenException;
 import com.akine.organization.domain.exception.PlanLimitExceededException;
 import com.akine.organization.domain.exception.ServicioNoContratadoException;
+import com.akine.organization.domain.exception.PedidoDeCambioDePlanNotFoundException;
+import com.akine.organization.domain.exception.PedidoDePlanPendienteException;
+import com.akine.organization.domain.exception.PedidoSinCambiosException;
 import com.akine.organization.domain.exception.SolicitudDePruebaNotFoundException;
 import com.akine.organization.domain.exception.SubscriptionSuspendedException;
 import com.akine.organization.domain.exception.TerminosDelPedidoException;
@@ -136,6 +139,29 @@ public class OrganizationProblemHandler {
 	@ExceptionHandler(SolicitudDePruebaNotFoundException.class)
 	public ProblemDetail handleSolicitudDePruebaNotFound(SolicitudDePruebaNotFoundException exception) {
 		return noEncontrado();
+	}
+
+	@ExceptionHandler(PedidoDeCambioDePlanNotFoundException.class)
+	public ProblemDetail handlePedidoDeCambioDePlanNotFound(PedidoDeCambioDePlanNotFoundException exception) {
+		return noEncontrado();
+	}
+
+	/** Ya hay un pedido de cambio de plan esperando respuesta: el centro lo ve o lo cancela. */
+	@ExceptionHandler(PedidoDePlanPendienteException.class)
+	public ProblemDetail handlePedidoDePlanPendiente(PedidoDePlanPendienteException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+		problem.setTitle("Pedido de cambio de plan pendiente");
+		problem.setType(ProblemType.PEDIDO_DE_PLAN_PENDIENTE.uri());
+		return problem;
+	}
+
+	/** Lo pedido es lo que el centro ya tiene: no hay nada que aprobar. */
+	@ExceptionHandler(PedidoSinCambiosException.class)
+	public ProblemDetail handlePedidoSinCambios(PedidoSinCambiosException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setTitle("El pedido no cambia nada");
+		problem.setType(ProblemType.PEDIDO_SIN_CAMBIOS.uri());
+		return problem;
 	}
 
 	/** El pedido de prueba no acepto los terminos vigentes: 400 con el campo, como el alta. */
