@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.196.0
+  version: 0.197.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -34,6 +34,9 @@ tags:
   name: Invitaciones recibidas
 - description: Politica de feriados de una sede y feriados del periodo consultado
   name: Calendario de sede
+- description: Cargar en AKINE contando lo que se hizo por el bot de Telegram del
+    centro
+  name: Telegram
 - description: "Ordenes medicas presentadas por un paciente (M17). Documentacion ADMINISTRATIVA:\
     \ no reemplaza el registro clinico (RN-M17-004)"
   name: Ordenes medicas
@@ -15273,6 +15276,157 @@ paths:
       summary: Historial de versiones de una sesion
       tags:
       - Sesiones
+  /api/v1/consultorios/{consultorioId}/telegram/vinculo:
+    delete:
+      description: Lo que se mande desde ese usuario de Telegram deja de cargarse.
+        Requiere `asistente:acciones` en la sede.
+      operationId: desvincularMiTelegram
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "204":
+          description: Desvinculado
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `asistente:acciones` o sin contexto de trabajo activo
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`not-found`: la sede no existe o es de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`telegram-deshabilitado`: el interruptor esta apagado"
+      summary: Desvincular mi Telegram
+      tags:
+      - Telegram
+    get:
+      description: "Si la cuenta de quien pregunta esta vinculada, el codigo pendiente\
+        \ y el bot del centro. Requiere `asistente:acciones` en la sede."
+      operationId: getMiVinculoDeTelegram
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VinculoDeTelegram"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/VinculoDeTelegram"
+          description: El vinculo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `asistente:acciones` o sin contexto de trabajo activo
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`not-found`: la sede no existe o es de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`telegram-deshabilitado`: el interruptor esta apagado"
+      summary: Mi cuenta con Telegram
+      tags:
+      - Telegram
+    post:
+      description: "Un codigo de seis digitos, de un solo uso, que vence a los 15\
+        \ minutos. Se le manda al bot del centro como `/vincular CODIGO`. Al usarlo,\
+        \ lo que la persona mande por Telegram se carga con su cuenta, en esta sede.\
+        \ Si ya estaba vinculada, sigue igual hasta usar el codigo. Requiere `asistente:acciones`\
+        \ en la sede."
+      operationId: generarCodigoDeTelegram
+      parameters:
+      - in: path
+        name: consultorioId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VinculoDeTelegram"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/VinculoDeTelegram"
+          description: El vinculo con el codigo
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `asistente:acciones` o sin contexto de trabajo activo
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`not-found`: la sede no existe o es de otro tenant"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`telegram-deshabilitado`: el interruptor esta apagado. `telegram-sin-bot`:\
+            \ el centro no conecto un bot"
+      summary: Pedir un codigo para vincular mi Telegram
+      tags:
+      - Telegram
   /api/v1/consultorios/{consultorioId}/turnos:
     get:
       description: |-
@@ -24487,6 +24641,171 @@ paths:
       summary: Aplicar una transicion de estado a la suscripcion
       tags:
       - Suscripciones
+  /api/v1/organizations/{orgId}/telegram:
+    delete:
+      description: "Borra el token: el bot deja de leerse. Los vinculos de las cuentas\
+        \ quedan. Requiere `tenant:update`."
+      operationId: desconectarBotDeTelegram
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "204":
+          description: Desconectado
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `tenant:update` o sin contexto de trabajo activo
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`not-found`: otra organizacion"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`telegram-deshabilitado`: el interruptor esta apagado"
+      summary: Desconectar el bot de Telegram del centro
+      tags:
+      - Telegram
+    get:
+      description: "Si hay un bot conectado, su usuario y si el sondeo anda. Nunca\
+        \ devuelve el token. Requiere `tenant:update` (el ORG_ADMIN)."
+      operationId: getBotDeTelegram
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotDeTelegram"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BotDeTelegram"
+          description: "El bot, o `conectado` false"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `tenant:update` o sin contexto de trabajo activo
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`not-found`: otra organizacion"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`telegram-deshabilitado`: el interruptor esta apagado"
+      summary: El bot de Telegram del centro
+      tags:
+      - Telegram
+    put:
+      description: |-
+        Valida el token con Telegram y lo guarda cifrado; reemplaza al bot anterior. Desde ese momento el backend lee los mensajes del bot cada pocos segundos. Requiere `tenant:update`.
+
+        El bot se crea en Telegram con @BotFather (`/newbot`), y conviene desactivarle el modo privado (`/setprivacy` → Disable) para que lea los mensajes de un grupo.
+      operationId: conectarBotDeTelegram
+      parameters:
+      - in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConectarBotDeTelegram"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotDeTelegram"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BotDeTelegram"
+          description: El bot conectado
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`validation-error`: el token no tiene la forma de un token,\
+            \ o Telegram no lo reconoce"
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Sin `tenant:update` o sin contexto de trabajo activo
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`not-found`: otra organizacion"
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "`telegram-deshabilitado`: el interruptor esta apagado"
+      summary: Conectar el bot de Telegram del centro
+      tags:
+      - Telegram
   /api/v1/personas:
     get:
       description: |-
@@ -32304,6 +32623,25 @@ components:
         resumen:
           $ref: "#/components/schemas/ResumenDeHonorarios"
           description: Los numeros de la tira del borrador (DP-45)
+    BotDeTelegram:
+      type: object
+      properties:
+        conectado:
+          type: boolean
+          description: Si hay un bot conectado
+        ultimoContactoEn:
+          type: string
+          format: date-time
+          description: La ultima vez que Telegram respondio al sondeo
+        ultimoError:
+          type: string
+          description: El ultimo error al hablar con Telegram; vacio si anda bien
+        usuario:
+          type: string
+          description: "El usuario del bot, sin @"
+          example: kine_centro_bot
+      required:
+      - conectado
     BuscarDisponibilidadDeTurnos:
       type: object
       description: "Criterios de la busqueda. Solo la oferta es obligatoria. Sin profesional\
@@ -34422,6 +34760,17 @@ components:
           description: "La sesion que hace de baseline. **Ausente si no hay ninguna**,\
             \ y eso no es un error"
           example: 488
+    ConectarBotDeTelegram:
+      type: object
+      properties:
+        token:
+          type: string
+          description: "El token del bot, tal como lo da @BotFather"
+          example: 1234567890:AAH...
+          maxLength: 120
+          minLength: 0
+      required:
+      - token
     ConfiguracionDeRenovacionDeAbono:
       type: object
       description: Prende o apaga la renovacion automatica de un abono (desde 0.116.0).
@@ -46498,6 +46847,8 @@ components:
       - https://akine.app/problems/accion-no-vigente
       - https://akine.app/problems/dictado-deshabilitado
       - https://akine.app/problems/dictado-no-disponible
+      - https://akine.app/problems/telegram-deshabilitado
+      - https://akine.app/problems/telegram-sin-bot
       - https://akine.app/problems/generacion-en-curso
       - https://akine.app/problems/modelo-ocupado
       - https://akine.app/problems/modelo-no-disponible
@@ -53203,6 +53554,34 @@ components:
             \ de baja. Null desvincula, que es una operacion legitima: el operador\
             \ subio el escaneo equivocado y lo saca sin dar de baja el registro entero"
           example: 907
+    VinculoDeTelegram:
+      type: object
+      properties:
+        botUsuario:
+          type: string
+          description: "El bot del centro, sin @; vacio si el centro no conecto ninguno"
+        codigo:
+          type: string
+          description: El codigo pendiente para mandarle al bot como /vincular CODIGO
+          example: "482913"
+        codigoVenceEn:
+          type: string
+          format: date-time
+        consultorioId:
+          type: integer
+          format: int64
+          description: La sede en la que se carga lo que se manda por Telegram
+        telegramNombre:
+          type: string
+          description: El nombre del usuario de Telegram vinculado
+        vinculado:
+          type: boolean
+          description: Si la cuenta ya esta vinculada a un usuario de Telegram
+        vinculadoEn:
+          type: string
+          format: date-time
+      required:
+      - vinculado
   securitySchemes:
     bearerAuth:
       bearerFormat: JWT
