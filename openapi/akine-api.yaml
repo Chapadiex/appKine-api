@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.193.0
+  version: 0.195.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -22776,6 +22776,98 @@ paths:
       summary: Elegir que funciones de IA usa el centro
       tags:
       - Inteligencia artificial del centro
+  /api/v1/organizations/{orgId}/ia/consentimiento:
+    get:
+      description: "El texto que el centro tiene que aceptar para usar cualquier funcion\
+        \ de IA (Ley 25.326), con su version. Requiere ser miembro vigente. Version\
+        \ vacia: el despliegue no exige consentimiento."
+      operationId: getConsentimientoIa
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextoConsentimientoIaResponse"
+          description: Texto y version
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: No hay sesion autenticada o falta el contexto
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o es de otro tenant"
+      summary: Texto vigente del consentimiento de IA
+      tags:
+      - Inteligencia artificial del centro
+    post:
+      description: |-
+        Guarda quien acepto, cuando y que version del texto. Requiere tenant:update (solo el ORG_ADMIN). Sin una aceptacion de la version vigente ninguna funcion de IA queda activa. Aceptar de nuevo la misma version no agrega otra aceptacion.
+
+        Si la version enviada no es la vigente (el texto cambio mientras se leia), 409 concurrent-modification: releer el texto y aceptar de nuevo.
+      operationId: aceptarConsentimientoIa
+      parameters:
+      - description: Identificador de la organizacion
+        example: 1
+        in: path
+        name: orgId
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AceptarConsentimientoIaRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FuncionesIaResponse"
+          description: "Aceptado: las funciones de IA del centro, ya con el consentimiento"
+        "400":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: Falta la version
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: El actor no es ORG_ADMIN de la organizacion
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "No existe, esta dada de baja, o es de otro tenant"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+          description: "La version enviada no es la vigente: releer el texto"
+      summary: Aceptar el consentimiento de IA en nombre del centro
+      tags:
+      - Inteligencia artificial del centro
   /api/v1/organizations/{orgId}/ia/motor:
     get:
       description: "Si Ollama responde, que modelo usa cada funcion, si esta descargado\
@@ -29536,6 +29628,19 @@ components:
           minLength: 0
       required:
       - reason
+    AceptarConsentimientoIaRequest:
+      type: object
+      description: Aceptacion del consentimiento de IA en nombre del centro
+      properties:
+        version:
+          type: string
+          description: Version del texto que se leyo y se acepta; tiene que ser la
+            vigente
+          example: 2026-11-26
+          maxLength: 32
+          minLength: 0
+      required:
+      - version
     AceptarTerminosRequest:
       type: object
       description: Aceptacion de la version vigente de los terminos por una cuenta
@@ -34166,6 +34271,32 @@ components:
           format: int64
           description: Ausente si el turno es de otra sede
           example: 501
+    ConsentimientoIaResponse:
+      type: object
+      description: Estado del consentimiento de IA del centro
+      properties:
+        aceptado:
+          type: boolean
+          description: El centro acepto la version vigente
+        aceptadoAt:
+          type: string
+          format: date-time
+          description: Cuando se acepto
+        aceptadoPor:
+          type: string
+          description: "Nombre de quien acepto, copiado al aceptar"
+          example: Ana Gomez
+        exigido:
+          type: boolean
+          description: "El despliegue lo exige. Si es false, lo demas viene vacio\
+            \ y no bloquea nada"
+        versionVigente:
+          type: string
+          description: "Version vigente del texto, la que hay que aceptar"
+          example: 2026-11-26
+      required:
+      - aceptado
+      - exigido
     ConsultaAsistenteRequest:
       type: object
       description: "Una pregunta al asistente de datos. El servidor no guarda la conversacion:\
@@ -40033,6 +40164,10 @@ components:
       description: "Funciones de IA del centro: lo que ofrece el servidor, lo que\
         \ eligio el centro y lo que queda activo"
       properties:
+        consentimiento:
+          $ref: "#/components/schemas/ConsentimientoIaResponse"
+          description: Consentimiento del centro para usar IA (Ley 25.326). Sin aceptar
+            la version vigente ninguna funcion queda activa
         funciones:
           type: array
           description: "Una entrada por funcion, siempre las cuatro"
@@ -40050,6 +40185,7 @@ components:
             edito
           example: 0
       required:
+      - consentimiento
       - funciones
       - organizationId
       - version
@@ -50096,6 +50232,21 @@ components:
           example: 2026-10
       required:
       - aceptacionObligatoria
+    TextoConsentimientoIaResponse:
+      type: object
+      description: Texto vigente del consentimiento de IA
+      properties:
+        texto:
+          type: string
+          description: Texto en parrafos separados por una linea en blanco; las lineas
+            que empiezan con "- " son puntos de una lista
+        version:
+          type: string
+          description: Version del texto; vacia si el despliegue no exige consentimiento
+          example: 2026-11-26
+      required:
+      - texto
+      - version
     TimelineResponse:
       type: object
       description: "Pagina del timeline clinico, mas nuevos primero"
