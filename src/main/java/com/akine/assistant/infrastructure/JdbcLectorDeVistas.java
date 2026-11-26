@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,7 +45,8 @@ public class JdbcLectorDeVistas implements LectorDeVistas {
 	}
 
 	@Override
-	public List<Map<String, Object>> leer(String sql, long organizationId, long consultorioId, int limiteFilas) {
+	public List<Map<String, Object>> leer(String sql, long organizationId, long consultorioId, ZoneId zona,
+			int limiteFilas) {
 		String consulta = sql.strip();
 		if (consulta.endsWith(";")) {
 			consulta = consulta.substring(0, consulta.length() - 1);
@@ -55,6 +57,8 @@ public class JdbcLectorDeVistas implements LectorDeVistas {
 				jdbc.execute("SET TRANSACTION READ ONLY");
 				jdbc.execute("SET LOCAL statement_timeout = " + tiempoMaximoMs);
 				jdbc.execute("SET LOCAL search_path = " + ValidadorDeSql.ESQUEMA);
+				// La sesion es UTC: sin esto CURRENT_DATE seria el dia de Greenwich. La zona sale de la sede.
+				jdbc.queryForList("SELECT set_config('TimeZone', ?, true)", zona.getId());
 				jdbc.queryForList("SELECT set_config('akine.asistente.organizacion', ?, true), "
 						+ "set_config('akine.asistente.sede', ?, true)",
 						String.valueOf(organizationId), String.valueOf(consultorioId));
@@ -63,8 +67,32 @@ public class JdbcLectorDeVistas implements LectorDeVistas {
 		}
 		catch (DataAccessException e) {
 			Throwable causa = e.getMostSpecificCause();
-			throw new ConsultaInvalidaException(causa.getMessage() == null ? e.getMessage() : causa.getMessage(), e);
+			String estado = causa instanceof SQLException motor && motor.getSQLState() != null ? " [SQLState " + motor.getSQLState() + "]" : "";
+			throw new ConsultaInvalidaException(sinValores(causa.getMessage() == null ? e.getMessage() : causa.getMessage(), sql) + estado, e);
 		}
+	}
+
+	/**
+	 * Quita lo que el motor cita entre comillas: un mensaje como {@code invalid input syntax for type integer: "x"}
+	 * puede traer un valor de otro centro. Queda la forma del error; solo se conserva lo citado que aparece en el SQL del modelo.
+	 */
+	public static String sinValores(String mensaje, String sql) {
+		if (mensaje == null) {
+			return "";
+		}
+		String propia = sql == null ? "" : sql.toLowerCase(java.util.Locale.ROOT);
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"([^\"]*)\"|'([^']*)'").matcher(mensaje);
+		StringBuilder salida = new StringBuilder();
+		while (m.find()) {
+			String texto = m.group(1) != null ? m.group(1) : m.group(2);
+			char comilla = m.group(1) != null ? (char) 34 : (char) 39;
+			// Lo que el modelo escribio en su consulta (una columna, un alias) no filtra nada: se conserva.
+			String reemplazo = !texto.isEmpty() && propia.contains(texto.toLowerCase(java.util.Locale.ROOT)) ? m.group()
+					: comilla + "…" + comilla;
+			m.appendReplacement(salida, java.util.regex.Matcher.quoteReplacement(reemplazo));
+		}
+		m.appendTail(salida);
+		return salida.toString();
 	}
 
 	/** Columna a valor, con fechas e instantes como tipos de java.time para que se serialicen en ISO. */

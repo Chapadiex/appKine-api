@@ -1,17 +1,9 @@
 package com.akine.assistant.infrastructure.config;
 
-import com.akine.assistant.application.ConsultaLibre;
-import com.akine.assistant.infrastructure.JdbcLectorDeVistas;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
-import com.akine.assistant.application.Interpretador;
-import com.akine.assistant.application.InterpretadorDeAcciones;
 import com.akine.assistant.domain.AsistenteAjustes;
 import com.akine.platform.spi.modelo.ConfiguracionDeModelo;
 import com.akine.platform.spi.modelo.FabricaDeModelos;
 import com.akine.platform.spi.modelo.ModeloDeLenguaje;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -37,10 +29,6 @@ import java.util.Set;
 @EnableConfigurationProperties(AsistenteProperties.class)
 public class AsistenteConfig {
 
-	static final String PROMPT = "asistente/prompt-interpretador.txt";
-	static final String PROMPT_ACCIONES = "asistente/prompt-acciones.txt";
-	static final String PROMPT_SQL ="asistente/prompt-sql.txt";
-	static final String PROMPT_SQL_CLINICO = "asistente/prompt-sql-clinico.txt";
 	static final Set<String> TIPOS_DE_MODELO = Set.of("ollama", "prueba");
 
 	/** Nombre del bean del modelo del asistente: hay otros del mismo tipo. */
@@ -68,32 +56,6 @@ public class AsistenteConfig {
 	}
 
 	/**
-	 * El interpretador existe siempre; el modelo lo pide en cada llamada, asi que con el asistente
-	 * apagado no hay bean de modelo y nadie lo llama (el servicio corta antes con 409).
-	 */
-	@Bean
-	public Interpretador interpretadorDelAsistente(@Qualifier(MODELO) ObjectProvider<ModeloDeLenguaje> modelo,
-			AsistenteAjustes ajustes) {
-		return new Interpretador(modelo::getObject, leerPrompt(PROMPT), ajustes.plazo());
-	}
-
-	/** El de las acciones, con su propio prompt: el de las consultas no se toca. Existe siempre. */
-	@Bean
-	public InterpretadorDeAcciones interpretadorDeAccionesDelAsistente(
-			@Qualifier(MODELO) ObjectProvider<ModeloDeLenguaje> modelo, AsistenteAjustes ajustes) {
-		return new InterpretadorDeAcciones(modelo::getObject, leerPrompt(PROMPT_ACCIONES), ajustes.plazo());
-	}
-
-	/** Respaldo de consultas libres. Existe siempre; el servicio lo usa solo con el interruptor prendido. */
-	@Bean
-	public ConsultaLibre consultaLibreDelAsistente(ObjectProvider<ModeloDeLenguaje> modelo, AsistenteAjustes ajustes,
-			AsistenteProperties properties, JdbcTemplate jdbc, PlatformTransactionManager transacciones) {
-		AsistenteProperties.Sql sql = properties.sql();
-		return new ConsultaLibre(modelo::getObject, new JdbcLectorDeVistas(jdbc, transacciones, sql.tiempoMaximoMs()),
-				leerPrompt(PROMPT_SQL), leerPrompt(PROMPT_SQL_CLINICO), ajustes.plazo(), sql.limiteFilas());
-	}
-
-	/**
 	 * El mismo archivo que mide {@code docs/asistente/evaluacion/evaluar.mjs}: lo que corre es lo que
 	 * se midio. Si falta, la aplicacion no arranca.
 	 */
@@ -102,7 +64,7 @@ public class AsistenteConfig {
 			return new String(entrada.readAllBytes(), StandardCharsets.UTF_8);
 		}
 		catch (IOException e) {
-			throw new UncheckedIOException("No se pudo leer el prompt del interpretador: " + ruta, e);
+			throw new UncheckedIOException("No se pudo leer el prompt del asistente: " + ruta, e);
 		}
 	}
 

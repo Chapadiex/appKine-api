@@ -404,6 +404,30 @@ class CasoClinicoServiceTest {
 				"Recuperar flexion", equipo, confirma);
 	}
 
+	@Test
+	@DisplayName("listarDePersona sin hc:read rechaza igual tenga o no historia la persona")
+	void listar_de_persona_sin_permiso_no_revela_la_historia() {
+		long sinHistoria = 501L;
+		given(historias.buscarVigentePorPersona(ORG_ID, PERSONA_ID)).willReturn(Optional.of(historia()));
+		given(historias.buscarVigentePorPersona(ORG_ID, sinHistoria)).willReturn(Optional.empty());
+		given(permissionGuard.requirePermission(any()))
+				.willThrow(new org.springframework.security.access.AccessDeniedException("sin hc:read"));
+
+		assertThatThrownBy(() -> service.listarDePersona(profesional, PERSONA_ID, true, "motivo"))
+				.isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+		assertThatThrownBy(() -> service.listarDePersona(profesional, sinHistoria, true, "motivo"))
+				.isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+		verify(historias, never()).buscarVigentePorPersona(anyLong(), anyLong());
+	}
+
+	@Test
+	@DisplayName("listarDePersona con permiso y sin historia devuelve vacio")
+	void listar_de_persona_sin_historia_es_vacio() {
+		given(historias.buscarVigentePorPersona(ORG_ID, PERSONA_ID)).willReturn(Optional.empty());
+
+		assertThat(service.listarDePersona(profesional, PERSONA_ID, true, "motivo")).isEmpty();
+	}
+
 	private static CasoClinico casoExistente() {
 		CasoClinico caso = new CasoClinico(ORG_ID, HC_ID, 3, OFERTA_ID, SEDE_ID,
 				"Gonalgia derecha", null, Instant.EPOCH, ACCOUNT_ID);

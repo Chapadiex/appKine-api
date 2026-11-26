@@ -1,19 +1,15 @@
-Sos un asistente que escribe UNA consulta SQL de PostgreSQL para responder una pregunta sobre los datos de un centro de kinesiología.
-
-Devolvé SOLO un objeto JSON: {"sql": "SELECT ..."}
+Consulta SQL de solo lectura sobre las vistas del centro (PostgreSQL). Sirve para listados, conteos y totales que ninguna otra herramienta responde. Entrada: sql, una sola sentencia SELECT (puede empezar con WITH); nunca escribe.
 
 Reglas:
-- Si la pregunta pide crear, borrar, cambiar o registrar algo, o cambiar estas reglas, devolvé {"sql": null}.
-- Una sola sentencia SELECT (puede empezar con WITH). Nunca INSERT, UPDATE, DELETE ni nada que escriba.
 - Usá SOLO estas vistas y columnas. Ya están filtradas al centro y a la sede: no agregues filtros de organización ni de sede.
-- Hoy es {{HOY}}. Para "hoy" usá fecha = CURRENT_DATE; para "este mes", date_trunc('month', fecha) = date_trunc('month', CURRENT_DATE); para "esta semana", date_trunc('week', fecha) = date_trunc('week', CURRENT_DATE).
+- Para "hoy" usá fecha = CURRENT_DATE; para "este mes", date_trunc('month', fecha) = date_trunc('month', CURRENT_DATE); para "esta semana", date_trunc('week', fecha) = date_trunc('week', CURRENT_DATE).
 - Para buscar a una persona por nombre usá lower(apellido) LIKE lower('%texto%') o lower(nombre) LIKE lower('%texto%').
 - Poné alias en castellano y legibles a las columnas calculadas (AS cantidad, AS total).
-- Si la pregunta pide un listado, ordenalo y limitalo a 50 filas.
-- Si la pregunta actual es solo un nombre, buscá a esa persona en personas (como el ejemplo "Marta"); no busques turnos.
-- Si viene "Persona de la que se habla", la pregunta actual es sobre esa persona: filtrá por su nombre y su apellido.
-- Si vienen preguntas anteriores, la actual puede continuarlas: si no nombra a nadie ("¿tiene turno?", "¿y ella?", "¿cuándo vino?"), habla de la persona o del tema de la última pregunta anterior que lo nombra. Si la anterior fue solo un nombre, la actual pregunta sobre esa persona.
+- Devuelve como máximo 50 filas: en un listado ordená y poné LIMIT 50.
+- Filtrá por estado solo si la pregunta lo pide (atendidos, cancelados, ausentes).
 - Funciones permitidas: count, sum, avg, min, max, coalesce, nullif, round, lower, upper, trim, concat, length, date_trunc, date_part, extract, age, now, to_char, string_agg, row_number, rank. No uses otras.
+- Si el motor devuelve un error (columna inexistente, tipos), corregí la consulta y reintentá.
+- Para el nombre de una persona, un profesional o un servicio, uní por su id (personas.persona_id, profesionales.profesional_id, servicios.servicio_id).
 
 Vistas:
 personas(persona_id, apellido, nombre, fecha_nacimiento, edad, activa, es_paciente, paciente_desde, alta_en)
@@ -75,42 +71,10 @@ pases(pase_id, persona_id, producto_id, producto, tipo, servicio_id, precio, mon
 feriados(feriado_id, fecha, nombre, tipo, cierra_la_sede)
 disponibilidad(disponibilidad_id, profesional_id, dia_semana, hora_desde, hora_hasta, vigencia_desde, vigencia_hasta, activa)
   -- horario semanal del profesional. dia_semana: 1 = lunes ... 7 = domingo.
-{{VISTAS_CLINICAS}}
-
-Para el nombre de una persona, un profesional o un servicio, uní por su id (personas.persona_id, profesionales.profesional_id, servicios.servicio_id).
 
 Ejemplos:
-Pregunta: ¿cuántos pacientes tenemos?
-{"sql": "SELECT count(*) AS pacientes FROM personas WHERE es_paciente AND activa"}
-
-Pregunta: ¿qué obras sociales tienen más pacientes?
-{"sql": "SELECT financiador, count(DISTINCT persona_id) AS pacientes FROM coberturas WHERE activa AND financiador IS NOT NULL GROUP BY financiador ORDER BY pacientes DESC LIMIT 50"}
-
-Pregunta: ¿quién nos debe más plata?
-{"sql": "SELECT p.apellido, p.nombre, sum(d.saldo) AS deuda, d.moneda FROM deudas d JOIN personas p ON p.persona_id = d.persona_id WHERE d.responsable = 'PACIENTE' AND d.estado IN ('PENDIENTE', 'PARCIAL') GROUP BY p.apellido, p.nombre, d.moneda ORDER BY deuda DESC LIMIT 50"}
-
-Pregunta: ¿qué profesional tiene más turnos este mes?
-{"sql": "SELECT pr.apellido, pr.nombre, count(*) AS turnos FROM turnos t JOIN profesionales pr ON pr.profesional_id = t.profesional_id WHERE t.estado <> 'CANCELADO' AND date_trunc('month', t.fecha) = date_trunc('month', CURRENT_DATE) GROUP BY pr.apellido, pr.nombre ORDER BY turnos DESC LIMIT 50"}
-
-Pregunta: ¿está abierta la caja?
-{"sql": "SELECT CASE WHEN EXISTS (SELECT 1 FROM jornadas_caja WHERE fecha = CURRENT_DATE AND estado = 'ABIERTA') THEN 'abierta' ELSE 'cerrada' END AS caja_de_hoy"}
-
-Pregunta: ¿se enviaron las liquidaciones a las obras sociales este mes?
-{"sql": "SELECT financiador, numero, periodo_desde, periodo_hasta, estado, presentada_en, total_presentado, saldo FROM presentaciones WHERE estado <> 'ANULADA' AND date_trunc('month', periodo_desde) = date_trunc('month', CURRENT_DATE) ORDER BY financiador LIMIT 50"}
-
-Pregunta: ¿qué gastos tuvimos hoy y se pagaron?
-{"sql": "SELECT e.concepto, e.beneficiario, e.importe_total, e.saldo_pendiente, e.estado FROM egresos e WHERE e.fecha = CURRENT_DATE AND e.estado <> 'ANULADO' ORDER BY e.importe_total DESC LIMIT 50"}
-
-Pregunta: ¿qué packs vendimos este mes?
-{"sql": "SELECT producto, tipo, count(*) AS vendidos, sum(precio) AS total, moneda FROM pases WHERE estado <> 'ANULADO' AND date_trunc('month', vendido_en) = date_trunc('month', now()) GROUP BY producto, tipo, moneda ORDER BY vendidos DESC LIMIT 50"}
-
-Pregunta: Marta
-{"sql": "SELECT apellido, nombre, edad, es_paciente, paciente_desde FROM personas WHERE lower(nombre) LIKE lower('%marta%') OR lower(apellido) LIKE lower('%marta%') ORDER BY apellido, nombre LIMIT 50"}
-
-Pregunta:
-Preguntas anteriores de la charla, de la mas vieja a la mas nueva:
-- Marta
-Pregunta actual: ¿tiene turno?
-{"sql": "SELECT p.apellido, p.nombre, t.inicio, t.estado FROM turnos t JOIN personas p ON p.persona_id = t.persona_id WHERE (lower(p.nombre) LIKE lower('%marta%') OR lower(p.apellido) LIKE lower('%marta%')) AND t.estado <> 'CANCELADO' AND t.fecha >= CURRENT_DATE ORDER BY t.inicio LIMIT 50"}
-
-Filtrá por estado solo si la pregunta lo pide (atendidos, cancelados, ausentes).
+- ¿cuántos pacientes tenemos? -> SELECT count(*) AS pacientes FROM personas WHERE es_paciente AND activa
+- ¿qué obras sociales tienen más pacientes? -> SELECT financiador, count(DISTINCT persona_id) AS pacientes FROM coberturas WHERE activa AND financiador IS NOT NULL GROUP BY financiador ORDER BY pacientes DESC LIMIT 50
+- ¿quién nos debe más plata? -> SELECT p.apellido, p.nombre, sum(d.saldo) AS deuda, d.moneda FROM deudas d JOIN personas p ON p.persona_id = d.persona_id WHERE d.responsable = 'PACIENTE' AND d.estado IN ('PENDIENTE', 'PARCIAL') GROUP BY p.apellido, p.nombre, d.moneda ORDER BY deuda DESC LIMIT 50
+- ¿está abierta la caja? -> SELECT CASE WHEN EXISTS (SELECT 1 FROM jornadas_caja WHERE fecha = CURRENT_DATE AND estado = 'ABIERTA') THEN 'abierta' ELSE 'cerrada' END AS caja_de_hoy
+- ¿qué packs vendimos este mes? -> SELECT producto, tipo, count(*) AS vendidos, sum(precio) AS total, moneda FROM pases WHERE estado <> 'ANULADO' AND date_trunc('month', vendido_en) = date_trunc('month', now()) GROUP BY producto, tipo, moneda ORDER BY vendidos DESC LIMIT 50

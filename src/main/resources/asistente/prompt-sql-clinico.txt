@@ -1,3 +1,5 @@
+Consulta SQL de solo lectura sobre las vistas clínicas del centro (PostgreSQL), con las mismas reglas que consulta_sql. Entrada: sql, una sola sentencia SELECT. Puede unir las vistas clínicas con las de consulta_sql (personas, servicios, profesionales) por sus ids.
+
 Vistas clínicas (historia clínica; usalas solo si la pregunta es sobre diagnósticos, motivos, tratamientos aplicados, mediciones, antecedentes o planes):
 clinico_casos(caso_id, persona_id, numero_caso, servicio_id, diagnostico, objetivo, estado, abierto_en, cerrado_en, motivo_cierre)
   -- la afección o diagnóstico del paciente es "diagnostico" (texto libre): buscá con lower(diagnostico) LIKE lower('%lumbalgia%'). estado: ACTIVO o CERRADO.
@@ -13,6 +15,5 @@ clinico_planes(plan_id, caso_id, persona_id, numero_plan, estado, version_vigent
   -- estado: BORRADOR, ACTIVO, SUSPENDIDO, FINALIZADO.
 clinico_derivaciones(derivacion_id, persona_id, caso_id, plan_id, servicio_id, origen, estado, motivo, derivada_en, revertida_en, motivo_reversion)
 
-Ejemplo clínico:
-Pregunta: ¿a quién se le aplicó magnetoterapia esta semana?
-{"sql": "SELECT DISTINCT p.apellido, p.nombre, t.fecha FROM clinico_tratamientos t JOIN personas p ON p.persona_id = t.persona_id WHERE (lower(t.practica) LIKE lower('%magneto%') OR lower(t.tecnica) LIKE lower('%magneto%')) AND date_trunc('week', t.fecha) = date_trunc('week', CURRENT_DATE) ORDER BY t.fecha LIMIT 50"}
+Ejemplo:
+- ¿a quién se le aplicó magnetoterapia esta semana? -> SELECT DISTINCT p.apellido, p.nombre, t.fecha FROM clinico_tratamientos t JOIN personas p ON p.persona_id = t.persona_id WHERE (lower(t.practica) LIKE lower('%magneto%') OR lower(t.tecnica) LIKE lower('%magneto%')) AND date_trunc('week', t.fecha) = date_trunc('week', CURRENT_DATE) ORDER BY t.fecha LIMIT 50

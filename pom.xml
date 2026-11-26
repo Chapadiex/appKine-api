@@ -27,6 +27,7 @@
 		<dependency-check.version>12.2.2</dependency-check.version>
 		<pdfbox.version>3.0.8</pdfbox.version>
 		<langchain4j-embeddings.version>1.24.0-beta34</langchain4j-embeddings.version>
+		<anthropic-java.version>3.13.0</anthropic-java.version>
 		<akine.it.procesos>2</akine.it.procesos>
 		<!-- Parches de seguridad por encima de lo que gestiona Spring Boot 4.1.1 (G-6, 09/10/2026).
 		     Tomcat 11.0.24: tres CVE criticos (CVE-2026-65905, -65182, -68525), corregidos en
@@ -39,8 +40,26 @@
 		<jackson-2-bom.version>2.21.7</jackson-2-bom.version>
 		<!-- Version SemVer del contrato OpenAPI publicado. Se sube a mano en la etapa
 		     que cambie la API: minor para cambios aditivos, major para incompatibles. -->
-		<akine.contract.version>0.192.0</akine.contract.version>
+		<akine.contract.version>0.193.0</akine.contract.version>
 	</properties>
+
+	<!-- Convergencia que exige el enforcer al sumar anthropic-java: su okhttp 4.12 trae okio 3.6 y el
+	     exportador OTLP trae okio 3.18 (okio 3.x es compatible hacia atras); error_prone_annotations
+	     llega en 2.48 por gson y en 2.50 por el SDK. Se fija la mayor de cada una. -->
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>com.squareup.okio</groupId>
+				<artifactId>okio-jvm</artifactId>
+				<version>3.18.1</version>
+			</dependency>
+			<dependency>
+				<groupId>com.google.errorprone</groupId>
+				<artifactId>error_prone_annotations</artifactId>
+				<version>2.50.0</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 
 	<dependencies>
 		<!-- ===== Web / API ===== -->
@@ -97,6 +116,13 @@
 			<groupId>dev.langchain4j</groupId>
 			<artifactId>langchain4j-embeddings</artifactId>
 			<version>${langchain4j-embeddings.version}</version>
+		</dependency>
+
+		<!-- SDK oficial de Anthropic: proveedor Claude del agente del asistente. -->
+		<dependency>
+			<groupId>com.anthropic</groupId>
+			<artifactId>anthropic-java</artifactId>
+			<version>${anthropic-java.version}</version>
 		</dependency>
 
 		<!-- ===== Seguridad =====

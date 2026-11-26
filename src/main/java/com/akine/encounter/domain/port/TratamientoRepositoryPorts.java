@@ -3,6 +3,9 @@ package com.akine.encounter.domain.port;
 import com.akine.encounter.domain.TratamientoParametro;
 import com.akine.encounter.domain.TratamientoRealizado;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -77,6 +80,38 @@ public final class TratamientoRepositoryPorts {
 		 * clinico. Lo sostiene {@code ix_tratamiento_practica}.
 		 */
 		List<Long> practicasVigentesDe(long organizationId, long sesionId);
+
+		/**
+		 * Los tratamientos <b>vigentes</b> de sesiones <b>cerradas</b> de la sede, cerradas en
+		 * {@code [desde, hastaExclusivo)} en la zona dada, mas recientes primero (asistente,
+		 * {@code practicas_aplicadas}).
+		 *
+		 * @param practicaIds              vacio = todas las practicas
+		 * @param personaId                {@code null} = todas las personas
+		 * @param profesionalMembershipIds {@code null} = sin recorte; si no, solo las sesiones que
+		 *                                 atendio o los tratamientos que aplico alguna de ellas
+		 * @param limite                   filas como maximo; {@code total} cuenta todas
+		 */
+		PracticasAplicadas aplicados(long organizationId, long consultorioId, LocalDate desde,
+				LocalDate hastaExclusivo, ZoneId zona, Collection<Long> practicaIds, Long personaId,
+				Collection<Long> profesionalMembershipIds, int limite);
+	}
+
+	/**
+	 * Un tratamiento aplicado en una sesion cerrada, con la persona atendida. Sin texto clinico.
+	 * Se llama asi y no {@code TratamientoAplicado} porque ese nombre ya es el comando de dominio.
+	 */
+	public record TratamientoAplicadoEnSede(long sesionId, long personaId, String personaNombre,
+			LocalDate fecha, long practicaId, String practicaNombre, String zona, String lateralidad,
+			Long profesionalMembershipId) {
+	}
+
+	/** Las filas pedidas (hasta el limite) y cuantas habia en total. */
+	public record PracticasAplicadas(List<TratamientoAplicadoEnSede> filas, long total) {
+
+		public PracticasAplicadas {
+			filas = List.copyOf(filas);
+		}
 	}
 
 	/** Persistencia de los parametros tipados. */

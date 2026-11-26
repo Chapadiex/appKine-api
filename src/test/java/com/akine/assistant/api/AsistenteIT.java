@@ -41,7 +41,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * dependen de el: permiso, aislamiento entre organizaciones, que el SQL de cada herramienta corra
  * contra el motor y que la auditoria nunca guarde la pregunta.
  *
- * <p>La precision del modelo se mide aparte, contra Ollama real ({@code InterpretadorContraOllamaTest}).
+ * <p>Las consultas que pasan por el agente (herramientas, aislamiento por nombre, auditoria) las prueba
+ * {@code AgenteDelAsistenteIT}; aca quedan las puertas que cortan antes del modelo y el dictado.
  */
 @SpringBootTest(
 		webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -49,6 +50,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 				"akine.security.rate-limit.enabled=false",
 				"akine.asistente.enabled=true",
 				"akine.asistente.modelo.tipo=prueba",
+				"akine.asistente.agente.proveedor=prueba",
 				"akine.dictado.enabled=true",
 				"akine.dictado.transcriptor.tipo=prueba"})
 @ActiveProfiles("local")
@@ -93,45 +95,7 @@ class AsistenteIT {
 	}
 
 	@Test
-	void responde_la_asistencia_con_la_persona_del_padron_y_el_sql_real_de_turnos() throws Exception {
-		modelo.responderJson(interpretacion("ASISTENCIA_PERSONA", apellidoEnA, null, "ESTA_SEMANA", null));
-
-		JsonNode r = preguntar(centroA, centroA.consultorioId(), "¿" + apellidoEnA + " vino esta semana?", 200);
-
-		assertThat(r.get("resultado").asString()).isEqualTo("RESPONDIDA");
-		assertThat(r.get("texto").asString()).startsWith(apellidoEnA + ", Ana no tiene turnos entre el ");
-		assertThat(r.get("enlace").asString()).startsWith("/pacientes/");
-	}
-
-	@Test
-	void agenda_clases_y_reporte_corren_contra_el_motor() throws Exception {
-		modelo.responderJson(interpretacion("AGENDA_DEL_DIA", null, null, "MANANA", null));
-		assertThat(preguntar(centroA, centroA.consultorioId(), "¿quiénes vienen mañana?", 200)
-				.get("texto").asString()).contains("no hay turnos");
-
-		modelo.responderJson(interpretacion("ASISTENTES_CLASE", null, "yoga", "HOY", null));
-		assertThat(preguntar(centroA, centroA.consultorioId(), "¿quiénes vinieron a yoga hoy?", 200)
-				.get("texto").asString()).startsWith("No encontré una clase de \"yoga\"");
-
-		modelo.responderJson(interpretacion("REPORTE", null, null, "ESTE_MES", "TURNOS"));
-		JsonNode reporte = preguntar(centroA, centroA.consultorioId(), "¿cuántos turnos hubo este mes?", 200);
-		assertThat(reporte.get("resultado").asString()).isEqualTo("RESPONDIDA");
-		assertThat(reporte.get("filas").size()).isPositive();
-	}
-
-	@Test
-	void una_persona_de_otra_organizacion_no_existe_para_el_asistente() throws Exception {
-		modelo.responderJson(interpretacion("ASISTENCIA_PERSONA", apellidoEnB, null, null, null));
-
-		JsonNode r = preguntar(centroA, centroA.consultorioId(), "¿" + apellidoEnB + " vino?", 200);
-
-		assertThat(r.get("resultado").asString()).isEqualTo("PERSONA_NO_ENCONTRADA");
-	}
-
-	@Test
 	void la_sede_de_otra_organizacion_es_404() throws Exception {
-		modelo.responderJson(interpretacion("AGENDA_DEL_DIA", null, null, "HOY", null));
-
 		JsonNode r = preguntar(centroB, centroA.consultorioId(), "¿quiénes vienen hoy?", 404);
 
 		assertThat(r.get("type").asString()).endsWith("/not-found");
@@ -158,31 +122,7 @@ class AsistenteIT {
 		assertThat(conNull.statusCode()).as(conNull.body()).isEqualTo(400);
 	}
 
-	@Test
-	void la_auditoria_registra_la_consulta_sin_la_pregunta() throws Exception {
-		String marca = "Marca" + sufijo();
-		modelo.responderJson(interpretacion("AGENDA_DEL_DIA", null, null, "HOY", null));
-
-		preguntar(centroA, centroA.consultorioId(), "¿quiénes vienen hoy? " + marca, 200);
-
-		Integer conMarca = jdbc.queryForObject("SELECT COUNT(*) FROM audit_event WHERE event_type = 'ASISTENTE_CONSULTA' "
-				+ "AND organization_id = ? AND details::text LIKE ?", Integer.class, centroA.organizationId(), "%" + marca + "%");
-		Integer total = jdbc.queryForObject("SELECT COUNT(*) FROM audit_event WHERE event_type = 'ASISTENTE_CONSULTA' "
-				+ "AND organization_id = ? AND details::text LIKE '%AGENDA_DEL_DIA%'", Integer.class, centroA.organizationId());
-		assertThat(conMarca).isZero();
-		assertThat(total).isPositive();
-	}
-
 	// ------------------------------------------------------------------ soporte
-
-	private static String interpretacion(String intencion, String persona, String clase, String periodo, String reporte) {
-		return "{\"intencion\":" + q(intencion) + ",\"persona\":" + q(persona) + ",\"clase\":" + q(clase)
-				+ ",\"periodo\":" + q(periodo) + ",\"reporte\":" + q(reporte) + "}";
-	}
-
-	private static String q(String v) {
-		return v == null ? "null" : "\"" + v + "\"";
-	}
 
 	private static String sufijo() {
 		// Solo letras: la busqueda del padron normaliza el nombre.

@@ -175,7 +175,7 @@ class AltaDePacientePorElAsistente implements AccionDelAsistente {
 	}
 
 	private static OpcionDeTarjeta opcion(PersonaView persona) {
-		String documento = PersonasEnElAsistente.enmascarado(persona.tipoDocumento(), persona.numeroDocumento());
+		String documento = PersonasParaElAgente.enmascarado(persona.tipoDocumento(), persona.numeroDocumento());
 		return new OpcionDeTarjeta(persona.id(), nombreDe(persona) + (documento == null ? "" : " · " + documento));
 	}
 
@@ -186,7 +186,7 @@ class AltaDePacientePorElAsistente implements AccionDelAsistente {
 			return null;
 		}
 		return personas.buscar(operador, new PersonaBusqueda(documento, PersonaEstadoFiltro.ACTIVO, null), 0,
-						PersonasEnElAsistente.MAXIMO)
+						PersonasParaElAgente.MAXIMO)
 				.contenido().stream()
 				.filter(persona -> TIPO_POR_DEFECTO.name().equals(persona.tipoDocumento())
 						&& clave.equals(ClaveDeBusqueda.deDocumento(persona.numeroDocumento())))

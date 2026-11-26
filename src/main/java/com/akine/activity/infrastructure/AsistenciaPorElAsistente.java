@@ -99,12 +99,12 @@ class AsistenciaPorElAsistente implements AccionDelAsistente {
 		Instant desde = pedido.hoy().atStartOfDay(pedido.zona()).toInstant();
 		Instant hasta = pedido.hoy().plusDays(1).atStartOfDay(pedido.zona()).toInstant();
 		boolean conNombre = pedido.clase() != null && !pedido.clase().isBlank();
-		String buscado = conNombre ? ClasesEnElAsistente.normal(pedido.clase()) : null;
+		String buscado = conNombre ? ClasesParaElAgente.normal(pedido.clase()) : null;
 
 		List<ClaseView> deHoy = clases.listar(operador, actor.consultorioId(), desde, hasta).stream()
 				.filter(c -> !EstadoClase.CANCELADA.name().equals(c.estado()))
-				.filter(c -> buscado == null || (ClasesEnElAsistente.nombre(c) != null
-						&& ClasesEnElAsistente.normal(ClasesEnElAsistente.nombre(c)).contains(buscado)))
+				.filter(c -> buscado == null || (ClasesParaElAgente.nombre(c) != null
+						&& ClasesParaElAgente.normal(ClasesParaElAgente.nombre(c)).contains(buscado)))
 				.sorted(Comparator.comparing((ClaseView c) -> !EstadoClase.EN_CURSO.name().equals(c.estado()))
 						.thenComparing(ClaseView::inicio))
 				.limit(MAX_CLASES)
@@ -164,7 +164,7 @@ class AsistenciaPorElAsistente implements AccionDelAsistente {
 		if ((todosMenos || solo) && nombres != null) {
 			Set<String> vistos = new HashSet<>();
 			for (String dicho : nombres) {
-				String buscado = dicho == null ? "" : ClasesEnElAsistente.normal(dicho);
+				String buscado = dicho == null ? "" : ClasesParaElAgente.normal(dicho);
 				if (buscado.isEmpty() || !vistos.add(buscado)) {
 					continue;
 				}
@@ -204,7 +204,7 @@ class AsistenciaPorElAsistente implements AccionDelAsistente {
 	}
 
 	private static String plegado(String texto) {
-		return texto == null ? "" : ClasesEnElAsistente.normal(texto);
+		return texto == null ? "" : ClasesParaElAgente.normal(texto);
 	}
 
 	private static String etiqueta(Participante participante) {
@@ -236,7 +236,7 @@ class AsistenciaPorElAsistente implements AccionDelAsistente {
 	/** Los inscriptos con lugar: ni cancelados ni en lista de espera. */
 	private List<Participante> participantes(OperatingActor operador, long consultorioId, long claseId) {
 		return asistencias
-				.detalleOperativo(operador, consultorioId, claseId, 0, ClasesEnElAsistente.MAX_PARTICIPANTES)
+				.detalleOperativo(operador, consultorioId, claseId, 0, ClasesParaElAgente.MAX_PARTICIPANTES)
 				.contenido().stream()
 				.filter(AsistenciaPorElAsistente::tieneLugar)
 				.map(p -> new Participante(p.inscripcion().id(), p.nombre(), p.apellido(),
@@ -314,7 +314,7 @@ class AsistenciaPorElAsistente implements AccionDelAsistente {
 			// Lo ya registrado tambien se relee: decide que se saltea y que es una correccion.
 			Map<Long, ResultadoAsistencia> registrados = new HashMap<>();
 			for (ParticipanteOperativoView p : asistencias.detalleOperativo(operador, consultorioId, claseId, 0,
-					ClasesEnElAsistente.MAX_PARTICIPANTES).contenido()) {
+					ClasesParaElAgente.MAX_PARTICIPANTES).contenido()) {
 				nombres.put(p.inscripcion().id(),
 						etiqueta(new Participante(p.inscripcion().id(), p.nombre(), p.apellido(), null)));
 				if (p.asistencia() != null) {
@@ -394,7 +394,7 @@ class AsistenciaPorElAsistente implements AccionDelAsistente {
 	}
 
 	private static String nombreDe(ClaseView clase) {
-		String nombre = ClasesEnElAsistente.nombre(clase);
+		String nombre = ClasesParaElAgente.nombre(clase);
 		return nombre == null || nombre.isBlank() ? "la clase" : nombre.strip();
 	}
 

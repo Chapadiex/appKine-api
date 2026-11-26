@@ -8,7 +8,7 @@ info:
 
     Este artefacto es propiedad del repositorio backend. El frontend genera su cliente TypeScript desde una version fijada de este contrato y no define DTO manuales.
   title: AKINE API
-  version: 0.192.0
+  version: 0.193.0
 servers:
 - description: Servidor que sirve este contrato
   url: /
@@ -2895,11 +2895,11 @@ paths:
   /api/v1/consultorios/{consultorioId}/asistente/consultas:
     post:
       description: |-
-        Responde una pregunta sobre los datos de la sede: si una persona vino o tiene la sesion cargada, quienes vienen un dia, quienes fueron a una clase y los numeros de los reportes ECONOMICO, TURNOS y CLASES. Requiere `asistente:use` y el interruptor `akine.asistente.enabled`.
+        Responde una pregunta sobre los datos de la sede: turnos y asistencia, sesiones, pacientes, coberturas, practicas y precios, deudas y cobros, clases, reportes y como se usa AKINE. Requiere `asistente:use` y el interruptor `akine.asistente.enabled`.
 
-        Un modelo de lenguaje local **solo interpreta** la pregunta; el texto se arma con plantillas a partir de los datos, y ningun dato de la sede llega al modelo. Cada respuesta corre con los permisos del usuario: lo que no puede ver en pantalla vuelve con `resultado` SIN_PERMISO, con 200.
+        Un modelo de lenguaje responde como **agente**: pide herramientas de solo lectura, cada una ejecutada con los permisos del usuario, y redacta el texto con sus resultados. Los resultados de las herramientas viajan al proveedor del modelo. `herramientas` lista las que llamo, con su entrada. Lo que el usuario no puede ver vuelve como `sin_permiso` al modelo; si todo fue rechazado, `resultado` es SIN_PERMISO, con 200.
 
-        Si no esta claro de que persona se habla, `resultado` es ACLARACION y `opciones` trae hasta cinco: el cliente reenvia la misma pregunta con el `personaId` elegido. El servidor no guarda la conversacion: `historial` lleva las preguntas anteriores con la `interpretacion` que devolvio cada una.
+        Si el modelo necesita saber de que persona se habla, `resultado` es ACLARACION y `opciones` trae hasta cinco: el cliente reenvia la misma pregunta con el `personaId` elegido. El servidor no guarda la conversacion: `historial` lleva cada pregunta anterior con el texto que se respondio y los ids de las personas nombradas; `interpretacion` esta deprecada y se ignora.
 
         Con `akine.asistente.acciones.enabled` y `asistente:acciones`, una frase que cuenta o pide algo ("vinieron todos menos Maria", "Juan pago 15.000 en efectivo") no se responde: `resultado` es PROPUESTA y `accion` trae una tarjeta para revisar. **Nada se graba** hasta `confirmarAccionDelAsistente`.
       operationId: consultarAsistente
@@ -2971,8 +2971,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "`asistente-no-disponible`: el modelo no responde o vencio\
-            \ el plazo"
+          description: "`asistente-no-disponible`: no responde ni el proveedor principal\
+            \ ni el alternativo"
       summary: Preguntarle al asistente de datos
       tags:
       - Asistente
@@ -22779,8 +22779,9 @@ paths:
   /api/v1/organizations/{orgId}/ia/motor:
     get:
       description: "Si Ollama responde, que modelo usa cada funcion, si esta descargado\
-        \ y cargado, y si corre en GPU o en CPU. Siempre 200: un servidor caido viaja\
-        \ con alcanzable=false. Requiere tenant:update."
+        \ y cargado, y si corre en GPU o en CPU, y que proveedor usa el asistente\
+        \ (sin la key, solo si hay una). Siempre 200: un servidor caido viaja con\
+        \ alcanzable=false. Requiere tenant:update."
       operationId: getEstadoDelMotorDeIa
       parameters:
       - description: Identificador de la organizacion
@@ -38558,7 +38559,8 @@ components:
           example: 0
     EstadoDelMotorResponse:
       type: object
-      description: Servidor de modelos de lenguaje (Ollama) del despliegue
+      description: Servidor de modelos de lenguaje (Ollama) del despliegue y proveedor
+        del asistente
       properties:
         alcanzable:
           type: boolean
@@ -38571,6 +38573,10 @@ components:
           description: "Un modelo por nombre, con las funciones que lo usan"
           items:
             $ref: "#/components/schemas/ModeloDelMotorResponse"
+        proveedorAsistente:
+          $ref: "#/components/schemas/ProveedorDelAsistenteResponse"
+          description: "Proveedor del agente del asistente configurado en el despliegue;\
+            \ ausente si no se pudo leer. Nunca trae la key, solo si hay una"
         url:
           type: string
           description: Direccion del servidor; ausente si ninguna funcion usa Ollama
@@ -41649,6 +41655,29 @@ components:
           type: integer
           format: int64
           example: 3
+    LlamadaDeHerramientaDelAsistente:
+      type: object
+      description: Una herramienta que llamo el asistente
+      properties:
+        entrada:
+          type: object
+          additionalProperties: {}
+          description: La entrada que le paso el modelo
+        filas:
+          type: integer
+          format: int32
+          description: Cuantas filas devolvio
+        herramienta:
+          type: string
+          example: buscar_persona
+        sinPermiso:
+          type: boolean
+          description: El servicio rechazo al usuario
+      required:
+      - entrada
+      - filas
+      - herramienta
+      - sinPermiso
     LoginRequest:
       type: object
       description: Credenciales para abrir una sesion
@@ -46166,6 +46195,47 @@ components:
           type: string
           description: Lo dicho que no entro en ningun campo; la pantalla ofrece llevarlo
             a las notas
+    ProveedorAlternativoResponse:
+      type: object
+      description: Proveedor alternativo del agente del asistente
+      properties:
+        modelo:
+          type: string
+          description: Modelo configurado; ausente si el proveedor no tiene uno
+          example: qwen3:4b-instruct
+        nombre:
+          type: string
+          description: "claude, compatible o prueba"
+          example: compatible
+        tieneKey:
+          type: boolean
+          description: Si hay una key cargada (la key nunca viaja)
+      required:
+      - nombre
+      - tieneKey
+    ProveedorDelAsistenteResponse:
+      type: object
+      description: "Proveedor del agente del asistente: el principal y, si hay, el\
+        \ alternativo"
+      properties:
+        alternativo:
+          $ref: "#/components/schemas/ProveedorAlternativoResponse"
+          description: Proveedor al que se cae si el principal no responde; ausente
+            si no hay
+        modelo:
+          type: string
+          description: Modelo configurado; ausente si el proveedor no tiene uno
+          example: claude-opus-5-5
+        nombre:
+          type: string
+          description: "claude, compatible o prueba"
+          example: claude
+        tieneKey:
+          type: boolean
+          description: Si hay una key cargada (la key nunca viaja)
+      required:
+      - nombre
+      - tieneKey
     PruebaDelMotorResponse:
       type: object
       description: Resultado de una pregunta minima al modelo
@@ -47860,9 +47930,8 @@ components:
             type: string
         consulta:
           type: string
-          description: El SELECT que respondio una consulta libre (la pregunta no
-            entraba en ninguna intencion y el usuario tiene asistente:sql); null en
-            las demas
+          description: El ultimo SELECT que corrio la herramienta de consulta en SQL
+            para responder (requiere asistente:sql); null si no se uso
           example: SELECT count(*) AS pacientes FROM personas WHERE es_paciente AND
             activa
         enlace:
@@ -47872,12 +47941,22 @@ components:
         filas:
           type: array
           description: "Los datos detras del texto, una fila por elemento. Las claves\
-            \ dependen de la intencion; los instantes van en ISO-8601"
+            \ dependen de la herramienta; los instantes van en ISO-8601"
           items:
             type: object
             additionalProperties: true
+        herramientas:
+          type: array
+          description: "Las herramientas que llamo el asistente para responder, en\
+            \ orden, con su entrada: para mostrar como lo resolvio. Tambien en las\
+            \ propuestas de accion, que terminan con la llamada a proponer_accion"
+          items:
+            $ref: "#/components/schemas/LlamadaDeHerramientaDelAsistente"
         interpretacion:
           $ref: "#/components/schemas/InterpretacionDto"
+          deprecated: true
+          description: "Deprecada desde el agente: siempre FUERA_DE_ALCANCE. Se mantiene\
+            \ por compatibilidad"
         opciones:
           type: array
           description: "Si no esta claro de quien se habla, las personas entre las\
@@ -47897,11 +47976,12 @@ components:
           - PROPUESTA
         texto:
           type: string
-          description: "La respuesta en texto, armada con una plantilla a partir de\
-            \ los datos: el modelo no la redacta"
+          description: La respuesta en texto. La redacta el modelo a partir de los
+            resultados de las herramientas que llamo en esta consulta
       required:
       - advertencias
       - filas
+      - herramientas
       - interpretacion
       - opciones
       - resultado
@@ -50808,17 +50888,34 @@ components:
           $ref: "#/components/schemas/Turno"
     TurnoPrevioRequest:
       type: object
-      description: Una pregunta anterior de la conversacion y la interpretacion que
-        devolvio el servidor
+      description: "Una pregunta anterior de la conversacion, el texto que respondio\
+        \ el servidor y los ids de las personas que nombro. Nunca resultados de herramientas:\
+        \ el servidor vuelve a pedir cada dato"
       properties:
         interpretacion:
           $ref: "#/components/schemas/InterpretacionDto"
+          deprecated: true
+          description: "Deprecada desde el agente: se acepta y se ignora"
+        personaIds:
+          type: array
+          description: Ids de las personas que nombro esa respuesta; el servidor los
+            valida contra el tenant
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+          maxItems: 10
+          minItems: 0
         pregunta:
           type: string
           maxLength: 300
           minLength: 0
+        respuesta:
+          type: string
+          description: El texto que respondio el servidor
+          maxLength: 2000
+          minLength: 0
       required:
-      - interpretacion
       - pregunta
     TurnosDePersona:
       type: object

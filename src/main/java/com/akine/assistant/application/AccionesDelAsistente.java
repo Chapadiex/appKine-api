@@ -1,7 +1,6 @@
 package com.akine.assistant.application;
 
 import com.akine.assistant.application.RespuestaDelAsistente.AccionParaConfirmar;
-import com.akine.assistant.application.RespuestaDelAsistente.OpcionDePersona;
 import com.akine.assistant.application.RespuestaDelAsistente.Resultado;
 import com.akine.assistant.domain.AccionPropuesta;
 import com.akine.assistant.domain.AsistenteAjustes;
@@ -13,14 +12,9 @@ import com.akine.assistant.domain.exception.AccionesDeshabilitadasException;
 import com.akine.assistant.domain.port.AccionesPropuestas;
 import com.akine.assistant.spi.AccionDelAsistente;
 import com.akine.assistant.spi.ActorDelAsistente;
-import com.akine.assistant.spi.ClavesDeFila;
-import com.akine.assistant.spi.HerramientaDelAsistente;
-import com.akine.assistant.spi.Intencion;
 import com.akine.assistant.spi.PedidoDeAccion;
-import com.akine.assistant.spi.PedidoDeHerramienta;
 import com.akine.assistant.spi.PropuestaDeAccion;
 import com.akine.assistant.spi.ResultadoDeAccion;
-import com.akine.assistant.spi.ResultadoDeHerramienta;
 import com.akine.assistant.spi.Tarjeta;
 import com.akine.assistant.spi.TipoDeAccion;
 import com.akine.organization.spi.FuncionIa;
@@ -43,11 +37,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
- * Las acciones del asistente: proponer a partir de una frase, y confirmar o descartar lo propuesto
- * (docs/diseno/AKINE-asistente-acciones.md).
+ * Las acciones del asistente: proponer lo que el agente entendio (la herramienta
+ * {@code proponer_accion}), y confirmar o descartar lo propuesto (docs/diseno/AKINE-asistente-acciones.md,
+ * AKINE-asistente-agente.md §5.3).
  *
  * <p><b>Nada se graba al proponer.</b> La propuesta guarda solo ids y vence; la confirmacion la toma
  * con un UPDATE condicionado, asi que dos confirmaciones a la vez ejecutan una sola, y recien ahi
@@ -76,35 +70,31 @@ public class AccionesDelAsistente {
 	static final java.time.Duration ABANDONO = java.time.Duration.ofMinutes(2);
 	static final String TEXTO_PROPUESTA = "Entendí esto. Revisalo y confirmá.";
 	static final String SIN_PERMISO = "No tenés permiso para hacer eso.";
+	static final String NO_DISPONIBLE = "Eso no lo puedo cargar desde el asistente.";
 	static final String YA_CONFIRMADA = "Esto ya estaba confirmado: no lo grabé de nuevo.";
 
 	private final AsistenteAjustes ajustes;
 	private final PermissionEvaluator permisos;
 	private final FuncionesIaDelCentro funcionesIa;
-	private final InterpretadorDeAcciones interpretador;
 	private final AccionesPropuestas propuestas;
 	private final AuditoriaDelAsistente auditoria;
 	private final Map<TipoDeAccion, AccionDelAsistente> acciones = new EnumMap<>(TipoDeAccion.class);
-	private final HerramientaDelAsistente buscadorDePersonas;
 	private final Clock clock;
 	private final JsonMapper json = JsonMapper.builder().build();
 
 	@Autowired
 	public AccionesDelAsistente(AsistenteAjustes ajustes, PermissionEvaluator permisos,
-			FuncionesIaDelCentro funcionesIa, InterpretadorDeAcciones interpretador, AccionesPropuestas propuestas,
-			AuditoriaDelAsistente auditoria, List<AccionDelAsistente> acciones,
-			List<HerramientaDelAsistente> herramientas) {
-		this(ajustes, permisos, funcionesIa, interpretador, propuestas, auditoria, acciones, herramientas,
-				Clock.systemUTC());
+			FuncionesIaDelCentro funcionesIa, AccionesPropuestas propuestas, AuditoriaDelAsistente auditoria,
+			List<AccionDelAsistente> acciones) {
+		this(ajustes, permisos, funcionesIa, propuestas, auditoria, acciones, Clock.systemUTC());
 	}
 
 	AccionesDelAsistente(AsistenteAjustes ajustes, PermissionEvaluator permisos, FuncionesIaDelCentro funcionesIa,
-			InterpretadorDeAcciones interpretador, AccionesPropuestas propuestas, AuditoriaDelAsistente auditoria,
-			List<AccionDelAsistente> acciones, List<HerramientaDelAsistente> herramientas, Clock clock) {
+			AccionesPropuestas propuestas, AuditoriaDelAsistente auditoria, List<AccionDelAsistente> acciones,
+			Clock clock) {
 		this.ajustes = ajustes;
 		this.permisos = permisos;
 		this.funcionesIa = funcionesIa;
-		this.interpretador = interpretador;
 		this.propuestas = propuestas;
 		this.auditoria = auditoria;
 		this.clock = clock;
@@ -113,68 +103,51 @@ public class AccionesDelAsistente {
 				throw new IllegalStateException("Dos acciones del asistente para " + accion.tipo());
 			}
 		}
-		this.buscadorDePersonas = herramientas.stream()
-				.filter(h -> h.intencion() == Intencion.BUSCAR_PERSONA).findFirst().orElse(null);
 	}
 
 	/**
-	 * Lo que se le responde a una frase que cuenta o pide algo. Vacio si no es una accion (o si las
-	 * acciones estan apagadas, o quien habla no las tiene): el llamador sigue con las consultas, y
-	 * en esos tres casos <b>sin haber llamado al modelo</b>.
+	 * Arma la tarjeta de lo que el agente entendio, sin grabar nada (la herramienta {@code proponer_accion}).
+	 * Lo que se dijo mal o falta lo revalida y lo marca el modulo dueño en la tarjeta; la persona la
+	 * corrige o la descarta.
 	 *
-	 * @param actor          ya con la sede activa; el interruptor del asistente y {@code asistente:use}
-	 *                       los controlo el llamador
-	 * @param personaElegida la opcion elegida en una aclaracion, o {@code null}
+	 * @param actor  ya con la sede activa; el interruptor del asistente y {@code asistente:use} los
+	 *               controlo el llamador
+	 * @param pedido lo que el agente entendio; la persona ya resuelta a un id y su nombre del padron
+	 * @return {@link Resultado#PROPUESTA} con la tarjeta, o un texto sin tarjeta (por ejemplo "no tiene
+	 *         turno hoy") como {@link Resultado#RESPONDIDA}
 	 */
-	public Optional<RespuestaDelAsistente> proponer(ActorDelAsistente actor, ZoneId zona, String frase,
-			Long personaElegida) {
-		if (!ajustes.acciones() || EsPregunta.es(frase) || !puede(actor, PermissionCodes.ASISTENTE_ACCIONES)) {
-			return Optional.empty();
+	public RespuestaDelAsistente proponerPedido(ActorDelAsistente actor, ZoneId zona, PedidoDeAccion pedido) {
+		if (!ajustes.acciones() || !puede(actor, PermissionCodes.ASISTENTE_ACCIONES)) {
+			return simple(SIN_PERMISO, Resultado.SIN_PERMISO);
 		}
-		AccionInterpretada entendida = ControlDeAccion.controlar(interpretador.interpretar(frase), frase);
-		if (entendida.ninguna()) {
-			return Optional.empty();
-		}
-		TipoDeAccion tipo = tipo(entendida, actor);
-		AccionDelAsistente accion = acciones.get(tipo);
+		TipoDeAccion tipo = tipo(pedido.tipo(), actor);
+		AccionDelAsistente accion = tipo == null ? null : acciones.get(tipo);
 		if (accion == null) {
-			return Optional.empty();
+			return simple(NO_DISPONIBLE, Resultado.RESPONDIDA);
 		}
-		LocalDate hoy = LocalDate.now(clock.withZone(zona));
-		Long personaId = null;
-		String personaNombre = null;
-		if (usaPersona(tipo)) {
-			Object resuelta = resolverPersona(actor, entendida.persona(), frase, hoy, zona, personaElegida);
-			if (resuelta instanceof RespuestaDelAsistente corte) {
-				return Optional.of(corte);
-			}
-			@SuppressWarnings("unchecked")
-			Map<String, Object> fila = (Map<String, Object>) resuelta;
-			personaId = idDe(fila);
-			personaNombre = String.valueOf(fila.get(ClavesDeFila.NOMBRE));
-		}
-		PedidoDeAccion pedido = new PedidoDeAccion(tipo, personaId, personaNombre, entendida.clase(),
-				entendida.modoAsistencia(), entendida.nombres(), entendida.monto(), entendida.medio(),
-				entendida.practicas(), entendida.datos(), frase.strip(), hoy, zona);
+		ZoneId enLaSede = zona != null ? zona : pedido.zona();
+		LocalDate hoy = pedido.hoy() != null ? pedido.hoy() : LocalDate.now(clock.withZone(enLaSede));
+		PedidoDeAccion completo = new PedidoDeAccion(tipo, pedido.personaId(), pedido.personaNombre(),
+				pedido.clase(), pedido.modoAsistencia(), pedido.nombres(), pedido.monto(), pedido.medio(),
+				pedido.practicas(), pedido.datos(), pedido.frase() == null ? "" : pedido.frase().strip(), hoy, enLaSede);
 		PropuestaDeAccion propuesta;
 		try {
-			propuesta = accion.preparar(actor, pedido);
+			propuesta = accion.preparar(actor, completo);
 		}
 		catch (AccessDeniedException e) {
-			return Optional.of(simple(SIN_PERMISO, Resultado.SIN_PERMISO));
+			return simple(SIN_PERMISO, Resultado.SIN_PERMISO);
 		}
 		if (propuesta.sinTarjeta() != null || propuesta.tarjeta() == null) {
-			return Optional.of(simple(Objects.requireNonNullElse(propuesta.sinTarjeta(), Plantillas.AYUDA),
-					Resultado.RESPONDIDA));
+			return simple(Objects.requireNonNullElse(propuesta.sinTarjeta(), NO_DISPONIBLE), Resultado.RESPONDIDA);
 		}
 		Instant ahora = Instant.now(clock);
 		Instant venceEn = ahora.plus(ajustes.vigenciaDeAccion());
 		long id = propuestas.guardar(AccionPropuesta.nueva(actor.organizationId(), actor.consultorioId(),
 				actor.accountId(), tipo, propuesta.referencias(), ahora, venceEn));
 		auditar("ASISTENTE_ACCION_PROPUESTA", actor, id, tipo, propuesta.referencias());
-		return Optional.of(new RespuestaDelAsistente(TEXTO_PROPUESTA, Interpretacion.FUERA_DE_ALCANCE, List.of(),
+		return new RespuestaDelAsistente(TEXTO_PROPUESTA, Interpretacion.FUERA_DE_ALCANCE, List.of(),
 				List.of(), null, List.of(), Resultado.PROPUESTA, null, new AccionParaConfirmar(id, tipo,
-						propuesta.titulo(), venceEn, propuesta.tarjeta(), propuesta.avisos(), propuesta.bloqueos())));
+						propuesta.titulo(), venceEn, propuesta.tarjeta(), propuesta.avisos(), propuesta.bloqueos()));
 	}
 
 	/**
@@ -276,12 +249,12 @@ public class AccionesDelAsistente {
 	}
 
 	/** Quien no puede registrar una sesion y cuenta una atencion, registra la llegada (§6.4). */
-	private TipoDeAccion tipo(AccionInterpretada entendida, ActorDelAsistente actor) {
-		TipoDeAccion tipo = TipoDeAccion.valueOf(entendida.accion());
-		return tipo == TipoDeAccion.ATENCION && !puede(actor, SESION_REGISTER) ? TipoDeAccion.LLEGADA : tipo;
+	private TipoDeAccion tipo(TipoDeAccion pedido, ActorDelAsistente actor) {
+		return pedido == TipoDeAccion.ATENCION && !puede(actor, SESION_REGISTER) ? TipoDeAccion.LLEGADA : pedido;
 	}
 
-	private static boolean usaPersona(TipoDeAccion tipo) {
+	/** Las que hablan de una persona ya registrada: el pedido trae su id. */
+	static boolean usaPersona(TipoDeAccion tipo) {
 		return tipo == TipoDeAccion.PAGO || tipo == TipoDeAccion.ATENCION || tipo == TipoDeAccion.LLEGADA
 				|| tipo == TipoDeAccion.PACIENTE_EDICION;
 	}
@@ -289,49 +262,6 @@ public class AccionesDelAsistente {
 	private boolean puede(ActorDelAsistente actor, String permiso) {
 		return permisos.evaluate(new PermissionQuery(actor.accountId(), permiso, actor.organizationId(),
 				actor.consultorioId(), null, Instant.now(clock))).granted();
-	}
-
-	/**
-	 * La fila de la persona, o la respuesta que corta antes. La misma regla que en las consultas: con
-	 * varias se pregunta, y un id elegido solo vale si esta entre los candidatos de ese nombre.
-	 */
-	private Object resolverPersona(ActorDelAsistente actor, String nombre, String frase, LocalDate hoy, ZoneId zona,
-			Long personaElegida) {
-		if (nombre == null || buscadorDePersonas == null) {
-			return simple(Plantillas.FALTA_PERSONA, Resultado.FALTA_PERSONA);
-		}
-		ResultadoDeHerramienta candidatos;
-		try {
-			candidatos = buscadorDePersonas.ejecutar(actor,
-					new PedidoDeHerramienta(null, nombre, frase, hoy, hoy, zona, null));
-		}
-		catch (AccessDeniedException e) {
-			return simple(SIN_PERMISO, Resultado.SIN_PERMISO);
-		}
-		if (candidatos.sinPermiso()) {
-			return simple(SIN_PERMISO, Resultado.SIN_PERMISO);
-		}
-		List<Map<String, Object>> filas = candidatos.filas();
-		Map<String, Object> elegida = personaElegida == null
-				? (filas.size() == 1 ? filas.getFirst() : null)
-				: filas.stream().filter(f -> idDe(f) == personaElegida).findFirst().orElse(null);
-		if (elegida != null) {
-			return elegida;
-		}
-		if (filas.isEmpty() || personaElegida != null) {
-			return simple(Plantillas.personaNoEncontrada(nombre), Resultado.PERSONA_NO_ENCONTRADA);
-		}
-		List<OpcionDePersona> opciones = filas.stream()
-				.limit(AsistenteService.MAX_OPCIONES)
-				.map(f -> new OpcionDePersona(idDe(f), f.get(ClavesDeFila.NOMBRE)
-						+ (f.get(ClavesDeFila.DOCUMENTO) == null ? "" : " · " + f.get(ClavesDeFila.DOCUMENTO))))
-				.toList();
-		return new RespuestaDelAsistente(Plantillas.variasPersonas(nombre), Interpretacion.FUERA_DE_ALCANCE,
-				List.of(), opciones, null, List.of(), Resultado.ACLARACION);
-	}
-
-	private static long idDe(Map<String, Object> fila) {
-		return ((Number) fila.get(ClavesDeFila.PERSONA_ID)).longValue();
 	}
 
 	private static RespuestaDelAsistente simple(String texto, Resultado resultado) {

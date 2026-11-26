@@ -84,6 +84,16 @@ if (-not $SinIa) {
 		if ($LASTEXITCODE -ne 0) { throw "No se pudo bajar $Modelo" }
 	}
 
+	# El agente habla con Ollama por su API compatible con OpenAI, que no acepta num_ctx y usa 4096
+	# tokens: con las herramientas y el esquema SQL el pedido pasa los 7.000 y Ollama responde 400. Se
+	# crea una variante con 16k de contexto (application-ia.yml la usa como proveedor alternativo).
+	$variante = "$($Modelo)-16k"
+	if (-not ($tags.models | Where-Object { $_.name -eq "$variante" -or $_.name -eq "$($variante):latest" })) {
+		Escribir-Paso "Creando $variante para el agente"
+		& docker exec akine-ollama sh -c "printf 'FROM $Modelo\nPARAMETER num_ctx 16384\n' > /tmp/Modelfile-agente && ollama create $variante -f /tmp/Modelfile-agente"
+		if ($LASTEXITCODE -ne 0) { Write-Warning "No se pudo crear ${variante}: el agente sin key de Anthropic no va a responder" }
+	}
+
 	# 4. Precarga: deja el modelo en memoria para que la primera pregunta no pague la carga
 	Escribir-Paso "Precargando $Modelo"
 	# Mismo num_ctx que las llamadas reales (OpcionesGeneracion.NUM_CTX_POR_DEFECTO): con otro, Ollama recarga el modelo en la primera pregunta.
@@ -105,11 +115,17 @@ if (-not $SinIa) {
 		Write-Warning "No esta el modelo de embeddings en $onnx. La biblioteca queda apagada en este arranque."
 		$apagarBiblioteca = $true
 	}
+
+	# 6. Key de Anthropic para el agente del asistente (proveedor claude en el perfil ia). Se hereda por
+	# el entorno; nunca se muestra.
+	if (-not $env:AKINE_ANTHROPIC_API_KEY) {
+		Write-Warning 'Falta AKINE_ANTHROPIC_API_KEY: el asistente responde con el alternativo (Ollama, compatible), mas lento y menos preciso.'
+	}
 }
 
 if ($SinBackend) { Escribir-Paso 'Infraestructura lista. Backend: ./mvnw spring-boot:run "-Dspring-boot.run.profiles=local,ia"'; return }
 
-# 6. Backend
+# 7. Backend
 $perfiles = if ($SinIa) { 'local' } else { 'local,ia' }
 Escribir-Paso "Backend con perfiles $perfiles"
 # La biblioteca se apaga solo para este backend: la variable se restaura al salir, para que un

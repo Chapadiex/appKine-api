@@ -7,18 +7,23 @@ pregunta no entra en ninguna, el modelo escribe un `SELECT`.
 
 ## 1. Flujo
 
-1. El interpretador clasifica la pregunta como siempre.
-2. Va al SQL si: la intención es `FUERA_DE_ALCANCE` y la pregunta no pide crear, borrar ni cambiar nada
-   (`pideCambio`), **o** la intención es `REPORTE` pero la pregunta pide un detalle que ningún reporte da
-   (ranking, "quién", listado, pacientes: `pideDetalle`).
+1. Hasta el agente, el interpretador clasificaba la pregunta e iba al SQL con `FUERA_DE_ALCANCE` o con un
+   `REPORTE` que pedía un detalle. **Desde el agente ese clasificador no existe:** el modelo elige la
+   herramienta, y el SQL es una más (paso 4).
+2. (Sin uso desde el agente.)
 3. Además hacen falta el interruptor `akine.asistente.sql.enabled` (apagado por defecto) y el permiso
    `asistente:sql` en la sede (por base sólo `ORG_ADMIN` y `CONSULTORIO_ADMIN`).
-4. `ConsultaLibre` le manda al modelo el esquema de las vistas (`prompt-sql.txt`) y la pregunta. El
-   modelo devuelve `{"sql": "..."}`.
-5. `ValidadorDeSql` decide si se puede ejecutar. Si el motor la rechaza, se le devuelve el error al modelo
-   **una** vez para que la corrija.
-6. `JdbcLectorDeVistas` la ejecuta y la plantilla arma el texto. La respuesta trae el `SELECT` en
-   `consulta` (contrato 0.173.0), y la pantalla lo muestra en "Ver la consulta".
+4. Desde el agente (`AKINE-asistente-agente.md`), `consulta_sql` y `consulta_sql_clinica` son herramientas del
+   catálogo: el modelo recibe el esquema de las vistas (`prompt-sql.txt`, `prompt-sql-clinico.txt`) como
+   descripción y manda `{"sql": "..."}`. La clínica sólo se ofrece con `asistente:sql` y `hc:read` sin recorte.
+5. `ValidadorDeSql` decide si se puede ejecutar. Si el validador o el motor la rechazan, el mensaje vuelve al
+   modelo como `error: true` dentro del mismo bucle del agente, que reintenta (sin el tope de uno de antes).
+   El mensaje del motor sale **sin los valores citados** (entre comillas simples o dobles queda `…`) y con el
+   SQLState: un cast fallido no puede mostrar el valor de otro centro.
+6. `JdbcLectorDeVistas` la ejecuta, con el `TimeZone` de la transacción en la zona de la sede (la sesión es
+   UTC; sin eso `CURRENT_DATE` se corre un día), y las vistas son `security_barrier` (`V47`) para que el
+   filtro de organización y sede corra antes que cualquier predicado del modelo. La respuesta trae el
+   `SELECT` en `consulta` (contrato 0.173.0), y la pantalla lo muestra en "Ver la consulta".
 
 ## 2. Las tres barreras
 

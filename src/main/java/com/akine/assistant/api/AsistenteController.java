@@ -20,10 +20,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * El asistente de datos: preguntas en lenguaje natural sobre turnos, sesiones, clases y reportes de
- * una sede (docs/diseno/AKINE-asistente-de-datos.md). Solo lectura.
+ * una sede (docs/diseno/AKINE-asistente-agente.md). Solo lectura.
  *
- * <p>Nada de la pregunta ni de la respuesta va al log: la auditoria registra la intencion, los
- * parametros resueltos y el resultado.
+ * <p>Nada de la pregunta ni de la respuesta va al log: la auditoria registra las herramientas
+ * llamadas, el resultado y el consumo de tokens.
  */
 @RestController
 @RequestMapping(
@@ -43,20 +43,21 @@ public class AsistenteController {
 	@PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
 	@Operation(operationId = "consultarAsistente", summary = "Preguntarle al asistente de datos",
 			description = """
-					Responde una pregunta sobre los datos de la sede: si una persona vino o tiene la sesion \
-					cargada, quienes vienen un dia, quienes fueron a una clase y los numeros de los \
-					reportes ECONOMICO, TURNOS y CLASES. Requiere `asistente:use` y el interruptor \
-					`akine.asistente.enabled`.
+					Responde una pregunta sobre los datos de la sede: turnos y asistencia, sesiones, \
+					pacientes, coberturas, practicas y precios, deudas y cobros, clases, reportes y como se \
+					usa AKINE. Requiere `asistente:use` y el interruptor `akine.asistente.enabled`.
 
-					Un modelo de lenguaje local **solo interpreta** la pregunta; el texto se arma con \
-					plantillas a partir de los datos, y ningun dato de la sede llega al modelo. Cada \
-					respuesta corre con los permisos del usuario: lo que no puede ver en pantalla vuelve \
-					con `resultado` SIN_PERMISO, con 200.
+					Un modelo de lenguaje responde como **agente**: pide herramientas de solo lectura, cada \
+					una ejecutada con los permisos del usuario, y redacta el texto con sus resultados. \
+					Los resultados de las herramientas viajan al proveedor del modelo. `herramientas` lista \
+					las que llamo, con su entrada. Lo que el usuario no puede ver vuelve como `sin_permiso` \
+					al modelo; si todo fue rechazado, `resultado` es SIN_PERMISO, con 200.
 
-					Si no esta claro de que persona se habla, `resultado` es ACLARACION y `opciones` trae \
-					hasta cinco: el cliente reenvia la misma pregunta con el `personaId` elegido. El \
-					servidor no guarda la conversacion: `historial` lleva las preguntas anteriores con la \
-					`interpretacion` que devolvio cada una.
+					Si el modelo necesita saber de que persona se habla, `resultado` es ACLARACION y \
+					`opciones` trae hasta cinco: el cliente reenvia la misma pregunta con el `personaId` \
+					elegido. El servidor no guarda la conversacion: `historial` lleva cada pregunta \
+					anterior con el texto que se respondio y los ids de las personas nombradas; \
+					`interpretacion` esta deprecada y se ignora.
 
 					Con `akine.asistente.acciones.enabled` y `asistente:acciones`, una frase que cuenta o \
 					pide algo ("vinieron todos menos Maria", "Juan pago 15.000 en efectivo") no se responde: \
@@ -73,8 +74,8 @@ public class AsistenteController {
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
 			@ApiResponse(responseCode = "409", description = "`asistente-deshabilitado`: el interruptor esta apagado",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
-			@ApiResponse(responseCode = "503", description = "`asistente-no-disponible`: el modelo no responde o "
-					+ "vencio el plazo",
+			@ApiResponse(responseCode = "503", description = "`asistente-no-disponible`: no responde ni el "
+					+ "proveedor principal ni el alternativo",
 					content = @Content(schema = @Schema(implementation = ProblemDetail.class)))})
 	public RespuestaAsistenteResponse consultarAsistente(
 			@PathVariable long consultorioId,

@@ -10,14 +10,9 @@ import com.akine.assistant.domain.exception.AccionesDeshabilitadasException;
 import com.akine.assistant.domain.port.AccionesPropuestas;
 import com.akine.assistant.spi.AccionDelAsistente;
 import com.akine.assistant.spi.ActorDelAsistente;
-import com.akine.assistant.spi.ClavesDeFila;
-import com.akine.assistant.spi.HerramientaDelAsistente;
-import com.akine.assistant.spi.Intencion;
 import com.akine.assistant.spi.PedidoDeAccion;
-import com.akine.assistant.spi.PedidoDeHerramienta;
 import com.akine.assistant.spi.PropuestaDeAccion;
 import com.akine.assistant.spi.ResultadoDeAccion;
-import com.akine.assistant.spi.ResultadoDeHerramienta;
 import com.akine.assistant.spi.Tarjeta;
 import com.akine.assistant.spi.Tarjeta.TarjetaDeLlegada;
 import com.akine.assistant.spi.Tarjeta.TarjetaDePago;
@@ -26,7 +21,6 @@ import com.akine.organization.spi.DenialKind;
 import com.akine.organization.spi.PermissionDecision;
 import com.akine.organization.spi.PermissionEvaluator;
 import com.akine.organization.spi.PermissionQuery;
-import com.akine.platform.spi.modelo.ModeloSoloJson;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.AccessDeniedException;
 
@@ -55,7 +49,6 @@ class AccionesDelAsistenteTest {
 	private static final long SEDE = 3L;
 	private static final ZoneId ZONA = ZoneId.of("America/Argentina/Cordoba");
 	private static final ActorDelAsistente ACTOR = new ActorDelAsistente(11L, false, ORG, SEDE, "ADMINISTRATIVO");
-	private static final String PAGO_DE_JUAN = "{\"accion\":\"PAGO\",\"persona\":\"Juan\",\"monto\":\"15000\"}";
 
 	private final Reloj reloj = new Reloj();
 	private final EnMemoria propuestas = new EnMemoria();
@@ -63,8 +56,6 @@ class AccionesDelAsistenteTest {
 	private final Set<String> negados = new HashSet<>();
 	private final List<PedidoDeAccion> pedidos = new ArrayList<>();
 	private final List<Tarjeta> ejecutadas = new ArrayList<>();
-	private String respuestaDelModelo = PAGO_DE_JUAN;
-	private int llamadasAlModelo;
 	private ResultadoDeAccion resultado = ResultadoDeAccion.confirmada("Listo.", "/pacientes/5", Map.of("cobroId", 90L));
 	private RuntimeException falla;
 
@@ -76,29 +67,17 @@ class AccionesDelAsistenteTest {
 					? new PermissionDecision(false, DenialKind.values()[1], null, false)
 					: new PermissionDecision(true, DenialKind.NONE, "ORGANIZACION", false);
 		}).when(permisos).evaluate(any());
-		ModeloSoloJson modelo = (mensajes, esquema, plazo) -> {
-			llamadasAlModelo++;
-			return respuestaDelModelo;
-		};
-		HerramientaDelAsistente personas = new HerramientaDelAsistente() {
-			@Override
-			public Intencion intencion() {
-				return Intencion.BUSCAR_PERSONA;
-			}
-
-			@Override
-			public ResultadoDeHerramienta ejecutar(ActorDelAsistente actor, PedidoDeHerramienta pedido) {
-				return new ResultadoDeHerramienta(List.of(Map.of(ClavesDeFila.PERSONA_ID, 5L,
-						ClavesDeFila.NOMBRE, "Pérez, Juan")), List.of(), null, false);
-			}
-		};
 		return new AccionesDelAsistente(new AsistenteAjustes(true, Duration.ofSeconds(5), false, acciones,
-				Duration.ofMinutes(15)), permisos, (org, f) -> true,
-				new InterpretadorDeAcciones(() -> modelo, "PROMPT", Duration.ofSeconds(5)), propuestas,
-				mock(AuditoriaDelAsistente.class), List.of(accion(TipoDeAccion.PAGO), accion(TipoDeAccion.LLEGADA),
-						accion(TipoDeAccion.ATENCION)), List.of(personas), reloj);
+				Duration.ofMinutes(15)), permisos, (org, f) -> true, propuestas, mock(AuditoriaDelAsistente.class),
+				List.of(accion(TipoDeAccion.PAGO), accion(TipoDeAccion.LLEGADA), accion(TipoDeAccion.ATENCION)),
+				reloj);
 	}
 
+	/** Lo que el agente entendio de "Juan pagó 15000 en efectivo", con la persona ya resuelta. */
+	private static PedidoDeAccion pagoDeJuan() {
+		return new PedidoDeAccion(TipoDeAccion.PAGO, 5L, "Pérez, Juan", null, null, List.of(),
+				new BigDecimal("15000"), "EFECTIVO", List.of(), null, "Juan pagó 15000 en efectivo", null, null);
+	}
 	private AccionDelAsistente accion(TipoDeAccion tipo) {
 		return new AccionDelAsistente() {
 			@Override
@@ -132,54 +111,55 @@ class AccionesDelAsistenteTest {
 	}
 
 	private long proponer(AccionesDelAsistente servicio) {
-		return servicio.proponer(ACTOR, ZONA, "Juan pagó 15000 en efectivo", null).orElseThrow().accion().id();
+		return servicio.proponerPedido(ACTOR, ZONA, pagoDeJuan()).accion().id();
 	}
 
 	@Test
-	void con_las_acciones_apagadas_no_se_llama_al_modelo() {
-		assertThat(servicio(false).proponer(ACTOR, ZONA, "Juan pagó 15000", null)).isEmpty();
-		assertThat(llamadasAlModelo).isZero();
-	}
-
-	@Test
-	void una_pregunta_o_quien_no_tiene_el_permiso_no_llegan_al_modelo() {
-		assertThat(servicio(true).proponer(ACTOR, ZONA, "¿Juan pagó?", null)).isEmpty();
+	void con_las_acciones_apagadas_o_sin_el_permiso_no_se_propone_nada() {
+		assertThat(servicio(false).proponerPedido(ACTOR, ZONA, pagoDeJuan()).resultado())
+				.isEqualTo(Resultado.SIN_PERMISO);
 		negados.add("asistente:acciones");
-		assertThat(servicio(true).proponer(ACTOR, ZONA, "Juan pagó 15000", null)).isEmpty();
-		assertThat(llamadasAlModelo).isZero();
-	}
-
-	@Test
-	void una_frase_que_no_es_accion_sigue_a_las_consultas() {
-		respuestaDelModelo = "{\"accion\":\"NINGUNA\"}";
-		assertThat(servicio(true).proponer(ACTOR, ZONA, "turnos de hoy por favor", null)).isEmpty();
+		assertThat(servicio(true).proponerPedido(ACTOR, ZONA, pagoDeJuan()).resultado())
+				.isEqualTo(Resultado.SIN_PERMISO);
+		assertThat(pedidos).isEmpty();
 		assertThat(propuestas.filas).isEmpty();
 	}
 
 	@Test
 	void propone_sin_grabar_y_guarda_solo_los_ids() {
-		RespuestaDelAsistente respuesta = servicio(true).proponer(ACTOR, ZONA, "Juan pagó 15000 en efectivo", null)
-				.orElseThrow();
+		RespuestaDelAsistente respuesta = servicio(true).proponerPedido(ACTOR, ZONA, pagoDeJuan());
 
 		assertThat(respuesta.resultado()).isEqualTo(Resultado.PROPUESTA);
 		assertThat(respuesta.accion().tipo()).isEqualTo(TipoDeAccion.PAGO);
 		assertThat(respuesta.accion().venceEn()).isEqualTo(Instant.now(reloj).plus(Duration.ofMinutes(15)));
 		assertThat(pedidos.getFirst().monto()).isEqualByComparingTo("15000");
 		assertThat(pedidos.getFirst().medio()).isEqualTo("EFECTIVO");
+		assertThat(pedidos.getFirst().hoy()).as("el dia de la sede, si el pedido no lo trae").isNotNull();
 		assertThat(propuestas.filas.get(respuesta.accion().id()).referencias()).containsExactly(Map.entry("personaId", 5L));
 		assertThat(ejecutadas).isEmpty();
 	}
 
 	@Test
 	void quien_no_puede_registrar_sesiones_y_cuenta_una_atencion_propone_la_llegada() {
-		respuestaDelModelo = "{\"accion\":\"ATENCION\",\"persona\":\"Juan\",\"practicas\":[\"ultrasonido\"]}";
 		negados.add("sesion:register");
 
-		RespuestaDelAsistente respuesta = servicio(true).proponer(ACTOR, ZONA, "hoy vino Juan e hizo ultrasonido", null)
-				.orElseThrow();
+		RespuestaDelAsistente respuesta = servicio(true).proponerPedido(ACTOR, ZONA, new PedidoDeAccion(
+				TipoDeAccion.ATENCION, 5L, "Pérez, Juan", null, null, List.of(), null, null, List.of("ultrasonido"),
+				null, "hoy vino Juan e hizo ultrasonido", null, null));
 
 		assertThat(respuesta.accion().tipo()).isEqualTo(TipoDeAccion.LLEGADA);
 		assertThat(pedidos.getFirst().practicas()).containsExactly("ultrasonido");
+	}
+
+	@Test
+	void un_tipo_sin_accion_registrada_responde_sin_tarjeta() {
+		RespuestaDelAsistente respuesta = servicio(true).proponerPedido(ACTOR, ZONA, new PedidoDeAccion(
+				TipoDeAccion.PACIENTE_ALTA, null, null, null, null, List.of(), null, null, List.of(), null,
+				"agregá a Nora", null, null));
+
+		assertThat(respuesta.resultado()).isEqualTo(Resultado.RESPONDIDA);
+		assertThat(respuesta.accion()).isNull();
+		assertThat(propuestas.filas).isEmpty();
 	}
 
 	@Test
