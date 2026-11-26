@@ -31,6 +31,10 @@ import com.akine.organization.domain.exception.OrganizationNotFoundException;
 import com.akine.organization.domain.exception.OrganizationSlugTakenException;
 import com.akine.organization.domain.exception.PlanLimitExceededException;
 import com.akine.organization.domain.exception.ServicioNoContratadoException;
+import com.akine.organization.domain.exception.PedidoDeCambioDePlanNotFoundException;
+import com.akine.organization.domain.exception.PedidoDePlanPendienteException;
+import com.akine.organization.domain.exception.PedidoExcedeLimitesException;
+import com.akine.organization.domain.exception.PedidoSinCambiosException;
 import com.akine.organization.domain.exception.SolicitudDePruebaNotFoundException;
 import com.akine.organization.domain.exception.SubscriptionSuspendedException;
 import com.akine.organization.domain.exception.TerminosDelPedidoException;
@@ -138,6 +142,43 @@ public class OrganizationProblemHandler {
 		return noEncontrado();
 	}
 
+	@ExceptionHandler(PedidoDeCambioDePlanNotFoundException.class)
+	public ProblemDetail handlePedidoDeCambioDePlanNotFound(PedidoDeCambioDePlanNotFoundException exception) {
+		return noEncontrado();
+	}
+
+	/** Ya hay un pedido de cambio de plan esperando respuesta: el centro lo ve o lo cancela. */
+	@ExceptionHandler(PedidoDePlanPendienteException.class)
+	public ProblemDetail handlePedidoDePlanPendiente(PedidoDePlanPendienteException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+		problem.setTitle("Pedido de cambio de plan pendiente");
+		problem.setType(ProblemType.PEDIDO_DE_PLAN_PENDIENTE.uri());
+		return problem;
+	}
+
+	/** El centro supera los topes del plan pedido: se publica cuanto, para que sepa que ajustar. */
+	@ExceptionHandler(PedidoExcedeLimitesException.class)
+	public ProblemDetail handlePedidoExcedeLimites(PedidoExcedeLimitesException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+				"El centro tiene mas sedes o profesionales de los que permite el plan pedido. Tiene que "
+						+ "cerrar sedes o dar de baja profesionales antes de que se apruebe.");
+		problem.setTitle("El centro supera los topes del plan pedido");
+		problem.setType(ProblemType.PEDIDO_EXCEDE_LIMITES.uri());
+		problem.setProperty("excesos", exception.getExcesos().stream()
+				.map(e -> Map.of("limitCode", e.limitCode().name(), "tope", e.tope(), "uso", e.uso()))
+				.toList());
+		return problem;
+	}
+
+	/** Lo pedido es lo que el centro ya tiene: no hay nada que aprobar. */
+	@ExceptionHandler(PedidoSinCambiosException.class)
+	public ProblemDetail handlePedidoSinCambios(PedidoSinCambiosException exception) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+		problem.setTitle("El pedido no cambia nada");
+		problem.setType(ProblemType.PEDIDO_SIN_CAMBIOS.uri());
+		return problem;
+	}
+
 	/** El pedido de prueba no acepto los terminos vigentes: 400 con el campo, como el alta. */
 	@ExceptionHandler(TerminosDelPedidoException.class)
 	public ProblemDetail handleTerminosDelPedido(TerminosDelPedidoException exception) {
@@ -231,8 +272,13 @@ public class OrganizationProblemHandler {
 	public ProblemDetail handleServicioNoContratado(ServicioNoContratadoException exception) {
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(
 				HttpStatus.CONFLICT,
-				"El centro no tiene contratado " + exception.getContratable()
-						+ ". Se suma desde la plataforma.");
+				exception.isSoloLectura()
+						? "El centro dejo de tener " + exception.getContratable()
+								+ ": se puede consultar pero no cargar ni cambiar. Para volver a usarlo, pedi sumarlo"
+								+ " en Suscripcion."
+						: "El centro no tiene contratado " + exception.getContratable()
+								+ ". Se suma desde la plataforma.");
+		problem.setProperty("soloLectura", exception.isSoloLectura());
 		problem.setTitle("Servicio no contratado");
 		problem.setType(FEATURE_NOT_AVAILABLE);
 		problem.setProperty("servicio", exception.getContratable());

@@ -10,6 +10,9 @@ public interface ContratacionRepositoryPort {
 
 	Set<Servicio> serviciosDe(long organizationId);
 
+	/** Servicios que el centro dejo de tener: se leen pero no se modifican (26/11/2026). */
+	Set<Servicio> serviciosEnLecturaDe(long organizationId);
+
 	Set<Adicional> adicionalesDe(long organizationId);
 
 	/** Si la plataforma eligio la contratacion (alta o cambio); si no, el centro tiene todo. */

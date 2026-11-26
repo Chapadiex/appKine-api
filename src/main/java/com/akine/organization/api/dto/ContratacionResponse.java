@@ -49,7 +49,10 @@ public record ContratacionResponse(
 		SituacionDeCobro situacionDeCobro,
 		@Schema(description = "Instante en que se cierra el acceso si no paga: pagadoHasta + 18 dias. Ausente "
 				+ "sin control de cobro", example = "2027-01-06T03:00:00Z")
-		Instant cierreEl) {
+		Instant cierreEl,
+		@Schema(description = "Servicios que el centro dejo de tener contratados: sus pantallas se pueden "
+				+ "consultar pero no modificar (26/11/2026)")
+		List<Servicio> serviciosEnLectura) {
 
 	public static ContratacionResponse from(ContratacionView view) {
 		return new ContratacionResponse(
@@ -58,6 +61,6 @@ public record ContratacionResponse(
 				view.adicionales().stream().sorted().toList(),
 				view.estado(), view.pruebaHasta(), view.soloLectura(), view.definidaPorPlataforma(),
 				view.altaPorPlataforma(), view.version(), view.pagadoHasta(), view.situacionDeCobro(),
-				view.cierreEl());
+				view.cierreEl(), view.serviciosEnLectura().stream().sorted().toList());
 	}
 }

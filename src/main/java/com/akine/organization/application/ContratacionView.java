@@ -24,6 +24,7 @@ import java.util.Set;
  * @param pagadoHasta hasta cuando esta pagada (19/11/2026); {@code null} = sin control de cobro
  * @param situacionDeCobro donde esta respecto del periodo pagado
  * @param cierreEl    instante en que se cierra el acceso si no paga; {@code null} sin control
+ * @param serviciosEnLectura servicios que el centro dejo de tener: se consultan y no se modifican
  */
 public record ContratacionView(
 		long organizationId,
@@ -41,9 +42,11 @@ public record ContratacionView(
 		long version,
 		Instant pagadoHasta,
 		SituacionDeCobro situacionDeCobro,
-		Instant cierreEl) {
+		Instant cierreEl,
+		Set<Servicio> serviciosEnLectura) {
 
 	public ContratacionView {
+		serviciosEnLectura = Set.copyOf(serviciosEnLectura);
 		servicios = Set.copyOf(servicios);
 		adicionales = Set.copyOf(adicionales);
 	}
@@ -55,6 +58,6 @@ public record ContratacionView(
 			long version) {
 		this(organizationId, planCode, planNombre, maxSedes, maxProfesionales, servicios, adicionales, estado,
 				pruebaHasta, soloLectura, definidaPorPlataforma, altaPorPlataforma, version, null,
-				SituacionDeCobro.SIN_CONTROL, null);
+				SituacionDeCobro.SIN_CONTROL, null, Set.of());
 	}
 }

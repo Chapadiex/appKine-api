@@ -46,6 +46,9 @@ class PanelDePlataformaRepository implements PanelDePlataformaPort {
 		Long pedidos = jdbc.queryForObject(
 				"SELECT COUNT(*) FROM solicitud_de_prueba WHERE estado = 'PENDIENTE'", Long.class);
 
+		Long cambiosDePlan = jdbc.queryForObject(
+				"SELECT COUNT(*) FROM pedido_de_cambio_de_plan WHERE estado = 'PENDIENTE'", Long.class);
+
 		List<PanelDePlataforma.PruebaQueTermina> pruebas = jdbc.query(
 				"SELECT o.id, o.name, s.prueba_hasta" + CENTROS_VIGENTES
 						+ " AND s.status = 'PRUEBA' AND s.prueba_hasta <= ?"
@@ -77,6 +80,6 @@ class PanelDePlataformaRepository implements PanelDePlataformaPort {
 				cuantos);
 
 		return new PanelDePlataforma(centros, pedidos == null ? 0 : pedidos, pruebas, recientes,
-				ultimosPedidos, cambios);
+				ultimosPedidos, cambios, cambiosDePlan == null ? 0 : cambiosDePlan);
 	}
 }

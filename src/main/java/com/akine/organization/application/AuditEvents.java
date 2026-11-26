@@ -130,6 +130,14 @@ final class AuditEvents {
 
 	static final String ENTITY_SOLICITUD_PRUEBA = "SolicitudDePrueba";
 
+	/** Un centro pidio un cambio de plan desde Suscripcion (25/11/2026). */
+	static final String PEDIDO_PLAN_RECIBIDO = "PEDIDO_PLAN_RECIBIDO";
+
+	/** La plataforma aprobo o rechazo un pedido de cambio de plan, o el centro lo cancelo. */
+	static final String PEDIDO_PLAN_RESUELTO = "PEDIDO_PLAN_RESUELTO";
+
+	static final String ENTITY_PEDIDO_PLAN = "PedidoDeCambioDePlan";
+
 	static final String ENTITY_ORGANIZATION = "Organization";
 	static final String ENTITY_SUBSCRIPTION = "Subscription";
 	static final String ENTITY_MEMBERSHIP = "Membership";

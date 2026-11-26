@@ -5,7 +5,7 @@ grupo: Configuración
 rutas: ["/organizacion", "/organizacion/suscripcion", "/organizacion/marca", "/organizacion/inteligencia-artificial", "/organizacion/auditoria", "/atencion/politica-de-enmienda"]
 permisos: []
 relacionadas: [sedes, colaboradores, biblioteca, primeros-pasos]
-palabras: [centro, datos fiscales, cuit, razón social, marca, logo, colores, inteligencia artificial, consentimiento, suscripción, plan, auditoría, enmienda]
+palabras: [centro, datos fiscales, cuit, razón social, marca, logo, colores, inteligencia artificial, consentimiento, suscripción, plan, cambio de plan, subir de plan, auditoría, enmienda]
 ---
 
 ## Para qué sirve
@@ -81,6 +81,25 @@ que volver a aceptarlo.
 Al apagar una función, su pantalla desaparece del menú para todo el centro. En **Motor de
 modelos** podés tocar **Cargar en memoria** para que la primera pregunta no espere, y **Probar**
 para ver cuánto tarda en responder.
+
+### Pedir un cambio de plan
+
+1. Tocá la pestaña **Suscripción**.
+2. En la tarjeta **Cambio de plan**, tocá **Pedir un cambio de plan**.
+3. Elegí el **Plan**, marcá los servicios que querés tener (**Kinesiología y rehabilitación**,
+   **Actividades y clases**) y si sumás la **Inteligencia artificial**.
+4. Revisá **Lo que pedís**. Si querés, dejá un **Comentario**.
+5. Tocá **Enviar el pedido**.
+
+La administración de AKINE lo revisa. Mientras espera, la tarjeta dice **Esperando respuesta** y
+podés tocar **Cancelar el pedido**. Si lo aprueba, el cambio se aplica solo; si lo rechaza, ves el
+motivo.
+
+> [!importante]
+> Si bajás a un plan con menos sedes o profesionales de los que tenés, el panel te avisa cuántos
+> sobran. Podés enviar el pedido, pero no se aprueba hasta que cierres sedes o des de baja
+> profesionales. Si dejás un servicio, por ejemplo Actividades, sus pantallas quedan en **solo
+> lectura**: podés consultar todo, pero no cargar ni cambiar nada.
 
 ### Consultar la auditoría
 

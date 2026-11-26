@@ -10,6 +10,7 @@ import java.util.List;
  * @param centros            centros vigentes por estado de su suscripcion
  * @param pedidosPendientes  pedidos de prueba gratis sin resolver
  * @param pruebasQueTerminan pruebas que terminan dentro del horizonte, las vencidas primero
+ * @param cambiosDePlanPendientes pedidos de cambio de plan sin resolver (25/11/2026)
  */
 public record PanelDePlataforma(
 		Centros centros,
@@ -17,7 +18,8 @@ public record PanelDePlataforma(
 		List<PruebaQueTermina> pruebasQueTerminan,
 		List<CentroReciente> ultimosCentros,
 		List<PedidoReciente> ultimosPedidos,
-		List<CambioDeSuscripcion> ultimosCambios) {
+		List<CambioDeSuscripcion> ultimosCambios,
+		long cambiosDePlanPendientes) {
 
 	public PanelDePlataforma {
 		pruebasQueTerminan = List.copyOf(pruebasQueTerminan);
