@@ -5,7 +5,7 @@ grupo: Configuración
 rutas: ["/organizacion", "/organizacion/suscripcion", "/organizacion/marca", "/organizacion/inteligencia-artificial", "/organizacion/auditoria", "/atencion/politica-de-enmienda"]
 permisos: []
 relacionadas: [sedes, colaboradores, biblioteca, primeros-pasos]
-palabras: [centro, datos fiscales, cuit, razón social, marca, logo, colores, inteligencia artificial, suscripción, plan, auditoría, enmienda]
+palabras: [centro, datos fiscales, cuit, razón social, marca, logo, colores, inteligencia artificial, consentimiento, suscripción, plan, auditoría, enmienda]
 ---
 
 ## Para qué sirve
@@ -58,6 +58,16 @@ subís: PNG, JPG o WebP de hasta 500 kB.
 > [!importante]
 > Si aparece un **aviso de contraste**, el texto puede no leerse bien con ese color. Tocá **Usar el
 > tono sugerido** para corregirlo.
+
+### Aceptar el consentimiento para usar inteligencia artificial
+
+1. Tocá la pestaña **Inteligencia artificial**.
+2. Leé el texto de **Consentimiento para usar inteligencia artificial**.
+3. Tocá **Acepto en nombre del centro**.
+
+Hasta que el centro lo acepta, ninguna función de inteligencia artificial anda, ni siquiera con el
+modelo instalado en el servidor. Queda registrado quién lo aceptó y cuándo. Si el texto cambia, hay
+que volver a aceptarlo.
 
 ### Prender o apagar funciones de inteligencia artificial
 
@@ -112,6 +122,8 @@ atención queda como se registró.
 
 ## Problemas comunes
 
+- **No anda ninguna función de inteligencia artificial**: el centro todavía no aceptó el
+  consentimiento. Lo acepta quien administra el centro, en la pestaña **Inteligencia artificial**.
 - **No veo las pestañas Marca ni Inteligencia artificial**: hacen falta permisos para editar la
   organización. Pedíselo a quien administra el centro. Lo mismo pasa con **Auditoría** y
   **Política de enmienda**, que tienen su propio permiso.

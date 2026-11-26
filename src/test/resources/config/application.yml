@@ -7,3 +7,8 @@ akine:
       # sin aceptacion y quedarian bloqueados con 403 terminos-pendientes. Los ITs de terminos
       # la prenden con @TestPropertySource.
       version-vigente: ""
+  ia:
+    consentimiento:
+      # Igual que los terminos: ~150 ITs usan IA sin pasar por el consentimiento. Los ITs del
+      # consentimiento la prenden con @TestPropertySource.
+      version: ""

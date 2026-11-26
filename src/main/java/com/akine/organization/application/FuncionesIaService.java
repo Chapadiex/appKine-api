@@ -1,7 +1,9 @@
 package com.akine.organization.application;
 
+import com.akine.organization.domain.ConsentimientoIa;
 import com.akine.organization.domain.OrganizationIa;
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
+import com.akine.organization.domain.port.ConsentimientoIaRepositoryPort;
 import com.akine.organization.domain.port.OrganizationIaRepositoryPort;
 import com.akine.organization.domain.port.OrganizationRepositoryPort;
 import com.akine.organization.domain.port.ContratacionRepositoryPort;
@@ -10,6 +12,8 @@ import com.akine.organization.spi.FuncionIa;
 import com.akine.organization.spi.FuncionesIaDelCentro;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
+import com.akine.platform.spi.identity.AccountIdentity;
+import com.akine.platform.spi.identity.AccountIdentityDirectory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +23,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -37,14 +42,23 @@ public class FuncionesIaService implements FuncionesIaDelCentro {
 	private final IaDelDespliegue despliegue;
 	private final AuditTrail auditTrail;
 	private final ContratacionRepositoryPort contratacion;
+	private final ConsentimientoIaRepositoryPort consentimientos;
+	private final TextoDelConsentimientoIa textoDelConsentimiento;
+	private final AccountIdentityDirectory cuentas;
 
 	public FuncionesIaService(
 			OrganizationRepositoryPort organizationRepository,
 			OrganizationIaRepositoryPort iaRepository,
 			IaDelDespliegue despliegue,
 			AuditTrail auditTrail,
-			ContratacionRepositoryPort contratacion) {
+			ContratacionRepositoryPort contratacion,
+			ConsentimientoIaRepositoryPort consentimientos,
+			TextoDelConsentimientoIa textoDelConsentimiento,
+			AccountIdentityDirectory cuentas) {
 		this.contratacion = contratacion;
+		this.consentimientos = consentimientos;
+		this.textoDelConsentimiento = textoDelConsentimiento;
+		this.cuentas = cuentas;
 		this.organizationRepository = organizationRepository;
 		this.iaRepository = iaRepository;
 		this.despliegue = despliegue;
@@ -57,6 +71,11 @@ public class FuncionesIaService implements FuncionesIaDelCentro {
 		// Desde el 18/11/2026 la IA es un adicional: sin contratarla, ninguna funcion anda,
 		// aunque el despliegue la ofrezca y el centro la haya dejado prendida.
 		if (!iaContratada(organizationId)) {
+			return false;
+		}
+		// Sin el consentimiento vigente del centro (Ley 25.326) ninguna funcion corre, sea con el
+		// modelo local o con uno externo.
+		if (!consentimientoVigente(organizationId)) {
 			return false;
 		}
 		return iaRepository.findByOrganizationId(organizationId)
@@ -104,6 +123,39 @@ public class FuncionesIaService implements FuncionesIaDelCentro {
 		return vista(organizationId, Optional.of(guardada));
 	}
 
+	@Override
+	@Transactional(readOnly = true)
+	public boolean consentimientoVigente(long organizationId) {
+		return !textoDelConsentimiento.exigido()
+				|| consentimientos.buscar(organizationId, textoDelConsentimiento.version()).isPresent();
+	}
+
+	/**
+	 * El ORG_ADMIN acepta, en nombre del centro, la version {@code version} del texto. Aceptar de
+	 * nuevo la misma version no agrega otra fila ni otra auditoria: devuelve la vigente.
+	 *
+	 * @throws OptimisticLockingFailureException la version enviada no es la vigente: el texto cambio
+	 *         mientras se leia, o el despliegue no exige consentimiento (409 concurrent-modification)
+	 */
+	@Transactional
+	public FuncionesIaView aceptarConsentimiento(long organizationId, String version, long actorAccountId) {
+		exigirVigente(organizationId);
+		if (!textoDelConsentimiento.exigido() || !textoDelConsentimiento.version().equals(version)) {
+			throw new OptimisticLockingFailureException("El texto del consentimiento cambio: releer y aceptar de nuevo");
+		}
+		String nombre = cuentas.identidadesDe(List.of(actorAccountId)).values().stream()
+				.map(AccountIdentity::nombreCompleto).filter(Objects::nonNull).findFirst().orElse(null);
+		boolean insertada = consentimientos.insertarSiNoExiste(
+				organizationId, version, actorAccountId, nombre, Instant.now());
+		if (insertada) {
+			auditTrail.record(new AuditEntry(
+					organizationId, null, actorAccountId, AuditEvents.ORGANIZATION_IA_CONSENTIMIENTO_ACEPTADO,
+					AuditEvents.ENTITY_ORGANIZATION, organizationId, null, null, Map.of("version", version), null,
+					AuditEvents.correlationId(), Instant.now()));
+		}
+		return vista(organizationId, iaRepository.findByOrganizationId(organizationId));
+	}
+
 	/** Si el centro contrato el adicional de IA. */
 	public boolean iaContratada(long organizationId) {
 		return contratacion.adicionalesDe(organizationId).contains(Adicional.IA);
@@ -111,15 +163,29 @@ public class FuncionesIaService implements FuncionesIaDelCentro {
 
 	private FuncionesIaView vista(long organizationId, Optional<OrganizationIa> ia) {
 		boolean contratada = iaContratada(organizationId);
+		FuncionesIaView.Consentimiento consentimiento = consentimiento(organizationId);
+		boolean consentido = !consentimiento.exigido() || consentimiento.aceptado();
 		List<FuncionesIaView.Funcion> funciones = Arrays.stream(FuncionIa.values())
 				.map(f -> {
 					boolean centro = ia.map(i -> propia(i, f)).orElse(true);
-					boolean activa = contratada && despliegue.ofrece(f)
+					boolean activa = contratada && consentido && despliegue.ofrece(f)
 							&& ia.map(i -> delCentro(i, f)).orElse(true);
 					return new FuncionesIaView.Funcion(f, despliegue.ofrece(f), centro, activa);
 				})
 				.toList();
-		return new FuncionesIaView(organizationId, ia.map(OrganizationIa::getVersion).orElse(0L), funciones);
+		return new FuncionesIaView(organizationId, ia.map(OrganizationIa::getVersion).orElse(0L), funciones,
+				consentimiento);
+	}
+
+	private FuncionesIaView.Consentimiento consentimiento(long organizationId) {
+		if (!textoDelConsentimiento.exigido()) {
+			return new FuncionesIaView.Consentimiento(false, null, false, null, null);
+		}
+		String version = textoDelConsentimiento.version();
+		Optional<ConsentimientoIa> aceptado = consentimientos.buscar(organizationId, version);
+		return new FuncionesIaView.Consentimiento(true, version, aceptado.isPresent(),
+				aceptado.map(ConsentimientoIa::nombre).orElse(null),
+				aceptado.map(ConsentimientoIa::aceptadoAt).orElse(null));
 	}
 
 	/** Lo que el centro eligio para esa funcion sola, sin sus dependencias. */

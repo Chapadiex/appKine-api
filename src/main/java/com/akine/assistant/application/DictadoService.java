@@ -8,6 +8,7 @@ import com.akine.assistant.domain.exception.SedeNoEncontradaException;
 import com.akine.assistant.domain.port.Transcriptor;
 import com.akine.assistant.spi.ActorDelAsistente;
 import com.akine.organization.spi.ConsultorioDirectory;
+import com.akine.organization.spi.FuncionesIaDelCentro;
 import com.akine.organization.spi.PermissionGuard;
 import com.akine.organization.spi.PermissionQuery;
 import org.slf4j.Logger;
@@ -44,19 +45,21 @@ public class DictadoService {
 	private final ConsultorioDirectory sedes;
 	private final Transcriptor transcriptor;
 	private final RepartidorDeEvaluacion repartidor;
+	private final FuncionesIaDelCentro funcionesIa;
 	private final Clock clock = Clock.systemUTC();
 
 	public DictadoService(DictadoAjustes ajustes, PermissionGuard permissionGuard, ConsultorioDirectory sedes,
-			Transcriptor transcriptor, RepartidorDeEvaluacion repartidor) {
+			Transcriptor transcriptor, RepartidorDeEvaluacion repartidor, FuncionesIaDelCentro funcionesIa) {
 		this.ajustes = ajustes;
 		this.permissionGuard = permissionGuard;
 		this.sedes = sedes;
 		this.transcriptor = transcriptor;
 		this.repartidor = repartidor;
+		this.funcionesIa = funcionesIa;
 	}
 
 	/**
-	 * @throws DictadoDeshabilitadoException con el interruptor apagado (409)
+	 * @throws DictadoDeshabilitadoException con el interruptor apagado o sin consentimiento de IA del centro (409)
 	 * @throws AccessDeniedException sin contexto o sin {@code dictado:use} (403)
 	 * @throws SedeNoEncontradaException si la sede no es de la organizacion (404)
 	 * @throws DictadoInvalidoException si el audio esta vacio, es muy grande o no es audio (400)
@@ -107,6 +110,10 @@ public class DictadoService {
 		}
 		permissionGuard.requirePermission(new PermissionQuery(actor.accountId(), PermissionCodes.DICTADO_USE,
 				organizationId, consultorioId, null, Instant.now(clock)));
+		// Sin el consentimiento de IA del centro, el dictado responde como apagado (Ley 25.326).
+		if (!funcionesIa.consentimientoVigente(organizationId)) {
+			throw new DictadoDeshabilitadoException();
+		}
 		if (sedes.find(organizationId, consultorioId).isEmpty()) {
 			throw new SedeNoEncontradaException();
 		}

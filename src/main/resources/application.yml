@@ -180,7 +180,7 @@ akine:
   # Version SemVer del contrato OpenAPI publicado. Debe coincidir con la propiedad
   # akine.contract.version del pom.xml.
   contract:
-    version: 0.193.0
+    version: 0.195.0
   security:
     cors:
       # Nunca comodin: allowCredentials(true) lo prohibe y el frontend necesita credentials
@@ -368,6 +368,14 @@ akine:
       # la web: cambiarlo y subir esta version van en el mismo despliegue. Vacia solo en tests.
       version-vigente: ${AKINE_TERMINOS_VERSION:2026-11-19}
       url: ${AKINE_TERMINOS_URL:/terminos}
+
+  ia:
+    consentimiento:
+      # Version del consentimiento del centro para usar IA (Ley 25.326, 26/11/2026). Sin una
+      # aceptacion de esta version ninguna funcion de IA corre. El texto vive en
+      # src/main/resources/ia/consentimiento.md: cambiarlo y subir esta version van juntos.
+      # Vacia = no se exige (solo en tests).
+      version: ${AKINE_IA_CONSENTIMIENTO_VERSION:2026-11-26}
 
   clinical:
     adjuntos:

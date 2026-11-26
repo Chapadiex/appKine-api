@@ -1,11 +1,14 @@
 package com.akine.organization.api;
 
+import com.akine.organization.api.dto.AceptarConsentimientoIaRequest;
 import com.akine.organization.api.dto.EstadoDelMotorResponse;
 import com.akine.organization.api.dto.FuncionesIaResponse;
 import com.akine.organization.api.dto.PruebaDelMotorResponse;
+import com.akine.organization.api.dto.TextoConsentimientoIaResponse;
 import com.akine.organization.api.dto.UpdateFuncionesIaRequest;
 import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.application.FuncionesIaService;
+import com.akine.organization.application.TextoDelConsentimientoIa;
 import com.akine.platform.spi.modelo.MotorDeModelos;
 import com.akine.platform.spi.modelo.agente.ConfiguracionDelAgente;
 import com.akine.platform.spi.tenant.TenantContextHolder;
@@ -51,18 +54,21 @@ public class FuncionesIaController {
 	private final ConfiguracionDelAgente configuracionDelAgente;
 	private final AuthorizationGuard authorizationGuard;
 	private final TenantContextHolder tenantContextHolder;
+	private final TextoDelConsentimientoIa textoDelConsentimiento;
 
 	public FuncionesIaController(
 			FuncionesIaService funcionesIaService,
 			MotorDeModelos motor,
 			ConfiguracionDelAgente configuracionDelAgente,
 			AuthorizationGuard authorizationGuard,
-			TenantContextHolder tenantContextHolder) {
+			TenantContextHolder tenantContextHolder,
+			TextoDelConsentimientoIa textoDelConsentimiento) {
 		this.funcionesIaService = funcionesIaService;
 		this.motor = motor;
 		this.configuracionDelAgente = configuracionDelAgente;
 		this.authorizationGuard = authorizationGuard;
 		this.tenantContextHolder = tenantContextHolder;
+		this.textoDelConsentimiento = textoDelConsentimiento;
 	}
 
 	@GetMapping
@@ -125,6 +131,67 @@ public class FuncionesIaController {
 		return ResponseEntity.ok(FuncionesIaResponse.from(funcionesIaService.actualizar(orgId,
 				request.asistente(), request.evolucion(), request.sugerencias(), request.biblioteca(),
 				request.version(), actor.accountId())));
+	}
+
+	@GetMapping("/consentimiento")
+	@Operation(
+			operationId = "getConsentimientoIa",
+			summary = "Texto vigente del consentimiento de IA",
+			description = "El texto que el centro tiene que aceptar para usar cualquier funcion de IA "
+					+ "(Ley 25.326), con su version. Requiere ser miembro vigente. Version vacia: el "
+					+ "despliegue no exige consentimiento.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Texto y version",
+					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = TextoConsentimientoIaResponse.class))),
+			@ApiResponse(responseCode = "403", description = "No hay sesion autenticada o falta el contexto",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = "No existe, esta dada de baja, o es de otro tenant",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<TextoConsentimientoIaResponse> verConsentimiento(
+			@Parameter(description = "Identificador de la organizacion", example = "1") @PathVariable long orgId) {
+		ApiActor actor = ApiActor.current(tenantContextHolder);
+		authorizationGuard.requireMember(
+				actor.accountId(), orgId, actor.contextOrganizationId(), actor.platformAdmin());
+		return ResponseEntity.ok(new TextoConsentimientoIaResponse(
+				textoDelConsentimiento.version(), textoDelConsentimiento.texto()));
+	}
+
+	@PostMapping(path = "/consentimiento", consumes = MediaType.APPLICATION_JSON_VALUE)
+	@Operation(
+			operationId = "aceptarConsentimientoIa",
+			summary = "Aceptar el consentimiento de IA en nombre del centro",
+			description = """
+					Guarda quien acepto, cuando y que version del texto. Requiere tenant:update (solo el \
+					ORG_ADMIN). Sin una aceptacion de la version vigente ninguna funcion de IA queda \
+					activa. Aceptar de nuevo la misma version no agrega otra aceptacion.
+
+					Si la version enviada no es la vigente (el texto cambio mientras se leia), 409 \
+					concurrent-modification: releer el texto y aceptar de nuevo.""")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Aceptado: las funciones de IA del centro, ya con el consentimiento",
+					content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+							schema = @Schema(implementation = FuncionesIaResponse.class))),
+			@ApiResponse(responseCode = "400", description = "Falta la version",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "403", description = "El actor no es ORG_ADMIN de la organizacion",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "404", description = "No existe, esta dada de baja, o es de otro tenant",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class))),
+			@ApiResponse(responseCode = "409", description = "La version enviada no es la vigente: releer el texto",
+					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+							schema = @Schema(implementation = ProblemDetail.class)))})
+	public ResponseEntity<FuncionesIaResponse> aceptarConsentimiento(
+			@Parameter(description = "Identificador de la organizacion", example = "1") @PathVariable long orgId,
+			@Valid @RequestBody AceptarConsentimientoIaRequest request) {
+		ApiActor actor = exigirEditor(orgId);
+		return ResponseEntity.ok(FuncionesIaResponse.from(
+				funcionesIaService.aceptarConsentimiento(orgId, request.version(), actor.accountId())));
 	}
 
 	@GetMapping("/motor")
