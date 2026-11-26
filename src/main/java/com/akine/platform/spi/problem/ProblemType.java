@@ -1490,6 +1490,14 @@ public enum ProblemType {
 	/** Whisper, o el modelo que reparte el texto en campos, no responde o vencio el plazo (503). */
 	DICTADO_NO_DISPONIBLE("dictado-no-disponible"),
 
+	// --- Carga por Telegram (docs/diseno/AKINE-telegram.md) -----------------------------------
+
+	/** La carga por Telegram esta apagada por configuracion (409). */
+	TELEGRAM_DESHABILITADO("telegram-deshabilitado"),
+
+	/** El centro no conecto un bot de Telegram (409). */
+	TELEGRAM_SIN_BOT("telegram-sin-bot"),
+
 	// --- Sugerencias de evolucion (M31 fase 2) ------------------------------------------------
 
 	/** La misma cuenta ya tiene un pedido de sugerencias en curso en esta instancia (429). */

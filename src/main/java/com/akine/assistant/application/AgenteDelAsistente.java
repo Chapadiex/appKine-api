@@ -56,6 +56,16 @@ public class AgenteDelAsistente {
 	private static final Logger log = LoggerFactory.getLogger(AgenteDelAsistente.class);
 
 	static final String PEDIR_ACLARACION = "pedir_aclaracion";
+
+	/** La "pantalla" de un mensaje que llego por el bot de Telegram del centro (MensajesDeTelegram). */
+	static final String RUTA_TELEGRAM = "telegram";
+	static final String CANAL_TELEGRAM = """
+			- Canal: Telegram. Quien escribe es un profesional que cuenta lo que hizo; lo que propongas se \
+			confirma solo, sin tarjeta. Si nombra al paciente solo por el nombre o el apellido, buscalo \
+			primero entre sus turnos de hoy y despues entre los pacientes que atendio: si hay uno solo que \
+			coincide, es ese. Pedi aclaracion solo si quedan varios. Lo clinico que cuente va completo en \
+			la frase de la atencion. Respuestas cortas, en texto plano.
+			""";
 	/** La herramienta del manual: sus filas llevan la ficha que el frontend muestra como chip. */
 	static final String COMO_SE_HACE = "como_se_hace";
 	/** La clave del id de persona en las filas de las herramientas del agente. */
@@ -173,7 +183,10 @@ public class AgenteDelAsistente {
 		}
 		texto.append("- Sede activa: ").append(nombreSede == null ? "id " + actor.consultorioId()
 				: "\"" + nombreSede + "\" (id " + actor.consultorioId() + ")").append(".\n");
-		if (ctx.rutaActual() != null && !ctx.rutaActual().isBlank()) {
+		if (RUTA_TELEGRAM.equals(ctx.rutaActual())) {
+			texto.append(CANAL_TELEGRAM);
+		}
+		else if (ctx.rutaActual() != null && !ctx.rutaActual().isBlank()) {
 			texto.append("- Pantalla actual: ").append(ctx.rutaActual()).append(".\n");
 		}
 		return texto.toString();

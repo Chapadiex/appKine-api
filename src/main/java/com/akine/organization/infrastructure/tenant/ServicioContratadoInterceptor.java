@@ -50,7 +50,8 @@ class ServicioContratadoInterceptor implements HandlerInterceptor {
 
 	private static final Set<String> LECTURAS = Set.of("GET", "HEAD", "OPTIONS");
 
-	private static final String CONTROLLER_DE_DICTADO = "com.akine.assistant.api.DictadoController";
+	private static final Set<String> CONTROLLERS_DEL_ADICIONAL_IA = Set.of(
+			"com.akine.assistant.api.DictadoController", "com.akine.assistant.api.TelegramController");
 
 	// ObjectProvider y no inyeccion directa: los slices @WebMvcTest cargan los interceptores pero
 	// no los repositorios. Sin ellos no hay tenant que mirar, y el interceptor deja pasar.
@@ -91,7 +92,7 @@ class ServicioContratadoInterceptor implements HandlerInterceptor {
 			}
 			throw new ServicioNoContratadoException(servicio.get(), enLectura);
 		}
-		if (CONTROLLER_DE_DICTADO.equals(clase)
+		if (CONTROLLERS_DEL_ADICIONAL_IA.contains(clase)
 				&& !contratacion.adicionalesDe(organizationId).contains(Adicional.IA)) {
 			throw new ServicioNoContratadoException(Adicional.IA);
 		}

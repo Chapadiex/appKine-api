@@ -10,6 +10,9 @@ import com.akine.assistant.domain.exception.DictadoInvalidoException;
 import com.akine.assistant.domain.exception.DictadoNoDisponibleException;
 import com.akine.assistant.domain.exception.ModeloNoDisponibleException;
 import com.akine.assistant.domain.exception.SedeNoEncontradaException;
+import com.akine.assistant.domain.exception.BotDeTelegramNoConfiguradoException;
+import com.akine.assistant.domain.exception.TelegramDeshabilitadoException;
+import com.akine.assistant.domain.exception.TokenDeTelegramInvalidoException;
 import com.akine.platform.spi.problem.ProblemType;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -75,6 +78,24 @@ public class AsistenteProblemHandler {
 	@ExceptionHandler(AccionNoEncontradaException.class)
 	public ProblemDetail handleAccionNoEncontrada(AccionNoEncontradaException exception) {
 		return problema(HttpStatus.NOT_FOUND, ProblemType.NOT_FOUND, "Accion no encontrada", exception.getMessage());
+	}
+
+	@ExceptionHandler(TelegramDeshabilitadoException.class)
+	public ProblemDetail handleTelegramDeshabilitado(TelegramDeshabilitadoException exception) {
+		return problema(HttpStatus.CONFLICT, ProblemType.TELEGRAM_DESHABILITADO, "Telegram deshabilitado",
+				exception.getMessage());
+	}
+
+	@ExceptionHandler(BotDeTelegramNoConfiguradoException.class)
+	public ProblemDetail handleTelegramSinBot(BotDeTelegramNoConfiguradoException exception) {
+		return problema(HttpStatus.CONFLICT, ProblemType.TELEGRAM_SIN_BOT, "El centro no tiene bot de Telegram",
+				exception.getMessage());
+	}
+
+	@ExceptionHandler(TokenDeTelegramInvalidoException.class)
+	public ProblemDetail handleTokenDeTelegramInvalido(TokenDeTelegramInvalidoException exception) {
+		return problema(HttpStatus.BAD_REQUEST, ProblemType.VALIDATION_ERROR, "Token de Telegram invalido",
+				exception.getMessage());
 	}
 
 	/** Inexistente o de otra organizacion: 404, nunca 403. */
