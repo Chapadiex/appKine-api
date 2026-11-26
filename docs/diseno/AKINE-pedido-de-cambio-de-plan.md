@@ -93,13 +93,13 @@ Lo pidió el usuario después de la primera versión:
 
 - **Topes (avisar y frenar).** Si el centro tiene más sedes o profesionales que los que permite el
   plan pedido, el panel lo avisa («Tenés 3 sedes y el Plan Base permite 1: cerrá 2»). El pedido se
-  puede enviar, pero **no se aprueba** hasta que el centro se ajuste:  vuelve a contar y
-  responde 409  con los  (, , ). La respuesta
+  puede enviar, pero **no se aprueba** hasta que el centro se ajuste: `aprobar` vuelve a contar y
+  responde 409 `pedido-excede-limites` con los `excesos` (`limitCode`, `tope`, `uso`). La respuesta
   de cada pedido pendiente trae los excesos de ese momento, para que la plataforma los vea.
 - **Servicio que se deja → solo lectura.** Al sacar un servicio de la contratación (por pedido o
-  desde la plataforma), queda en  (V48).  deja
-  pasar GET/HEAD/OPTIONS de ese servicio y rechaza el resto con 409  y
-  .  lo publica: la web muestra esas
+  desde la plataforma), queda en `servicio_en_lectura` (V48). `ServicioContratadoInterceptor` deja
+  pasar GET/HEAD/OPTIONS de ese servicio y rechaza el resto con 409 `feature-not-available` y
+  `soloLectura: true`. `ContratacionResponse.serviciosEnLectura` lo publica: la web muestra esas
   pantallas en el menú con una franja de solo lectura. Volver a sumarlo borra la marca.
 
 ## Desafío de diseño
