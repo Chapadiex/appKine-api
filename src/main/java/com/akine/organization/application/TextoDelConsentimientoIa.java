@@ -23,6 +23,10 @@ public class TextoDelConsentimientoIa {
 
 	public TextoDelConsentimientoIa(@Value("${akine.ia.consentimiento.version:}") String version) {
 		this.version = version == null ? "" : version.trim();
+		if (this.version.length() > 32) {
+			// La columna es varchar(32): una version mas larga dejaria la IA frenada para siempre.
+			throw new IllegalStateException("akine.ia.consentimiento.version no puede superar los 32 caracteres");
+		}
 		this.texto = leer();
 	}
 
