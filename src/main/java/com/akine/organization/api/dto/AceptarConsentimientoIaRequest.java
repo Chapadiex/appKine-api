@@ -9,6 +9,7 @@ public record AceptarConsentimientoIaRequest(
 
 		@Schema(description = "Version del texto que se leyo y se acepta; tiene que ser la vigente",
 				example = "2026-11-26", requiredMode = Schema.RequiredMode.REQUIRED)
-		@NotBlank @Size(max = 32)
+		@NotBlank(message = "La version del consentimiento es obligatoria")
+		@Size(max = 32, message = "La version del consentimiento no puede superar los 32 caracteres")
 		String version) {
 }
