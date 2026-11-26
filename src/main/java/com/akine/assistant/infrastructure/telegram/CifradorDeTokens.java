@@ -3,7 +3,6 @@ package com.akine.assistant.infrastructure.telegram;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
@@ -18,6 +17,7 @@ import java.util.Base64;
 public class CifradorDeTokens {
 
 	private static final String VERSION = "v1:";
+	private static final String SEPARADOR = ":";
 	private static final int IV_BYTES = 12;
 	private static final int TAG_BITS = 128;
 
@@ -52,8 +52,9 @@ public class CifradorDeTokens {
 			Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
 			cipher.init(Cipher.ENCRYPT_MODE, clave, new GCMParameterSpec(TAG_BITS, iv));
 			byte[] cifrado = cipher.doFinal(texto.getBytes(StandardCharsets.UTF_8));
-			return VERSION + Base64.getEncoder().encodeToString(
-					ByteBuffer.allocate(iv.length + cifrado.length).put(iv).put(cifrado).array());
+			// IV y cifrado por separado: "v1:<iv>:<cifrado>", sin concatenar arreglos.
+			Base64.Encoder base64 = Base64.getEncoder();
+			return VERSION + base64.encodeToString(iv) + SEPARADOR + base64.encodeToString(cifrado);
 		}
 		catch (GeneralSecurityException e) {
 			throw new IllegalStateException("No se pudo cifrar el token", e);
@@ -65,11 +66,15 @@ public class CifradorDeTokens {
 		if (guardado == null || !guardado.startsWith(VERSION)) {
 			throw new IllegalArgumentException("Token cifrado con un formato desconocido");
 		}
+		String[] partes = guardado.substring(VERSION.length()).split(SEPARADOR, -1);
+		if (partes.length != 2) {
+			throw new IllegalArgumentException("Token cifrado con un formato desconocido");
+		}
 		try {
-			byte[] todo = Base64.getDecoder().decode(guardado.substring(VERSION.length()));
+			Base64.Decoder base64 = Base64.getDecoder();
 			Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-			cipher.init(Cipher.DECRYPT_MODE, clave, new GCMParameterSpec(TAG_BITS, todo, 0, IV_BYTES));
-			return new String(cipher.doFinal(todo, IV_BYTES, todo.length - IV_BYTES), StandardCharsets.UTF_8);
+			cipher.init(Cipher.DECRYPT_MODE, clave, new GCMParameterSpec(TAG_BITS, base64.decode(partes[0])));
+			return new String(cipher.doFinal(base64.decode(partes[1])), StandardCharsets.UTF_8);
 		}
 		catch (GeneralSecurityException | IllegalArgumentException e) {
 			throw new IllegalArgumentException("El token no se pudo descifrar con la clave del despliegue", e);

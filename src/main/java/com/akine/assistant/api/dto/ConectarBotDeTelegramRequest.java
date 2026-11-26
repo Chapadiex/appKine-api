@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
 public record ConectarBotDeTelegramRequest(
 		@Schema(description = "El token del bot, tal como lo da @BotFather",
 				requiredMode = Schema.RequiredMode.REQUIRED, example = "1234567890:AAH...")
-		@NotBlank @Size(max = 120)
+		@NotBlank(message = "El token del bot es obligatorio")
+		@Size(max = 120, message = "El token del bot admite hasta 120 caracteres")
 		String token) {
 }
