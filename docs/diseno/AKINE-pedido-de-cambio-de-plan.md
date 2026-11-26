@@ -1,7 +1,7 @@
 # Pedido de cambio de plan
 
-25/11/2026. Migración **`V48`**, contrato **0.194.0** (`V47`/0.193.0 los tomó la rama del
-asistente-agente). Ramas `akine-pedido-de-plan` en `appKine-api` y `appKine-web`.
+25/11/2026. Migración **`V50`**, contrato **0.196.0** (nació V48/0.194.0; `V47`/0.193.0 los tomó la rama del
+asistente-agente y `V49`/0.195.0 el consentimiento de IA). Ramas `akine-pedido-de-plan` en `appKine-api` y `appKine-web`.
 
 ## Por qué
 
@@ -97,7 +97,7 @@ Lo pidió el usuario después de la primera versión:
   responde 409 `pedido-excede-limites` con los `excesos` (`limitCode`, `tope`, `uso`). La respuesta
   de cada pedido pendiente trae los excesos de ese momento, para que la plataforma los vea.
 - **Servicio que se deja → solo lectura.** Al sacar un servicio de la contratación (por pedido o
-  desde la plataforma), queda en `servicio_en_lectura` (V48). `ServicioContratadoInterceptor` deja
+  desde la plataforma), queda en `servicio_en_lectura` (V50). `ServicioContratadoInterceptor` deja
   pasar GET/HEAD/OPTIONS de ese servicio y rechaza el resto con 409 `feature-not-available` y
   `soloLectura: true`. `ContratacionResponse.serviciosEnLectura` lo publica: la web muestra esas
   pantallas en el menú con una franja de solo lectura. Volver a sumarlo borra la marca.
@@ -110,7 +110,7 @@ Lo pidió el usuario después de la primera versión:
    global a propósito, como la de pedidos de prueba.
 4. **Reglas maestras:** no toca HC, turnos ni dinero. El cobro mensual no cambia.
 5. **Baja lógica:** no hay borrado; los pedidos terminan en un estado.
-6. **Contrato:** aditivo, minor 0.194.0.
+6. **Contrato:** aditivo, minor 0.196.0.
 7. **Ruta crítica:** se apoya en contratación (V28/V44) y cobro (V45), ya en `main`.
 8. **El caso que rompe:** dos administradores piden a la vez → el índice parcial deja uno y el otro
    recibe 409. La plataforma aprueba mientras el centro cancela → versión del pedido, el segundo

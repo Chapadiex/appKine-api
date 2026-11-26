@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Migración `V48__pedido_de_cambio_de_plan.sql`; contrato `0.194.0` (pom `akine.contract.version` e `info.version`).
+- Migración `V50__pedido_de_cambio_de_plan.sql`; contrato `0.196.0` (pom `akine.contract.version` e `info.version`).
 - Ramas `akine-pedido-de-plan` en los dos repos (CI cruzado por nombre de rama).
 - Rutas del centro bajo `/api/v1/organizations/{orgId}/subscription/pedido-de-cambio` (pasa el filtro de suscripción suspendida).
 - Permiso del centro `tenant:update`; plataforma `authorizationGuard.requirePlatformAdmin`.
@@ -32,7 +32,7 @@
 ### Task 1: Migración y entidad
 
 **Files:**
-- Create: `src/main/resources/db/migration/V48__pedido_de_cambio_de_plan.sql`
+- Create: `src/main/resources/db/migration/V50__pedido_de_cambio_de_plan.sql`
 - Create: `src/main/java/com/akine/organization/domain/PedidoDeCambioDePlan.java`
 - Create: `src/main/java/com/akine/organization/domain/port/PedidoDeCambioDePlanRepositoryPort.java`
 - Create: `src/main/java/com/akine/organization/infrastructure/PedidoDeCambioDePlanRepository.java`
@@ -67,7 +67,7 @@
 **Files:**
 - Create: `api/PedidoDeCambioDePlanController.java` y DTOs en `api/dto/` (`PedidoDeCambioDePlanRequest`, `...Response`, `...PageResponse`, `ResolverPedidoRequest`, `RechazarPedidoRequest`)
 - Modify: `PanelDePlataforma` (+ `cambiosDePlanPendientes`), `PanelDePlataformaRepository`, `PanelDePlataformaResponse`
-- Modify: `pom.xml` y `openapi/akine-api.yaml` → 0.194.0
+- Modify: `pom.xml` y `openapi/akine-api.yaml` → 0.196.0
 - Test: `src/test/java/com/akine/organization/PedidoDeCambioDePlanIT.java`
 
 - [ ] IT: pedir → listar en plataforma → aprobar cambia la contratación; rechazar exige motivo; dos pedidos → 409; idéntico → 400; cross-tenant → 404.
@@ -76,7 +76,7 @@
 
 ### Task 4: Web — Suscripción
 
-**Files:** `appKine-web` `features/organization/pages/subscription/*`, cliente regenerado 0.194.0.
+**Files:** `appKine-web` `features/organization/pages/subscription/*`, cliente regenerado 0.196.0.
 
 - [ ] Tarjeta «Cambio de plan» con estado del último pedido; panel lateral con planes (`listPlans`), servicios, IA, comentario y resumen; cancelar.
 - [ ] Commit.
