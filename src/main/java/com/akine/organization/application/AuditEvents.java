@@ -114,6 +114,7 @@ final class AuditEvents {
 
 	/** Funciones de IA que el centro decidio usar. */
 	static final String ORGANIZATION_IA_UPDATED = "ORGANIZATION_IA_UPDATED";
+	static final String ORGANIZATION_IA_CONSENTIMIENTO_ACEPTADO = "ORGANIZATION_IA_CONSENTIMIENTO_ACEPTADO";
 
 	/** La plataforma cambio el plan, los servicios o los adicionales de un centro (18/11/2026). */
 	static final String CONTRATACION_UPDATED = "CONTRATACION_UPDATED";

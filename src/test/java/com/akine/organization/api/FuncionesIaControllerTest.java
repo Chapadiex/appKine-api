@@ -3,6 +3,7 @@ package com.akine.organization.api;
 import com.akine.organization.application.AuthorizationGuard;
 import com.akine.organization.application.FuncionesIaService;
 import com.akine.organization.application.FuncionesIaView;
+import com.akine.organization.application.TextoDelConsentimientoIa;
 import com.akine.organization.domain.exception.OrganizationNotFoundException;
 import com.akine.organization.spi.FuncionIa;
 import com.akine.platform.spi.modelo.MotorDeModelos;
@@ -13,11 +14,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -61,6 +64,9 @@ class FuncionesIaControllerTest {
 
 	@MockitoBean
 	private TenantContextHolder tenantContextHolder;
+
+	@MockitoBean
+	private TextoDelConsentimientoIa textoDelConsentimiento;
 
 	@Test
 	@DisplayName("Leer alcanza con ser miembro y trae las cuatro funciones con sus dos capas")
@@ -158,11 +164,56 @@ class FuncionesIaControllerTest {
 				.andExpect(jsonPath("$.milisegundos").value(850));
 	}
 
+	@Test
+	@DisplayName("El texto del consentimiento se lee siendo miembro, con su version")
+	void texto_del_consentimiento() throws Exception {
+		given(textoDelConsentimiento.version()).willReturn("2026-11-26");
+		given(textoDelConsentimiento.texto()).willReturn("El centro es responsable.");
+
+		mockMvc.perform(get(URL + "/consentimiento").with(ApiActors.miembro(42L)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.version").value("2026-11-26"))
+				.andExpect(jsonPath("$.texto").value("El centro es responsable."));
+
+		verify(authorizationGuard).requireMember(eq(42L), eq(7L), any(), anyBoolean());
+	}
+
+	@Test
+	@DisplayName("Aceptar exige editor y devuelve quien acepto")
+	void aceptar_consentimiento() throws Exception {
+		given(funcionesIaService.aceptarConsentimiento(7L, "2026-11-26", 42L)).willReturn(vista(2L));
+
+		mockMvc.perform(post(URL + "/consentimiento").with(ApiActors.miembro(42L))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"version":"2026-11-26"}"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.consentimiento.aceptado").value(true))
+				.andExpect(jsonPath("$.consentimiento.aceptadoPor").value("Ana Gomez"));
+
+		verify(authorizationGuard).requireOrgDataEditor(eq(42L), eq(7L), any(), anyBoolean());
+	}
+
+	@Test
+	@DisplayName("Aceptar una version que ya no es la vigente es 409")
+	void aceptar_version_vieja_es_409() throws Exception {
+		willThrow(new OptimisticLockingFailureException("cambio"))
+				.given(funcionesIaService).aceptarConsentimiento(anyLong(), any(), anyLong());
+
+		mockMvc.perform(post(URL + "/consentimiento").with(ApiActors.miembro(42L))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"version":"2026-01-01"}"""))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.type").value(org.hamcrest.Matchers.endsWith("concurrent-modification")));
+	}
+
 	private static FuncionesIaView vista(long version) {
 		return new FuncionesIaView(7L, version, List.of(
 				new FuncionesIaView.Funcion(FuncionIa.ASISTENTE, true, false, false),
 				new FuncionesIaView.Funcion(FuncionIa.EVOLUCION, true, true, true),
 				new FuncionesIaView.Funcion(FuncionIa.SUGERENCIAS, false, true, false),
-				new FuncionesIaView.Funcion(FuncionIa.BIBLIOTECA, true, true, true)));
+				new FuncionesIaView.Funcion(FuncionIa.BIBLIOTECA, true, true, true)),
+				new FuncionesIaView.Consentimiento(true, "2026-11-26", true, "Ana Gomez", Instant.parse("2026-11-26T13:00:00Z")));
 	}
 }

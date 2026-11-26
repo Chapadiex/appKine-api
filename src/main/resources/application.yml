@@ -369,6 +369,14 @@ akine:
       version-vigente: ${AKINE_TERMINOS_VERSION:2026-11-19}
       url: ${AKINE_TERMINOS_URL:/terminos}
 
+  ia:
+    consentimiento:
+      # Version del consentimiento del centro para usar IA (Ley 25.326, 26/11/2026). Sin una
+      # aceptacion de esta version ninguna funcion de IA corre. El texto vive en
+      # src/main/resources/ia/consentimiento.md: cambiarlo y subir esta version van juntos.
+      # Vacia = no se exige (solo en tests).
+      version: ${AKINE_IA_CONSENTIMIENTO_VERSION:2026-11-26}
+
   clinical:
     adjuntos:
       # Raiz del almacenamiento de BINARIOS CLINICOS (M09/M25, AKINE-04.02).
