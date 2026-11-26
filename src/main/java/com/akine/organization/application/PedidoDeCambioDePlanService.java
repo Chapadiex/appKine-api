@@ -4,10 +4,14 @@ import com.akine.organization.domain.Organization;
 import com.akine.organization.domain.PedidoDeCambioDePlan;
 import com.akine.organization.domain.exception.PedidoDeCambioDePlanNotFoundException;
 import com.akine.organization.domain.exception.PedidoDePlanPendienteException;
+import com.akine.organization.domain.exception.PedidoExcedeLimitesException;
+import com.akine.organization.domain.exception.PedidoExcedeLimitesException.Exceso;
 import com.akine.organization.domain.exception.PedidoSinCambiosException;
 import com.akine.organization.domain.port.OrganizationRepositoryPort;
 import com.akine.organization.domain.port.PedidoDeCambioDePlanRepositoryPort;
+import com.akine.organization.domain.Plan;
 import com.akine.organization.spi.Adicional;
+import com.akine.organization.spi.LimitCode;
 import com.akine.organization.spi.Servicio;
 import com.akine.platform.spi.audit.AuditEntry;
 import com.akine.platform.spi.audit.AuditTrail;
@@ -41,15 +45,22 @@ public class PedidoDeCambioDePlanService {
 	private final ContratacionService contratacionService;
 	private final PlanCatalogService planCatalogService;
 	private final OrganizationRepositoryPort organizationRepository;
+	private final TenantUsageCounter usageCounter;
 	private final AuditTrail auditTrail;
+
+	/** Los topes que se controlan al bajar de plan: lo que el centro tiene que cerrar o dar de baja. */
+	private static final List<LimitCode> TOPES_A_CONTROLAR =
+			List.of(LimitCode.MAX_CONSULTORIOS, LimitCode.MAX_PROFESIONALES);
 
 	public PedidoDeCambioDePlanService(PedidoDeCambioDePlanRepositoryPort repository,
 			ContratacionService contratacionService, PlanCatalogService planCatalogService,
-			OrganizationRepositoryPort organizationRepository, AuditTrail auditTrail) {
+			OrganizationRepositoryPort organizationRepository, TenantUsageCounter usageCounter,
+			AuditTrail auditTrail) {
 		this.repository = repository;
 		this.contratacionService = contratacionService;
 		this.planCatalogService = planCatalogService;
 		this.organizationRepository = organizationRepository;
+		this.usageCounter = usageCounter;
 		this.auditTrail = auditTrail;
 	}
 
@@ -125,6 +136,11 @@ public class PedidoDeCambioDePlanService {
 	@Transactional
 	public PedidoDeCambioDePlanView aprobar(long id, long versionEsperada, long actorAccountId) {
 		PedidoDeCambioDePlan pedido = pendiente(id, versionEsperada);
+		// Bajar de plan exige ajustarse antes: sedes y profesionales dentro del tope nuevo (26/11/2026).
+		List<Exceso> excesos = excesos(pedido);
+		if (!excesos.isEmpty()) {
+			throw new PedidoExcedeLimitesException(excesos);
+		}
 		long versionDeLaSuscripcion = contratacionService.ver(pedido.getOrganizationId()).version();
 		contratacionService.cambiar(pedido.getOrganizationId(), pedido.getPlanCode(), pedido.getServicios(),
 				pedido.getAdicionales(), false, versionDeLaSuscripcion, actorAccountId);
@@ -173,11 +189,31 @@ public class PedidoDeCambioDePlanService {
 		return vista(pedido, nombresDeCentros(List.of(pedido.getOrganizationId())), nombresDePlanes());
 	}
 
-	private static PedidoDeCambioDePlanView vista(PedidoDeCambioDePlan p, Map<Long, String> centros,
+	private PedidoDeCambioDePlanView vista(PedidoDeCambioDePlan p, Map<Long, String> centros,
 			Map<String, String> planes) {
+		List<Exceso> excesos = p.getEstado() == PedidoDeCambioDePlan.Estado.PENDIENTE ? excesos(p) : List.of();
 		return PedidoDeCambioDePlanView.de(p, centros.get(p.getOrganizationId()),
 				planes.getOrDefault(p.getPlanCode(), p.getPlanCode()),
-				planes.getOrDefault(p.getPlanCodeAnterior(), p.getPlanCodeAnterior()));
+				planes.getOrDefault(p.getPlanCodeAnterior(), p.getPlanCodeAnterior()), excesos);
+	}
+
+	/**
+	 * Los topes del plan pedido que el centro hoy supera. Un plan que ya no se ofrece no se controla
+	 * aca: aprobar lo rechaza igual con 404.
+	 */
+	private List<Exceso> excesos(PedidoDeCambioDePlan pedido) {
+		Plan plan;
+		try {
+			plan = planCatalogService.requireOfrecido(pedido.getPlanCode());
+		} catch (PlanNotFoundException retirado) {
+			return List.of();
+		}
+		List<PlanLimitView> topes = planCatalogService.limitsOf(plan.getId());
+		return TOPES_A_CONTROLAR.stream()
+				.flatMap(codigo -> topes.stream().filter(t -> t.code() == codigo && t.value() != null))
+				.map(t -> new Exceso(t.code(), t.value(), usageCounter.count(t.code(), pedido.getOrganizationId())))
+				.filter(e -> e.uso() > e.tope())
+				.toList();
 	}
 
 	private Map<Long, String> nombresDeCentros(Collection<Long> ids) {

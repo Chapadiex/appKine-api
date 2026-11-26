@@ -48,6 +48,8 @@ class ServicioContratadoInterceptor implements HandlerInterceptor {
 
 	private static final String PAQUETE_DE_ACTIVIDADES = "com.akine.activity.";
 
+	private static final Set<String> LECTURAS = Set.of("GET", "HEAD", "OPTIONS");
+
 	private static final String CONTROLLER_DE_DICTADO = "com.akine.assistant.api.DictadoController";
 
 	// ObjectProvider y no inyeccion directa: los slices @WebMvcTest cargan los interceptores pero
@@ -81,7 +83,13 @@ class ServicioContratadoInterceptor implements HandlerInterceptor {
 		Optional<Servicio> servicio = servicioDe(clase);
 		if (servicio.isPresent()
 				&& !contratacion.serviciosDe(organizationId).contains(servicio.get())) {
-			throw new ServicioNoContratadoException(servicio.get());
+			// Un servicio que el centro tuvo y dejo queda en solo lectura (26/11/2026): se consulta,
+			// no se modifica.
+			boolean enLectura = contratacion.serviciosEnLecturaDe(organizationId).contains(servicio.get());
+			if (enLectura && LECTURAS.contains(request.getMethod())) {
+				return true;
+			}
+			throw new ServicioNoContratadoException(servicio.get(), enLectura);
 		}
 		if (CONTROLLER_DE_DICTADO.equals(clase)
 				&& !contratacion.adicionalesDe(organizationId).contains(Adicional.IA)) {

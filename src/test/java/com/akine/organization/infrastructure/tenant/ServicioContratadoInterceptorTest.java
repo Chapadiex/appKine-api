@@ -64,6 +64,22 @@ class ServicioContratadoInterceptorTest {
 	}
 
 	@Test
+	@DisplayName("un servicio que el centro dejo queda en solo lectura: se consulta y no se modifica")
+	void servicio_en_lectura() throws Exception {
+		conContexto();
+		given(contratacion.serviciosDe(ORG)).willReturn(EnumSet.of(Servicio.KINESIOLOGIA));
+		given(contratacion.serviciosEnLecturaDe(ORG)).willReturn(EnumSet.of(Servicio.ACTIVIDADES));
+
+		assertThat(interceptor().preHandle(new org.springframework.mock.web.MockHttpServletRequest("GET", "/x"),
+				null, handler(com.akine.activity.api.ClaseController.class))).isTrue();
+		assertThatThrownBy(() -> interceptor().preHandle(
+				new org.springframework.mock.web.MockHttpServletRequest("POST", "/x"), null,
+				handler(com.akine.activity.api.ClaseController.class)))
+				.isInstanceOf(ServicioNoContratadoException.class)
+				.extracting(e -> ((ServicioNoContratadoException) e).isSoloLectura()).isEqualTo(true);
+	}
+
+	@Test
 	@DisplayName("lo contratado, lo comun y los pedidos sin contexto pasan")
 	void deja_pasar() throws Exception {
 		given(holder.current()).willReturn(Optional.empty());

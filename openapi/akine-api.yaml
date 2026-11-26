@@ -28828,7 +28828,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
-          description: "Ya resuelto, version vieja, o suscripcion cancelada"
+          description: "Ya resuelto, version vieja, suscripcion cancelada, o el centro\
+            \ supera los topes del plan pedido (pedido-excede-limites, con excesos)"
       summary: Aprobar un pedido de cambio de plan
       tags:
       - Pedidos de cambio de plan
@@ -35089,6 +35090,15 @@ components:
             enum:
             - KINESIOLOGIA
             - ACTIVIDADES
+        serviciosEnLectura:
+          type: array
+          description: "Servicios que el centro dejo de tener contratados: sus pantallas\
+            \ se pueden consultar pero no modificar (26/11/2026)"
+          items:
+            type: string
+            enum:
+            - KINESIOLOGIA
+            - ACTIVIDADES
         situacionDeCobro:
           type: string
           description: "Donde esta el centro respecto de su periodo pagado: SIN_CONTROL\
@@ -39903,6 +39913,28 @@ components:
           format: int64
           description: Version de la fila
           example: 0
+    ExcesoDeTopeResponse:
+      type: object
+      description: Un tope del plan pedido que el centro hoy supera
+      properties:
+        limitCode:
+          type: string
+          description: Que se cuenta
+          enum:
+          - MAX_CONSULTORIOS
+          - MAX_MIEMBROS_ACTIVOS
+          - MAX_PROFESIONALES
+          example: MAX_CONSULTORIOS
+        tope:
+          type: integer
+          format: int32
+          description: Tope del plan pedido
+          example: 1
+        uso:
+          type: integer
+          format: int64
+          description: Cuantos tiene hoy el centro
+          example: 3
     FechaOmitidaDeSerie:
       type: object
       description: Una fecha de la serie que no se programo
@@ -44638,6 +44670,12 @@ components:
           - APROBADO
           - RECHAZADO
           - CANCELADO
+        excesos:
+          type: array
+          description: "Topes del plan pedido que el centro hoy supera; solo en PENDIENTE.\
+            \ Con alguno, no se puede aprobar hasta que el centro se ajuste"
+          items:
+            $ref: "#/components/schemas/ExcesoDeTopeResponse"
         id:
           type: integer
           format: int64
@@ -46235,6 +46273,7 @@ components:
       - https://akine.app/problems/feature-not-available
       - https://akine.app/problems/pedido-de-plan-pendiente
       - https://akine.app/problems/pedido-sin-cambios
+      - https://akine.app/problems/pedido-excede-limites
       - https://akine.app/problems/subscription-suspended
       - https://akine.app/problems/idempotency-key-conflict
       - https://akine.app/problems/concurrent-modification

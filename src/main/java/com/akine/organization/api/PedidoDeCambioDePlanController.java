@@ -190,7 +190,8 @@ public class PedidoDeCambioDePlanController {
 			@ApiResponse(responseCode = "404", description = "El pedido no existe, o el plan ya no se ofrece",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class))),
-			@ApiResponse(responseCode = "409", description = "Ya resuelto, version vieja, o suscripcion cancelada",
+			@ApiResponse(responseCode = "409", description = "Ya resuelto, version vieja, suscripcion cancelada, o "
+					+ "el centro supera los topes del plan pedido (pedido-excede-limites, con excesos)",
 					content = @Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
 							schema = @Schema(implementation = ProblemDetail.class)))})
 	public ResponseEntity<PedidoDeCambioDePlanResponse> aprobar(

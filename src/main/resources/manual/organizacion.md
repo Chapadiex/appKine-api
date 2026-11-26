@@ -93,7 +93,13 @@ para ver cuánto tarda en responder.
 
 La administración de AKINE lo revisa. Mientras espera, la tarjeta dice **Esperando respuesta** y
 podés tocar **Cancelar el pedido**. Si lo aprueba, el cambio se aplica solo; si lo rechaza, ves el
-motivo. Bajar de plan no borra nada: solo se rechazan las altas nuevas que pasen el tope.
+motivo.
+
+> [!importante]
+> Si bajás a un plan con menos sedes o profesionales de los que tenés, el panel te avisa cuántos
+> sobran. Podés enviar el pedido, pero no se aprueba hasta que cierres sedes o des de baja
+> profesionales. Si dejás un servicio, por ejemplo Actividades, sus pantallas quedan en **solo
+> lectura**: podés consultar todo, pero no cargar ni cambiar nada.
 
 ### Consultar la auditoría
 

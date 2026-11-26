@@ -41,3 +41,17 @@ CREATE INDEX ix_pedido_de_cambio_de_plan_org ON pedido_de_cambio_de_plan (organi
 CREATE INDEX ix_pedido_de_cambio_de_plan_estado ON pedido_de_cambio_de_plan (estado, created_at);
 
 COMMENT ON TABLE pedido_de_cambio_de_plan IS 'Pedidos de cambio de plan que un centro hace desde Suscripcion. Guarda lo pedido y la contratacion de ese momento. La plataforma lo aprueba (aplica la contratacion) o lo rechaza con motivo; el centro puede cancelarlo mientras espera. Nunca se borra. Propietario: modulo organization';
+
+-- Servicios que el centro dejo de tener contratados (26/11/2026): sus pantallas quedan en solo
+-- lectura. Se marca al sacar el servicio de la contratacion y se borra si se vuelve a sumar (es una
+-- marca de estado, no historia: la historia queda en la auditoria de la contratacion).
+CREATE TABLE servicio_en_lectura
+(
+    organization_id bigint NOT NULL,
+    servicio varchar(24) NOT NULL,
+    desde timestamptz(6) NOT NULL,
+    CONSTRAINT pk_servicio_en_lectura PRIMARY KEY (organization_id, servicio),
+    CONSTRAINT fk_servicio_en_lectura_org FOREIGN KEY (organization_id) REFERENCES organization (id),
+    CONSTRAINT ck_servicio_en_lectura_servicio CHECK (servicio IN ('KINESIOLOGIA', 'ACTIVIDADES'))
+);
+COMMENT ON TABLE servicio_en_lectura IS 'Servicios que el centro tuvo y ya no tiene contratados: se pueden consultar pero no modificar. Propietario: modulo organization';

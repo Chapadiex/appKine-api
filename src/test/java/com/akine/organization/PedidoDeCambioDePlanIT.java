@@ -3,13 +3,18 @@ package com.akine.organization;
 import com.akine.TestcontainersConfiguration;
 import com.akine.identity.application.AltaDeCentroPlataformaService;
 import com.akine.organization.application.ContratacionService;
+import com.akine.organization.application.ConsultorioAltaCommand;
+import com.akine.organization.application.ConsultorioService;
 import com.akine.organization.application.ContratacionView;
+import com.akine.organization.application.OperatingActor;
 import com.akine.organization.application.PedidoDeCambioDePlanService;
 import com.akine.organization.application.PedidoDeCambioDePlanView;
 import com.akine.organization.domain.PedidoDeCambioDePlan;
 import com.akine.organization.domain.SubscriptionStatus;
 import com.akine.organization.domain.exception.PedidoDePlanPendienteException;
+import com.akine.organization.domain.exception.PedidoExcedeLimitesException;
 import com.akine.organization.domain.exception.PedidoSinCambiosException;
+import com.akine.organization.spi.LimitCode;
 import com.akine.organization.spi.Adicional;
 import com.akine.organization.spi.AltaDeCentro;
 import com.akine.organization.spi.Servicio;
@@ -54,6 +59,7 @@ class PedidoDeCambioDePlanIT {
 	@Autowired private AltaDeCentroPlataformaService alta;
 	@Autowired private ContratacionService contratacion;
 	@Autowired private JdbcTemplate jdbc;
+	@Autowired private ConsultorioService consultorios;
 
 	@Test
 	@DisplayName("aprobar aplica plan y servicios pedidos, sigue en prueba y guarda lo que tenia")
@@ -159,6 +165,48 @@ class PedidoDeCambioDePlanIT {
 		assertThat(jdbc.queryForObject("""
 				SELECT COUNT(*) FROM pedido_de_cambio_de_plan WHERE organization_id = ? AND estado = 'PENDIENTE'""",
 				Integer.class, org)).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("bajar con mas sedes que el tope: el pedido se guarda con el exceso y no se aprueba hasta ajustarse")
+	void bajar_de_plan_con_exceso() {
+		long org = altaEnPrueba();
+		PedidoDeCambioDePlanView subida = pedidos.pedir(org, "CRECIMIENTO", EnumSet.of(Servicio.KINESIOLOGIA),
+				EnumSet.noneOf(Adicional.class), null, ADMIN_DEL_CENTRO);
+		pedidos.aprobar(subida.id(), subida.version(), PLATAFORMA);
+		consultorios.create(new OperatingActor(PLATAFORMA, true, null), org, new ConsultorioAltaCommand(
+				"Sede Segunda", null, null, null, null, null, null, null, UUID.randomUUID().toString(), "h"));
+
+		PedidoDeCambioDePlanView bajada = pedidos.pedir(org, "BASE", EnumSet.of(Servicio.KINESIOLOGIA),
+				EnumSet.noneOf(Adicional.class), null, ADMIN_DEL_CENTRO);
+
+		assertThat(bajada.excesos()).singleElement().satisfies(e -> {
+			assertThat(e.limitCode()).isEqualTo(LimitCode.MAX_CONSULTORIOS);
+			assertThat(e.tope()).isEqualTo(1);
+			assertThat(e.uso()).isEqualTo(2);
+		});
+		assertThatThrownBy(() -> pedidos.aprobar(bajada.id(), bajada.version(), PLATAFORMA))
+				.isInstanceOf(PedidoExcedeLimitesException.class);
+		assertThat(contratacion.ver(org).planCode()).isEqualTo("CRECIMIENTO");
+	}
+
+	@Test
+	@DisplayName("dejar un servicio lo pasa a solo lectura; volver a sumarlo lo saca")
+	void dejar_un_servicio_queda_en_lectura() {
+		long org = altaEnPrueba();
+		PedidoDeCambioDePlanView suma = pedidos.pedir(org, "BASE", EnumSet.allOf(Servicio.class),
+				EnumSet.noneOf(Adicional.class), null, ADMIN_DEL_CENTRO);
+		pedidos.aprobar(suma.id(), suma.version(), PLATAFORMA);
+
+		PedidoDeCambioDePlanView deja = pedidos.pedir(org, "BASE", EnumSet.of(Servicio.KINESIOLOGIA),
+				EnumSet.noneOf(Adicional.class), null, ADMIN_DEL_CENTRO);
+		pedidos.aprobar(deja.id(), deja.version(), PLATAFORMA);
+		assertThat(contratacion.ver(org).serviciosEnLectura()).containsExactly(Servicio.ACTIVIDADES);
+
+		PedidoDeCambioDePlanView vuelve = pedidos.pedir(org, "BASE", EnumSet.allOf(Servicio.class),
+				EnumSet.noneOf(Adicional.class), null, ADMIN_DEL_CENTRO);
+		pedidos.aprobar(vuelve.id(), vuelve.version(), PLATAFORMA);
+		assertThat(contratacion.ver(org).serviciosEnLectura()).isEmpty();
 	}
 
 	private long altaEnPrueba() {

@@ -28,14 +28,18 @@ public record PedidoDeCambioDePlanResponse(
 		@Schema(description = "Motivo, si se rechazo") String motivoRechazo,
 		@Schema(description = "Cuando se pidio") Instant pedidoEn,
 		@Schema(description = "Cuando se resolvio") Instant resueltoEn,
-		long version) {
+		long version,
+		@Schema(description = "Topes del plan pedido que el centro hoy supera; solo en PENDIENTE. Con alguno, "
+				+ "no se puede aprobar hasta que el centro se ajuste")
+		List<ExcesoDeTopeResponse> excesos) {
 
 	public static PedidoDeCambioDePlanResponse from(PedidoDeCambioDePlanView p) {
 		return new PedidoDeCambioDePlanResponse(p.id(), p.organizationId(), p.organizationNombre(),
 				p.planCode(), p.planNombre(), ordenados(p.servicios()), ordenados(p.adicionales()),
 				p.planCodeAnterior(), p.planNombreAnterior(), ordenados(p.serviciosAnteriores()),
 				ordenados(p.adicionalesAnteriores()), p.comentario(), p.estado(), p.motivoRechazo(),
-				p.pedidoEn(), p.resueltoEn(), p.version());
+				p.pedidoEn(), p.resueltoEn(), p.version(),
+				p.excesos().stream().map(e -> new ExcesoDeTopeResponse(e.limitCode(), e.tope(), e.uso())).toList());
 	}
 
 	private static <E extends Enum<E>> List<E> ordenados(Set<E> valores) {

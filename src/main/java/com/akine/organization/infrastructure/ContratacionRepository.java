@@ -50,6 +50,16 @@ class ContratacionRepository implements ContratacionRepositoryPort {
 	}
 
 	@Override
+	public Set<Servicio> serviciosEnLecturaDe(long organizationId) {
+		Set<Servicio> servicios = EnumSet.noneOf(Servicio.class);
+		jdbc.query("SELECT servicio FROM servicio_en_lectura WHERE organization_id = ?",
+				rs -> {
+					servicios.add(Servicio.valueOf(rs.getString(1)));
+				}, organizationId);
+		return servicios;
+	}
+
+	@Override
 	public Set<Adicional> adicionalesDe(long organizationId) {
 		if (!definida(organizationId)) {
 			return EnumSet.allOf(Adicional.class);
@@ -72,6 +82,17 @@ class ContratacionRepository implements ContratacionRepositoryPort {
 
 	@Override
 	public void reemplazar(long organizationId, Set<Servicio> servicios, Set<Adicional> adicionales) {
+		// Lo que se deja queda en solo lectura; lo que se vuelve a sumar deja de estarlo (26/11/2026).
+		for (Servicio antes : serviciosDe(organizationId)) {
+			if (!servicios.contains(antes)) {
+				jdbc.update("INSERT INTO servicio_en_lectura (organization_id, servicio, desde) VALUES (?, ?, now())"
+						+ " ON CONFLICT (organization_id, servicio) DO NOTHING", organizationId, antes.name());
+			}
+		}
+		for (Servicio servicio : servicios) {
+			jdbc.update("DELETE FROM servicio_en_lectura WHERE organization_id = ? AND servicio = ?",
+					organizationId, servicio.name());
+		}
 		jdbc.update("DELETE FROM subscription_servicio WHERE organization_id = ?", organizationId);
 		for (Servicio servicio : servicios) {
 			jdbc.update("INSERT INTO subscription_servicio (organization_id, servicio, created_at) "

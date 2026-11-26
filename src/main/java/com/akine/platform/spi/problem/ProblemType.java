@@ -98,6 +98,8 @@ public enum ProblemType {
 	PEDIDO_DE_PLAN_PENDIENTE("pedido-de-plan-pendiente"),
 	/** El pedido de cambio de plan es igual a lo contratado (400). */
 	PEDIDO_SIN_CAMBIOS("pedido-sin-cambios"),
+	/** El centro supera sedes o profesionales del plan pedido: se ajusta antes de aprobar (409). */
+	PEDIDO_EXCEDE_LIMITES("pedido-excede-limites"),
 	/** La suscripcion no esta ACTIVA y la operacion la exige. */
 	SUBSCRIPTION_SUSPENDED("subscription-suspended"),
 	/** La misma clave de idempotencia se reuso con un cuerpo distinto. */
